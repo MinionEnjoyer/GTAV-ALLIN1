@@ -1,4 +1,5 @@
 // TrafficSpawner.cs - Spawns GTA Online DLC vehicles into Story Mode traffic.
+// Built via ScriptHookVDotNet Enhanced — works on both Legacy and Enhanced editions.
 //
 // Uses ScriptHookVDotNet to spawn vehicles from a hardcoded list of 444
 // model names (generated from vehicles.toml). Vehicles appear as both
