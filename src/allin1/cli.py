@@ -95,9 +95,9 @@ def install_cmd(ctx: click.Context) -> None:
         click.echo("Install one manually (e.g. Ultimate ASI Loader or ScriptHookV).")
 
     if result.battleye_status == "set":
-        click.echo("BattlEye disabled via commandline.txt (-nobattleye).")
+        click.echo("BattlEye disabled (-nobattleye set in Steam + commandline.txt).")
     elif result.battleye_status == "already_set":
-        click.echo("BattlEye already disabled in commandline.txt.")
+        click.echo("BattlEye already disabled (-nobattleye).")
 
     click.echo()
     click.echo("All files deployed automatically. No manual steps needed.")
