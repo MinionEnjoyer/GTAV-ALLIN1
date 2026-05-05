@@ -1,0 +1,22 @@
+LIBRARY ScriptHookV
+EXPORTS
+    scriptWait
+    scriptRegister
+    scriptRegisterAdditionalThread
+    scriptUnregister
+    nativeInit
+    nativePush64
+    nativeCall
+    getGlobalPtr
+    worldGetAllVehicles
+    worldGetAllPeds
+    worldGetAllObjects
+    worldGetAllPickups
+    keyboardHandlerRegister
+    keyboardHandlerUnregister
+    presentCallbackRegister
+    presentCallbackUnregister
+    createTexture
+    drawTexture
+    getGameVersion
+    getScriptHandleBaseAddress

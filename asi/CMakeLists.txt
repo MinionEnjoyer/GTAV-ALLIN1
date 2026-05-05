@@ -5,14 +5,20 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ---------------------------------------------------------------------------
+# ScriptHookV import library
+# ---------------------------------------------------------------------------
+# Generated from ScriptHookV.def before building (see CI workflow).
+# CI runs:  lib /def:ScriptHookV.def /out:ScriptHookV.lib /machine:x64
+
+set(SHV_LIB "${CMAKE_CURRENT_SOURCE_DIR}/lib/ScriptHookV/ScriptHookV.lib"
+    CACHE FILEPATH "Path to ScriptHookV import library")
+
+# ---------------------------------------------------------------------------
 # ALLIN1 ASI plugin
 # ---------------------------------------------------------------------------
-# ScriptHookV functions are resolved at runtime via GetProcAddress
-# (see shv_runtime.cpp) — no import library needed.
 
 add_library(ALLIN1 SHARED
     src/main.cpp
-    src/shv_runtime.cpp
     src/log.h
     src/natives.h
     src/vehicle_spawner.h
@@ -32,8 +38,11 @@ set_target_properties(ALLIN1 PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
-# Link system libraries only (no ScriptHookV.lib needed)
-target_link_libraries(ALLIN1 PRIVATE shlwapi)
+# Link ScriptHookV import lib + system libraries
+target_link_libraries(ALLIN1 PRIVATE
+    "${SHV_LIB}"
+    shlwapi
+)
 
 # Release optimizations
 if(MSVC)
