@@ -129,7 +129,7 @@ namespace ALLIN1
             if (driver != null && driver.Exists())
             {
                 driver.Task.WarpIntoVehicle(veh, VehicleSeat.Driver);
-                driver.Task.CruiseWithVehicle(veh, 20f, (int)DrivingStyle.Normal);
+                driver.Task.CruiseWithVehicle(veh, 20f, DrivingStyle.Normal);
                 driver.MarkAsNoLongerNeeded();
             }
 
