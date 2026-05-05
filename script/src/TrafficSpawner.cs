@@ -153,18 +153,17 @@ namespace ALLIN1
                               out Vector3 nodePos, out float heading))
                 return false;
 
-            // Offset to the side of the road
-            float rad = heading * (float)Math.PI / 180f;
-            float perpRad = rad + (float)Math.PI / 2f;
-            nodePos.X += 3.5f * (float)Math.Cos(perpRad);
-            nodePos.Y += 3.5f * (float)Math.Sin(perpRad);
+            // Use the game's native to shift the road-center point to the
+            // road shoulder — matches vanilla parked-car placement.
+            Vector3 parkPos = GetRoadSidePoint(nodePos, heading);
 
             string modelName = _validModels[_rng.Next(_validModels.Count)];
-            Vehicle veh = CreateVehicle(modelName, nodePos, heading);
+            Vehicle veh = CreateVehicle(modelName, parkPos, heading);
             if (veh == null)
                 return false;
 
             veh.IsEngineRunning = false;
+            veh.LockStatus = VehicleLockStatus.Unlocked;
             veh.MarkAsNoLongerNeeded();
 
             _spawned.Add(new SpawnedVehicle
@@ -175,6 +174,36 @@ namespace ALLIN1
             });
             _totalSpawned++;
             return true;
+        }
+
+        /// <summary>
+        /// Shift a road-center node to the road shoulder using the game's own
+        /// pathfind native.  Falls back to a manual perpendicular offset if the
+        /// native fails.
+        /// </summary>
+        private Vector3 GetRoadSidePoint(Vector3 nodePos, float heading)
+        {
+            // _GET_POINT_ON_ROAD_SIDE  (0x16F46FB18C8009E4)
+            using (var outPos = new OutputArgument())
+            {
+                bool ok = Function.Call<bool>(
+                    (Hash)0x16F46FB18C8009E4,
+                    nodePos.X, nodePos.Y, nodePos.Z,
+                    0,        // p3 — undocumented, 0 works
+                    outPos);
+
+                if (ok)
+                    return outPos.GetResult<Vector3>();
+            }
+
+            // Fallback: manual offset using GTA V navigational heading
+            // (heading 0 = North/+Y, increases clockwise).
+            // Right-perpendicular: X += cos(h), Y -= sin(h)
+            float rad = heading * (float)Math.PI / 180f;
+            return new Vector3(
+                nodePos.X + 3.5f * (float)Math.Cos(rad),
+                nodePos.Y - 3.5f * (float)Math.Sin(rad),
+                nodePos.Z);
         }
 
         // --- Vehicle creation helpers ---
