@@ -50,19 +50,20 @@ namespace ALLIN1
         };
 
         // Map VehicleClass enum → VehicleList arrays for class-matched replacement.
-        private static readonly (VehicleClass cls, string[] models)[] CLASS_MAP =
+        private static readonly Dictionary<VehicleClass, string[]> CLASS_MAP =
+            new Dictionary<VehicleClass, string[]>
         {
-            (VehicleClass.Compacts,       VehicleList.Compacts),
-            (VehicleClass.Coupes,         VehicleList.Coupes),
-            (VehicleClass.Sedans,         VehicleList.Sedans),
-            (VehicleClass.SUVs,           VehicleList.Suvs),
-            (VehicleClass.Muscle,         VehicleList.Muscle),
-            (VehicleClass.SportsClassics, VehicleList.Sportsclassics),
-            (VehicleClass.Sports,         VehicleList.Sportsclassics), // shared pool
-            (VehicleClass.Super,          VehicleList.Super),
-            (VehicleClass.OffRoad,        VehicleList.Offroad),
-            (VehicleClass.Motorcycles,    VehicleList.Motorcycles),
-            (VehicleClass.Vans,           VehicleList.Vans),
+            { VehicleClass.Compacts,       VehicleList.Compacts },
+            { VehicleClass.Coupes,         VehicleList.Coupes },
+            { VehicleClass.Sedans,         VehicleList.Sedans },
+            { VehicleClass.SUVs,           VehicleList.Suvs },
+            { VehicleClass.Muscle,         VehicleList.Muscle },
+            { VehicleClass.SportsClassics, VehicleList.Sportsclassics },
+            { VehicleClass.Sports,         VehicleList.Sportsclassics }, // shared
+            { VehicleClass.Super,          VehicleList.Super },
+            { VehicleClass.OffRoad,        VehicleList.Offroad },
+            { VehicleClass.Motorcycles,    VehicleList.Motorcycles },
+            { VehicleClass.Vans,           VehicleList.Vans },
         };
 
         // --- State ---
@@ -134,16 +135,16 @@ namespace ALLIN1
             _dlcModelHashes.Clear();
 
             // Build per-class pools of validated models.
-            foreach (var (cls, names) in CLASS_MAP)
+            foreach (var entry in CLASS_MAP)
             {
-                if (!_classPools.ContainsKey(cls))
-                    _classPools[cls] = new List<string>();
+                if (!_classPools.ContainsKey(entry.Key))
+                    _classPools[entry.Key] = new List<string>();
 
-                foreach (string name in names)
+                foreach (string name in entry.Value)
                 {
                     var m = new Model(name);
                     if (m.IsInCdImage && m.IsVehicle)
-                        _classPools[cls].Add(name);
+                        _classPools[entry.Key].Add(name);
                 }
             }
 
@@ -161,7 +162,8 @@ namespace ALLIN1
             // Build hash set of DLC model hashes so the scanner can skip
             // vehicles that are already DLC.
             foreach (string name in _validModels)
-                _dlcModelHashes.Add(Game.GenerateHash(name));
+                _dlcModelHashes.Add(
+                    Function.Call<int>(Hash.GET_HASH_KEY, name));
 
             int now = Game.GameTime;
             _lastDrivenTime = now;
@@ -232,10 +234,7 @@ namespace ALLIN1
 
             // Clean stale handles
             _replacedHandles.RemoveWhere(h =>
-            {
-                var e = new Vehicle(h);
-                return !e.Exists();
-            });
+                !Function.Call<bool>(Hash.DOES_ENTITY_EXIST, h));
 
             foreach (Vehicle veh in nearby)
             {
@@ -296,7 +295,9 @@ namespace ALLIN1
                 return false;
 
             // Already a DLC vehicle
-            if (_dlcModelHashes.Contains(veh.Model.Hash))
+            int modelHash = Function.Call<int>(
+                Hash.GET_ENTITY_MODEL, veh.Handle);
+            if (_dlcModelHashes.Contains(modelHash))
                 return false;
 
             // Too close — prevents pop-in even if off-screen check fails
