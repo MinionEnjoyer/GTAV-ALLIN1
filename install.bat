@@ -177,8 +177,8 @@ echo.
 echo ============================================================
 echo   Installation complete!
 echo.
-echo   All files deployed automatically. No manual steps needed.
-echo   Launch GTA V Story Mode to enjoy MP vehicles in traffic.
+echo   To play: run ALLIN1-Launcher.exe from your GTA V folder.
+echo   It will start the game and inject the mod automatically.
 echo.
 echo   Full log saved to: allin1.log
 echo ============================================================

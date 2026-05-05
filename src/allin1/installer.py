@@ -4,11 +4,11 @@ Coordinates the full install/uninstall flow: config loading, GTA V detection,
 backup creation, generator invocation, and file placement.
 
 File placement strategy:
-- ALLIN1.asi → GTA V root (next to GTA5.exe) — despawn fix + file redirection
+- ALLIN1.dll → GTA V root — plugin DLL (despawn fix + file redirection)
+- ALLIN1-Launcher.exe → GTA V root — injector that loads ALLIN1.dll into
+  the running game process, bypassing BattlEye's proxy-DLL block
 - Data files (popgroups.ymt, dlclist.xml, gameconfig.xml) → ALLIN1/ folder
-  in GTA V root — ALLIN1.asi redirects game reads to these at runtime
-- ASI Loader (dinput8.dll / dsound.dll) → GTA V root — auto-downloaded from
-  GitHub if not already present
+  in GTA V root — ALLIN1.dll redirects game reads to these at runtime
 """
 
 from __future__ import annotations
@@ -29,7 +29,8 @@ from allin1.vehicles.database import Vehicle, VehicleDatabase
 
 log = logging.getLogger("allin1.installer")
 
-ASI_FILENAME = "ALLIN1.asi"
+DLL_FILENAME = "ALLIN1.dll"
+LAUNCHER_FILENAME = "ALLIN1-Launcher.exe"
 ALLIN1_DATA_DIR = "ALLIN1"  # Folder name in game root for loose data files
 
 # Resolve directories relative to this source file (project root).
@@ -53,9 +54,9 @@ class InstallResult:
     dlc_packs_added: list[str] = field(default_factory=list)
     backup_dir: Path | None = None
     warnings: list[str] = field(default_factory=list)
-    asi_deployed: bool = False
-    asi_loader_status: str = ""  # "skipped", "deployed", or "failed"
-    battleye_status: str = ""  # "set", "already_set", or "failed"
+    plugin_deployed: bool = False    # ALLIN1.dll
+    launcher_deployed: bool = False  # ALLIN1-Launcher.exe
+    battleye_status: str = ""        # "set", "already_set", or "failed"
     output_dir: Path | None = None
 
 
@@ -140,13 +141,10 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
     # --- Deploy data files to ALLIN1/ folder in game root ---
     _deploy_data_files(gta_path, result)
 
-    # --- Deploy ASI plugin (DLC vehicle despawn fix + file redirection) ---
-    result.asi_deployed = _deploy_asi(gta_path)
+    # --- Deploy plugin DLL + launcher exe ---
+    result.plugin_deployed, result.launcher_deployed = _deploy_plugin(gta_path)
 
-    # --- Ensure ASI Loader is present ---
-    result.asi_loader_status = asi_loader.ensure_loader(gta_path, enhanced)
-
-    # --- Disable BattlEye for single-player modding ---
+    # --- Write -nobattleye to commandline.txt (belt-and-suspenders) ---
     result.battleye_status = asi_loader.ensure_nobattleye(gta_path, enhanced)
 
     log.info("=== Installation complete ===")
@@ -159,12 +157,13 @@ def uninstall(config: Config) -> list[Path]:
     gta_path = resolve_gta_path(config)
     removed: list[Path] = []
 
-    # Remove ASI plugin
-    asi_dest = gta_path / ASI_FILENAME
-    if asi_dest.exists():
-        asi_dest.unlink()
-        removed.append(asi_dest)
-        log.info("Removed %s from GTA V directory", ASI_FILENAME)
+    # Remove plugin DLL and launcher exe
+    for fname in (DLL_FILENAME, LAUNCHER_FILENAME):
+        fpath = gta_path / fname
+        if fpath.exists():
+            fpath.unlink()
+            removed.append(fpath)
+            log.info("Removed %s from GTA V directory", fname)
 
     # Remove ALLIN1/ data folder
     data_dir = gta_path / ALLIN1_DATA_DIR
@@ -189,9 +188,6 @@ def uninstall(config: Config) -> list[Path]:
             log.info("Removed -nobattleye from commandline.txt")
         except OSError:
             pass
-
-    # Note: We intentionally do NOT remove the ASI loader DLL
-    # (dinput8.dll / dsound.dll) because other mods may depend on it.
 
     # Clean up local output directory
     if _OUTPUT_DIR.exists():
@@ -222,28 +218,36 @@ def _deploy_data_files(gta_path: Path, result: InstallResult) -> None:
     log.info("Deployed %d file(s) to %s/", len(result.files_deployed), data_dir)
 
 
-def _deploy_asi(gta_path: Path) -> bool:
-    """Copy ALLIN1.asi to the GTA V root directory.
+def _deploy_plugin(gta_path: Path) -> tuple[bool, bool]:
+    """Copy ALLIN1.dll and ALLIN1-Launcher.exe to the GTA V root.
 
-    The ASI disables the DLC vehicle despawn mechanism and redirects
-    game file reads to the ALLIN1/ data folder.
-    It's placed next to GTA5.exe so the ASI loader picks it up.
+    ALLIN1.dll is the plugin that hooks the game's file system and patches
+    the despawn logic.  ALLIN1-Launcher.exe is the injector that loads the
+    DLL into the running game process (bypassing BattlEye).
 
-    Returns True if deployed successfully, False if the source binary is missing.
+    Returns (plugin_deployed, launcher_deployed).
     """
-    src = _ASI_DIST_DIR / ASI_FILENAME
-    if not src.exists():
-        log.warning(
-            "%s not found at %s — DLC despawn fix will NOT be active. "
-            "Run the GitHub Actions build or download from Releases.",
-            ASI_FILENAME, _ASI_DIST_DIR,
-        )
-        return False
+    plugin_ok = False
+    launcher_ok = False
 
-    dest = gta_path / ASI_FILENAME
-    shutil.copy2(src, dest)
-    log.info("Deployed %s to %s", ASI_FILENAME, dest)
-    return True
+    for filename, label in ((DLL_FILENAME, "plugin"), (LAUNCHER_FILENAME, "launcher")):
+        src = _ASI_DIST_DIR / filename
+        if not src.exists():
+            log.warning(
+                "%s not found at %s — run the GitHub Actions build or "
+                "download from Releases.",
+                filename, _ASI_DIST_DIR,
+            )
+            continue
+        dest = gta_path / filename
+        shutil.copy2(src, dest)
+        log.info("Deployed %s → %s", filename, dest)
+        if label == "plugin":
+            plugin_ok = True
+        else:
+            launcher_ok = True
+
+    return plugin_ok, launcher_ok
 
 
 def _create_base_gameconfig() -> str:

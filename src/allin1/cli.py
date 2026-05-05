@@ -7,7 +7,6 @@ from pathlib import Path
 
 import click
 
-from allin1 import asi_loader
 from allin1.config import Config
 from allin1.installer import install, uninstall
 from allin1.logging import setup_logging
@@ -80,28 +79,17 @@ def install_cmd(ctx: click.Context) -> None:
     if result.files_deployed:
         click.echo(f"Data files deployed to ALLIN1/ folder ({len(result.files_deployed)} files).")
 
-    if result.asi_deployed:
-        click.echo("ALLIN1.asi deployed — despawn fix + file redirection active.")
+    if result.plugin_deployed and result.launcher_deployed:
+        click.echo("ALLIN1.dll + ALLIN1-Launcher.exe deployed.")
+    elif result.plugin_deployed:
+        click.echo("ALLIN1.dll deployed.")
+        click.echo("WARNING: ALLIN1-Launcher.exe not found — build it or download from Releases.")
     else:
-        click.echo("WARNING: ALLIN1.asi not found — DLC vehicles will be despawned.")
-        click.echo("Build the ASI from the asi/ directory or download from Releases.")
-
-    if result.asi_loader_status == "deployed":
-        click.echo(f"ASI Loader deployed ({asi_loader.dll_name(result.is_enhanced)}).")
-    elif result.asi_loader_status == "skipped":
-        click.echo("ASI Loader already present.")
-    elif result.asi_loader_status == "failed":
-        click.echo("WARNING: Could not download ASI Loader.")
-        click.echo("Install one manually (e.g. Ultimate ASI Loader or ScriptHookV).")
-
-    if result.battleye_status == "set":
-        click.echo("BattlEye disabled (-nobattleye set in Steam + commandline.txt).")
-    elif result.battleye_status == "already_set":
-        click.echo("BattlEye already disabled (-nobattleye).")
+        click.echo("WARNING: ALLIN1.dll not found — build it or download from Releases.")
 
     click.echo()
-    click.echo("All files deployed automatically. No manual steps needed.")
-    click.echo("Launch GTA V Story Mode to enjoy MP vehicles in traffic.")
+    click.echo("To play: run ALLIN1-Launcher.exe from your GTA V folder.")
+    click.echo("It will start the game and inject the mod automatically.")
 
 
 # Register with a user-friendly name

@@ -1,4 +1,4 @@
-name: Build ALLIN1.asi
+name: Build ALLIN1
 
 on:
   push:
@@ -24,21 +24,26 @@ jobs:
       - name: Build Release
         run: cmake --build asi/build --config Release
 
-      - name: Copy ASI to dist
+      - name: Copy binaries to dist
         run: |
           New-Item -ItemType Directory -Path "asi/dist" -Force | Out-Null
-          Copy-Item -Path "asi/build/bin/Release/ALLIN1.asi" -Destination "asi/dist/ALLIN1.asi" -Force
+          Copy-Item -Path "asi/build/bin/Release/ALLIN1.dll" -Destination "asi/dist/ALLIN1.dll" -Force
+          Copy-Item -Path "asi/build/bin/Release/ALLIN1-Launcher.exe" -Destination "asi/dist/ALLIN1-Launcher.exe" -Force
 
-      - name: Upload artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ALLIN1-asi
-          path: asi/dist/ALLIN1.asi
+          name: ALLIN1-binaries
+          path: |
+            asi/dist/ALLIN1.dll
+            asi/dist/ALLIN1-Launcher.exe
 
-      - name: Commit pre-built binary
+      - name: Commit pre-built binaries
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add asi/dist/ALLIN1.asi
-          git diff --cached --quiet || git commit -m "Auto-build: update ALLIN1.asi binary"
+          git add asi/dist/ALLIN1.dll asi/dist/ALLIN1-Launcher.exe
+          # Clean up old .asi if it exists
+          if (Test-Path "asi/dist/ALLIN1.asi") { git rm asi/dist/ALLIN1.asi }
+          git diff --cached --quiet || git commit -m "Auto-build: update ALLIN1.dll + ALLIN1-Launcher.exe"
           git push
