@@ -25,6 +25,8 @@ struct ScriptHeader {
     char* name;                         // 0x60
     char** stringsOffset;               // 0x68
     int stringSize;                     // 0x70
+    char padding8[12];                  // 0x74
+    // END_OF_HEADER                    // 0x80  (total size = 128 bytes)
 
     bool IsValid() const { return codeLength > 0; }
 
@@ -44,6 +46,11 @@ struct ScriptHeader {
     unsigned char* GetCodePositionAddress(int codePosition) const {
         if (codePosition < 0 || codePosition >= codeLength) return nullptr;
         return &codeBlocksOffset[codePosition >> 14][codePosition & 0x3FFF];
+    }
+
+    char* GetString(int stringPosition) const {
+        if (stringPosition < 0 || stringPosition >= stringSize) return nullptr;
+        return &stringsOffset[stringPosition >> 14][stringPosition & 0x3FFF];
     }
 };
 

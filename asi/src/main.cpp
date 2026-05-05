@@ -14,6 +14,7 @@
 #include <windows.h>
 #include <Psapi.h>
 #include <cstdint>
+#include <cstring>
 #include "structs.h"
 
 #pragma comment(lib, "psapi.lib")
@@ -123,13 +124,14 @@ static DWORD WINAPI DisableDespawn(LPVOID) {
 
                     if ((*reinterpret_cast<int*>(fpos) & 0xFFFFFF) == 0x01002E) {
                         // Find the IGET opcode (0x5F) that loads the global index.
-                        for (k = k + 1; k < k + 30; k++) {
-                            auto* gpos = shopController->GetCodePositionAddress(funcOff + k);
+                        int searchEnd = k + 30;
+                        for (int m = k + 1; m < searchEnd; m++) {
+                            auto* gpos = shopController->GetCodePositionAddress(funcOff + m);
                             if (!gpos) break;
 
                             if (*gpos == 0x5F) {
                                 int globalIndex = *reinterpret_cast<int*>(
-                                    shopController->GetCodePositionAddress(funcOff + k + 1))
+                                    shopController->GetCodePositionAddress(funcOff + m + 1))
                                     & 0xFFFFFF;
 
                                 // Set the global to 1 — disables DLC vehicle despawn.

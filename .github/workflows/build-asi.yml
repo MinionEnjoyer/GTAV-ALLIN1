@@ -26,6 +26,7 @@ jobs:
 
       - name: Copy ASI to dist
         run: |
+          New-Item -ItemType Directory -Path "asi/dist" -Force | Out-Null
           Copy-Item -Path "asi/build/bin/Release/ALLIN1.asi" -Destination "asi/dist/ALLIN1.asi" -Force
 
       - name: Upload artifact

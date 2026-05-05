@@ -26,6 +26,7 @@ allin1.log
 
 # ASI build artifacts (keep asi/dist/ tracked for pre-built binary)
 asi/build/
+!asi/dist/
 
 # Generated output files
 output/
