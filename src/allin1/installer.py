@@ -4,10 +4,11 @@ Coordinates the full install/uninstall flow: config loading, GTA V detection,
 backup creation, generator invocation, and file placement.
 
 File placement strategy:
-- ALLIN1.asi → GTA V root (next to GTA5.exe) — works for both editions
-- popgroups.ymt, dlclist.xml, gameconfig.xml:
-  - Enhanced Edition → onigiri/ folder (loose file replacement via onigiri.asi)
-  - Legacy Edition → output/ folder locally, user imports via OpenIV/CodeWalker
+- ALLIN1.asi → GTA V root (next to GTA5.exe) — despawn fix + file redirection
+- Data files (popgroups.ymt, dlclist.xml, gameconfig.xml) → ALLIN1/ folder
+  in GTA V root — ALLIN1.asi redirects game reads to these at runtime
+- ASI Loader (dinput8.dll / dsound.dll) → GTA V root — auto-downloaded from
+  GitHub if not already present
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from allin1 import asi_loader
 from allin1.backup import create_backup, restore_backup
 from allin1.config import Config
 from allin1.detector import detect_gta_path, validate_gta_path
@@ -28,6 +30,7 @@ from allin1.vehicles.database import Vehicle, VehicleDatabase
 log = logging.getLogger("allin1.installer")
 
 ASI_FILENAME = "ALLIN1.asi"
+ALLIN1_DATA_DIR = "ALLIN1"  # Folder name in game root for loose data files
 
 # Resolve directories relative to this source file (project root).
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -51,6 +54,7 @@ class InstallResult:
     backup_dir: Path | None = None
     warnings: list[str] = field(default_factory=list)
     asi_deployed: bool = False
+    asi_loader_status: str = ""  # "skipped", "deployed", or "failed"
     output_dir: Path | None = None
 
 
@@ -125,7 +129,6 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
 
     # --- Generate gameconfig.xml ---
     log.info("Generating gameconfig.xml...")
-    # Start with a minimal gameconfig template
     base_gameconfig = _create_base_gameconfig()
     patched_gc = patch_gameconfig(base_gameconfig)
     gameconfig_out = _OUTPUT_DIR / "gameconfig.xml"
@@ -133,96 +136,78 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
     result.files_generated.append("gameconfig.xml")
     log.info("Generated gameconfig.xml → %s", gameconfig_out)
 
-    # --- Deploy files based on edition ---
-    if enhanced:
-        _deploy_enhanced(gta_path, result)
-    else:
-        log.info("Legacy edition — generated files saved to output/ folder")
-        log.info("Use OpenIV or CodeWalker to import them into update.rpf")
+    # --- Deploy data files to ALLIN1/ folder in game root ---
+    _deploy_data_files(gta_path, result)
 
-    # --- Deploy ASI plugin (DLC vehicle despawn fix) ---
+    # --- Deploy ASI plugin (DLC vehicle despawn fix + file redirection) ---
     result.asi_deployed = _deploy_asi(gta_path)
+
+    # --- Ensure ASI Loader is present ---
+    result.asi_loader_status = asi_loader.ensure(gta_path, enhanced)
 
     log.info("=== Installation complete ===")
     return result
 
 
 def uninstall(config: Config) -> list[Path]:
-    """Restore backed-up files and remove ASI plugin."""
+    """Remove ALLIN1 files from the GTA V directory."""
     log.info("=== Starting uninstall ===")
     gta_path = resolve_gta_path(config)
-    enhanced = _is_enhanced(gta_path)
-    restored: list[Path] = []
+    removed: list[Path] = []
 
     # Remove ASI plugin
     asi_dest = gta_path / ASI_FILENAME
     if asi_dest.exists():
         asi_dest.unlink()
-        restored.append(asi_dest)
+        removed.append(asi_dest)
         log.info("Removed %s from GTA V directory", ASI_FILENAME)
 
-    # Remove onigiri files (Enhanced Edition)
-    if enhanced:
-        onigiri_files = [
-            gta_path / "onigiri" / "platform" / "levels" / "gta5" / "popgroups.ymt",
-            gta_path / "onigiri" / "common" / "data" / "dlclist.xml",
-            gta_path / "onigiri" / "common" / "data" / "gameconfig.xml",
-        ]
-        for f in onigiri_files:
-            if f.exists():
-                f.unlink()
-                restored.append(f)
-                log.info("Removed %s", f)
+    # Remove ALLIN1/ data folder
+    data_dir = gta_path / ALLIN1_DATA_DIR
+    if data_dir.exists():
+        for f in data_dir.iterdir():
+            removed.append(f)
+        shutil.rmtree(data_dir)
+        log.info("Removed %s/ data folder", ALLIN1_DATA_DIR)
 
-    # Clean up output directory
+    # Note: We intentionally do NOT remove the ASI loader DLL
+    # (dinput8.dll / dsound.dll) because other mods may depend on it.
+
+    # Clean up local output directory
     if _OUTPUT_DIR.exists():
         shutil.rmtree(_OUTPUT_DIR)
         log.info("Removed output/ directory")
 
-    log.info("=== Uninstall complete: %d files removed ===", len(restored))
-    return restored
+    log.info("=== Uninstall complete: %d files removed ===", len(removed))
+    return removed
 
 
-def _deploy_enhanced(gta_path: Path, result: InstallResult) -> None:
-    """Deploy generated files to the onigiri folder for Enhanced Edition."""
-    log.info("Enhanced Edition — deploying to onigiri/ folder")
+def _deploy_data_files(gta_path: Path, result: InstallResult) -> None:
+    """Copy generated files to the ALLIN1/ folder in the game root.
 
-    # popgroups.ymt → onigiri/platform/levels/gta5/
-    popgroups_src = _OUTPUT_DIR / "popgroups.ymt"
-    if popgroups_src.exists():
-        dest_dir = gta_path / "onigiri" / "platform" / "levels" / "gta5"
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        dest = dest_dir / "popgroups.ymt"
-        shutil.copy2(popgroups_src, dest)
-        result.files_deployed.append(str(dest))
-        log.info("Deployed popgroups.ymt → %s", dest)
+    ALLIN1.asi hooks the game's file system to redirect reads of these
+    files at runtime, so they work for both Legacy and Enhanced editions.
+    """
+    data_dir = gta_path / ALLIN1_DATA_DIR
+    data_dir.mkdir(parents=True, exist_ok=True)
 
-    # dlclist.xml → onigiri/common/data/
-    dlclist_src = _OUTPUT_DIR / "dlclist.xml"
-    if dlclist_src.exists():
-        dest_dir = gta_path / "onigiri" / "common" / "data"
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        dest = dest_dir / "dlclist.xml"
-        shutil.copy2(dlclist_src, dest)
-        result.files_deployed.append(str(dest))
-        log.info("Deployed dlclist.xml → %s", dest)
+    for filename in result.files_generated:
+        src = _OUTPUT_DIR / filename
+        if src.exists():
+            dest = data_dir / filename
+            shutil.copy2(src, dest)
+            result.files_deployed.append(str(dest))
+            log.info("Deployed %s → %s", filename, dest)
 
-    # gameconfig.xml → onigiri/common/data/
-    gameconfig_src = _OUTPUT_DIR / "gameconfig.xml"
-    if gameconfig_src.exists():
-        dest_dir = gta_path / "onigiri" / "common" / "data"
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        dest = dest_dir / "gameconfig.xml"
-        shutil.copy2(gameconfig_src, dest)
-        result.files_deployed.append(str(dest))
-        log.info("Deployed gameconfig.xml → %s", dest)
+    log.info("Deployed %d file(s) to %s/", len(result.files_deployed), data_dir)
 
 
 def _deploy_asi(gta_path: Path) -> bool:
     """Copy ALLIN1.asi to the GTA V root directory.
 
-    The ASI disables the DLC vehicle despawn mechanism in single player.
-    It's placed next to GTA5.exe (not in mods/) so the ASI loader picks it up.
+    The ASI disables the DLC vehicle despawn mechanism and redirects
+    game file reads to the ALLIN1/ data folder.
+    It's placed next to GTA5.exe so the ASI loader picks it up.
 
     Returns True if deployed successfully, False if the source binary is missing.
     """

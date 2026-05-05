@@ -157,8 +157,8 @@ echo
 echo "============================================================"
 echo "  Installation complete!"
 echo
-echo "  Generated files are in the output/ folder."
-echo "  See the instructions above for how to install them."
+echo "  All files deployed automatically. No manual steps needed."
+echo "  Launch GTA V Story Mode to enjoy MP vehicles in traffic."
 echo
 echo "  Full log saved to: allin1.log"
 echo "============================================================"

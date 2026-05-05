@@ -7,6 +7,7 @@ from pathlib import Path
 
 import click
 
+from allin1 import asi_loader
 from allin1.config import Config
 from allin1.installer import install, uninstall
 from allin1.logging import setup_logging
@@ -76,30 +77,26 @@ def install_cmd(ctx: click.Context) -> None:
         click.echo(f"Warning: {warning}", err=True)
 
     click.echo()
+    if result.files_deployed:
+        click.echo(f"Data files deployed to ALLIN1/ folder ({len(result.files_deployed)} files).")
+
     if result.asi_deployed:
-        click.echo("ALLIN1.asi deployed — DLC vehicle despawn fix is active.")
+        click.echo("ALLIN1.asi deployed — despawn fix + file redirection active.")
     else:
         click.echo("WARNING: ALLIN1.asi not found — DLC vehicles will be despawned.")
-        click.echo("Build the ASI from the asi/ directory or download a pre-built binary.")
+        click.echo("Build the ASI from the asi/ directory or download from Releases.")
 
-    if result.is_enhanced and result.files_deployed:
-        click.echo()
-        click.echo(f"Files auto-deployed to onigiri/ folder ({len(result.files_deployed)} files).")
-        click.echo("Requires onigiri.asi to be installed.")
-    elif not result.is_enhanced:
-        click.echo()
-        click.echo(f"Generated files saved to: {result.output_dir}")
-        click.echo()
-        click.echo("NEXT STEP: Import these files into your game using OpenIV or CodeWalker:")
-        click.echo("  1. Open OpenIV, enable Edit Mode")
-        click.echo("  2. Navigate to: mods/update/update.rpf")
-        click.echo("     - popgroups.ymt  → x64/levels/gta5/")
-        click.echo("     - dlclist.xml    → common/data/")
-        click.echo("     - gameconfig.xml → common/data/")
-        click.echo("  3. Replace each file with the one from output/")
+    if result.asi_loader_status == "deployed":
+        click.echo(f"ASI Loader deployed ({asi_loader.dll_name(result.is_enhanced)}).")
+    elif result.asi_loader_status == "skipped":
+        click.echo("ASI Loader already present.")
+    elif result.asi_loader_status == "failed":
+        click.echo("WARNING: Could not download ASI Loader.")
+        click.echo("Install one manually (e.g. Ultimate ASI Loader or ScriptHookV).")
 
     click.echo()
-    click.echo("Installation complete.")
+    click.echo("All files deployed automatically. No manual steps needed.")
+    click.echo("Launch GTA V Story Mode to enjoy MP vehicles in traffic.")
 
 
 # Register with a user-friendly name
