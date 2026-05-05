@@ -55,6 +55,7 @@ class InstallResult:
     warnings: list[str] = field(default_factory=list)
     asi_deployed: bool = False
     asi_loader_status: str = ""  # "skipped", "deployed", or "failed"
+    battleye_status: str = ""  # "set", "already_set", or "failed"
     output_dir: Path | None = None
 
 
@@ -143,7 +144,10 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
     result.asi_deployed = _deploy_asi(gta_path)
 
     # --- Ensure ASI Loader is present ---
-    result.asi_loader_status = asi_loader.ensure(gta_path, enhanced)
+    result.asi_loader_status = asi_loader.ensure_loader(gta_path, enhanced)
+
+    # --- Disable BattlEye for single-player modding ---
+    result.battleye_status = asi_loader.ensure_nobattleye(gta_path, enhanced)
 
     log.info("=== Installation complete ===")
     return result

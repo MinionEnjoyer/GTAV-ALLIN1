@@ -94,6 +94,11 @@ def install_cmd(ctx: click.Context) -> None:
         click.echo("WARNING: Could not download ASI Loader.")
         click.echo("Install one manually (e.g. Ultimate ASI Loader or ScriptHookV).")
 
+    if result.battleye_status == "set":
+        click.echo("BattlEye disabled in Steam launch options (-nobattleye).")
+    elif result.battleye_status == "already_set":
+        click.echo("BattlEye already disabled in Steam launch options.")
+
     click.echo()
     click.echo("All files deployed automatically. No manual steps needed.")
     click.echo("Launch GTA V Story Mode to enjoy MP vehicles in traffic.")
