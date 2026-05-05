@@ -5,19 +5,14 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ---------------------------------------------------------------------------
-# Generate ScriptHookV import library from .def file
+# ScriptHookV import library
 # ---------------------------------------------------------------------------
+# The import library is generated from ScriptHookV.def before building.
+# CI runs:  lib /def:ScriptHookV.def /out:ScriptHookV.lib /machine:x64
+# The SHV_LIB cache variable points to the generated .lib file.
 
-set(SHV_DEF "${CMAKE_CURRENT_SOURCE_DIR}/lib/ScriptHookV/ScriptHookV.def")
-set(SHV_LIB "${CMAKE_CURRENT_BINARY_DIR}/ScriptHookV.lib")
-
-add_custom_command(
-    OUTPUT "${SHV_LIB}"
-    COMMAND lib /def:"${SHV_DEF}" /out:"${SHV_LIB}" /machine:x64
-    DEPENDS "${SHV_DEF}"
-    COMMENT "Generating ScriptHookV import library"
-)
-add_custom_target(ScriptHookV_ImportLib DEPENDS "${SHV_LIB}")
+set(SHV_LIB "${CMAKE_CURRENT_SOURCE_DIR}/lib/ScriptHookV/ScriptHookV.lib"
+    CACHE FILEPATH "Path to ScriptHookV import library")
 
 # ---------------------------------------------------------------------------
 # ALLIN1 ASI plugin
@@ -30,8 +25,6 @@ add_library(ALLIN1 SHARED
     src/vehicle_spawner.h
     src/vehicle_spawner.cpp
 )
-
-add_dependencies(ALLIN1 ScriptHookV_ImportLib)
 
 target_include_directories(ALLIN1 PRIVATE
     lib/ScriptHookV/inc

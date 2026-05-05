@@ -12,7 +12,7 @@
 #include <windows.h>
 
 // ScriptHookV exports — resolved at load time via ScriptHookV.lib
-#define SHV_IMPORT __declspec(dllimport)
+#define SHV_IMPORT extern "C" __declspec(dllimport)
 
 /* ---- Script fibre management ---- */
 
