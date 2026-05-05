@@ -1,0 +1,38 @@
+# GTA V ALLIN1 Configuration
+# Copy this file to config.toml and adjust to your liking.
+
+[general]
+# Path to your GTA V installation. Set to "auto" to detect automatically.
+gta_path = "auto"
+
+# When true, all vehicles are free (no in-game cost).
+# When false, vehicles use prices from prices.toml (editable).
+free_mode = false
+
+# Create backups of original game files before modifying.
+backup = true
+
+[traffic]
+# Add GTA Online vehicles to ambient traffic so they appear naturally.
+enabled = true
+
+# How many MP vehicles appear in traffic: "none", "low", "medium", "high"
+# "none" disables traffic spawning entirely (vehicles still available to buy/order).
+density = "medium"
+
+# Only spawn super/sports cars in wealthy neighborhoods (Vinewood, etc.)
+rich_areas_only_supers = true
+
+[vehicles]
+# Enable all GTA Online vehicles. Set to false to use the catalog
+# to pick specific vehicles.
+enable_all = true
+
+# Vehicle classes to exclude entirely.
+# Options: compacts, coupes, sedans, suvs, muscle, sports, sportsclassics,
+#          super, offroad, motorcycles, military, industrial, vans, boats,
+#          helicopters, planes, openwheel, emergency, service
+disabled_classes = []
+
+# Specific vehicle model names to exclude.
+disabled_vehicles = []

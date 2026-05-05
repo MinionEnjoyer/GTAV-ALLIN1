@@ -1,0 +1,159 @@
+"""Main installer orchestrator.
+
+Coordinates the full install/uninstall flow: config loading, GTA V detection,
+backup creation, generator invocation, and file placement.
+"""
+
+from __future__ import annotations
+
+import shutil
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from allin1.backup import create_backup, restore_backup
+from allin1.config import Config
+from allin1.detector import detect_gta_path, validate_gta_path
+from allin1.generators.dlclist import patch_dlclist
+from allin1.generators.gameconfig import patch_gameconfig
+from allin1.generators.popgroups import create_base_template, generate_popgroups_xml
+from allin1.vehicles.database import Vehicle, VehicleDatabase
+
+
+@dataclass
+class InstallResult:
+    gta_path: Path
+    vehicles_enabled: int
+    files_modified: list[str] = field(default_factory=list)
+    dlc_packs_added: list[str] = field(default_factory=list)
+    backup_dir: Path | None = None
+    warnings: list[str] = field(default_factory=list)
+
+
+def resolve_gta_path(config: Config) -> Path:
+    """Resolve the GTA V path from config or auto-detection."""
+    if config.general.gta_path != "auto":
+        return validate_gta_path(config.general.gta_path)
+
+    detected = detect_gta_path()
+    if detected is None:
+        raise FileNotFoundError(
+            "Could not auto-detect GTA V installation. "
+            "Set gta_path in config.toml to your GTA V directory."
+        )
+    return detected
+
+
+def get_enabled_vehicles(db: VehicleDatabase, config: Config) -> list[Vehicle]:
+    """Get the list of vehicles to enable based on config filters."""
+    if config.vehicles.enable_all:
+        return db.filter(
+            disabled_classes=config.vehicles.disabled_classes,
+            disabled_vehicles=config.vehicles.disabled_vehicles,
+        )
+    # When enable_all is false, only explicitly enabled vehicles are included.
+    # For now, this still uses the full list minus exclusions.
+    # The catalog UI will generate a config with specific disabled_vehicles.
+    return db.filter(
+        disabled_classes=config.vehicles.disabled_classes,
+        disabled_vehicles=config.vehicles.disabled_vehicles,
+    )
+
+
+def install(config: Config, db: VehicleDatabase) -> InstallResult:
+    """Run the full installation process."""
+    gta_path = resolve_gta_path(config)
+    mods_dir = gta_path / "mods"
+    result = InstallResult(gta_path=gta_path, vehicles_enabled=0)
+
+    vehicles = get_enabled_vehicles(db, config)
+    result.vehicles_enabled = len(vehicles)
+
+    # --- File paths ---
+    update_rpf_data = mods_dir / "update" / "update.rpf" / "common" / "data"
+    popgroups_path = update_rpf_data / "popgroups.xml"
+    dlclist_path = update_rpf_data / "dlclist.xml"
+    gameconfig_path = update_rpf_data / "gameconfig.xml"
+
+    # Collect files that exist for backup
+    files_to_backup = [p for p in [popgroups_path, dlclist_path, gameconfig_path] if p.exists()]
+
+    # Also check original game files as backup source
+    orig_data = gta_path / "update" / "update.rpf" / "common" / "data"
+    for orig_file in [orig_data / "dlclist.xml", orig_data / "gameconfig.xml"]:
+        if orig_file.exists() and orig_file not in files_to_backup:
+            files_to_backup.append(orig_file)
+
+    # --- Backup ---
+    if config.general.backup and files_to_backup:
+        result.backup_dir = create_backup(gta_path, files_to_backup)
+
+    # --- Ensure mods directory structure ---
+    update_rpf_data.mkdir(parents=True, exist_ok=True)
+
+    # --- Generate popgroups ---
+    if config.traffic.enabled and config.traffic.density != "none":
+        base_xml = _load_or_create_popgroups(popgroups_path, orig_data / "popgroups.xml")
+        modified_xml = generate_popgroups_xml(
+            base_xml,
+            vehicles,
+            density=config.traffic.density,
+            rich_areas_only_supers=config.traffic.rich_areas_only_supers,
+        )
+        popgroups_path.write_text(modified_xml, encoding="utf-8")
+        result.files_modified.append(str(popgroups_path))
+
+    # --- Patch dlclist.xml ---
+    dlclist_xml = _load_or_create_dlclist(dlclist_path, orig_data / "dlclist.xml")
+    patched_dlclist, added_packs = patch_dlclist(dlclist_xml)
+    if added_packs:
+        dlclist_path.write_text(patched_dlclist, encoding="utf-8")
+        result.files_modified.append(str(dlclist_path))
+        result.dlc_packs_added = added_packs
+
+    # --- Patch gameconfig.xml ---
+    gameconfig_xml = _load_gameconfig(gameconfig_path, orig_data / "gameconfig.xml")
+    if gameconfig_xml:
+        patched_gc = patch_gameconfig(gameconfig_xml)
+        gameconfig_path.write_text(patched_gc, encoding="utf-8")
+        result.files_modified.append(str(gameconfig_path))
+    else:
+        result.warnings.append(
+            "gameconfig.xml not found. You may need a modified gameconfig "
+            "to support 400+ vehicles. See community gameconfig mods."
+        )
+
+    return result
+
+
+def uninstall(config: Config) -> list[Path]:
+    """Restore backed-up files to undo installation."""
+    gta_path = resolve_gta_path(config)
+    return restore_backup(gta_path)
+
+
+def _load_or_create_popgroups(mods_path: Path, orig_path: Path) -> str:
+    """Load existing popgroups or create a base template."""
+    if mods_path.exists():
+        return mods_path.read_text(encoding="utf-8")
+    if orig_path.exists():
+        return orig_path.read_text(encoding="utf-8")
+    return create_base_template()
+
+
+def _load_or_create_dlclist(mods_path: Path, orig_path: Path) -> str:
+    """Load existing dlclist.xml."""
+    if mods_path.exists():
+        return mods_path.read_text(encoding="utf-8")
+    if orig_path.exists():
+        return orig_path.read_text(encoding="utf-8")
+    # Minimal dlclist if none found
+    return '<?xml version="1.0" encoding="UTF-8"?>\n<SMandatoryPacksData>\n  <Paths>\n  </Paths>\n</SMandatoryPacksData>'
+
+
+def _load_gameconfig(mods_path: Path, orig_path: Path) -> str | None:
+    """Load existing gameconfig.xml, or None if not found."""
+    if mods_path.exists():
+        return mods_path.read_text(encoding="utf-8")
+    if orig_path.exists():
+        return orig_path.read_text(encoding="utf-8")
+    return None

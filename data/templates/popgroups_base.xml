@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Base popgroups template for ALLIN1.
+
+  This is a minimal template containing only the vehicle population groups
+  that ALLIN1 injects into. For best results, extract the full popgroups.ymt
+  from your game using CodeWalker and place it here as popgroups_base.xml.
+
+  The installer will merge MP vehicles into whichever groups exist in this file.
+-->
+<CPopGroupList>
+  <popcycle_group>
+    <Name>veh_poor</Name>
+    <Models>
+      <!-- Vanilla poor-area vehicles remain here when extracted from game -->
+    </Models>
+  </popcycle_group>
+
+  <popcycle_group>
+    <Name>veh_mid</Name>
+    <Models>
+    </Models>
+  </popcycle_group>
+
+  <popcycle_group>
+    <Name>veh_rich</Name>
+    <Models>
+    </Models>
+  </popcycle_group>
+
+  <popcycle_group>
+    <Name>veh_freeway</Name>
+    <Models>
+    </Models>
+  </popcycle_group>
+
+  <popcycle_group>
+    <Name>veh_countryside_onroad</Name>
+    <Models>
+    </Models>
+  </popcycle_group>
+
+  <popcycle_group>
+    <Name>veh_boats</Name>
+    <Models>
+    </Models>
+  </popcycle_group>
+</CPopGroupList>
