@@ -3,70 +3,86 @@
 				http://dev-c.com
 			(C) Alexander Blade 2015-2024
 
-	Minimal header for linking against ScriptHookV.dll at runtime.
-	The user must install ScriptHookV separately (from dev-c.com).
+	Runtime-linked header for ScriptHookV.dll.
+	All functions are resolved via GetProcAddress at startup so the ASI
+	has no hard import dependency on ScriptHookV.dll.
 */
 
 #pragma once
 
 #include <windows.h>
 
-// ScriptHookV exports — resolved at load time via ScriptHookV.lib
-#define SHV_IMPORT extern "C" __declspec(dllimport)
+// ---------------------------------------------------------------------------
+// Function pointer types
+// ---------------------------------------------------------------------------
 
-/* ---- Script fibre management ---- */
-
-SHV_IMPORT void scriptWait(DWORD time);
-SHV_IMPORT void scriptRegister(HMODULE module, void(*LP_SCRIPT_MAIN)());
-SHV_IMPORT void scriptRegisterAdditionalThread(HMODULE module, void(*LP_SCRIPT_MAIN)());
-SHV_IMPORT void scriptUnregister(HMODULE module);
-
-/* ---- Native function invocation ---- */
-
-SHV_IMPORT void   nativeInit(UINT64 hash);
-SHV_IMPORT void   nativePush64(UINT64 val);
-SHV_IMPORT PUINT64 nativeCall();
-
-/* ---- Game globals ---- */
-
-SHV_IMPORT UINT64* getGlobalPtr(int globalId);
-
-/* ---- World entity enumeration ---- */
-
-SHV_IMPORT int worldGetAllVehicles(int* arr, int arrSize);
-SHV_IMPORT int worldGetAllPeds(int* arr, int arrSize);
-SHV_IMPORT int worldGetAllObjects(int* arr, int arrSize);
-SHV_IMPORT int worldGetAllPickups(int* arr, int arrSize);
-
-/* ---- Input ---- */
+typedef void  (*T_scriptWait)(DWORD time);
+typedef void  (*T_scriptRegister)(HMODULE module, void(*)());
+typedef void  (*T_scriptRegisterAdditionalThread)(HMODULE module, void(*)());
+typedef void  (*T_scriptUnregister)(HMODULE module);
+typedef void  (*T_nativeInit)(UINT64 hash);
+typedef void  (*T_nativePush64)(UINT64 val);
+typedef PUINT64 (*T_nativeCall)();
+typedef UINT64* (*T_getGlobalPtr)(int globalId);
+typedef int   (*T_worldGetAllVehicles)(int* arr, int arrSize);
+typedef int   (*T_worldGetAllPeds)(int* arr, int arrSize);
+typedef int   (*T_worldGetAllObjects)(int* arr, int arrSize);
+typedef int   (*T_worldGetAllPickups)(int* arr, int arrSize);
 
 typedef void(*KeyboardHandler)(DWORD key, WORD repeats, BYTE scanCode,
     BOOL isExtended, BOOL isWithAlt, BOOL wasDownBefore, BOOL isUpNow);
 
-SHV_IMPORT void keyboardHandlerRegister(KeyboardHandler handler);
-SHV_IMPORT void keyboardHandlerUnregister(KeyboardHandler handler);
-
-/* ---- Rendering ---- */
+typedef void  (*T_keyboardHandlerRegister)(KeyboardHandler handler);
+typedef void  (*T_keyboardHandlerUnregister)(KeyboardHandler handler);
 
 typedef void(*PresentCallback)(void*);
 
-SHV_IMPORT void presentCallbackRegister(PresentCallback cb);
-SHV_IMPORT void presentCallbackUnregister(PresentCallback cb);
-
-/* ---- Textures ---- */
-
-SHV_IMPORT int  createTexture(const char* texFileName);
-SHV_IMPORT void drawTexture(int id, int index, int level, int time,
+typedef void  (*T_presentCallbackRegister)(PresentCallback cb);
+typedef void  (*T_presentCallbackUnregister)(PresentCallback cb);
+typedef int   (*T_createTexture)(const char* texFileName);
+typedef void  (*T_drawTexture)(int id, int index, int level, int time,
     float sizeX, float sizeY, float centerX, float centerY,
     float posX, float posY, float rotation, float screenHeightScaleFactor,
     float r, float g, float b, float a);
+typedef int   (*T_getGameVersion)();
+typedef BYTE* (*T_getScriptHandleBaseAddress)(int handle);
 
-/* ---- Misc ---- */
+// ---------------------------------------------------------------------------
+// Global function pointers (defined in shv_runtime.cpp)
+// ---------------------------------------------------------------------------
 
-SHV_IMPORT int  getGameVersion();
-SHV_IMPORT BYTE* getScriptHandleBaseAddress(int handle);
+extern T_scriptWait                     p_scriptWait;
+extern T_scriptRegister                 p_scriptRegister;
+extern T_scriptRegisterAdditionalThread p_scriptRegisterAdditionalThread;
+extern T_scriptUnregister               p_scriptUnregister;
+extern T_nativeInit                     p_nativeInit;
+extern T_nativePush64                   p_nativePush64;
+extern T_nativeCall                     p_nativeCall;
+extern T_getGlobalPtr                   p_getGlobalPtr;
 
-/* ---- Convenience helpers ---- */
+// ---------------------------------------------------------------------------
+// Resolve all function pointers. Returns true if all required functions found.
+// ---------------------------------------------------------------------------
+
+bool SHV_Init();
+
+// ---------------------------------------------------------------------------
+// Inline wrappers — same names as the import-linked SDK so call sites
+// (nativeCaller.h, natives.h, main.cpp) don't need any changes.
+// ---------------------------------------------------------------------------
+
+inline void    scriptWait(DWORD time)                               { p_scriptWait(time); }
+inline void    scriptRegister(HMODULE m, void(*f)())                { p_scriptRegister(m, f); }
+inline void    scriptRegisterAdditionalThread(HMODULE m, void(*f)()){ p_scriptRegisterAdditionalThread(m, f); }
+inline void    scriptUnregister(HMODULE m)                          { p_scriptUnregister(m); }
+inline void    nativeInit(UINT64 hash)                              { p_nativeInit(hash); }
+inline void    nativePush64(UINT64 val)                             { p_nativePush64(val); }
+inline PUINT64 nativeCall()                                         { return p_nativeCall(); }
+inline UINT64* getGlobalPtr(int globalId)                           { return p_getGlobalPtr(globalId); }
+
+// ---------------------------------------------------------------------------
+// Convenience helpers
+// ---------------------------------------------------------------------------
 
 static inline void WAIT(DWORD time) { scriptWait(time); }
 static inline void TERMINATE() { scriptWait(MAXDWORD); }

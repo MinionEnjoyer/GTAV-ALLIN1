@@ -14,7 +14,6 @@
 static HMODULE g_hModule = nullptr;
 
 void ScriptMain() {
-    LogInit();
     LogWrite("ALLIN1.asi ScriptMain started");
 
     SpawnerInit();
@@ -29,9 +28,24 @@ void ScriptMain() {
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD dwReason, LPVOID) {
     if (dwReason == DLL_PROCESS_ATTACH) {
         g_hModule = hinstDLL;
+
+        LogInit();
+        LogWrite("ALLIN1.asi DllMain: DLL_PROCESS_ATTACH");
+
+        // Resolve ScriptHookV functions at runtime via GetProcAddress.
+        if (!SHV_Init()) {
+            LogWrite("ALLIN1.asi: ScriptHookV not available — aborting");
+            LogClose();
+            return TRUE;
+        }
+
         scriptRegister(hinstDLL, ScriptMain);
+        LogWrite("ALLIN1.asi: script registered");
+
     } else if (dwReason == DLL_PROCESS_DETACH) {
-        scriptUnregister(hinstDLL);
+        if (p_scriptUnregister) {
+            scriptUnregister(hinstDLL);
+        }
         LogClose();
     }
     return TRUE;
