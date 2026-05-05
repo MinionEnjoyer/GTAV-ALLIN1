@@ -81,6 +81,15 @@ def install_cmd(ctx: click.Context) -> None:
 
     click.echo()
     click.echo("Installation complete.")
+    click.echo()
+    click.echo("IMPORTANT: GTA V single player actively despawns DLC vehicles.")
+    click.echo("You need one of the following for MP vehicles to appear in traffic:")
+    click.echo("  1. EnableMpCars ASI plugin (recommended, lightweight)")
+    click.echo("     https://github.com/xchgrbprsp/EnableMpCars-GTAV")
+    click.echo("  2. A trainer with 'Disable DLC Vehicle Despawn' option")
+    click.echo("     (e.g., Simple Trainer, Enhanced Native Trainer)")
+    click.echo("Without this, the game will remove DLC vehicles even if popgroups.ymt")
+    click.echo("is correctly configured.")
 
 
 # Register with a user-friendly name

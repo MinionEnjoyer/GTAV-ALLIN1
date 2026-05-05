@@ -77,17 +77,22 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
     log.info("Vehicles enabled: %d (of %d total)", len(vehicles), len(db))
 
     # --- File paths ---
+    # dlclist.xml and gameconfig.xml live under common/data/
     update_rpf_data = mods_dir / "update" / "update.rpf" / "common" / "data"
-    popgroups_path = update_rpf_data / "popgroups.xml"
     dlclist_path = update_rpf_data / "dlclist.xml"
     gameconfig_path = update_rpf_data / "gameconfig.xml"
+
+    # popgroups.ymt lives under x64/levels/gta5/ (NOT common/data/)
+    popgroups_dir = mods_dir / "update" / "update.rpf" / "x64" / "levels" / "gta5"
+    popgroups_path = popgroups_dir / "popgroups.ymt"
 
     # Collect files that exist for backup
     files_to_backup = [p for p in [popgroups_path, dlclist_path, gameconfig_path] if p.exists()]
 
     # Also check original game files as backup source
     orig_data = gta_path / "update" / "update.rpf" / "common" / "data"
-    for orig_file in [orig_data / "dlclist.xml", orig_data / "gameconfig.xml"]:
+    orig_popgroups = gta_path / "update" / "update.rpf" / "x64" / "levels" / "gta5" / "popgroups.ymt"
+    for orig_file in [orig_data / "dlclist.xml", orig_data / "gameconfig.xml", orig_popgroups]:
         if orig_file.exists() and orig_file not in files_to_backup:
             files_to_backup.append(orig_file)
 
@@ -101,13 +106,15 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
 
     # --- Ensure mods directory structure ---
     update_rpf_data.mkdir(parents=True, exist_ok=True)
-    log.debug("Mods directory: %s", update_rpf_data)
+    popgroups_dir.mkdir(parents=True, exist_ok=True)
+    log.debug("Mods data directory: %s", update_rpf_data)
+    log.debug("Mods popgroups directory: %s", popgroups_dir)
 
     # --- Generate popgroups ---
     if config.traffic.enabled and config.traffic.density != "none":
-        log.info("Generating popgroups.xml (density=%s, rich_only_supers=%s)...",
+        log.info("Generating popgroups.ymt (density=%s, rich_only_supers=%s)...",
                  config.traffic.density, config.traffic.rich_areas_only_supers)
-        base_xml = _load_or_create_popgroups(popgroups_path, orig_data / "popgroups.xml")
+        base_xml = _load_or_create_popgroups(popgroups_path, orig_popgroups)
         modified_xml = generate_popgroups_xml(
             base_xml,
             vehicles,
@@ -116,9 +123,9 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
         )
         popgroups_path.write_text(modified_xml, encoding="utf-8")
         result.files_modified.append(str(popgroups_path))
-        log.info("Wrote popgroups.xml")
+        log.info("Wrote popgroups.ymt")
     else:
-        log.info("Traffic spawning disabled — skipping popgroups.xml")
+        log.info("Traffic spawning disabled — skipping popgroups.ymt")
 
     # --- Patch dlclist.xml ---
     log.info("Patching dlclist.xml...")
