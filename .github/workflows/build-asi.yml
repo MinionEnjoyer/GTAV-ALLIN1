@@ -8,6 +8,7 @@ on:
       - 'asi/CMakeLists.txt'
       - 'script/**'
       - '.github/workflows/build-asi.yml'
+      - '.gitignore'
   workflow_dispatch:
 
 permissions:
