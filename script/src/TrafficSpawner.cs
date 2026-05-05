@@ -197,14 +197,22 @@ namespace ALLIN1
 
             veh.IsEngineRunning = true;
 
-            Ped driver = World.CreateRandomPed(nodePos);
-            if (driver != null && driver.Exists())
+            // Use the native that spawns a random ped directly into the
+            // driver seat — more reliable than CreateRandomPed + warp.
+            Ped driver = Function.Call<Ped>(
+                Hash.CREATE_RANDOM_PED_AS_DRIVER, veh.Handle, true);
+
+            if (driver == null || !driver.Exists())
             {
-                driver.Task.WarpIntoVehicle(veh, VehicleSeat.Driver);
-                driver.Task.CruiseWithVehicle(veh, 20f, DrivingStyle.Normal);
-                driver.MarkAsNoLongerNeeded();
+                // No driver — delete the vehicle so we don't leave
+                // driverless cars on the road.
+                veh.IsPersistent = true;
+                veh.Delete();
+                return false;
             }
 
+            driver.Task.CruiseWithVehicle(veh, 20f, DrivingStyle.Normal);
+            driver.MarkAsNoLongerNeeded();
             veh.MarkAsNoLongerNeeded();
             _spawned.Add(veh);
             return true;
