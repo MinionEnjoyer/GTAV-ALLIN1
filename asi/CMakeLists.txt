@@ -49,6 +49,7 @@ target_link_libraries(ALLIN1_Plugin PRIVATE psapi shlwapi)
 
 add_executable(ALLIN1_Launcher
     src/injector/main.cpp
+    src/injector/launcher.rc
 )
 
 set_target_properties(ALLIN1_Launcher PROPERTIES
@@ -58,12 +59,11 @@ set_target_properties(ALLIN1_Launcher PROPERTIES
 
 target_link_libraries(ALLIN1_Launcher PRIVATE shlwapi)
 
-# Embed UAC manifest — launcher needs admin rights to inject into GTA V
-if(MSVC)
-    set_property(TARGET ALLIN1_Launcher APPEND_STRING PROPERTY
-        LINK_FLAGS " /MANIFEST:EMBED /MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/src/injector/launcher.manifest"
-    )
-endif()
+# The .rc file embeds the UAC manifest (requireAdministrator).
+# Disable CMake's automatic manifest so they don't conflict.
+set_target_properties(ALLIN1_Launcher PROPERTIES
+    LINK_FLAGS "/MANIFEST:NO"
+)
 
 # ---------------------------------------------------------------------------
 # Release optimizations
