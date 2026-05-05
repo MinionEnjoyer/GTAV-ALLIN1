@@ -19,10 +19,20 @@ inline void LogInit() {
     GetModuleFileNameW(nullptr, exePath, MAX_PATH);
     PathRemoveFileSpecW(exePath);
 
+    // Create the ALLIN1/ directory if it doesn't exist
+    wchar_t dirPath[MAX_PATH];
+    swprintf_s(dirPath, MAX_PATH, L"%s\\ALLIN1", exePath);
+    CreateDirectoryW(dirPath, nullptr);
+
     wchar_t logPath[MAX_PATH];
     swprintf_s(logPath, MAX_PATH, L"%s\\ALLIN1\\ALLIN1.log", exePath);
-
     g_logFile = _wfopen(logPath, L"w");
+
+    // Fall back to writing next to the game exe if subfolder fails
+    if (!g_logFile) {
+        swprintf_s(logPath, MAX_PATH, L"%s\\ALLIN1.log", exePath);
+        g_logFile = _wfopen(logPath, L"w");
+    }
 }
 
 inline void LogWrite(const char* fmt, ...) {
