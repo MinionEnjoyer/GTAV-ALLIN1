@@ -1,0 +1,43 @@
+name: Build ALLIN1.asi
+
+on:
+  push:
+    paths:
+      - 'asi/src/**'
+      - 'asi/CMakeLists.txt'
+      - '.github/workflows/build-asi.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -B asi/build -S asi -A x64
+
+      - name: Build Release
+        run: cmake --build asi/build --config Release
+
+      - name: Copy ASI to dist
+        run: |
+          Copy-Item -Path "asi/build/bin/Release/ALLIN1.asi" -Destination "asi/dist/ALLIN1.asi" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ALLIN1-asi
+          path: asi/dist/ALLIN1.asi
+
+      - name: Commit pre-built binary
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add asi/dist/ALLIN1.asi
+          git diff --cached --quiet || git commit -m "Auto-build: update ALLIN1.asi binary"
+          git push
