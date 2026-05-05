@@ -33,6 +33,10 @@ static const int   POLL_INTERVAL_MS = 1000;
 // GTA V RAGE engine window class — wait for this before injecting
 static const char* GAME_WINDOW_CLASS = "grcWindow";
 
+// Injection retry settings
+static const int   INJECT_MAX_RETRIES   = 30;
+static const int   INJECT_RETRY_MS      = 2000;
+
 // ---------------------------------------------------------------------------
 // Admin / privilege helpers
 // ---------------------------------------------------------------------------
@@ -66,14 +70,13 @@ static bool RelaunchAsAdmin() {
     sei.fMask = SEE_MASK_NOCLOSEPROCESS;
 
     if (ShellExecuteExA(&sei)) {
-        // Wait for the elevated process to finish so our console stays open
         if (sei.hProcess) {
             WaitForSingleObject(sei.hProcess, INFINITE);
             CloseHandle(sei.hProcess);
         }
         return true;
     }
-    return false;  // User declined UAC or error
+    return false;
 }
 
 /// Enable SeDebugPrivilege so we can open the game process with full access.
@@ -106,7 +109,6 @@ static bool EnableDebugPrivilege() {
 // Process discovery
 // ---------------------------------------------------------------------------
 
-/// Find a running process by name.  Returns the PID or 0 if not found.
 static DWORD FindProcess(const char* name) {
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snap == INVALID_HANDLE_VALUE) return 0;
@@ -128,8 +130,6 @@ static DWORD FindProcess(const char* name) {
     return pid;
 }
 
-/// Find any running GTA V process.  Returns the PID and sets exeName to the
-/// matched executable name, or returns 0 if not found.
 static DWORD FindGameProcess(const char** exeName) {
     for (int i = 0; i < GAME_EXE_COUNT; ++i) {
         DWORD pid = FindProcess(GAME_EXES[i]);
@@ -141,7 +141,6 @@ static DWORD FindGameProcess(const char** exeName) {
     return 0;
 }
 
-/// Build the full path to ALLIN1.dll (same directory as this exe).
 static bool GetDllPath(char* out, DWORD size) {
     if (!GetModuleFileNameA(nullptr, out, size)) return false;
     PathRemoveFileSpecA(out);
@@ -150,48 +149,51 @@ static bool GetDllPath(char* out, DWORD size) {
 }
 
 // ---------------------------------------------------------------------------
-// Injection
+// Injection — single attempt, returns true on success
 // ---------------------------------------------------------------------------
 
-/// Inject a DLL into a target process.  Returns true on success.
-static bool InjectDLL(DWORD pid, const char* dllPath) {
+static bool TryInject(DWORD pid, const char* dllPath, bool verbose) {
+    // Step 1: Open process
     HANDLE hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
     if (!hProc) {
-        printf("[ERROR] OpenProcess failed (err %lu).\n", GetLastError());
+        if (verbose) printf("       OpenProcess failed (err %lu)\n", GetLastError());
         return false;
     }
 
+    // Step 2: Allocate memory in target
     size_t pathLen = strlen(dllPath) + 1;
     void* remoteMem = VirtualAllocEx(
         hProc, nullptr, pathLen, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!remoteMem) {
-        printf("[ERROR] VirtualAllocEx failed (err %lu).\n", GetLastError());
+        if (verbose) printf("       VirtualAllocEx failed (err %lu)\n", GetLastError());
         CloseHandle(hProc);
         return false;
     }
 
+    // Step 3: Write DLL path
     if (!WriteProcessMemory(hProc, remoteMem, dllPath, pathLen, nullptr)) {
-        printf("[ERROR] WriteProcessMemory failed (err %lu).\n", GetLastError());
+        if (verbose) printf("       WriteProcessMemory failed (err %lu)\n", GetLastError());
         VirtualFreeEx(hProc, remoteMem, 0, MEM_RELEASE);
         CloseHandle(hProc);
         return false;
     }
 
-    FARPROC loadLib = GetProcAddress(GetModuleHandleA("kernel32.dll"),
-                                     "LoadLibraryA");
+    // Step 4: Get LoadLibraryA address
+    FARPROC loadLib = GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA");
     if (!loadLib) {
-        printf("[ERROR] Could not find LoadLibraryA.\n");
+        if (verbose) printf("       Could not find LoadLibraryA\n");
         VirtualFreeEx(hProc, remoteMem, 0, MEM_RELEASE);
         CloseHandle(hProc);
         return false;
     }
 
+    // Step 5: Create remote thread
     HANDLE hThread = CreateRemoteThread(
         hProc, nullptr, 0,
         reinterpret_cast<LPTHREAD_START_ROUTINE>(loadLib),
         remoteMem, 0, nullptr);
     if (!hThread) {
-        printf("[ERROR] CreateRemoteThread failed (err %lu).\n", GetLastError());
+        if (verbose) printf("       CreateRemoteThread failed (err %lu)\n", GetLastError());
         VirtualFreeEx(hProc, remoteMem, 0, MEM_RELEASE);
         CloseHandle(hProc);
         return false;
@@ -217,7 +219,7 @@ int main() {
     if (!IsElevated()) {
         printf("[..] Requesting administrator privileges...\n");
         if (RelaunchAsAdmin()) {
-            return 0;  // Elevated copy is running, we can exit
+            return 0;
         }
         printf("[ERROR] Administrator privileges are required.\n");
         printf("Right-click ALLIN1-Launcher.exe and select 'Run as administrator'.\n");
@@ -278,30 +280,60 @@ int main() {
         printf("[OK] Detected %s (PID %lu)\n", detectedExe, pid);
     }
 
-    // 4. Wait for the game window to appear (RAGE engine "grcWindow").
-    //    ScriptHookV does this — the game needs to be fully initialised
-    //    before injection works reliably.
+    // 4. Wait for the game window (RAGE engine "grcWindow").
     printf("[..] Waiting for game window...\n");
-    int windowWait = 0;
-    while (windowWait < 120) {
-        HWND hwnd = FindWindowA(GAME_WINDOW_CLASS, nullptr);
-        if (hwnd) {
+    for (int w = 0; w < 120; w++) {
+        if (FindWindowA(GAME_WINDOW_CLASS, nullptr)) {
             printf("[OK] Game window found\n");
             break;
         }
         Sleep(1000);
-        windowWait++;
+        if (w % 10 == 9) {
+            printf("[..] Still waiting for game window... (%d sec)\n", w + 1);
+        }
     }
 
-    // Brief extra delay for the game to finish loading its subsystems
-    printf("[..] Waiting a moment before injection...\n");
-    Sleep(2000);
-
-    // 5. Inject.
+    // 5. Inject with retries.
+    //    BattlEye / anti-cheat may still be protecting the process for a
+    //    while after the window appears.  Keep retrying until it works.
     printf("[..] Injecting %s into %s (PID %lu)...\n", DLL_NAME, detectedExe, pid);
-    if (!InjectDLL(pid, dllPath)) {
-        printf("\n[ERROR] Injection failed.\n");
-        printf("Press Enter to exit...");
+
+    bool injected = false;
+    for (int attempt = 1; attempt <= INJECT_MAX_RETRIES; attempt++) {
+        bool verbose = (attempt == 1 || attempt % 5 == 0);
+        if (TryInject(pid, dllPath, verbose)) {
+            injected = true;
+            break;
+        }
+        if (attempt < INJECT_MAX_RETRIES) {
+            if (attempt == 1) {
+                printf("[..] Waiting for game to be ready (retrying every %d sec)...\n",
+                       INJECT_RETRY_MS / 1000);
+            } else if (attempt % 5 == 0) {
+                printf("[..] Attempt %d/%d — still retrying...\n",
+                       attempt, INJECT_MAX_RETRIES);
+            }
+            Sleep(INJECT_RETRY_MS);
+
+            // Re-find the PID in case the game restarted
+            DWORD newPid = FindGameProcess(&detectedExe);
+            if (newPid && newPid != pid) {
+                printf("[..] Game process changed (PID %lu -> %lu)\n", pid, newPid);
+                pid = newPid;
+            } else if (!newPid) {
+                printf("[ERROR] Game process exited.\n");
+                break;
+            }
+        }
+    }
+
+    if (!injected) {
+        printf("\n[ERROR] Injection failed after %d attempts.\n", INJECT_MAX_RETRIES);
+        printf("Possible causes:\n");
+        printf("  - BattlEye is still active (try adding -nobattleye to Steam launch options)\n");
+        printf("  - Antivirus is blocking the injector\n");
+        printf("  - The game process is protected by a kernel anti-cheat driver\n");
+        printf("\nPress Enter to exit...");
         getchar();
         return 1;
     }
