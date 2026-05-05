@@ -47,6 +47,8 @@ jobs:
 
   build-script:
     runs-on: windows-latest
+    needs: build-asi
+    if: always()
 
     steps:
       - uses: actions/checkout@v4
