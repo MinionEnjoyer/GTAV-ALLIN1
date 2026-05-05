@@ -182,15 +182,6 @@ namespace ALLIN1
         //  Driven spawner (unchanged logic)                                   //
         // ------------------------------------------------------------------ //
 
-        // Civilian ped models guaranteed to exist on both Legacy and Enhanced.
-        private static readonly string[] CIV_PED_MODELS =
-        {
-            "a_m_y_stbla_01", "a_m_y_stbla_02", "a_f_y_business_01",
-            "a_m_y_business_01", "a_m_m_bevhills_01", "a_f_y_bevhills_01",
-            "a_m_y_genstreet_01", "a_f_y_genstreet_01", "a_m_y_hipster_01",
-            "a_f_y_hipster_01", "a_m_y_latino_01", "a_f_y_tourist_01",
-        };
-
         private bool SpawnDriven()
         {
             Vector3 playerPos = Game.Player.Character.Position;
@@ -206,14 +197,26 @@ namespace ALLIN1
 
             veh.IsEngineRunning = true;
 
-            // Create driver atomically inside the vehicle seat using
-            // CREATE_PED_INSIDE_VEHICLE — no intermediate frame where
-            // the ped exists outside the vehicle.
-            Ped driver = CreateDriverForVehicle(veh);
-            if (driver == null)
+            // Let the game pick a random ped model and create it directly
+            // in the driver seat (calls CREATE_RANDOM_PED_AS_DRIVER).
+            Ped driver = null;
+            try
+            {
+                driver = veh.CreateRandomPedOnSeat(VehicleSeat.Driver);
+            }
+            catch { }
+
+            // Verify the driver seat is actually occupied.
+            if (driver == null || !driver.Exists()
+                || veh.IsSeatFree(VehicleSeat.Driver))
             {
                 veh.IsPersistent = true;
                 veh.Delete();
+                if (driver != null && driver.Exists())
+                {
+                    driver.IsPersistent = true;
+                    driver.Delete();
+                }
                 return false;
             }
 
@@ -232,46 +235,6 @@ namespace ALLIN1
             veh.MarkAsNoLongerNeeded();
             _spawned.Add(veh);
             return true;
-        }
-
-        private Ped CreateDriverForVehicle(Vehicle veh)
-        {
-            // Use CREATE_PED_INSIDE_VEHICLE — creates the ped atomically
-            // in the driver seat in a single native call. No intermediate
-            // frame where the ped exists outside the vehicle.
-            for (int i = 0; i < 3; i++)
-            {
-                string pedName = CIV_PED_MODELS[
-                    _rng.Next(CIV_PED_MODELS.Length)];
-                var pedModel = new Model(pedName);
-
-                if (!pedModel.IsInCdImage)
-                    continue;
-
-                pedModel.Request(1000);
-                DateTime deadline = DateTime.UtcNow.AddMilliseconds(1000);
-                while (!pedModel.IsLoaded && DateTime.UtcNow < deadline)
-                    Script.Wait(0);
-
-                if (!pedModel.IsLoaded)
-                {
-                    pedModel.MarkAsNoLongerNeeded();
-                    continue;
-                }
-
-                // CREATE_PED_INSIDE_VEHICLE(vehicle, pedType, model,
-                //     seat, isNetwork, bScriptHostPed)
-                // pedType 26 = civilian, seat -1 = driver
-                Ped driver = Function.Call<Ped>(
-                    Hash.CREATE_PED_INSIDE_VEHICLE,
-                    veh.Handle, 26, pedModel.Hash, -1, true, true);
-                pedModel.MarkAsNoLongerNeeded();
-
-                if (driver != null && driver.Exists())
-                    return driver;
-            }
-
-            return null;
         }
 
         // ------------------------------------------------------------------ //
