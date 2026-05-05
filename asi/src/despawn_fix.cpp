@@ -1,6 +1,7 @@
 #include "despawn_fix.h"
 #include "pattern_scan.h"
 #include "structs.h"
+#include "log.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -11,7 +12,11 @@ void PatchDespawnGlobal() {
     auto addr = FindPattern(
         "\x4C\x8D\x05\x00\x00\x00\x00\x4D\x8B\x08\x4D\x85\xC9\x74\x11",
         "xxx????xxxxxxxx");
-    if (!addr) return;
+    if (!addr) {
+        LogWrite("  GlobalTable pattern: NOT FOUND");
+        return;
+    }
+    LogWrite("  GlobalTable pattern: found (0x%llX)", (unsigned long long)addr);
 
     GlobalTable globalTable;
     globalTable.GlobalBasePtr = reinterpret_cast<int64_t**>(
@@ -21,7 +26,11 @@ void PatchDespawnGlobal() {
     addr = FindPattern(
         "\x48\x03\x15\x00\x00\x00\x00\x4C\x23\xC2\x49\x8B\x08",
         "xxx????xxxxxx");
-    if (!addr) return;
+    if (!addr) {
+        LogWrite("  ScriptTable pattern: NOT FOUND");
+        return;
+    }
+    LogWrite("  ScriptTable pattern: found (0x%llX)", (unsigned long long)addr);
 
     auto* scriptTable = reinterpret_cast<ScriptTable*>(
         addr + *reinterpret_cast<int*>(addr + 3) + 7);
@@ -32,7 +41,11 @@ void PatchDespawnGlobal() {
 
     // --- Find shop_controller.ysc ---
     ScriptTableItem* item = scriptTable->FindScript(0x39DA738B);
-    if (!item) return;
+    if (!item) {
+        LogWrite("  shop_controller.ysc: NOT FOUND in script table");
+        return;
+    }
+    LogWrite("  shop_controller.ysc: found");
 
     while (!item->IsLoaded())
         Sleep(100);
@@ -86,6 +99,7 @@ void PatchDespawnGlobal() {
 
                                 // Set the global to 1 — disables DLC vehicle despawn.
                                 *globalTable.AddressOf(globalIndex) = 1;
+                                LogWrite("  Despawn global patched (index %d)", globalIndex);
                                 return;
                             }
                         }

@@ -14,6 +14,7 @@
 
 #include "file_redirect.h"
 #include "pattern_scan.h"
+#include "log.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -204,11 +205,15 @@ bool InitFileRedirection() {
     wchar_t exePath[MAX_PATH];
     GetModuleFileNameW(nullptr, exePath, MAX_PATH);
     PathRemoveFileSpecW(exePath);
+    LogWrite("  Game root: %ls", exePath);
 
     // 2. Check for ALLIN1/ data folder.
     swprintf_s(g_dataFolder, MAX_PATH, L"%s\\ALLIN1", exePath);
-    if (GetFileAttributesW(g_dataFolder) == INVALID_FILE_ATTRIBUTES)
+    if (GetFileAttributesW(g_dataFolder) == INVALID_FILE_ATTRIBUTES) {
+        LogWrite("  ALLIN1/ folder not found — aborting file redirection");
         return false;
+    }
+    LogWrite("  ALLIN1/ folder found");
 
     // 3. Check which replacement files exist.
     bool anyActive = false;
@@ -217,13 +222,20 @@ bool InitFileRedirection() {
         swprintf_s(path, MAX_PATH, L"%s\\%s", g_dataFolder, g_entries[i].localName);
         g_entries[i].active = (GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES);
         anyActive = anyActive || g_entries[i].active;
+        LogWrite("  %s: %s", g_entries[i].pathSuffix,
+                 g_entries[i].active ? "found" : "MISSING");
     }
-    if (!anyActive)
+    if (!anyActive) {
+        LogWrite("  No replacement files found — aborting");
         return false;
+    }
 
     // 4. Initialise MinHook.
-    if (MH_Initialize() != MH_OK)
+    if (MH_Initialize() != MH_OK) {
+        LogWrite("  MinHook init failed");
         return false;
+    }
+    LogWrite("  MinHook initialised");
 
     bool hooked = false;
 
@@ -231,12 +243,18 @@ bool InitFileRedirection() {
     uintptr_t openBulkAddr = TryPatterns(
         g_openBulkPatterns,
         sizeof(g_openBulkPatterns) / sizeof(g_openBulkPatterns[0]));
+    LogWrite("  OpenBulk pattern scan: %s (0x%llX)",
+             openBulkAddr ? "found" : "NOT FOUND", (unsigned long long)openBulkAddr);
     if (openBulkAddr) {
-        if (MH_CreateHook(reinterpret_cast<LPVOID>(openBulkAddr),
+        auto status = MH_CreateHook(reinterpret_cast<LPVOID>(openBulkAddr),
                           reinterpret_cast<LPVOID>(HookedOpenBulk),
-                          reinterpret_cast<LPVOID*>(&g_origOpenBulk)) == MH_OK) {
+                          reinterpret_cast<LPVOID*>(&g_origOpenBulk));
+        if (status == MH_OK) {
             MH_EnableHook(reinterpret_cast<LPVOID>(openBulkAddr));
             hooked = true;
+            LogWrite("  OpenBulk hook: OK");
+        } else {
+            LogWrite("  OpenBulk hook: FAILED (MH status %d)", status);
         }
     }
 
@@ -244,11 +262,16 @@ bool InitFileRedirection() {
     uintptr_t getFileSizeAddr = TryPatterns(
         g_getFileSizePatterns,
         sizeof(g_getFileSizePatterns) / sizeof(g_getFileSizePatterns[0]));
+    LogWrite("  GetFileSize pattern scan: %s (0x%llX)",
+             getFileSizeAddr ? "found" : "NOT FOUND", (unsigned long long)getFileSizeAddr);
     if (getFileSizeAddr) {
         if (MH_CreateHook(reinterpret_cast<LPVOID>(getFileSizeAddr),
                           reinterpret_cast<LPVOID>(HookedGetFileSize),
                           reinterpret_cast<LPVOID*>(&g_origGetFileSize)) == MH_OK) {
             MH_EnableHook(reinterpret_cast<LPVOID>(getFileSizeAddr));
+            LogWrite("  GetFileSize hook: OK");
+        } else {
+            LogWrite("  GetFileSize hook: FAILED");
         }
     }
 
@@ -256,15 +279,21 @@ bool InitFileRedirection() {
     uintptr_t getFileTimeAddr = TryPatterns(
         g_getFileTimePatterns,
         sizeof(g_getFileTimePatterns) / sizeof(g_getFileTimePatterns[0]));
+    LogWrite("  GetFileTime pattern scan: %s (0x%llX)",
+             getFileTimeAddr ? "found" : "NOT FOUND", (unsigned long long)getFileTimeAddr);
     if (getFileTimeAddr) {
         if (MH_CreateHook(reinterpret_cast<LPVOID>(getFileTimeAddr),
                           reinterpret_cast<LPVOID>(HookedGetFileTime),
                           reinterpret_cast<LPVOID*>(&g_origGetFileTime)) == MH_OK) {
             MH_EnableHook(reinterpret_cast<LPVOID>(getFileTimeAddr));
+            LogWrite("  GetFileTime hook: OK");
+        } else {
+            LogWrite("  GetFileTime hook: FAILED");
         }
     }
 
     if (!hooked) {
+        LogWrite("  No hooks installed — uninitialising MinHook");
         MH_Uninitialize();
         return false;
     }

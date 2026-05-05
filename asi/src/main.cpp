@@ -12,18 +12,28 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include "log.h"
 #include "file_redirect.h"
 #include "despawn_fix.h"
 
 static DWORD WINAPI MainThread(LPVOID) {
+    LogInit();
+    LogWrite("ALLIN1.asi loaded");
+
     // Phase 1: File redirection — install early, before the game loads data.
-    // Must happen before the game's initial file loading pass.
-    InitFileRedirection();
+    LogWrite("Initialising file redirection...");
+    bool redirectOk = InitFileRedirection();
+    LogWrite("File redirection: %s", redirectOk ? "OK" : "FAILED");
 
     // Phase 2: Despawn fix — wait for the script engine to initialise.
+    LogWrite("Waiting 5s for script engine...");
     Sleep(5000);
+    LogWrite("Patching despawn global...");
     PatchDespawnGlobal();
+    LogWrite("Despawn fix: done");
 
+    LogWrite("ALLIN1.asi initialisation complete");
+    LogClose();
     return 0;
 }
 

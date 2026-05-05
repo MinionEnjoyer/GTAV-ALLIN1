@@ -14,6 +14,7 @@ set(MINHOOK_SOURCES
 
 add_library(ALLIN1 SHARED
     src/main.cpp
+    src/log.h
     src/structs.h
     src/pattern_scan.h
     src/pattern_scan.cpp
