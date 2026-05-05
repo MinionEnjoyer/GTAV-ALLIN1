@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'asi/src/**'
+      - 'asi/lib/**'
       - 'asi/CMakeLists.txt'
       - '.github/workflows/build-asi.yml'
   workflow_dispatch:
@@ -39,9 +40,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Clean up old injector files if they exist
-          if (Test-Path "asi/dist/ALLIN1.dll") { git rm -f asi/dist/ALLIN1.dll }
-          if (Test-Path "asi/dist/ALLIN1-Launcher.exe") { git rm -f asi/dist/ALLIN1-Launcher.exe }
           git add asi/dist/ALLIN1.asi
           git diff --cached --quiet || git commit -m "Auto-build: update ALLIN1.asi"
           git push

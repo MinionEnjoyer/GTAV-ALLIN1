@@ -1,46 +1,38 @@
-// ALLIN1.asi — GTA V ASI plugin for one-click MP vehicle traffic.
+// ALLIN1.asi — GTA V ASI plugin for spawning GTA Online vehicles in SP traffic.
 //
-// Two responsibilities:
-// 1. File redirection: hooks the RAGE filesystem to redirect reads of
-//    popgroups.ymt, dlclist.xml, and gameconfig.xml to loose files in
-//    the ALLIN1/ folder next to GTA5.exe.
-// 2. Despawn fix: patches the shop_controller.ysc global variable that
-//    causes DLC vehicles to be removed in Story Mode.
+// Uses ScriptHookV's native API to:
+//   1. Enumerate available DLC vehicles at runtime
+//   2. Spawn them at nearby road nodes with AI drivers
+//   3. Apply the MPBitset decorator to prevent despawning
 //
-// If any pattern scan fails (e.g. after a game update), the affected
-// subsystem silently does nothing — the game runs normally.
+// Requires ScriptHookV (from dev-c.com) to be installed in the game folder.
 
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#include "../lib/ScriptHookV/inc/main.h"
 #include "log.h"
-#include "file_redirect.h"
-#include "despawn_fix.h"
+#include "vehicle_spawner.h"
 
-static DWORD WINAPI MainThread(LPVOID) {
+static HMODULE g_hModule = nullptr;
+
+void ScriptMain() {
     LogInit();
-    LogWrite("ALLIN1.asi loaded");
+    LogWrite("ALLIN1.asi ScriptMain started");
 
-    // Phase 1: File redirection — install early, before the game loads data.
-    LogWrite("Initialising file redirection...");
-    bool redirectOk = InitFileRedirection();
-    LogWrite("File redirection: %s", redirectOk ? "OK" : "FAILED");
+    SpawnerInit();
 
-    // Phase 2: Despawn fix — wait for the script engine to initialise.
-    LogWrite("Waiting 5s for script engine...");
-    Sleep(5000);
-    LogWrite("Patching despawn global...");
-    PatchDespawnGlobal();
-    LogWrite("Despawn fix: done");
-
-    LogWrite("ALLIN1.asi initialisation complete");
-    LogClose();
-    return 0;
+    // Main script loop — runs as a ScriptHookV fibre, yielding each frame.
+    while (true) {
+        SpawnerTick();
+        scriptWait(0);
+    }
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD dwReason, LPVOID) {
     if (dwReason == DLL_PROCESS_ATTACH) {
-        DisableThreadLibraryCalls(hinstDLL);
-        CreateThread(nullptr, 0, MainThread, nullptr, 0, nullptr);
+        g_hModule = hinstDLL;
+        scriptRegister(hinstDLL, ScriptMain);
+    } else if (dwReason == DLL_PROCESS_DETACH) {
+        scriptUnregister(hinstDLL);
+        LogClose();
     }
     return TRUE;
 }

@@ -1,32 +1,40 @@
 cmake_minimum_required(VERSION 3.15)
-project(ALLIN1_ASI LANGUAGES C CXX)
+project(ALLIN1_ASI LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# MinHook sources (vendored, BSD-2-Clause)
-set(MINHOOK_SOURCES
-    lib/MinHook/src/hook.c
-    lib/MinHook/src/trampoline.c
-    lib/MinHook/src/buffer.c
-    lib/MinHook/src/hde/hde64.c
+# ---------------------------------------------------------------------------
+# Generate ScriptHookV import library from .def file
+# ---------------------------------------------------------------------------
+
+set(SHV_DEF "${CMAKE_CURRENT_SOURCE_DIR}/lib/ScriptHookV/ScriptHookV.def")
+set(SHV_LIB "${CMAKE_CURRENT_BINARY_DIR}/ScriptHookV.lib")
+
+add_custom_command(
+    OUTPUT "${SHV_LIB}"
+    COMMAND lib /def:"${SHV_DEF}" /out:"${SHV_LIB}" /machine:x64
+    DEPENDS "${SHV_DEF}"
+    COMMENT "Generating ScriptHookV import library"
 )
+add_custom_target(ScriptHookV_ImportLib DEPENDS "${SHV_LIB}")
+
+# ---------------------------------------------------------------------------
+# ALLIN1 ASI plugin
+# ---------------------------------------------------------------------------
 
 add_library(ALLIN1 SHARED
     src/main.cpp
     src/log.h
-    src/structs.h
-    src/pattern_scan.h
-    src/pattern_scan.cpp
-    src/despawn_fix.h
-    src/despawn_fix.cpp
-    src/file_redirect.h
-    src/file_redirect.cpp
-    ${MINHOOK_SOURCES}
+    src/natives.h
+    src/vehicle_spawner.h
+    src/vehicle_spawner.cpp
 )
 
+add_dependencies(ALLIN1 ScriptHookV_ImportLib)
+
 target_include_directories(ALLIN1 PRIVATE
-    lib/MinHook/include
+    lib/ScriptHookV/inc
 )
 
 # Output as .asi — ScriptHookV loads these from the game directory
@@ -38,8 +46,11 @@ set_target_properties(ALLIN1 PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
-# Link system libraries
-target_link_libraries(ALLIN1 PRIVATE psapi shlwapi)
+# Link ScriptHookV import lib + system libraries
+target_link_libraries(ALLIN1 PRIVATE
+    "${SHV_LIB}"
+    shlwapi
+)
 
 # Release optimizations
 if(MSVC)

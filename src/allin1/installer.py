@@ -1,13 +1,11 @@
 """Main installer orchestrator.
 
-Coordinates the full install/uninstall flow: config loading, GTA V detection,
-backup creation, generator invocation, and file placement.
+Coordinates the install/uninstall flow: config loading, GTA V detection,
+and ASI plugin deployment.
 
-File placement strategy:
-- ALLIN1.asi → GTA V root — ASI plugin loaded by ScriptHookV at runtime
-  (handles despawn fix + file redirection)
-- Data files (popgroups.ymt, dlclist.xml, gameconfig.xml) → ALLIN1/ folder
-  in GTA V root — the plugin redirects game reads to these at runtime
+File placement:
+- ALLIN1.asi → GTA V root — ASI plugin loaded by ScriptHookV at runtime.
+  The plugin discovers DLC vehicles via native API and spawns them in traffic.
 
 Prerequisite: ScriptHookV must be installed separately by the user.
 It handles BattlEye bypass and ASI loading.
@@ -21,26 +19,24 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from allin1 import asi_loader
-from allin1.backup import create_backup, restore_backup
 from allin1.config import Config
 from allin1.detector import detect_gta_path, validate_gta_path
-from allin1.generators.dlclist import patch_dlclist
-from allin1.generators.gameconfig import patch_gameconfig
-from allin1.generators.popgroups import create_base_template, generate_popgroups_xml
-from allin1.vehicles.database import Vehicle, VehicleDatabase
+from allin1.vehicles.database import VehicleDatabase
 
 log = logging.getLogger("allin1.installer")
 
 ASI_FILENAME = "ALLIN1.asi"
-ALLIN1_DATA_DIR = "ALLIN1"  # Folder name in game root for loose data files
+ALLIN1_DATA_DIR = "ALLIN1"  # Legacy data folder — cleaned up on install
 
 # Files from previous ALLIN1 versions to clean up
 LEGACY_FILES = ("ALLIN1.dll", "ALLIN1-Launcher.exe")
 
+# Proxy DLLs from other mod tools that can conflict
+PROXY_DLLS = ("dsound.dll", "dinput8.dll")
+
 # Resolve directories relative to this source file (project root).
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _ASI_DIST_DIR = _PROJECT_ROOT / "asi" / "dist"
-_OUTPUT_DIR = _PROJECT_ROOT / "output"
 
 
 def _is_enhanced(gta_path: Path) -> bool:
@@ -51,17 +47,11 @@ def _is_enhanced(gta_path: Path) -> bool:
 @dataclass
 class InstallResult:
     gta_path: Path
-    vehicles_enabled: int
     is_enhanced: bool = False
-    files_generated: list[str] = field(default_factory=list)
-    files_deployed: list[str] = field(default_factory=list)
-    dlc_packs_added: list[str] = field(default_factory=list)
-    backup_dir: Path | None = None
-    warnings: list[str] = field(default_factory=list)
     asi_deployed: bool = False
     scripthookv_found: bool = False
     battleye_status: str = ""
-    output_dir: Path | None = None
+    warnings: list[str] = field(default_factory=list)
 
 
 def resolve_gta_path(config: Config) -> Path:
@@ -81,69 +71,14 @@ def resolve_gta_path(config: Config) -> Path:
     return detected
 
 
-def get_enabled_vehicles(db: VehicleDatabase, config: Config) -> list[Vehicle]:
-    """Get the list of vehicles to enable based on config filters."""
-    return db.filter(
-        disabled_classes=config.vehicles.disabled_classes,
-        disabled_vehicles=config.vehicles.disabled_vehicles,
-    )
-
-
 def install(config: Config, db: VehicleDatabase) -> InstallResult:
     """Run the full installation process."""
     log.info("=== Starting installation ===")
     gta_path = resolve_gta_path(config)
     enhanced = _is_enhanced(gta_path)
-    result = InstallResult(gta_path=gta_path, vehicles_enabled=0, is_enhanced=enhanced)
+    result = InstallResult(gta_path=gta_path, is_enhanced=enhanced)
 
     log.info("GTA V edition: %s", "Enhanced" if enhanced else "Legacy")
-
-    vehicles = get_enabled_vehicles(db, config)
-    result.vehicles_enabled = len(vehicles)
-    log.info("Vehicles enabled: %d (of %d total)", len(vehicles), len(db))
-
-    # --- Generate all files to output/ directory ---
-    _OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    result.output_dir = _OUTPUT_DIR
-
-    # --- Generate popgroups.ymt ---
-    if config.traffic.enabled:
-        log.info("Generating popgroups.ymt (rich_only_supers=%s)...",
-                 config.traffic.rich_areas_only_supers)
-        base_xml = create_base_template()
-        modified_xml = generate_popgroups_xml(
-            base_xml,
-            vehicles,
-            rich_areas_only_supers=config.traffic.rich_areas_only_supers,
-        )
-        popgroups_out = _OUTPUT_DIR / "popgroups.ymt"
-        popgroups_out.write_text(modified_xml, encoding="utf-8")
-        result.files_generated.append("popgroups.ymt")
-        log.info("Generated popgroups.ymt → %s", popgroups_out)
-    else:
-        log.info("Traffic spawning disabled — skipping popgroups.ymt")
-
-    # --- Generate dlclist.xml ---
-    log.info("Generating dlclist.xml...")
-    base_dlclist = '<?xml version="1.0" encoding="UTF-8"?>\n<SMandatoryPacksData>\n  <Paths>\n  </Paths>\n</SMandatoryPacksData>'
-    patched_dlclist, added_packs = patch_dlclist(base_dlclist)
-    dlclist_out = _OUTPUT_DIR / "dlclist.xml"
-    dlclist_out.write_text(patched_dlclist, encoding="utf-8")
-    result.files_generated.append("dlclist.xml")
-    result.dlc_packs_added = added_packs
-    log.info("Generated dlclist.xml with %d DLC pack(s) → %s", len(added_packs), dlclist_out)
-
-    # --- Generate gameconfig.xml ---
-    log.info("Generating gameconfig.xml...")
-    base_gameconfig = _create_base_gameconfig()
-    patched_gc = patch_gameconfig(base_gameconfig)
-    gameconfig_out = _OUTPUT_DIR / "gameconfig.xml"
-    gameconfig_out.write_text(patched_gc, encoding="utf-8")
-    result.files_generated.append("gameconfig.xml")
-    log.info("Generated gameconfig.xml → %s", gameconfig_out)
-
-    # --- Deploy data files to ALLIN1/ folder in game root ---
-    _deploy_data_files(gta_path, result)
 
     # --- Clean up files from previous ALLIN1 versions ---
     _clean_legacy_files(gta_path, result)
@@ -175,7 +110,7 @@ def uninstall(config: Config) -> list[Path]:
             removed.append(fpath)
             log.info("Removed %s from GTA V directory", fname)
 
-    # Remove ALLIN1/ data folder
+    # Remove ALLIN1/ data folder (legacy — no longer used)
     data_dir = gta_path / ALLIN1_DATA_DIR
     if data_dir.exists():
         for f in data_dir.iterdir():
@@ -199,33 +134,13 @@ def uninstall(config: Config) -> list[Path]:
         except OSError:
             pass
 
-    # Clean up local output directory
-    if _OUTPUT_DIR.exists():
-        shutil.rmtree(_OUTPUT_DIR)
-        log.info("Removed output/ directory")
-
     log.info("=== Uninstall complete: %d files removed ===", len(removed))
     return removed
 
 
-def _deploy_data_files(gta_path: Path, result: InstallResult) -> None:
-    """Copy generated files to the ALLIN1/ folder in the game root."""
-    data_dir = gta_path / ALLIN1_DATA_DIR
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    for filename in result.files_generated:
-        src = _OUTPUT_DIR / filename
-        if src.exists():
-            dest = data_dir / filename
-            shutil.copy2(src, dest)
-            result.files_deployed.append(str(dest))
-            log.info("Deployed %s → %s", filename, dest)
-
-    log.info("Deployed %d file(s) to %s/", len(result.files_deployed), data_dir)
-
-
 def _clean_legacy_files(gta_path: Path, result: InstallResult) -> None:
-    """Remove files from previous ALLIN1 versions (injector-based approach)."""
+    """Remove files from previous ALLIN1 versions."""
+    # Remove old injector/DLL files
     for fname in LEGACY_FILES:
         p = gta_path / fname
         if p.exists():
@@ -238,6 +153,21 @@ def _clean_legacy_files(gta_path: Path, result: InstallResult) -> None:
                     f"Could not remove {fname}: {exc}. Delete it manually."
                 )
                 log.warning("Failed to remove %s: %s", fname, exc)
+
+    # Remove legacy ALLIN1/ data folder (no longer needed — native API approach)
+    data_dir = gta_path / ALLIN1_DATA_DIR
+    if data_dir.exists():
+        try:
+            shutil.rmtree(data_dir)
+            result.warnings.append(
+                f"Removed old {ALLIN1_DATA_DIR}/ folder (no longer needed)."
+            )
+            log.info("Removed legacy data folder: %s", data_dir)
+        except OSError as exc:
+            result.warnings.append(
+                f"Could not remove {ALLIN1_DATA_DIR}/: {exc}. Delete it manually."
+            )
+            log.warning("Failed to remove %s: %s", data_dir, exc)
 
 
 def _deploy_asi(gta_path: Path) -> bool:
@@ -260,24 +190,3 @@ def _check_scripthookv(gta_path: Path) -> bool:
     """Check if ScriptHookV is installed in the game directory."""
     shv_dll = gta_path / "ScriptHookV.dll"
     return shv_dll.exists()
-
-
-def _create_base_gameconfig() -> str:
-    """Create a minimal gameconfig.xml with default pool sizes."""
-    return """<?xml version="1.0" encoding="UTF-8"?>
-<CGameConfig>
-  <pools>
-    <Item>
-      <Name>CVehicle</Name>
-      <Size value="128"/>
-    </Item>
-    <Item>
-      <Name>CVehicleModelInfo</Name>
-      <Size value="200"/>
-    </Item>
-    <Item>
-      <Name>CHandlingDataMgr</Name>
-      <Size value="200"/>
-    </Item>
-  </pools>
-</CGameConfig>"""

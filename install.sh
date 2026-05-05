@@ -157,10 +157,11 @@ echo
 echo "============================================================"
 echo "  Installation complete!"
 echo
-echo "  To play: launch GTA V with ScriptHookV's injector."
-echo "  ScriptHookV will automatically load ALLIN1.asi."
+echo "  To play: launch GTA V normally."
+echo "  ScriptHookV will automatically load ALLIN1.asi"
+echo "  and DLC vehicles will appear in traffic while you drive."
 echo
-echo "  ScriptHookV: https://github.com/give-two/ScriptHookV"
+echo "  ScriptHookV: http://www.dev-c.com/gtav/scripthookv/"
 echo
 echo "  Full log saved to: allin1.log"
 echo "============================================================"

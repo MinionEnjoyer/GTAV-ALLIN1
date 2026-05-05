@@ -64,23 +64,13 @@ def install_cmd(ctx: click.Context) -> None:
 
     click.echo(f"GTA V path: {result.gta_path}")
     click.echo(f"Edition: {'Enhanced' if result.is_enhanced else 'Legacy'}")
-    click.echo(f"Vehicles enabled: {result.vehicles_enabled}")
-
-    if result.files_generated:
-        click.echo(f"Files generated: {', '.join(result.files_generated)}")
-
-    if result.dlc_packs_added:
-        click.echo(f"DLC packs in dlclist.xml: {len(result.dlc_packs_added)}")
 
     for warning in result.warnings:
-        click.echo(f"Warning: {warning}", err=True)
+        click.echo(f"  {warning}")
 
     click.echo()
-    if result.files_deployed:
-        click.echo(f"Data files deployed to ALLIN1/ folder ({len(result.files_deployed)} files).")
-
     if result.asi_deployed:
-        click.echo("ALLIN1.asi deployed.")
+        click.echo("ALLIN1.asi deployed successfully.")
     else:
         click.echo("WARNING: ALLIN1.asi not found — build it or download from Releases.")
 
@@ -88,13 +78,13 @@ def install_cmd(ctx: click.Context) -> None:
         click.echo()
         click.echo("WARNING: ScriptHookV not found in your GTA V folder.")
         click.echo("ALLIN1 requires ScriptHookV to load. Install it from:")
-        click.echo("  https://github.com/give-two/ScriptHookV")
+        click.echo("  http://www.dev-c.com/gtav/scripthookv/")
     else:
         click.echo("ScriptHookV detected.")
 
     click.echo()
-    click.echo("To play: launch GTA V with ScriptHookV's injector.")
-    click.echo("ScriptHookV will automatically load ALLIN1.asi.")
+    click.echo("To play: launch GTA V normally. ScriptHookV will load ALLIN1.asi")
+    click.echo("and DLC vehicles will appear in traffic while you drive.")
 
 
 # Register with a user-friendly name
@@ -104,7 +94,7 @@ install_cmd.name = "install"
 @main.command()
 @click.pass_context
 def uninstall_cmd(ctx: click.Context) -> None:
-    """Restore original game files from backup."""
+    """Remove ALLIN1 files from GTA V directory."""
     config: Config = ctx.obj["config"]
 
     try:
@@ -113,7 +103,7 @@ def uninstall_cmd(ctx: click.Context) -> None:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
-    click.echo(f"Restored {len(restored)} files:")
+    click.echo(f"Removed {len(restored)} files:")
     for f in restored:
         click.echo(f"  - {f}")
     click.echo("Uninstall complete.")
