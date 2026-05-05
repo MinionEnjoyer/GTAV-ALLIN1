@@ -63,18 +63,14 @@ def install_cmd(ctx: click.Context) -> None:
         raise SystemExit(1)
 
     click.echo(f"GTA V path: {result.gta_path}")
+    click.echo(f"Edition: {'Enhanced' if result.is_enhanced else 'Legacy'}")
     click.echo(f"Vehicles enabled: {result.vehicles_enabled}")
 
-    if result.backup_dir:
-        click.echo(f"Backup saved to: {result.backup_dir}")
-
-    if result.files_modified:
-        click.echo(f"Files modified: {len(result.files_modified)}")
-        for f in result.files_modified:
-            click.echo(f"  - {f}")
+    if result.files_generated:
+        click.echo(f"Files generated: {', '.join(result.files_generated)}")
 
     if result.dlc_packs_added:
-        click.echo(f"DLC packs added to dlclist.xml: {len(result.dlc_packs_added)}")
+        click.echo(f"DLC packs in dlclist.xml: {len(result.dlc_packs_added)}")
 
     for warning in result.warnings:
         click.echo(f"Warning: {warning}", err=True)
@@ -85,6 +81,22 @@ def install_cmd(ctx: click.Context) -> None:
     else:
         click.echo("WARNING: ALLIN1.asi not found — DLC vehicles will be despawned.")
         click.echo("Build the ASI from the asi/ directory or download a pre-built binary.")
+
+    if result.is_enhanced and result.files_deployed:
+        click.echo()
+        click.echo(f"Files auto-deployed to onigiri/ folder ({len(result.files_deployed)} files).")
+        click.echo("Requires onigiri.asi to be installed.")
+    elif not result.is_enhanced:
+        click.echo()
+        click.echo(f"Generated files saved to: {result.output_dir}")
+        click.echo()
+        click.echo("NEXT STEP: Import these files into your game using OpenIV or CodeWalker:")
+        click.echo("  1. Open OpenIV, enable Edit Mode")
+        click.echo("  2. Navigate to: mods/update/update.rpf")
+        click.echo("     - popgroups.ymt  → x64/levels/gta5/")
+        click.echo("     - dlclist.xml    → common/data/")
+        click.echo("     - gameconfig.xml → common/data/")
+        click.echo("  3. Replace each file with the one from output/")
 
     click.echo()
     click.echo("Installation complete.")
@@ -161,7 +173,7 @@ def status(ctx: click.Context) -> None:
     click.echo(f"  Config file: {ctx.obj['config_path']}")
     click.echo(f"  GTA path: {config.general.gta_path}")
     click.echo(f"  Free mode: {config.general.free_mode}")
-    click.echo(f"  Traffic: {config.traffic.density}")
+    click.echo(f"  Traffic: {'enabled' if config.traffic.enabled else 'disabled'}")
     click.echo(f"  Enable all: {config.vehicles.enable_all}")
 
     if config.vehicles.disabled_classes:

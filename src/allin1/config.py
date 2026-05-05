@@ -15,9 +15,6 @@ else:
         import tomli as tomllib  # type: ignore[no-redef]
 
 
-VALID_DENSITIES = ("none", "low", "medium", "high")
-
-
 @dataclass
 class GeneralConfig:
     gta_path: str = "auto"
@@ -28,7 +25,6 @@ class GeneralConfig:
 @dataclass
 class TrafficConfig:
     enabled: bool = True
-    density: str = "medium"
     rich_areas_only_supers: bool = True
 
 
@@ -52,14 +48,13 @@ class Config:
             raw = tomllib.load(f)
 
         general = GeneralConfig(**raw.get("general", {}))
-        traffic = TrafficConfig(**raw.get("traffic", {}))
-        vehicles = VehiclesConfig(**raw.get("vehicles", {}))
 
-        if traffic.density not in VALID_DENSITIES:
-            raise ValueError(
-                f"Invalid traffic density '{traffic.density}'. "
-                f"Must be one of: {', '.join(VALID_DENSITIES)}"
-            )
+        # Filter unknown keys (e.g. removed 'density') for backwards compat.
+        traffic_raw = raw.get("traffic", {})
+        traffic_fields = {f.name for f in TrafficConfig.__dataclass_fields__.values()}
+        traffic = TrafficConfig(**{k: v for k, v in traffic_raw.items() if k in traffic_fields})
+
+        vehicles = VehiclesConfig(**raw.get("vehicles", {}))
 
         return cls(general=general, traffic=traffic, vehicles=vehicles)
 

@@ -57,7 +57,7 @@ class TestPopgroups:
     def test_inject_vehicle_into_traffic(self):
         base = create_base_template()
         vehicles = [_make_vehicle(traffic=["veh_mid"])]
-        result = generate_popgroups_xml(base, vehicles, density="low")
+        result = generate_popgroups_xml(base, vehicles)
 
         root = etree.fromstring(result.encode())
         models = _find_veh_group_models(root, "VEH_MID")
@@ -66,7 +66,7 @@ class TestPopgroups:
     def test_inject_vehicle_has_variations(self):
         base = create_base_template()
         vehicles = [_make_vehicle(traffic=["veh_mid"])]
-        result = generate_popgroups_xml(base, vehicles, density="low")
+        result = generate_popgroups_xml(base, vehicles)
 
         root = etree.fromstring(result.encode())
         veh_groups = root.find("vehGroups")
@@ -79,29 +79,20 @@ class TestPopgroups:
                     assert variations is not None
                     assert variations.get("type") == "NULL"
 
-    def test_density_none_returns_unchanged(self):
-        base = create_base_template()
-        vehicles = [_make_vehicle()]
-        result = generate_popgroups_xml(base, vehicles, density="none")
-        assert result == base
-
-    def test_density_multiplier(self):
+    def test_no_duplicates(self):
+        """Each vehicle should appear exactly once per group."""
         base = create_base_template()
         vehicles = [_make_vehicle(traffic=["veh_mid"])]
+        result = generate_popgroups_xml(base, vehicles)
 
-        result_low = generate_popgroups_xml(base, vehicles, density="low")
-        result_high = generate_popgroups_xml(base, vehicles, density="high")
-
-        root_low = etree.fromstring(result_low.encode())
-        root_high = etree.fromstring(result_high.encode())
-
-        assert len(_find_veh_group_models(root_low, "VEH_MID")) == 1
-        assert len(_find_veh_group_models(root_high, "VEH_MID")) == 4
+        root = etree.fromstring(result.encode())
+        models = _find_veh_group_models(root, "VEH_MID")
+        assert models.count("testcar") == 1
 
     def test_rich_areas_only_supers(self):
         base = create_base_template()
         vehicles = [_make_vehicle(vehicle_class="super", traffic=["veh_rich", "veh_mid"])]
-        result = generate_popgroups_xml(base, vehicles, density="low", rich_areas_only_supers=True)
+        result = generate_popgroups_xml(base, vehicles, rich_areas_only_supers=True)
 
         root = etree.fromstring(result.encode())
         mid_models = _find_veh_group_models(root, "VEH_MID")
@@ -110,7 +101,7 @@ class TestPopgroups:
     def test_no_traffic_groups_skipped(self):
         base = create_base_template()
         vehicles = [_make_vehicle(traffic=[])]
-        result = generate_popgroups_xml(base, vehicles, density="medium")
+        result = generate_popgroups_xml(base, vehicles)
         root = etree.fromstring(result.encode())
         # No items should have been added to any group
         veh_groups = root.find("vehGroups")

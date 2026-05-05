@@ -177,13 +177,8 @@ echo.
 echo ============================================================
 echo   Installation complete!
 echo.
-echo   ALLIN1 has:
-echo   - Modified popgroups.ymt, dlclist.xml, gameconfig.xml
-echo   - Deployed ALLIN1.asi (DLC vehicle despawn fix)
-echo.
-echo   Prerequisite (if not already installed):
-echo   - ASI Loader (dinput8.dll) + OpenIV.asi in your GTA V folder
-echo     (Download OpenIV from openiv.com)
+echo   Generated files are in the output/ folder.
+echo   See the instructions above for how to install them.
 echo.
 echo   Full log saved to: allin1.log
 echo ============================================================

@@ -23,7 +23,6 @@ backup = true
 
 [traffic]
 enabled = true
-density = "medium"
 rich_areas_only_supers = true
 
 [vehicles]
@@ -34,7 +33,8 @@ disabled_vehicles = []
     config = Config.load(path)
     assert config.general.gta_path == "auto"
     assert config.general.free_mode is False
-    assert config.traffic.density == "medium"
+    assert config.traffic.enabled is True
+    assert config.traffic.rich_areas_only_supers is True
     assert config.vehicles.enable_all is True
 
 
@@ -47,22 +47,15 @@ def test_load_minimal_config(tmp_path):
     assert config.vehicles.enable_all is True
 
 
-def test_invalid_density(tmp_path):
+def test_backwards_compat_density_ignored(tmp_path):
+    """Old configs with density should load without error."""
     path = _write_toml(tmp_path, """
 [traffic]
 density = "ultra"
-""")
-    with pytest.raises(ValueError, match="Invalid traffic density"):
-        Config.load(path)
-
-
-def test_none_density(tmp_path):
-    path = _write_toml(tmp_path, """
-[traffic]
-density = "none"
+enabled = true
 """)
     config = Config.load(path)
-    assert config.traffic.density == "none"
+    assert config.traffic.enabled is True
 
 
 def test_disabled_classes(tmp_path):
@@ -100,5 +93,5 @@ def test_load_prices_missing_file(tmp_path):
 def test_default_config():
     config = Config.default()
     assert config.general.gta_path == "auto"
-    assert config.traffic.density == "medium"
+    assert config.traffic.enabled is True
     assert config.vehicles.enable_all is True

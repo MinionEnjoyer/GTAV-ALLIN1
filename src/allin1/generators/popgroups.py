@@ -19,6 +19,9 @@ The popgroups.ymt XML schema uses this structure:
       </Item>
     </vehGroups>
   </CPopGroupList>
+
+Note: Duplicate vehicle entries do NOT increase spawn frequency.
+Each vehicle should appear exactly once per group.
 """
 
 from __future__ import annotations
@@ -30,15 +33,6 @@ from lxml import etree
 from allin1.vehicles.database import Vehicle
 
 log = logging.getLogger("allin1.generators.popgroups")
-
-# Density multiplier: how many times each vehicle is added to its traffic group.
-# More entries = higher chance of spawning relative to vanilla vehicles.
-DENSITY_MULTIPLIERS = {
-    "none": 0,
-    "low": 1,
-    "medium": 2,
-    "high": 4,
-}
 
 # Vehicle groups we inject into.  Names are UPPERCASE to match the game format.
 # The vehicle database uses lowercase (veh_poor) — we normalize on lookup.
@@ -64,7 +58,6 @@ def _add_vehicle_item(parent: etree._Element, model_name: str) -> None:
 def generate_popgroups_xml(
     base_xml: str,
     vehicles: list[Vehicle],
-    density: str = "medium",
     rich_areas_only_supers: bool = True,
 ) -> str:
     """Generate a modified popgroups XML with MP vehicles injected.
@@ -72,25 +65,18 @@ def generate_popgroups_xml(
     Args:
         base_xml: The base popgroups XML content (from template or game extract).
         vehicles: List of enabled vehicles to add.
-        density: Traffic density level ("none", "low", "medium", "high").
         rich_areas_only_supers: If True, super cars only go in VEH_RICH.
 
     Returns:
         Modified XML string in the correct popgroups.ymt format.
     """
-    multiplier = DENSITY_MULTIPLIERS.get(density, 2)
-    if multiplier == 0:
-        log.info("Density is 'none' — returning base XML unchanged")
-        return base_xml
-
-    log.info("Generating popgroups: %d vehicles, density=%s (x%d), rich_only_supers=%s",
-             len(vehicles), density, multiplier, rich_areas_only_supers)
+    log.info("Generating popgroups: %d vehicles, rich_only_supers=%s",
+             len(vehicles), rich_areas_only_supers)
 
     parser = etree.XMLParser(remove_blank_text=True)
     root = etree.fromstring(base_xml.encode(), parser)
 
     # Build a lookup of group name (uppercase) -> <models> element.
-    # The game uses <vehGroups> -> <Item> -> <Name> + <models>.
     group_models: dict[str, etree._Element] = {}
 
     veh_groups_el = root.find("vehGroups")
@@ -119,10 +105,7 @@ def generate_popgroups_xml(
             models_el = group_models.get(group_name)
             if models_el is None:
                 continue
-
-            # Add the vehicle model name N times based on density
-            for _ in range(multiplier):
-                _add_vehicle_item(models_el, vehicle.model)
+            _add_vehicle_item(models_el, vehicle.model)
 
     injected = sum(1 for v in vehicles if v.traffic)
     log.info("Injected %d vehicle(s) into traffic groups", injected)

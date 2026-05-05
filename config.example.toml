@@ -16,10 +16,6 @@ backup = true
 # Add GTA Online vehicles to ambient traffic so they appear naturally.
 enabled = true
 
-# How many MP vehicles appear in traffic: "none", "low", "medium", "high"
-# "none" disables traffic spawning entirely (vehicles still available to buy/order).
-density = "medium"
-
 # Only spawn super/sports cars in wealthy neighborhoods (Vinewood, etc.)
 rich_areas_only_supers = true
 
