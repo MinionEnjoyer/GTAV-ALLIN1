@@ -28,10 +28,22 @@ jobs:
       - name: Build Release
         run: dotnet build script/ALLIN1.csproj -c Release --no-restore
 
+      - name: Find built DLL
+        id: find-dll
+        run: |
+          $dll = Get-ChildItem -Path script -Recurse -Filter "ALLIN1.dll" | Select-Object -First 1
+          if ($null -eq $dll) {
+            Write-Error "ALLIN1.dll not found after build"
+            Get-ChildItem -Path script/bin -Recurse | ForEach-Object { Write-Host $_.FullName }
+            exit 1
+          }
+          Write-Host "Found DLL at: $($dll.FullName)"
+          echo "DLL_PATH=$($dll.FullName)" >> $env:GITHUB_OUTPUT
+
       - name: Copy binary to dist
         run: |
           New-Item -ItemType Directory -Path "script/dist" -Force | Out-Null
-          Copy-Item -Path "script/bin/Release/ALLIN1.dll" -Destination "script/dist/ALLIN1.dll" -Force
+          Copy-Item -Path "${{ steps.find-dll.outputs.DLL_PATH }}" -Destination "script/dist/ALLIN1.dll" -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
