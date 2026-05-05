@@ -4,11 +4,13 @@ Coordinates the full install/uninstall flow: config loading, GTA V detection,
 backup creation, generator invocation, and file placement.
 
 File placement strategy:
-- ALLIN1.dll → GTA V root — plugin DLL (despawn fix + file redirection)
-- ALLIN1-Launcher.exe → GTA V root — injector that loads ALLIN1.dll into
-  the running game process, bypassing BattlEye's proxy-DLL block
+- ALLIN1.asi → GTA V root — ASI plugin loaded by ScriptHookV at runtime
+  (handles despawn fix + file redirection)
 - Data files (popgroups.ymt, dlclist.xml, gameconfig.xml) → ALLIN1/ folder
-  in GTA V root — ALLIN1.dll redirects game reads to these at runtime
+  in GTA V root — the plugin redirects game reads to these at runtime
+
+Prerequisite: ScriptHookV must be installed separately by the user.
+It handles BattlEye bypass and ASI loading.
 """
 
 from __future__ import annotations
@@ -29,14 +31,11 @@ from allin1.vehicles.database import Vehicle, VehicleDatabase
 
 log = logging.getLogger("allin1.installer")
 
-DLL_FILENAME = "ALLIN1.dll"
-LAUNCHER_FILENAME = "ALLIN1-Launcher.exe"
+ASI_FILENAME = "ALLIN1.asi"
 ALLIN1_DATA_DIR = "ALLIN1"  # Folder name in game root for loose data files
 
-# Proxy DLLs that BattlEye blocks.  Remove any leftover copies from previous
-# mod tool installations (Ultimate ASI Loader, ScriptHookV, etc.).
-PROXY_DLLS = ("dsound.dll", "dinput8.dll", "d3d11.dll", "version.dll")
-LEGACY_FILES = ("ALLIN1.asi",)  # Old filename before rename to .dll
+# Files from previous ALLIN1 versions to clean up
+LEGACY_FILES = ("ALLIN1.dll", "ALLIN1-Launcher.exe")
 
 # Resolve directories relative to this source file (project root).
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -59,9 +58,9 @@ class InstallResult:
     dlc_packs_added: list[str] = field(default_factory=list)
     backup_dir: Path | None = None
     warnings: list[str] = field(default_factory=list)
-    plugin_deployed: bool = False    # ALLIN1.dll
-    launcher_deployed: bool = False  # ALLIN1-Launcher.exe
-    battleye_status: str = ""        # "set", "already_set", or "failed"
+    asi_deployed: bool = False
+    scripthookv_found: bool = False
+    battleye_status: str = ""
     output_dir: Path | None = None
 
 
@@ -146,11 +145,14 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
     # --- Deploy data files to ALLIN1/ folder in game root ---
     _deploy_data_files(gta_path, result)
 
-    # --- Remove leftover proxy DLLs that trigger BattlEye ---
-    _clean_proxy_dlls(gta_path, result)
+    # --- Clean up files from previous ALLIN1 versions ---
+    _clean_legacy_files(gta_path, result)
 
-    # --- Deploy plugin DLL + launcher exe ---
-    result.plugin_deployed, result.launcher_deployed = _deploy_plugin(gta_path)
+    # --- Deploy ASI plugin ---
+    result.asi_deployed = _deploy_asi(gta_path)
+
+    # --- Check for ScriptHookV ---
+    result.scripthookv_found = _check_scripthookv(gta_path)
 
     # --- Write -nobattleye to commandline.txt (belt-and-suspenders) ---
     result.battleye_status = asi_loader.ensure_nobattleye(gta_path, enhanced)
@@ -165,20 +167,13 @@ def uninstall(config: Config) -> list[Path]:
     gta_path = resolve_gta_path(config)
     removed: list[Path] = []
 
-    # Remove plugin DLL, launcher exe, legacy .asi, and proxy DLLs
-    for fname in (DLL_FILENAME, LAUNCHER_FILENAME, *LEGACY_FILES):
+    # Remove ASI plugin and legacy files
+    for fname in (ASI_FILENAME, *LEGACY_FILES):
         fpath = gta_path / fname
         if fpath.exists():
             fpath.unlink()
             removed.append(fpath)
             log.info("Removed %s from GTA V directory", fname)
-
-    for dll in PROXY_DLLS:
-        p = gta_path / dll
-        if p.exists():
-            p.unlink()
-            removed.append(p)
-            log.info("Removed leftover proxy DLL: %s", dll)
 
     # Remove ALLIN1/ data folder
     data_dir = gta_path / ALLIN1_DATA_DIR
@@ -214,11 +209,7 @@ def uninstall(config: Config) -> list[Path]:
 
 
 def _deploy_data_files(gta_path: Path, result: InstallResult) -> None:
-    """Copy generated files to the ALLIN1/ folder in the game root.
-
-    ALLIN1.asi hooks the game's file system to redirect reads of these
-    files at runtime, so they work for both Legacy and Enhanced editions.
-    """
+    """Copy generated files to the ALLIN1/ folder in the game root."""
     data_dir = gta_path / ALLIN1_DATA_DIR
     data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -233,59 +224,42 @@ def _deploy_data_files(gta_path: Path, result: InstallResult) -> None:
     log.info("Deployed %d file(s) to %s/", len(result.files_deployed), data_dir)
 
 
-def _clean_proxy_dlls(gta_path: Path, result: InstallResult) -> None:
-    """Remove leftover proxy DLLs that BattlEye blocks at startup.
-
-    Previous mod tool installations (Ultimate ASI Loader, ScriptHookV, etc.)
-    may have placed proxy DLLs like dsound.dll or dinput8.dll in the game
-    root.  BattlEye blocks these before the game starts.
-    """
-    for dll in (*PROXY_DLLS, *LEGACY_FILES):
-        p = gta_path / dll
+def _clean_legacy_files(gta_path: Path, result: InstallResult) -> None:
+    """Remove files from previous ALLIN1 versions (injector-based approach)."""
+    for fname in LEGACY_FILES:
+        p = gta_path / fname
         if p.exists():
             try:
                 p.unlink()
-                result.warnings.append(
-                    f"Removed leftover {dll} (no longer needed)."
-                )
-                log.info("Removed leftover file: %s", dll)
+                result.warnings.append(f"Removed old {fname} (no longer needed).")
+                log.info("Removed legacy file: %s", fname)
             except OSError as exc:
                 result.warnings.append(
-                    f"Could not remove {dll}: {exc}. Delete it manually."
+                    f"Could not remove {fname}: {exc}. Delete it manually."
                 )
-                log.warning("Failed to remove %s: %s", dll, exc)
+                log.warning("Failed to remove %s: %s", fname, exc)
 
 
-def _deploy_plugin(gta_path: Path) -> tuple[bool, bool]:
-    """Copy ALLIN1.dll and ALLIN1-Launcher.exe to the GTA V root.
+def _deploy_asi(gta_path: Path) -> bool:
+    """Copy ALLIN1.asi to the GTA V root.  Returns True if deployed."""
+    src = _ASI_DIST_DIR / ASI_FILENAME
+    if not src.exists():
+        log.warning(
+            "%s not found at %s — run the GitHub Actions build or "
+            "download from Releases.",
+            ASI_FILENAME, _ASI_DIST_DIR,
+        )
+        return False
+    dest = gta_path / ASI_FILENAME
+    shutil.copy2(src, dest)
+    log.info("Deployed %s → %s", ASI_FILENAME, dest)
+    return True
 
-    ALLIN1.dll is the plugin that hooks the game's file system and patches
-    the despawn logic.  ALLIN1-Launcher.exe is the injector that loads the
-    DLL into the running game process (bypassing BattlEye).
 
-    Returns (plugin_deployed, launcher_deployed).
-    """
-    plugin_ok = False
-    launcher_ok = False
-
-    for filename, label in ((DLL_FILENAME, "plugin"), (LAUNCHER_FILENAME, "launcher")):
-        src = _ASI_DIST_DIR / filename
-        if not src.exists():
-            log.warning(
-                "%s not found at %s — run the GitHub Actions build or "
-                "download from Releases.",
-                filename, _ASI_DIST_DIR,
-            )
-            continue
-        dest = gta_path / filename
-        shutil.copy2(src, dest)
-        log.info("Deployed %s → %s", filename, dest)
-        if label == "plugin":
-            plugin_ok = True
-        else:
-            launcher_ok = True
-
-    return plugin_ok, launcher_ok
+def _check_scripthookv(gta_path: Path) -> bool:
+    """Check if ScriptHookV is installed in the game directory."""
+    shv_dll = gta_path / "ScriptHookV.dll"
+    return shv_dll.exists()
 
 
 def _create_base_gameconfig() -> str:

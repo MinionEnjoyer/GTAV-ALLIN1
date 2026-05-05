@@ -79,23 +79,22 @@ def install_cmd(ctx: click.Context) -> None:
     if result.files_deployed:
         click.echo(f"Data files deployed to ALLIN1/ folder ({len(result.files_deployed)} files).")
 
-    if result.plugin_deployed and result.launcher_deployed:
-        click.echo("ALLIN1.dll + ALLIN1-Launcher.exe deployed.")
-    elif result.plugin_deployed:
-        click.echo("ALLIN1.dll deployed.")
-        click.echo("WARNING: ALLIN1-Launcher.exe not found — build it or download from Releases.")
+    if result.asi_deployed:
+        click.echo("ALLIN1.asi deployed.")
     else:
-        click.echo("WARNING: ALLIN1.dll not found — build it or download from Releases.")
+        click.echo("WARNING: ALLIN1.asi not found — build it or download from Releases.")
+
+    if not result.scripthookv_found:
+        click.echo()
+        click.echo("WARNING: ScriptHookV not found in your GTA V folder.")
+        click.echo("ALLIN1 requires ScriptHookV to load. Install it from:")
+        click.echo("  https://github.com/give-two/ScriptHookV")
+    else:
+        click.echo("ScriptHookV detected.")
 
     click.echo()
-    click.echo("To play:")
-    click.echo("  1. Run ALLIN1-Launcher.exe (accept the admin/UAC prompt)")
-    click.echo("  2. Launch GTA V normally (through Steam or Rockstar Launcher)")
-    click.echo("  3. The launcher will detect the game and inject automatically")
-    click.echo()
-    click.echo("NOTE: Windows Defender may flag the launcher as a virus.")
-    click.echo("This is a false positive — any DLL injector triggers heuristic")
-    click.echo("detection. Add your GTA V folder to Defender's exclusion list.")
+    click.echo("To play: launch GTA V with ScriptHookV's injector.")
+    click.echo("ScriptHookV will automatically load ALLIN1.asi.")
 
 
 # Register with a user-friendly name

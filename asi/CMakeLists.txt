@@ -1,12 +1,8 @@
 cmake_minimum_required(VERSION 3.15)
-project(ALLIN1 LANGUAGES C CXX)
+project(ALLIN1_ASI LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# ---------------------------------------------------------------------------
-# ALLIN1.dll — the plugin (injected into GTA V at runtime)
-# ---------------------------------------------------------------------------
 
 # MinHook sources (vendored, BSD-2-Clause)
 set(MINHOOK_SOURCES
@@ -16,7 +12,7 @@ set(MINHOOK_SOURCES
     lib/MinHook/src/hde/hde64.c
 )
 
-add_library(ALLIN1_Plugin SHARED
+add_library(ALLIN1 SHARED
     src/main.cpp
     src/structs.h
     src/pattern_scan.h
@@ -28,54 +24,28 @@ add_library(ALLIN1_Plugin SHARED
     ${MINHOOK_SOURCES}
 )
 
-target_include_directories(ALLIN1_Plugin PRIVATE
+target_include_directories(ALLIN1 PRIVATE
     lib/MinHook/include
 )
 
-set_target_properties(ALLIN1_Plugin PROPERTIES
-    OUTPUT_NAME "ALLIN1"
-    SUFFIX ".dll"
+# Output as .asi — ScriptHookV loads these from the game directory
+set_target_properties(ALLIN1 PROPERTIES
+    SUFFIX ".asi"
     PREFIX ""
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
-target_link_libraries(ALLIN1_Plugin PRIVATE psapi shlwapi)
+# Link system libraries
+target_link_libraries(ALLIN1 PRIVATE psapi shlwapi)
 
-# ---------------------------------------------------------------------------
-# ALLIN1-Launcher.exe — injector that loads ALLIN1.dll into GTA V
-# ---------------------------------------------------------------------------
-
-add_executable(ALLIN1_Launcher
-    src/injector/main.cpp
-    src/injector/launcher.rc
-)
-
-set_target_properties(ALLIN1_Launcher PROPERTIES
-    OUTPUT_NAME "ALLIN1-Launcher"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-)
-
-target_link_libraries(ALLIN1_Launcher PRIVATE shlwapi shell32)
-
-# The .rc file embeds the UAC manifest (requireAdministrator).
-# Disable CMake's automatic manifest so they don't conflict.
-set_target_properties(ALLIN1_Launcher PROPERTIES
-    LINK_FLAGS "/MANIFEST:NO"
-)
-
-# ---------------------------------------------------------------------------
 # Release optimizations
-# ---------------------------------------------------------------------------
-
 if(MSVC)
-    foreach(tgt ALLIN1_Plugin ALLIN1_Launcher)
-        target_compile_options(${tgt} PRIVATE
-            $<$<CONFIG:Release>:/O2 /GL>
-        )
-        target_link_options(${tgt} PRIVATE
-            $<$<CONFIG:Release>:/LTCG>
-        )
-    endforeach()
+    target_compile_options(ALLIN1 PRIVATE
+        $<$<CONFIG:Release>:/O2 /GL>
+    )
+    target_link_options(ALLIN1 PRIVATE
+        $<$<CONFIG:Release>:/LTCG>
+    )
 endif()

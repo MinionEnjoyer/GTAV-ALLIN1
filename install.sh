@@ -157,10 +157,10 @@ echo
 echo "============================================================"
 echo "  Installation complete!"
 echo
-echo "  To play:"
-echo "    1. Run ALLIN1-Launcher.exe from your GTA V folder"
-echo "    2. Launch GTA V normally (through Steam / Rockstar Launcher)"
-echo "    3. The launcher detects the game and injects automatically"
+echo "  To play: launch GTA V with ScriptHookV's injector."
+echo "  ScriptHookV will automatically load ALLIN1.asi."
+echo
+echo "  ScriptHookV: https://github.com/give-two/ScriptHookV"
 echo
 echo "  Full log saved to: allin1.log"
 echo "============================================================"
