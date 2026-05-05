@@ -1,13 +1,14 @@
 // vehicle_spawner.cpp — Spawns GTA Online DLC vehicles into Story Mode traffic.
 //
-// Instead of replacing game data files (popgroups.ymt, dlclist.xml, etc.)
-// and hooking the RAGE filesystem, this approach uses ScriptHookV's native
-// API to directly spawn vehicles at nearby road nodes.
+// Uses a hardcoded list of 444 vehicle model hashes (from vehicles.toml)
+// instead of the GET_DLC_VEHICLE_MODEL / GET_NUM_DLC_VEHICLES natives,
+// which are missing from ScriptHookV's crossmap on Enhanced Edition.
 //
 // The "MPBitset" decorator prevents the game's shop_controller.ysc script
 // from despawning DLC vehicles in single player.
 
 #include "vehicle_spawner.h"
+#include "vehicle_models.h"
 #include "natives.h"
 #include "log.h"
 
@@ -48,7 +49,7 @@ struct SpawnedVehicle {
     bool    parked;
 };
 
-static std::vector<Hash>           g_dlcModels;
+static std::vector<Hash>           g_validModels;   // Models confirmed in cdimage
 static std::vector<SpawnedVehicle> g_spawned;
 static int                         g_lastDrivenTime = 0;
 static int                         g_lastParkedTime = 0;
@@ -56,26 +57,23 @@ static bool                        g_initialised    = false;
 static int                         g_totalSpawned   = 0;
 
 // ---------------------------------------------------------------------------
-// DLC vehicle discovery
+// Vehicle list validation — filter hardcoded hashes against cdimage
 // ---------------------------------------------------------------------------
 
-static void BuildVehicleList() {
-    g_dlcModels.clear();
+static void BuildValidModelList() {
+    g_validModels.clear();
+    g_validModels.reserve(VEHICLE_MODEL_COUNT);
 
-    int count = DLC::GET_NUM_DLC_VEHICLES();
-    LogWrite("  DLC vehicle count from native: %d", count);
-
-    for (int i = 0; i < count; i++) {
-        Hash model = DLC::GET_DLC_VEHICLE_MODEL(i);
-        if (model != 0) {
-            if (STREAMING::IS_MODEL_IN_CDIMAGE(model) &&
-                STREAMING::IS_MODEL_A_VEHICLE(model)) {
-                g_dlcModels.push_back(model);
-            }
+    for (int i = 0; i < VEHICLE_MODEL_COUNT; i++) {
+        Hash model = VEHICLE_MODELS[i];
+        if (STREAMING::IS_MODEL_IN_CDIMAGE(model) &&
+            STREAMING::IS_MODEL_A_VEHICLE(model)) {
+            g_validModels.push_back(model);
         }
     }
 
-    LogWrite("  Valid DLC vehicle models: %d", (int)g_dlcModels.size());
+    LogWrite("  Validated %d / %d vehicle models in cdimage",
+             (int)g_validModels.size(), VEHICLE_MODEL_COUNT);
 }
 
 // ---------------------------------------------------------------------------
@@ -131,8 +129,8 @@ static bool FindRoadNode(Vector3 playerPos, float minDist, float maxDist,
 // ---------------------------------------------------------------------------
 
 static Vehicle CreateRandomDLCVehicle(Vector3 pos, float heading, Hash* outModel) {
-    int idx = MISC::GET_RANDOM_INT_IN_RANGE(0, (int)g_dlcModels.size());
-    Hash model = g_dlcModels[idx];
+    int idx = MISC::GET_RANDOM_INT_IN_RANGE(0, (int)g_validModels.size());
+    Hash model = g_validModels[idx];
 
     if (!LoadModel(model)) {
         LogWrite("  Failed to load model 0x%08X", model);
@@ -166,7 +164,7 @@ static Vehicle CreateRandomDLCVehicle(Vector3 pos, float heading, Hash* outModel
 // ---------------------------------------------------------------------------
 
 static bool SpawnDrivenVehicle() {
-    if (g_dlcModels.empty()) return false;
+    if (g_validModels.empty()) return false;
 
     Ped player = PLAYER::PLAYER_PED_ID();
     Vector3 playerPos = ENTITY::GET_ENTITY_COORDS(player, TRUE);
@@ -208,7 +206,7 @@ static bool SpawnDrivenVehicle() {
 // ---------------------------------------------------------------------------
 
 static bool SpawnParkedVehicle() {
-    if (g_dlcModels.empty()) return false;
+    if (g_validModels.empty()) return false;
 
     Ped player = PLAYER::PLAYER_PED_ID();
     Vector3 playerPos = ENTITY::GET_ENTITY_COORDS(player, TRUE);
@@ -297,30 +295,30 @@ void SpawnerInit() {
     if (g_initialised)
         return;
 
-    LogWrite("SpawnerInit: building vehicle list...");
+    LogWrite("SpawnerInit: validating %d vehicle models...", VEHICLE_MODEL_COUNT);
 
     // Register the MPBitset decorator so we can use it
     DECORATOR::DECOR_REGISTER("MPBitset", DECORATOR_TYPE_INT);
 
-    BuildVehicleList();
+    BuildValidModelList();
 
     int now = MISC::GET_GAME_TIMER();
     g_lastDrivenTime = now;
     g_lastParkedTime = now;
     g_initialised = true;
 
-    LogWrite("SpawnerInit: complete, %d DLC models available", (int)g_dlcModels.size());
+    LogWrite("SpawnerInit: complete, %d models available", (int)g_validModels.size());
 }
 
 void SpawnerTick() {
     if (!g_initialised)
         return;
 
-    // Rebuild vehicle list if it was empty (DLC might not have been loaded yet
-    // at init time).
-    if (g_dlcModels.empty()) {
-        BuildVehicleList();
-        if (g_dlcModels.empty())
+    // Retry validation if no models were available at init time
+    // (streaming may not have been fully loaded yet).
+    if (g_validModels.empty()) {
+        BuildValidModelList();
+        if (g_validModels.empty())
             return;
     }
 

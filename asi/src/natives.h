@@ -69,20 +69,6 @@ namespace VEHICLE {
 }
 
 // =============================================================================
-// DLC (DLC vehicle enumeration)
-// =============================================================================
-
-namespace DLC {
-    static inline int GET_NUM_DLC_VEHICLES() {
-        return invoke<int>(0xA7A866D21CD2329B);
-    }
-    // Returns the model hash of the DLC vehicle at the given index.
-    static inline Hash GET_DLC_VEHICLE_MODEL(int dlcVehicleIndex) {
-        return invoke<Hash>(0xEECA684B8F2B4539, dlcVehicleIndex);
-    }
-}
-
-// =============================================================================
 // STREAMING
 // =============================================================================
 

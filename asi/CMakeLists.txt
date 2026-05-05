@@ -7,8 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # ---------------------------------------------------------------------------
 # ScriptHookV import library
 # ---------------------------------------------------------------------------
-# Generated from ScriptHookV.def before building (see CI workflow).
-# CI runs:  lib /def:ScriptHookV.def /out:ScriptHookV.lib /machine:x64
+# Real ScriptHookV.lib from the SDK (contains C++ mangled symbols).
 
 set(SHV_LIB "${CMAKE_CURRENT_SOURCE_DIR}/lib/ScriptHookV/ScriptHookV.lib"
     CACHE FILEPATH "Path to ScriptHookV import library")
@@ -21,6 +20,7 @@ add_library(ALLIN1 SHARED
     src/main.cpp
     src/log.h
     src/natives.h
+    src/vehicle_models.h
     src/vehicle_spawner.h
     src/vehicle_spawner.cpp
 )
