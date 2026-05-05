@@ -6,7 +6,11 @@ engine loads their vehicle models in single player.
 
 from __future__ import annotations
 
+import logging
+
 from lxml import etree
+
+log = logging.getLogger("allin1.generators.dlclist")
 
 # All MP DLC packs that contain vehicles. These should already be present in
 # a standard GTA V install, but we verify and add any missing entries.
@@ -77,12 +81,20 @@ def patch_dlclist(dlclist_xml: str) -> tuple[str, list[str]]:
             pack = item.text.strip().strip("/").split("/")[-1].lower()
             existing.add(pack)
 
+    log.debug("Found %d existing DLC pack(s) in dlclist.xml", len(existing))
+
     added: list[str] = []
     for pack in REQUIRED_DLC_PACKS:
         if pack.lower() not in existing:
             item = etree.SubElement(paths_el, "Item")
             item.text = f"dlcpacks:/{pack}/"
             added.append(pack)
+            log.debug("Adding missing DLC pack: %s", pack)
+
+    if added:
+        log.info("Added %d DLC pack(s) to dlclist.xml", len(added))
+    else:
+        log.info("All %d required DLC packs already present", len(REQUIRED_DLC_PACKS))
 
     output = '<?xml version="1.0" encoding="UTF-8"?>\n' + etree.tostring(root, pretty_print=True, encoding="unicode")
     return output, added

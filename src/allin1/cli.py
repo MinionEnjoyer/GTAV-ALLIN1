@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import click
 
 from allin1.config import Config
 from allin1.installer import install, uninstall
+from allin1.logging import setup_logging
 from allin1.vehicles.database import VehicleDatabase
 
 # Resolve project root (where data/ lives) relative to this file
@@ -15,6 +17,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 DEFAULT_CONFIG = PROJECT_ROOT / "config.toml"
 VEHICLES_DB = DATA_DIR / "vehicles.toml"
+
+log = logging.getLogger("allin1.cli")
 
 
 @click.group()
@@ -24,15 +28,21 @@ VEHICLES_DB = DATA_DIR / "vehicles.toml"
     default=str(DEFAULT_CONFIG),
     help="Path to config.toml",
 )
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose (debug) output")
 @click.pass_context
-def main(ctx: click.Context, config: str) -> None:
+def main(ctx: click.Context, config: str, verbose: bool) -> None:
     """GTA V ALLIN1 - Unlock all GTA Online vehicles in single player."""
+    setup_logging(project_root=PROJECT_ROOT, verbose=verbose)
+    log.info("ALLIN1 started")
+
     ctx.ensure_object(dict)
     config_path = Path(config)
     if config_path.exists():
         ctx.obj["config"] = Config.load(config_path)
+        log.info("Loaded config from %s", config_path)
     else:
         ctx.obj["config"] = Config.default()
+        log.info("No config.toml found — using defaults")
     ctx.obj["config_path"] = config_path
 
 

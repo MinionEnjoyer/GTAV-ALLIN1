@@ -6,9 +6,13 @@ categories so they appear as ambient traffic in single player.
 
 from __future__ import annotations
 
+import logging
+
 from lxml import etree
 
 from allin1.vehicles.database import Vehicle
+
+log = logging.getLogger("allin1.generators.popgroups")
 
 # Density multiplier: how many times each vehicle is added to its traffic group.
 # More entries = higher chance of spawning relative to vanilla vehicles.
@@ -51,7 +55,11 @@ def generate_popgroups_xml(
     """
     multiplier = DENSITY_MULTIPLIERS.get(density, 2)
     if multiplier == 0:
+        log.info("Density is 'none' — returning base XML unchanged")
         return base_xml
+
+    log.info("Generating popgroups: %d vehicles, density=%s (x%d), rich_only_supers=%s",
+             len(vehicles), density, multiplier, rich_areas_only_supers)
 
     parser = etree.XMLParser(remove_blank_text=True)
     root = etree.fromstring(base_xml.encode(), parser)
@@ -89,6 +97,9 @@ def generate_popgroups_xml(
                 item = etree.SubElement(models_el, "Item")
                 name = etree.SubElement(item, "Name")
                 name.text = vehicle.model
+
+    injected = sum(1 for v in vehicles if v.traffic)
+    log.info("Injected %d vehicle(s) into traffic groups", injected)
 
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + etree.tostring(root, pretty_print=True, encoding="unicode")
 

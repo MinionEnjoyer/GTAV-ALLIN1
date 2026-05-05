@@ -6,6 +6,7 @@ backup creation, generator invocation, and file placement.
 
 from __future__ import annotations
 
+import logging
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,6 +18,8 @@ from allin1.generators.dlclist import patch_dlclist
 from allin1.generators.gameconfig import patch_gameconfig
 from allin1.generators.popgroups import create_base_template, generate_popgroups_xml
 from allin1.vehicles.database import Vehicle, VehicleDatabase
+
+log = logging.getLogger("allin1.installer")
 
 
 @dataclass
@@ -32,10 +35,13 @@ class InstallResult:
 def resolve_gta_path(config: Config) -> Path:
     """Resolve the GTA V path from config or auto-detection."""
     if config.general.gta_path != "auto":
+        log.info("Using configured GTA V path: %s", config.general.gta_path)
         return validate_gta_path(config.general.gta_path)
 
+    log.info("GTA V path set to 'auto' — running detection...")
     detected = detect_gta_path()
     if detected is None:
+        log.error("Auto-detection failed — no GTA V install found")
         raise FileNotFoundError(
             "Could not auto-detect GTA V installation. "
             "Set gta_path in config.toml to your GTA V directory."
@@ -61,12 +67,14 @@ def get_enabled_vehicles(db: VehicleDatabase, config: Config) -> list[Vehicle]:
 
 def install(config: Config, db: VehicleDatabase) -> InstallResult:
     """Run the full installation process."""
+    log.info("=== Starting installation ===")
     gta_path = resolve_gta_path(config)
     mods_dir = gta_path / "mods"
     result = InstallResult(gta_path=gta_path, vehicles_enabled=0)
 
     vehicles = get_enabled_vehicles(db, config)
     result.vehicles_enabled = len(vehicles)
+    log.info("Vehicles enabled: %d (of %d total)", len(vehicles), len(db))
 
     # --- File paths ---
     update_rpf_data = mods_dir / "update" / "update.rpf" / "common" / "data"
@@ -85,13 +93,20 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
 
     # --- Backup ---
     if config.general.backup and files_to_backup:
+        log.info("Creating backup of %d file(s)...", len(files_to_backup))
         result.backup_dir = create_backup(gta_path, files_to_backup)
+        log.info("Backup saved to: %s", result.backup_dir)
+    elif not config.general.backup:
+        log.info("Backup disabled in config")
 
     # --- Ensure mods directory structure ---
     update_rpf_data.mkdir(parents=True, exist_ok=True)
+    log.debug("Mods directory: %s", update_rpf_data)
 
     # --- Generate popgroups ---
     if config.traffic.enabled and config.traffic.density != "none":
+        log.info("Generating popgroups.xml (density=%s, rich_only_supers=%s)...",
+                 config.traffic.density, config.traffic.rich_areas_only_supers)
         base_xml = _load_or_create_popgroups(popgroups_path, orig_data / "popgroups.xml")
         modified_xml = generate_popgroups_xml(
             base_xml,
@@ -101,34 +116,48 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
         )
         popgroups_path.write_text(modified_xml, encoding="utf-8")
         result.files_modified.append(str(popgroups_path))
+        log.info("Wrote popgroups.xml")
+    else:
+        log.info("Traffic spawning disabled — skipping popgroups.xml")
 
     # --- Patch dlclist.xml ---
+    log.info("Patching dlclist.xml...")
     dlclist_xml = _load_or_create_dlclist(dlclist_path, orig_data / "dlclist.xml")
     patched_dlclist, added_packs = patch_dlclist(dlclist_xml)
     if added_packs:
         dlclist_path.write_text(patched_dlclist, encoding="utf-8")
         result.files_modified.append(str(dlclist_path))
         result.dlc_packs_added = added_packs
+        log.info("Added %d DLC pack(s) to dlclist.xml", len(added_packs))
+    else:
+        log.info("dlclist.xml already has all required DLC packs")
 
     # --- Patch gameconfig.xml ---
+    log.info("Patching gameconfig.xml...")
     gameconfig_xml = _load_gameconfig(gameconfig_path, orig_data / "gameconfig.xml")
     if gameconfig_xml:
         patched_gc = patch_gameconfig(gameconfig_xml)
         gameconfig_path.write_text(patched_gc, encoding="utf-8")
         result.files_modified.append(str(gameconfig_path))
+        log.info("Wrote gameconfig.xml with increased pool sizes")
     else:
         result.warnings.append(
             "gameconfig.xml not found. You may need a modified gameconfig "
             "to support 400+ vehicles. See community gameconfig mods."
         )
+        log.warning("gameconfig.xml not found — skipped")
 
+    log.info("=== Installation complete: %d files modified ===", len(result.files_modified))
     return result
 
 
 def uninstall(config: Config) -> list[Path]:
     """Restore backed-up files to undo installation."""
+    log.info("=== Starting uninstall ===")
     gta_path = resolve_gta_path(config)
-    return restore_backup(gta_path)
+    restored = restore_backup(gta_path)
+    log.info("=== Uninstall complete: %d files restored ===", len(restored))
+    return restored
 
 
 def _load_or_create_popgroups(mods_path: Path, orig_path: Path) -> str:

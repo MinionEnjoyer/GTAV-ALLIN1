@@ -2,52 +2,128 @@
 
 Searches across all drives, Steam libraries, Epic Games manifests,
 Rockstar Games Launcher data, and the Windows Registry to find GTA V.
+
+When a path is detected, it is cached to ``.gta_path`` in the project
+root so subsequent runs (including uninstall) can skip detection.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import platform
 import re
 import string
 from pathlib import Path
 
+log = logging.getLogger("allin1.detector")
+
+# Cache file written next to config.toml / pyproject.toml
+_CACHE_FILE = ".gta_path"
+
+
+def _project_root() -> Path:
+    """Return the project root (three levels up from this file)."""
+    return Path(__file__).resolve().parent.parent.parent
+
+
+def load_cached_path() -> Path | None:
+    """Read a previously-cached GTA V path from ``.gta_path``."""
+    cache = _project_root() / _CACHE_FILE
+    if not cache.exists():
+        return None
+    try:
+        raw = cache.read_text(encoding="utf-8").strip()
+        if not raw:
+            return None
+        p = Path(raw)
+        if _validate_gta_path(p):
+            log.info("Loaded cached GTA V path: %s", p)
+            return p
+        log.warning("Cached path no longer valid: %s", raw)
+        return None
+    except OSError as exc:
+        log.debug("Could not read cache file: %s", exc)
+        return None
+
+
+def save_cached_path(path: Path) -> None:
+    """Write a detected GTA V path to ``.gta_path`` for reuse."""
+    cache = _project_root() / _CACHE_FILE
+    try:
+        cache.write_text(str(path), encoding="utf-8")
+        log.debug("Cached GTA V path to %s", cache)
+    except OSError as exc:
+        log.warning("Could not write cache file: %s", exc)
+
 
 def detect_gta_path() -> Path | None:
-    """Attempt to auto-detect the GTA V installation directory."""
-    system = platform.system()
+    """Attempt to auto-detect the GTA V installation directory.
 
+    Checks the ``.gta_path`` cache first, then runs platform-specific
+    detection.  On success the result is cached for future runs.
+    """
+    # Try cache first
+    cached = load_cached_path()
+    if cached is not None:
+        return cached
+
+    system = platform.system()
+    log.info("Starting GTA V auto-detection on %s", system)
+
+    result: Path | None = None
     if system == "Windows":
-        return _detect_windows()
+        result = _detect_windows()
     elif system == "Linux":
-        return _detect_linux()
-    # macOS: no native GTA V, user must specify manually
-    return None
+        result = _detect_linux()
+    else:
+        log.info("macOS detected — no native GTA V, user must specify path manually")
+
+    if result:
+        log.info("GTA V found: %s", result)
+        save_cached_path(result)
+    else:
+        log.warning("GTA V auto-detection failed — no valid install found")
+
+    return result
 
 
 def _detect_windows() -> Path | None:
     candidates: list[Path] = []
 
     # 1. Windows Registry (most reliable -- set by Rockstar's installer)
+    log.debug("Checking Windows Registry...")
     reg_path = _check_registry()
     if reg_path:
+        log.debug("Registry hit: %s", reg_path)
         candidates.append(reg_path)
+    else:
+        log.debug("Registry: no GTA V keys found")
 
     # 2. Steam libraries (parses libraryfolders.vdf from all known locations)
+    log.debug("Scanning Steam library folders...")
     steam_libs = _find_steam_libraries_windows()
+    log.debug("Found %d Steam library folder(s)", len(steam_libs))
     for lib in steam_libs:
         candidates.append(lib / "steamapps" / "common" / "Grand Theft Auto V")
 
     # 3. Epic Games (parse manifest files for actual install location)
+    log.debug("Checking Epic Games manifests...")
     epic_paths = _find_epic_install_windows()
+    if epic_paths:
+        log.debug("Epic Games candidates: %d", len(epic_paths))
     candidates.extend(epic_paths)
 
     # 4. Rockstar Games Launcher
+    log.debug("Checking Rockstar Games Launcher...")
     rgl_paths = _find_rockstar_launcher_windows()
+    if rgl_paths:
+        log.debug("Rockstar Launcher candidates: %d", len(rgl_paths))
     candidates.extend(rgl_paths)
 
     # 5. Common hardcoded paths on every available drive
     drives = _get_windows_drives()
+    log.debug("Available drives: %s", [str(d) for d in drives])
     for drive in drives:
         candidates.extend([
             drive / "Program Files" / "Rockstar Games" / "Grand Theft Auto V",
@@ -74,13 +150,18 @@ def _detect_windows() -> Path | None:
             seen.add(key)
             unique.append(p)
 
+    log.debug("Checking %d unique candidate paths...", len(unique))
     for path in unique:
         if _validate_gta_path(path):
+            log.debug("Valid GTA V install: %s", path)
             return path
+        log.debug("Not valid: %s", path)
 
     # 6. Last resort: scan all drives for steamapps directories and GTA5.exe
+    log.info("Standard detection failed — starting deep scan of all drives...")
     found = _deep_scan_windows(drives)
     if found:
+        log.info("Deep scan found GTA V: %s", found)
         return found
 
     return None
@@ -103,8 +184,10 @@ def _detect_linux() -> Path | None:
         for lib in _parse_steam_vdf(vdf):
             candidates.append(lib / "steamapps" / "common" / "Grand Theft Auto V")
 
+    log.debug("Linux: checking %d candidate paths", len(candidates))
     for path in candidates:
         if _validate_gta_path(path):
+            log.debug("Valid GTA V install: %s", path)
             return path
     return None
 
@@ -364,10 +447,13 @@ def validate_gta_path(path: str | Path) -> Path:
     """Validate a user-provided or detected GTA V path. Raises ValueError if invalid."""
     p = Path(path)
     if not _validate_gta_path(p):
+        log.error("Invalid GTA V path: %s", p)
         raise ValueError(
             f"'{p}' does not appear to be a valid GTA V installation. "
             "Expected to find GTA5.exe or update/update.rpf."
         )
+    log.info("Validated GTA V path: %s", p)
+    save_cached_path(p)
     return p
 
 

@@ -6,7 +6,11 @@ vehicle models without running out of resources.
 
 from __future__ import annotations
 
+import logging
+
 from lxml import etree
+
+log = logging.getLogger("allin1.generators.gameconfig")
 
 # Pool sizes needed for 400+ extra vehicles. These values are based on
 # community-tested gameconfig mods that support large vehicle counts.
@@ -45,6 +49,7 @@ def patch_gameconfig(gameconfig_xml: str) -> str:
 
     # gameconfig pool sizes live under various paths depending on the version.
     # Walk all pool size definitions and bump any that match our overrides.
+    patched = 0
     for pool_el in root.iter("Item"):
         name_el = pool_el.find("Name")
         size_el = pool_el.find("Size")
@@ -58,5 +63,10 @@ def patch_gameconfig(gameconfig_xml: str) -> str:
             target = POOL_OVERRIDES[pool_name]
             if current < target:
                 size_el.set("value", str(target))
+                log.debug("Pool %s: %d -> %d", pool_name, current, target)
+                patched += 1
+            else:
+                log.debug("Pool %s: already at %d (target %d)", pool_name, current, target)
 
+    log.info("Patched %d pool size(s) in gameconfig.xml", patched)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + etree.tostring(root, pretty_print=True, encoding="unicode")
