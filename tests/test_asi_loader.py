@@ -103,120 +103,40 @@ class TestEnsureLoader:
 
 
 # ---------------------------------------------------------------------------
-# BattlEye / localconfig.vdf tests
+# BattlEye / commandline.txt tests
 # ---------------------------------------------------------------------------
 
-_SAMPLE_VDF = '''"UserLocalConfigStore"
-{
-\t"Software"
-\t{
-\t\t"Valve"
-\t\t{
-\t\t\t"Steam"
-\t\t\t{
-\t\t\t\t"apps"
-\t\t\t\t{
-\t\t\t\t\t"3240220"
-\t\t\t\t\t{
-\t\t\t\t\t\t"LastPlayed"\t\t"1714900000"
-\t\t\t\t\t}
-\t\t\t\t}
-\t\t\t}
-\t\t}
-\t}
-}
-'''
 
-_SAMPLE_VDF_WITH_OPTION = '''"UserLocalConfigStore"
-{
-\t"Software"
-\t{
-\t\t"Valve"
-\t\t{
-\t\t\t"Steam"
-\t\t\t{
-\t\t\t\t"apps"
-\t\t\t\t{
-\t\t\t\t\t"3240220"
-\t\t\t\t\t{
-\t\t\t\t\t\t"LastPlayed"\t\t"1714900000"
-\t\t\t\t\t\t"LaunchOptions"\t\t"-nobattleye"
-\t\t\t\t\t}
-\t\t\t\t}
-\t\t\t}
-\t\t}
-\t}
-}
-'''
-
-
-class TestExtractLaunchOptions:
-    def test_no_launch_options(self):
-        result = asi_loader._extract_launch_options(_SAMPLE_VDF, "3240220")
-        assert result is None
-
-    def test_has_launch_options(self):
-        result = asi_loader._extract_launch_options(_SAMPLE_VDF_WITH_OPTION, "3240220")
-        assert result == "-nobattleye"
-
-    def test_wrong_appid(self):
-        result = asi_loader._extract_launch_options(_SAMPLE_VDF_WITH_OPTION, "271590")
-        assert result is None
-
-
-class TestSetLaunchOptionsText:
-    def test_inserts_into_existing_block(self):
-        result = asi_loader._set_launch_options_text(_SAMPLE_VDF, "3240220", "-nobattleye")
-        assert result is not None
-        assert '"-nobattleye"' in result
-        # Verify it's extractable
-        assert asi_loader._extract_launch_options(result, "3240220") == "-nobattleye"
-
-    def test_replaces_existing_value(self):
-        result = asi_loader._set_launch_options_text(
-            _SAMPLE_VDF_WITH_OPTION, "3240220", "-nobattleye -windowed"
-        )
-        assert result is not None
-        assert asi_loader._extract_launch_options(result, "3240220") == "-nobattleye -windowed"
-
-    def test_creates_new_app_block(self):
-        result = asi_loader._set_launch_options_text(_SAMPLE_VDF, "271590", "-nobattleye")
-        assert result is not None
-        assert asi_loader._extract_launch_options(result, "271590") == "-nobattleye"
-        # Original app still intact
-        assert '"3240220"' in result
-
-
-class TestSetLaunchOption:
-    def test_sets_option_in_file(self, tmp_path):
-        vdf_file = tmp_path / "localconfig.vdf"
-        vdf_file.write_text(_SAMPLE_VDF, encoding="utf-8")
-
-        status = asi_loader._set_launch_option(vdf_file, "3240220", "-nobattleye")
+class TestEnsureNobattleye:
+    def test_creates_file_when_missing(self, tmp_path):
+        status = asi_loader.ensure_nobattleye(tmp_path, is_enhanced=True)
 
         assert status == "set"
-        new_text = vdf_file.read_text(encoding="utf-8")
-        assert "-nobattleye" in new_text
-        # Backup created
-        assert (tmp_path / "localconfig.vdf.bak").exists()
+        cmdline = tmp_path / "commandline.txt"
+        assert cmdline.exists()
+        assert "-nobattleye" in cmdline.read_text()
 
     def test_already_set(self, tmp_path):
-        vdf_file = tmp_path / "localconfig.vdf"
-        vdf_file.write_text(_SAMPLE_VDF_WITH_OPTION, encoding="utf-8")
+        (tmp_path / "commandline.txt").write_text("-nobattleye\n")
 
-        status = asi_loader._set_launch_option(vdf_file, "3240220", "-nobattleye")
+        status = asi_loader.ensure_nobattleye(tmp_path, is_enhanced=True)
 
         assert status == "already_set"
 
-    def test_appends_to_existing_options(self, tmp_path):
-        vdf_with_other = _SAMPLE_VDF_WITH_OPTION.replace("-nobattleye", "-windowed")
-        vdf_file = tmp_path / "localconfig.vdf"
-        vdf_file.write_text(vdf_with_other, encoding="utf-8")
+    def test_appends_to_existing_flags(self, tmp_path):
+        (tmp_path / "commandline.txt").write_text("-windowed\n")
 
-        status = asi_loader._set_launch_option(vdf_file, "3240220", "-nobattleye")
+        status = asi_loader.ensure_nobattleye(tmp_path, is_enhanced=False)
 
         assert status == "set"
-        new_text = vdf_file.read_text(encoding="utf-8")
-        opts = asi_loader._extract_launch_options(new_text, "3240220")
-        assert "-windowed" in opts
-        assert "-nobattleye" in opts
+        text = (tmp_path / "commandline.txt").read_text()
+        assert "-windowed" in text
+        assert "-nobattleye" in text
+
+    def test_write_failure_returns_failed(self, tmp_path):
+        # Make the target path a directory so write_text raises OSError.
+        (tmp_path / "commandline.txt").mkdir()
+
+        status = asi_loader.ensure_nobattleye(tmp_path, is_enhanced=True)
+
+        assert status == "failed"

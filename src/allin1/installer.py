@@ -174,6 +174,22 @@ def uninstall(config: Config) -> list[Path]:
         shutil.rmtree(data_dir)
         log.info("Removed %s/ data folder", ALLIN1_DATA_DIR)
 
+    # Remove -nobattleye from commandline.txt (or the whole file if it only
+    # contained that flag).
+    cmdline = gta_path / "commandline.txt"
+    if cmdline.exists():
+        try:
+            lines = cmdline.read_text(encoding="utf-8", errors="replace").splitlines()
+            remaining = [ln for ln in lines if ln.strip() != "-nobattleye"]
+            if remaining and any(ln.strip() for ln in remaining):
+                cmdline.write_text("\n".join(remaining) + "\n", encoding="utf-8")
+            else:
+                cmdline.unlink()
+                removed.append(cmdline)
+            log.info("Removed -nobattleye from commandline.txt")
+        except OSError:
+            pass
+
     # Note: We intentionally do NOT remove the ASI loader DLL
     # (dinput8.dll / dsound.dll) because other mods may depend on it.
 
