@@ -52,6 +52,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Restore NuGet packages
         run: dotnet restore script/ALLIN1.csproj -v normal
