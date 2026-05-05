@@ -262,17 +262,13 @@ namespace ALLIN1
                 // CREATE_PED_INSIDE_VEHICLE(vehicle, pedType, model,
                 //     seat, isNetwork, bScriptHostPed)
                 // pedType 26 = civilian, seat -1 = driver
-                int handle = Function.Call<int>(
+                Ped driver = Function.Call<Ped>(
                     Hash.CREATE_PED_INSIDE_VEHICLE,
                     veh.Handle, 26, pedModel.Hash, -1, true, true);
                 pedModel.MarkAsNoLongerNeeded();
 
-                if (handle != 0)
-                {
-                    var driver = new Ped(handle);
-                    if (driver.Exists())
-                        return driver;
-                }
+                if (driver != null && driver.Exists())
+                    return driver;
             }
 
             return null;
