@@ -33,6 +33,11 @@ DLL_FILENAME = "ALLIN1.dll"
 LAUNCHER_FILENAME = "ALLIN1-Launcher.exe"
 ALLIN1_DATA_DIR = "ALLIN1"  # Folder name in game root for loose data files
 
+# Proxy DLLs that BattlEye blocks.  Remove any leftover copies from previous
+# mod tool installations (Ultimate ASI Loader, ScriptHookV, etc.).
+PROXY_DLLS = ("dsound.dll", "dinput8.dll", "d3d11.dll", "version.dll")
+LEGACY_FILES = ("ALLIN1.asi",)  # Old filename before rename to .dll
+
 # Resolve directories relative to this source file (project root).
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _ASI_DIST_DIR = _PROJECT_ROOT / "asi" / "dist"
@@ -141,6 +146,9 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
     # --- Deploy data files to ALLIN1/ folder in game root ---
     _deploy_data_files(gta_path, result)
 
+    # --- Remove leftover proxy DLLs that trigger BattlEye ---
+    _clean_proxy_dlls(gta_path, result)
+
     # --- Deploy plugin DLL + launcher exe ---
     result.plugin_deployed, result.launcher_deployed = _deploy_plugin(gta_path)
 
@@ -157,13 +165,20 @@ def uninstall(config: Config) -> list[Path]:
     gta_path = resolve_gta_path(config)
     removed: list[Path] = []
 
-    # Remove plugin DLL and launcher exe
-    for fname in (DLL_FILENAME, LAUNCHER_FILENAME):
+    # Remove plugin DLL, launcher exe, legacy .asi, and proxy DLLs
+    for fname in (DLL_FILENAME, LAUNCHER_FILENAME, *LEGACY_FILES):
         fpath = gta_path / fname
         if fpath.exists():
             fpath.unlink()
             removed.append(fpath)
             log.info("Removed %s from GTA V directory", fname)
+
+    for dll in PROXY_DLLS:
+        p = gta_path / dll
+        if p.exists():
+            p.unlink()
+            removed.append(p)
+            log.info("Removed leftover proxy DLL: %s", dll)
 
     # Remove ALLIN1/ data folder
     data_dir = gta_path / ALLIN1_DATA_DIR
@@ -216,6 +231,29 @@ def _deploy_data_files(gta_path: Path, result: InstallResult) -> None:
             log.info("Deployed %s → %s", filename, dest)
 
     log.info("Deployed %d file(s) to %s/", len(result.files_deployed), data_dir)
+
+
+def _clean_proxy_dlls(gta_path: Path, result: InstallResult) -> None:
+    """Remove leftover proxy DLLs that BattlEye blocks at startup.
+
+    Previous mod tool installations (Ultimate ASI Loader, ScriptHookV, etc.)
+    may have placed proxy DLLs like dsound.dll or dinput8.dll in the game
+    root.  BattlEye blocks these before the game starts.
+    """
+    for dll in (*PROXY_DLLS, *LEGACY_FILES):
+        p = gta_path / dll
+        if p.exists():
+            try:
+                p.unlink()
+                result.warnings.append(
+                    f"Removed leftover {dll} (no longer needed)."
+                )
+                log.info("Removed leftover file: %s", dll)
+            except OSError as exc:
+                result.warnings.append(
+                    f"Could not remove {dll}: {exc}. Delete it manually."
+                )
+                log.warning("Failed to remove %s: %s", dll, exc)
 
 
 def _deploy_plugin(gta_path: Path) -> tuple[bool, bool]:

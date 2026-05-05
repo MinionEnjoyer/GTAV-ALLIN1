@@ -3,19 +3,19 @@
 // Bypasses BattlEye's proxy-DLL block by injecting after the game has
 // started, using the standard CreateRemoteThread + LoadLibraryA technique.
 //
-// Usage: place next to ALLIN1.dll in the GTA V root and run it.
-//        The launcher will start GTA V (via Steam) and inject the DLL.
+// Usage: place next to ALLIN1.dll in the GTA V root folder.
+//        1. Run ALLIN1-Launcher.exe
+//        2. Launch GTA V normally (through Steam / Rockstar Launcher)
+//        3. The launcher detects the game and injects automatically
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <shellapi.h>
 #include <tlhelp32.h>
 #include <shlwapi.h>
 #include <cstdio>
 #include <cstring>
 
 #pragma comment(lib, "shlwapi.lib")
-#pragma comment(lib, "shell32.lib")
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -24,12 +24,9 @@
 static const char* DLL_NAME         = "ALLIN1.dll";
 static const char* GAME_EXES[]      = { "GTA5.exe", "GTA5_Enhanced.exe" };
 static const int   GAME_EXE_COUNT   = 2;
-static const int   POLL_TIMEOUT_SEC = 60;
+static const int   POLL_TIMEOUT_SEC = 120;
 static const int   POLL_INTERVAL_MS = 1000;
-
-// Steam App IDs
-static const wchar_t* STEAM_URI_ENHANCED = L"steam://rungameid/3240220";
-static const wchar_t* STEAM_URI_LEGACY   = L"steam://rungameid/271590";
+static const int   INIT_DELAY_MS    = 5000;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,23 +54,17 @@ static DWORD FindProcess(const char* name) {
     return pid;
 }
 
-/// Find any running GTA V process.  Returns the PID or 0.
-static DWORD FindGameProcess() {
+/// Find any running GTA V process.  Returns the PID and sets exeName to the
+/// matched executable name, or returns 0 if not found.
+static DWORD FindGameProcess(const char** exeName) {
     for (int i = 0; i < GAME_EXE_COUNT; ++i) {
         DWORD pid = FindProcess(GAME_EXES[i]);
-        if (pid) return pid;
+        if (pid) {
+            if (exeName) *exeName = GAME_EXES[i];
+            return pid;
+        }
     }
     return 0;
-}
-
-/// Check which edition is installed by looking for GTA5_Enhanced.exe next to
-/// our own executable.
-static bool IsEnhanced() {
-    char path[MAX_PATH];
-    GetModuleFileNameA(nullptr, path, MAX_PATH);
-    PathRemoveFileSpecA(path);
-    PathAppendA(path, "GTA5_Enhanced.exe");
-    return GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES;
 }
 
 /// Build the full path to ALLIN1.dll (same directory as this exe).
@@ -146,7 +137,7 @@ static bool InjectDLL(DWORD pid, const char* dllPath) {
 // ---------------------------------------------------------------------------
 
 int main() {
-    printf("ALLIN1 Launcher — GTA V MP Vehicle Injector\n");
+    printf("ALLIN1 Launcher - GTA V MP Vehicle Injector\n");
     printf("=============================================\n\n");
 
     // 1. Locate ALLIN1.dll next to this exe.
@@ -161,47 +152,45 @@ int main() {
     }
     printf("[OK] Found %s\n", dllPath);
 
-    // 2. Check if game is already running.
-    DWORD pid = FindGameProcess();
+    // 2. Check if game is already running, otherwise wait for the user to
+    //    launch it.
+    const char* detectedExe = nullptr;
+    DWORD pid = FindGameProcess(&detectedExe);
     if (pid) {
-        printf("[OK] GTA V already running (PID %lu)\n", pid);
+        printf("[OK] %s already running (PID %lu)\n", detectedExe, pid);
     } else {
-        // Launch via Steam.
-        bool enhanced = IsEnhanced();
-        const wchar_t* uri = enhanced ? STEAM_URI_ENHANCED : STEAM_URI_LEGACY;
-        printf("[..] Launching GTA V %s via Steam...\n",
-               enhanced ? "Enhanced" : "Legacy");
-        ShellExecuteW(nullptr, L"open", uri, nullptr, nullptr, SW_SHOWNORMAL);
+        printf("[..] Waiting for GTA V to start...\n");
+        printf("     Launch GTA V now (through Steam or Rockstar Launcher).\n\n");
 
-        // 3. Wait for the game process to appear.
-        printf("[..] Waiting for GTA V to start");
         int waited = 0;
         while (waited < POLL_TIMEOUT_SEC) {
             Sleep(POLL_INTERVAL_MS);
             waited++;
-            printf(".");
-            pid = FindGameProcess();
+            if (waited % 10 == 0) {
+                printf("[..] Still waiting... (%d/%d sec)\n",
+                       waited, POLL_TIMEOUT_SEC);
+            }
+            pid = FindGameProcess(&detectedExe);
             if (pid) break;
         }
-        printf("\n");
 
         if (!pid) {
             printf("[ERROR] GTA V did not start within %d seconds.\n",
                    POLL_TIMEOUT_SEC);
-            printf("Launch the game manually, then run this launcher again.\n");
+            printf("Start GTA V first, then run this launcher again.\n");
             printf("\nPress Enter to exit...");
             getchar();
             return 1;
         }
-        printf("[OK] GTA V started (PID %lu)\n", pid);
+        printf("[OK] Detected %s (PID %lu)\n", detectedExe, pid);
 
         // Give the game a moment to initialise before injecting.
         printf("[..] Waiting for game to initialise...\n");
-        Sleep(5000);
+        Sleep(INIT_DELAY_MS);
     }
 
-    // 4. Inject.
-    printf("[..] Injecting %s...\n", DLL_NAME);
+    // 3. Inject.
+    printf("[..] Injecting %s into %s...\n", DLL_NAME, detectedExe);
     if (!InjectDLL(pid, dllPath)) {
         printf("\n[ERROR] Injection failed.\n");
         printf("Press Enter to exit...");

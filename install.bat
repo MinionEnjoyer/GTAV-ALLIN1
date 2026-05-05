@@ -177,8 +177,10 @@ echo.
 echo ============================================================
 echo   Installation complete!
 echo.
-echo   To play: run ALLIN1-Launcher.exe from your GTA V folder.
-echo   It will start the game and inject the mod automatically.
+echo   To play:
+echo     1. Run ALLIN1-Launcher.exe from your GTA V folder
+echo     2. Launch GTA V normally (through Steam / Rockstar Launcher)
+echo     3. The launcher detects the game and injects automatically
 echo.
 echo   Full log saved to: allin1.log
 echo ============================================================

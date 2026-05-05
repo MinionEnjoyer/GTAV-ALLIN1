@@ -88,8 +88,10 @@ def install_cmd(ctx: click.Context) -> None:
         click.echo("WARNING: ALLIN1.dll not found — build it or download from Releases.")
 
     click.echo()
-    click.echo("To play: run ALLIN1-Launcher.exe from your GTA V folder.")
-    click.echo("It will start the game and inject the mod automatically.")
+    click.echo("To play:")
+    click.echo("  1. Run ALLIN1-Launcher.exe")
+    click.echo("  2. Launch GTA V normally (through Steam or Rockstar Launcher)")
+    click.echo("  3. The launcher will detect the game and inject automatically")
 
 
 # Register with a user-friendly name
