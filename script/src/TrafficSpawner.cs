@@ -182,6 +182,15 @@ namespace ALLIN1
         //  Driven spawner (unchanged logic)                                   //
         // ------------------------------------------------------------------ //
 
+        // Civilian ped models guaranteed to exist on both Legacy and Enhanced.
+        private static readonly string[] CIV_PED_MODELS =
+        {
+            "a_m_y_stbla_01", "a_m_y_stbla_02", "a_f_y_business_01",
+            "a_m_y_business_01", "a_m_m_bevhills_01", "a_f_y_bevhills_01",
+            "a_m_y_genstreet_01", "a_f_y_genstreet_01", "a_m_y_hipster_01",
+            "a_f_y_hipster_01", "a_m_y_latino_01", "a_f_y_tourist_01",
+        };
+
         private bool SpawnDriven()
         {
             Vector3 playerPos = Game.Player.Character.Position;
@@ -197,15 +206,11 @@ namespace ALLIN1
 
             veh.IsEngineRunning = true;
 
-            // Use the native that spawns a random ped directly into the
-            // driver seat — more reliable than CreateRandomPed + warp.
-            Ped driver = Function.Call<Ped>(
-                Hash.CREATE_RANDOM_PED_AS_DRIVER, veh.Handle, true);
-
-            if (driver == null || !driver.Exists())
+            // Create a driver from a known civilian ped model and place
+            // directly into the driver seat.
+            Ped driver = CreateDriverForVehicle(veh, nodePos);
+            if (driver == null)
             {
-                // No driver — delete the vehicle so we don't leave
-                // driverless cars on the road.
                 veh.IsPersistent = true;
                 veh.Delete();
                 return false;
@@ -216,6 +221,47 @@ namespace ALLIN1
             veh.MarkAsNoLongerNeeded();
             _spawned.Add(veh);
             return true;
+        }
+
+        private Ped CreateDriverForVehicle(Vehicle veh, Vector3 pos)
+        {
+            // Try several ped models — some may not exist on Enhanced.
+            for (int i = 0; i < 3; i++)
+            {
+                string pedName = CIV_PED_MODELS[
+                    _rng.Next(CIV_PED_MODELS.Length)];
+                var pedModel = new Model(pedName);
+
+                if (!pedModel.IsInCdImage)
+                    continue;
+
+                pedModel.Request(2000);
+                DateTime deadline = DateTime.UtcNow.AddMilliseconds(2000);
+                while (!pedModel.IsLoaded)
+                {
+                    if (DateTime.UtcNow > deadline)
+                        break;
+                    Script.Wait(0);
+                }
+
+                if (!pedModel.IsLoaded)
+                {
+                    pedModel.MarkAsNoLongerNeeded();
+                    continue;
+                }
+
+                Ped driver = World.CreatePed(pedModel, pos);
+                pedModel.MarkAsNoLongerNeeded();
+
+                if (driver != null && driver.Exists())
+                {
+                    Function.Call(Hash.SET_PED_INTO_VEHICLE,
+                        driver.Handle, veh.Handle, -1); // -1 = driver seat
+                    return driver;
+                }
+            }
+
+            return null;
         }
 
         // ------------------------------------------------------------------ //
