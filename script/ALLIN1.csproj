@@ -12,7 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ScriptHookVDotNet3" Version="3.7.0" />
+    <PackageReference Include="ScriptHookVDotNet3" Version="3.6.0" />
   </ItemGroup>
 
 </Project>
