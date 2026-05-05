@@ -8,12 +8,14 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <shellapi.h>
 #include <tlhelp32.h>
 #include <shlwapi.h>
 #include <cstdio>
 #include <cstring>
 
 #pragma comment(lib, "shlwapi.lib")
+#pragma comment(lib, "shell32.lib")
 
 // ---------------------------------------------------------------------------
 // Constants
