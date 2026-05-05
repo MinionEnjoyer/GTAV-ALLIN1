@@ -206,9 +206,10 @@ namespace ALLIN1
 
             veh.IsEngineRunning = true;
 
-            // Create a driver from a known civilian ped model and place
-            // directly into the driver seat.
-            Ped driver = CreateDriverForVehicle(veh, nodePos);
+            // Create driver atomically inside the vehicle seat using
+            // CREATE_PED_INSIDE_VEHICLE — no intermediate frame where
+            // the ped exists outside the vehicle.
+            Ped driver = CreateDriverForVehicle(veh);
             if (driver == null)
             {
                 veh.IsPersistent = true;
@@ -216,16 +217,27 @@ namespace ALLIN1
                 return false;
             }
 
+            // Prevent ambient events from making the ped exit
+            driver.BlockPermanentEvents = true;
+
+            // Assign driving task
             driver.Task.CruiseWithVehicle(veh, 20f, DrivingStyle.Normal);
+
+            // Ensure the driving task survives MarkAsNoLongerNeeded
+            driver.KeepTaskWhenMarkedAsNoLongerNeeded = true;
+
+            // Release to ambient traffic AFTER everything is configured
             driver.MarkAsNoLongerNeeded();
             veh.MarkAsNoLongerNeeded();
             _spawned.Add(veh);
             return true;
         }
 
-        private Ped CreateDriverForVehicle(Vehicle veh, Vector3 pos)
+        private Ped CreateDriverForVehicle(Vehicle veh)
         {
-            // Try several ped models — some may not exist on Enhanced.
+            // Use CreatePedOnSeat which calls CREATE_PED_INSIDE_VEHICLE
+            // internally — atomic, single native, no frames yielded while
+            // the vehicle sits empty.
             for (int i = 0; i < 3; i++)
             {
                 string pedName = CIV_PED_MODELS[
@@ -235,31 +247,30 @@ namespace ALLIN1
                 if (!pedModel.IsInCdImage)
                     continue;
 
-                pedModel.Request(2000);
-                DateTime deadline = DateTime.UtcNow.AddMilliseconds(2000);
-                while (!pedModel.IsLoaded)
+                try
                 {
-                    if (DateTime.UtcNow > deadline)
-                        break;
-                    Script.Wait(0);
-                }
+                    Ped driver = veh.CreatePedOnSeat(
+                        VehicleSeat.Driver, pedModel);
+                    pedModel.MarkAsNoLongerNeeded();
 
-                if (!pedModel.IsLoaded)
+                    if (driver != null && driver.Exists())
+                        return driver;
+                }
+                catch
                 {
                     pedModel.MarkAsNoLongerNeeded();
-                    continue;
-                }
-
-                Ped driver = World.CreatePed(pedModel, pos);
-                pedModel.MarkAsNoLongerNeeded();
-
-                if (driver != null && driver.Exists())
-                {
-                    Function.Call(Hash.SET_PED_INTO_VEHICLE,
-                        driver.Handle, veh.Handle, -1); // -1 = driver seat
-                    return driver;
                 }
             }
+
+            // Fallback: CreateRandomPedOnSeat uses
+            // CREATE_RANDOM_PED_AS_DRIVER for the driver seat.
+            try
+            {
+                Ped driver = veh.CreateRandomPedOnSeat(VehicleSeat.Driver);
+                if (driver != null && driver.Exists())
+                    return driver;
+            }
+            catch { }
 
             return null;
         }
