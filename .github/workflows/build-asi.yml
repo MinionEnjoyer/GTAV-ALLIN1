@@ -19,16 +19,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
-      - name: Generate ScriptHookV import library
-        run: |
-          cd asi/lib/ScriptHookV
-          lib /def:ScriptHookV.def /out:ScriptHookV.lib /machine:x64
-
       - name: Configure CMake
         run: cmake -B asi/build -S asi -A x64
 

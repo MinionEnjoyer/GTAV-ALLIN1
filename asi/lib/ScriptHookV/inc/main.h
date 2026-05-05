@@ -8,7 +8,7 @@
 
 #include <windows.h>
 
-#define IMPORT extern "C" __declspec(dllimport)
+#define IMPORT __declspec(dllimport)
 
 /* ---- Script management ---- */
 
