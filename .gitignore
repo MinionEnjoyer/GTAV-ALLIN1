@@ -24,10 +24,11 @@ config.toml
 allin1.log
 .gta_path
 
-# ASI build artifacts (keep asi/dist/ tracked for pre-built binary)
+# Build artifacts (keep dist/ folders tracked for pre-built binaries)
 asi/build/
 
 !asi/dist/
+!script/dist/
 
 # Generated output files
 output/
