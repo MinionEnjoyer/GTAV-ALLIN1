@@ -51,8 +51,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Restore NuGet packages
+        run: dotnet restore script/ALLIN1.csproj -v normal
+
       - name: Build Release
-        run: dotnet build script/ALLIN1.csproj -c Release -o script/out
+        run: dotnet build script/ALLIN1.csproj -c Release -o script/out --no-restore -v normal
 
       - name: List output
         run: Get-ChildItem -Path script/out -Recurse | ForEach-Object { Write-Host $_.FullName }
