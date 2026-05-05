@@ -177,7 +177,7 @@ static bool SpawnOneVehicle() {
     // Mark as no longer needed by script so the game can clean up when far away
     ENTITY::SET_ENTITY_AS_NO_LONGER_NEEDED(&veh);
     if (driver != 0) {
-        ENTITY::SET_ENTITY_AS_NO_LONGER_NEEDED(reinterpret_cast<Entity*>(&driver));
+        ENTITY::SET_ENTITY_AS_NO_LONGER_NEEDED(&driver);
     }
 
     // Track it
