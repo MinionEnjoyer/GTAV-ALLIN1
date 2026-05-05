@@ -57,7 +57,7 @@ set_target_properties(ALLIN1_Launcher PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
-target_link_libraries(ALLIN1_Launcher PRIVATE shlwapi)
+target_link_libraries(ALLIN1_Launcher PRIVATE shlwapi shell32)
 
 # The .rc file embeds the UAC manifest (requireAdministrator).
 # Disable CMake's automatic manifest so they don't conflict.

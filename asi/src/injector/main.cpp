@@ -4,12 +4,13 @@
 // started, using the standard CreateRemoteThread + LoadLibraryA technique.
 //
 // Usage: place next to ALLIN1.dll in the GTA V root folder.
-//        1. Run ALLIN1-Launcher.exe  (requests admin via UAC prompt)
+//        1. Run ALLIN1-Launcher.exe  (auto-elevates to admin)
 //        2. Launch GTA V normally (through Steam / Rockstar Launcher)
 //        3. The launcher detects the game and injects automatically
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <shellapi.h>
 #include <tlhelp32.h>
 #include <shlwapi.h>
 #include <cstdio>
@@ -17,6 +18,7 @@
 
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "shell32.lib")
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -27,15 +29,54 @@ static const char* GAME_EXES[]      = { "GTA5.exe", "GTA5_Enhanced.exe" };
 static const int   GAME_EXE_COUNT   = 2;
 static const int   POLL_TIMEOUT_SEC = 120;
 static const int   POLL_INTERVAL_MS = 1000;
-static const int   INIT_DELAY_MS    = 5000;
+
+// GTA V RAGE engine window class — wait for this before injecting
+static const char* GAME_WINDOW_CLASS = "grcWindow";
 
 // ---------------------------------------------------------------------------
-// Privilege escalation
+// Admin / privilege helpers
 // ---------------------------------------------------------------------------
+
+/// Check if the current process is running elevated (admin).
+static bool IsElevated() {
+    BOOL elevated = FALSE;
+    HANDLE hToken = nullptr;
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
+        TOKEN_ELEVATION te{};
+        DWORD size = sizeof(te);
+        if (GetTokenInformation(hToken, TokenElevation, &te, sizeof(te), &size)) {
+            elevated = te.TokenIsElevated;
+        }
+        CloseHandle(hToken);
+    }
+    return elevated != FALSE;
+}
+
+/// Re-launch ourselves with admin rights via UAC "runas" verb.
+/// Returns true if the elevated process was started (caller should exit).
+static bool RelaunchAsAdmin() {
+    char exePath[MAX_PATH];
+    if (!GetModuleFileNameA(nullptr, exePath, MAX_PATH)) return false;
+
+    SHELLEXECUTEINFOA sei{};
+    sei.cbSize = sizeof(sei);
+    sei.lpVerb = "runas";
+    sei.lpFile = exePath;
+    sei.nShow = SW_SHOWNORMAL;
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+
+    if (ShellExecuteExA(&sei)) {
+        // Wait for the elevated process to finish so our console stays open
+        if (sei.hProcess) {
+            WaitForSingleObject(sei.hProcess, INFINITE);
+            CloseHandle(sei.hProcess);
+        }
+        return true;
+    }
+    return false;  // User declined UAC or error
+}
 
 /// Enable SeDebugPrivilege so we can open the game process with full access.
-/// Without this, VirtualAllocEx / WriteProcessMemory fail with ERROR_ACCESS_DENIED
-/// even when running as administrator.
 static bool EnableDebugPrivilege() {
     HANDLE hToken = nullptr;
     if (!OpenProcessToken(GetCurrentProcess(),
@@ -58,8 +99,6 @@ static bool EnableDebugPrivilege() {
     DWORD err = GetLastError();
     CloseHandle(hToken);
 
-    // AdjustTokenPrivileges returns TRUE even if it couldn't set the
-    // privilege — check GetLastError for ERROR_NOT_ALL_ASSIGNED.
     return ok && err == ERROR_SUCCESS;
 }
 
@@ -119,7 +158,6 @@ static bool InjectDLL(DWORD pid, const char* dllPath) {
     HANDLE hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
     if (!hProc) {
         printf("[ERROR] OpenProcess failed (err %lu).\n", GetLastError());
-        printf("        Make sure you ran this launcher as Administrator.\n");
         return false;
     }
 
@@ -175,15 +213,28 @@ int main() {
     printf("ALLIN1 Launcher - GTA V MP Vehicle Injector\n");
     printf("=============================================\n\n");
 
-    // 0. Acquire SeDebugPrivilege (required for cross-process memory access).
+    // 0. Self-elevate to admin if not already elevated.
+    if (!IsElevated()) {
+        printf("[..] Requesting administrator privileges...\n");
+        if (RelaunchAsAdmin()) {
+            return 0;  // Elevated copy is running, we can exit
+        }
+        printf("[ERROR] Administrator privileges are required.\n");
+        printf("Right-click ALLIN1-Launcher.exe and select 'Run as administrator'.\n");
+        printf("\nPress Enter to exit...");
+        getchar();
+        return 1;
+    }
+    printf("[OK] Running as administrator\n");
+
+    // 1. Acquire SeDebugPrivilege.
     if (EnableDebugPrivilege()) {
         printf("[OK] Debug privilege enabled\n");
     } else {
-        printf("[!!] Could not enable debug privilege.\n");
-        printf("     Make sure you run this launcher as Administrator.\n\n");
+        printf("[!!] Could not enable debug privilege — injection may fail.\n");
     }
 
-    // 1. Locate ALLIN1.dll next to this exe.
+    // 2. Locate ALLIN1.dll next to this exe.
     char dllPath[MAX_PATH];
     if (!GetDllPath(dllPath, MAX_PATH)) {
         printf("[ERROR] %s not found next to this executable.\n", DLL_NAME);
@@ -195,8 +246,7 @@ int main() {
     }
     printf("[OK] Found %s\n", dllPath);
 
-    // 2. Check if game is already running, otherwise wait for the user to
-    //    launch it.
+    // 3. Wait for game process.
     const char* detectedExe = nullptr;
     DWORD pid = FindGameProcess(&detectedExe);
     if (pid) {
@@ -226,14 +276,29 @@ int main() {
             return 1;
         }
         printf("[OK] Detected %s (PID %lu)\n", detectedExe, pid);
-
-        // Give the game a moment to initialise before injecting.
-        printf("[..] Waiting for game to initialise...\n");
-        Sleep(INIT_DELAY_MS);
     }
 
-    // 3. Inject.
-    printf("[..] Injecting %s into %s...\n", DLL_NAME, detectedExe);
+    // 4. Wait for the game window to appear (RAGE engine "grcWindow").
+    //    ScriptHookV does this — the game needs to be fully initialised
+    //    before injection works reliably.
+    printf("[..] Waiting for game window...\n");
+    int windowWait = 0;
+    while (windowWait < 120) {
+        HWND hwnd = FindWindowA(GAME_WINDOW_CLASS, nullptr);
+        if (hwnd) {
+            printf("[OK] Game window found\n");
+            break;
+        }
+        Sleep(1000);
+        windowWait++;
+    }
+
+    // Brief extra delay for the game to finish loading its subsystems
+    printf("[..] Waiting a moment before injection...\n");
+    Sleep(2000);
+
+    // 5. Inject.
+    printf("[..] Injecting %s into %s (PID %lu)...\n", DLL_NAME, detectedExe, pid);
     if (!InjectDLL(pid, dllPath)) {
         printf("\n[ERROR] Injection failed.\n");
         printf("Press Enter to exit...");
