@@ -182,6 +182,14 @@ namespace ALLIN1
         //  Driven spawner (unchanged logic)                                   //
         // ------------------------------------------------------------------ //
 
+        // Known ped models for fallback driver creation
+        private static readonly string[] FALLBACK_PED_MODELS =
+        {
+            "a_m_y_business_01", "a_m_y_downtown_01", "a_m_y_stwhi_02",
+            "a_f_y_business_01", "a_m_m_afriamer_01", "a_m_y_genstreet_01",
+            "a_f_y_tourist_01", "a_m_y_latino_01",
+        };
+
         private bool SpawnDriven()
         {
             Vector3 playerPos = Game.Player.Character.Position;
@@ -195,24 +203,109 @@ namespace ALLIN1
             if (veh == null)
                 return false;
 
+            // Give the game a frame to fully register the vehicle entity
+            // before attempting ped creation — may fix intermittent failures.
+            Script.Wait(0);
+
             veh.IsEngineRunning = true;
 
-            // Let the game pick a random ped model and create it directly
-            // in the driver seat (calls CREATE_RANDOM_PED_AS_DRIVER).
+            // Attempt 1: Let the game pick a random ped model
             Ped driver = null;
+            string pedMethod = "random";
             try
             {
                 driver = veh.CreateRandomPedOnSeat(VehicleSeat.Driver);
             }
             catch { }
 
-            // Verify the driver seat is actually occupied.
-            if (driver == null || !driver.Exists()
-                || veh.IsSeatFree(VehicleSeat.Driver))
+            bool driverExists = driver != null && driver.Exists();
+            bool seatFree = driverExists ? veh.IsSeatFree(VehicleSeat.Driver) : true;
+
+            // Attempt 2: If random ped failed, try explicit ped model
+            if (!driverExists || seatFree)
+            {
+                // Clean up failed attempt
+                if (driverExists)
+                {
+                    driver.IsPersistent = true;
+                    driver.Delete();
+                }
+
+                pedMethod = "explicit";
+                string pedModelName = FALLBACK_PED_MODELS[
+                    _rng.Next(FALLBACK_PED_MODELS.Length)];
+
+                var pedModel = new Model(pedModelName);
+                pedModel.Request(MODEL_LOAD_TIMEOUT);
+
+                DateTime deadline = DateTime.UtcNow.AddMilliseconds(MODEL_LOAD_TIMEOUT);
+                while (!pedModel.IsLoaded)
+                {
+                    if (DateTime.UtcNow > deadline)
+                        break;
+                    Script.Wait(0);
+                }
+
+                if (pedModel.IsLoaded)
+                {
+                    try
+                    {
+                        driver = veh.CreatePedOnSeat(VehicleSeat.Driver, pedModel);
+                    }
+                    catch { }
+
+                    pedModel.MarkAsNoLongerNeeded();
+                }
+
+                driverExists = driver != null && driver.Exists();
+                seatFree = driverExists ? veh.IsSeatFree(VehicleSeat.Driver) : true;
+            }
+
+            // Attempt 3: Raw native as last resort
+            if (!driverExists || seatFree)
+            {
+                if (driverExists)
+                {
+                    driver.IsPersistent = true;
+                    driver.Delete();
+                }
+
+                pedMethod = "native";
+                int pedHash = Function.Call<int>(Hash.GET_HASH_KEY,
+                    FALLBACK_PED_MODELS[_rng.Next(FALLBACK_PED_MODELS.Length)]);
+                Function.Call(Hash.REQUEST_MODEL, pedHash);
+
+                DateTime deadline = DateTime.UtcNow.AddMilliseconds(MODEL_LOAD_TIMEOUT);
+                while (!Function.Call<bool>(Hash.HAS_MODEL_LOADED, pedHash))
+                {
+                    if (DateTime.UtcNow > deadline)
+                        break;
+                    Script.Wait(0);
+                }
+
+                if (Function.Call<bool>(Hash.HAS_MODEL_LOADED, pedHash))
+                {
+                    driver = Function.Call<Ped>(
+                        Hash.CREATE_PED_INSIDE_VEHICLE,
+                        veh.Handle, 26, pedHash, -1, true, true);
+                    Function.Call(Hash.SET_MODEL_AS_NO_LONGER_NEEDED, pedHash);
+                }
+
+                driverExists = driver != null && driver.Exists();
+                seatFree = driverExists ? veh.IsSeatFree(VehicleSeat.Driver) : true;
+            }
+
+            // DEBUG: log model + method + result
+            string status = (driverExists && !seatFree) ? "~g~OK" : "~r~FAIL";
+            GTA.UI.Notification.Show(
+                $"~y~SPAWN~w~: {modelName} | {pedMethod} | {status}");
+
+            // If all attempts failed, delete the empty vehicle
+            if (!driverExists || seatFree)
             {
                 veh.IsPersistent = true;
                 veh.Delete();
-                if (driver != null && driver.Exists())
+                if (driverExists)
                 {
                     driver.IsPersistent = true;
                     driver.Delete();
