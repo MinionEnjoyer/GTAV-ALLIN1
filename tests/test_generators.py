@@ -18,14 +18,41 @@ def _make_vehicle(model="testcar", vehicle_class="compacts", traffic=None):
     )
 
 
+def _find_veh_group_models(root, group_name):
+    """Find all model names in a vehicle group by group name (case-insensitive)."""
+    veh_groups = root.find("vehGroups")
+    if veh_groups is None:
+        return []
+    for item in veh_groups.findall("Item"):
+        name_el = item.find("Name")
+        if name_el is not None and name_el.text and name_el.text.upper() == group_name.upper():
+            models = item.find("models")
+            if models is None:
+                return []
+            return [m.find("Name").text for m in models.findall("Item")]
+    return []
+
+
 class TestPopgroups:
     def test_create_base_template(self):
         xml = create_base_template()
         root = etree.fromstring(xml.encode())
-        groups = [el.text for el in root.iter("Name")]
-        assert "veh_poor" in groups
-        assert "veh_mid" in groups
-        assert "veh_rich" in groups
+        # Should have vehGroups with correct group names
+        veh_groups = root.find("vehGroups")
+        assert veh_groups is not None
+        names = [item.find("Name").text for item in veh_groups.findall("Item")]
+        assert "VEH_POOR" in names
+        assert "VEH_MID" in names
+        assert "VEH_RICH" in names
+
+    def test_create_base_template_has_flags(self):
+        xml = create_base_template()
+        root = etree.fromstring(xml.encode())
+        veh_groups = root.find("vehGroups")
+        for item in veh_groups.findall("Item"):
+            flags = item.find("flags")
+            assert flags is not None
+            assert "POPGROUP_AMBIENT" in flags.text
 
     def test_inject_vehicle_into_traffic(self):
         base = create_base_template()
@@ -33,16 +60,24 @@ class TestPopgroups:
         result = generate_popgroups_xml(base, vehicles, density="low")
 
         root = etree.fromstring(result.encode())
-        # Find the veh_mid group and check the vehicle was added
-        for group in root.iter("popcycle_group"):
-            name_el = group.find("Name")
-            if name_el is not None and name_el.text == "veh_mid":
-                models = group.find("Models")
-                names = [item.find("Name").text for item in models.findall("Item")]
-                assert "testcar" in names
-                break
-        else:
-            raise AssertionError("veh_mid group not found")
+        models = _find_veh_group_models(root, "VEH_MID")
+        assert "testcar" in models
+
+    def test_inject_vehicle_has_variations(self):
+        base = create_base_template()
+        vehicles = [_make_vehicle(traffic=["veh_mid"])]
+        result = generate_popgroups_xml(base, vehicles, density="low")
+
+        root = etree.fromstring(result.encode())
+        veh_groups = root.find("vehGroups")
+        for item in veh_groups.findall("Item"):
+            name_el = item.find("Name")
+            if name_el is not None and name_el.text == "VEH_MID":
+                models = item.find("models")
+                for model_item in models.findall("Item"):
+                    variations = model_item.find("Variations")
+                    assert variations is not None
+                    assert variations.get("type") == "NULL"
 
     def test_density_none_returns_unchanged(self):
         base = create_base_template()
@@ -60,15 +95,8 @@ class TestPopgroups:
         root_low = etree.fromstring(result_low.encode())
         root_high = etree.fromstring(result_high.encode())
 
-        def count_items(root):
-            for group in root.iter("popcycle_group"):
-                name_el = group.find("Name")
-                if name_el is not None and name_el.text == "veh_mid":
-                    return len(group.find("Models").findall("Item"))
-            return 0
-
-        assert count_items(root_low) == 1
-        assert count_items(root_high) == 4
+        assert len(_find_veh_group_models(root_low, "VEH_MID")) == 1
+        assert len(_find_veh_group_models(root_high, "VEH_MID")) == 4
 
     def test_rich_areas_only_supers(self):
         base = create_base_template()
@@ -76,21 +104,18 @@ class TestPopgroups:
         result = generate_popgroups_xml(base, vehicles, density="low", rich_areas_only_supers=True)
 
         root = etree.fromstring(result.encode())
-        for group in root.iter("popcycle_group"):
-            name_el = group.find("Name")
-            if name_el is not None and name_el.text == "veh_mid":
-                models = group.find("Models")
-                items = models.findall("Item") if models is not None else []
-                assert len(items) == 0, "Super car should not be in veh_mid with restriction"
+        mid_models = _find_veh_group_models(root, "VEH_MID")
+        assert len(mid_models) == 0, "Super car should not be in VEH_MID with restriction"
 
     def test_no_traffic_groups_skipped(self):
         base = create_base_template()
         vehicles = [_make_vehicle(traffic=[])]
         result = generate_popgroups_xml(base, vehicles, density="medium")
-        # Should be same as base (no items added)
         root = etree.fromstring(result.encode())
-        for group in root.iter("popcycle_group"):
-            models = group.find("Models")
+        # No items should have been added to any group
+        veh_groups = root.find("vehGroups")
+        for item in veh_groups.findall("Item"):
+            models = item.find("models")
             if models is not None:
                 assert len(models.findall("Item")) == 0
 

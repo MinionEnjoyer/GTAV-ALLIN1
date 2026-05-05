@@ -2,6 +2,23 @@
 
 Injects MP vehicle model names into the appropriate popgroups traffic
 categories so they appear as ambient traffic in single player.
+
+The popgroups.ymt XML schema uses this structure:
+  <CPopGroupList>
+    <pedGroups>...</pedGroups>
+    <vehGroups>
+      <Item>
+        <Name>VEH_POOR</Name>
+        <models>
+          <Item>
+            <Name>asea</Name>
+            <Variations type="NULL"/>
+          </Item>
+        </models>
+        <flags>POPGROUP_SCENARIO POPGROUP_AMBIENT</flags>
+      </Item>
+    </vehGroups>
+  </CPopGroupList>
 """
 
 from __future__ import annotations
@@ -23,17 +40,25 @@ DENSITY_MULTIPLIERS = {
     "high": 4,
 }
 
-# Base popgroups XML structure. In a real install this would be extracted from
-# the game's popgroups.ymt via CodeWalker, but we ship a minimal template that
-# contains the group names we need to inject into.
-BASE_GROUPS = [
-    "veh_poor",
-    "veh_mid",
-    "veh_rich",
-    "veh_freeway",
-    "veh_countryside_onroad",
-    "veh_boats",
+# Vehicle groups we inject into.  Names are UPPERCASE to match the game format.
+# The vehicle database uses lowercase (veh_poor) — we normalize on lookup.
+BASE_VEH_GROUPS = [
+    "VEH_POOR",
+    "VEH_MID",
+    "VEH_RICH",
+    "VEH_FREEWAY",
+    "VEH_COUNTRYSIDE_ONROAD",
+    "VEH_BOATS",
 ]
+
+
+def _add_vehicle_item(parent: etree._Element, model_name: str) -> None:
+    """Append a single vehicle <Item> to a <models> element."""
+    item = etree.SubElement(parent, "Item")
+    name = etree.SubElement(item, "Name")
+    name.text = model_name
+    variations = etree.SubElement(item, "Variations")
+    variations.set("type", "NULL")
 
 
 def generate_popgroups_xml(
@@ -48,10 +73,10 @@ def generate_popgroups_xml(
         base_xml: The base popgroups XML content (from template or game extract).
         vehicles: List of enabled vehicles to add.
         density: Traffic density level ("none", "low", "medium", "high").
-        rich_areas_only_supers: If True, super cars only go in veh_rich.
+        rich_areas_only_supers: If True, super cars only go in VEH_RICH.
 
     Returns:
-        Modified XML string ready to be converted back to .ymt format.
+        Modified XML string in the correct popgroups.ymt format.
     """
     multiplier = DENSITY_MULTIPLIERS.get(density, 2)
     if multiplier == 0:
@@ -64,59 +89,70 @@ def generate_popgroups_xml(
     parser = etree.XMLParser(remove_blank_text=True)
     root = etree.fromstring(base_xml.encode(), parser)
 
-    # Build a lookup of group name -> XML element
-    group_elements: dict[str, etree._Element] = {}
-    for group_el in root.iter("popcycle_group"):
-        name_el = group_el.find("Name")
-        if name_el is not None and name_el.text:
-            group_elements[name_el.text.strip().lower()] = group_el
+    # Build a lookup of group name (uppercase) -> <models> element.
+    # The game uses <vehGroups> -> <Item> -> <Name> + <models>.
+    group_models: dict[str, etree._Element] = {}
+
+    veh_groups_el = root.find("vehGroups")
+    if veh_groups_el is not None:
+        for item_el in veh_groups_el.findall("Item"):
+            name_el = item_el.find("Name")
+            if name_el is not None and name_el.text:
+                models_el = item_el.find("models")
+                if models_el is None:
+                    models_el = etree.SubElement(item_el, "models")
+                group_models[name_el.text.strip().upper()] = models_el
 
     for vehicle in vehicles:
         if not vehicle.traffic:
             continue
 
-        target_groups = list(vehicle.traffic)
+        target_groups = [g.upper() for g in vehicle.traffic]
 
         # If restricting supers to rich areas, remove non-rich groups
         if rich_areas_only_supers and vehicle.vehicle_class in ("super", "sportsclassics"):
-            target_groups = [g for g in target_groups if g == "veh_rich"]
+            target_groups = [g for g in target_groups if g == "VEH_RICH"]
             if not target_groups:
-                target_groups = ["veh_rich"]
+                target_groups = ["VEH_RICH"]
 
         for group_name in target_groups:
-            group_el = group_elements.get(group_name.lower())
-            if group_el is None:
-                continue
-
-            models_el = group_el.find("Models")
+            models_el = group_models.get(group_name)
             if models_el is None:
-                models_el = etree.SubElement(group_el, "Models")
+                continue
 
             # Add the vehicle model name N times based on density
             for _ in range(multiplier):
-                item = etree.SubElement(models_el, "Item")
-                name = etree.SubElement(item, "Name")
-                name.text = vehicle.model
+                _add_vehicle_item(models_el, vehicle.model)
 
     injected = sum(1 for v in vehicles if v.traffic)
     log.info("Injected %d vehicle(s) into traffic groups", injected)
 
-    return '<?xml version="1.0" encoding="UTF-8"?>\n' + etree.tostring(root, pretty_print=True, encoding="unicode")
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + etree.tostring(
+        root, pretty_print=True, encoding="unicode")
 
 
 def create_base_template() -> str:
     """Create a minimal base popgroups XML template.
 
     This is used when the user doesn't have a game-extracted popgroups.ymt.
-    It contains only the group definitions we inject into. A full install
-    should use the actual game file extracted via CodeWalker.
+    It contains only the vehicle group definitions we inject into.
+    For best results, extract the full popgroups.ymt from your game
+    using CodeWalker — it includes vanilla vehicles and ped groups.
     """
     root = etree.Element("CPopGroupList")
 
-    for group_name in BASE_GROUPS:
-        group = etree.SubElement(root, "popcycle_group")
-        name = etree.SubElement(group, "Name")
-        name.text = group_name
-        etree.SubElement(group, "Models")
+    # Empty pedGroups (vanilla peds would normally be here)
+    etree.SubElement(root, "pedGroups")
 
-    return '<?xml version="1.0" encoding="UTF-8"?>\n' + etree.tostring(root, pretty_print=True, encoding="unicode")
+    # Vehicle groups
+    veh_groups = etree.SubElement(root, "vehGroups")
+    for group_name in BASE_VEH_GROUPS:
+        item = etree.SubElement(veh_groups, "Item")
+        name = etree.SubElement(item, "Name")
+        name.text = group_name
+        etree.SubElement(item, "models")
+        flags = etree.SubElement(item, "flags")
+        flags.text = "POPGROUP_SCENARIO POPGROUP_AMBIENT"
+
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + etree.tostring(
+        root, pretty_print=True, encoding="unicode")
