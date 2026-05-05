@@ -4,7 +4,7 @@
 // started, using the standard CreateRemoteThread + LoadLibraryA technique.
 //
 // Usage: place next to ALLIN1.dll in the GTA V root folder.
-//        1. Run ALLIN1-Launcher.exe
+//        1. Run ALLIN1-Launcher.exe  (requests admin via UAC prompt)
 //        2. Launch GTA V normally (through Steam / Rockstar Launcher)
 //        3. The launcher detects the game and injects automatically
 
@@ -16,6 +16,7 @@
 #include <cstring>
 
 #pragma comment(lib, "shlwapi.lib")
+#pragma comment(lib, "advapi32.lib")
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -29,7 +30,41 @@ static const int   POLL_INTERVAL_MS = 1000;
 static const int   INIT_DELAY_MS    = 5000;
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Privilege escalation
+// ---------------------------------------------------------------------------
+
+/// Enable SeDebugPrivilege so we can open the game process with full access.
+/// Without this, VirtualAllocEx / WriteProcessMemory fail with ERROR_ACCESS_DENIED
+/// even when running as administrator.
+static bool EnableDebugPrivilege() {
+    HANDLE hToken = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(),
+                          TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
+        return false;
+    }
+
+    LUID luid{};
+    if (!LookupPrivilegeValueA(nullptr, "SeDebugPrivilege", &luid)) {
+        CloseHandle(hToken);
+        return false;
+    }
+
+    TOKEN_PRIVILEGES tp{};
+    tp.PrivilegeCount = 1;
+    tp.Privileges[0].Luid = luid;
+    tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+
+    BOOL ok = AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), nullptr, nullptr);
+    DWORD err = GetLastError();
+    CloseHandle(hToken);
+
+    // AdjustTokenPrivileges returns TRUE even if it couldn't set the
+    // privilege — check GetLastError for ERROR_NOT_ALL_ASSIGNED.
+    return ok && err == ERROR_SUCCESS;
+}
+
+// ---------------------------------------------------------------------------
+// Process discovery
 // ---------------------------------------------------------------------------
 
 /// Find a running process by name.  Returns the PID or 0 if not found.
@@ -75,15 +110,16 @@ static bool GetDllPath(char* out, DWORD size) {
     return GetFileAttributesA(out) != INVALID_FILE_ATTRIBUTES;
 }
 
+// ---------------------------------------------------------------------------
+// Injection
+// ---------------------------------------------------------------------------
+
 /// Inject a DLL into a target process.  Returns true on success.
 static bool InjectDLL(DWORD pid, const char* dllPath) {
-    HANDLE hProc = OpenProcess(
-        PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION |
-        PROCESS_VM_OPERATION  | PROCESS_VM_WRITE | PROCESS_VM_READ,
-        FALSE, pid);
+    HANDLE hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
     if (!hProc) {
-        printf("[ERROR] OpenProcess failed (err %lu). Try running as admin.\n",
-               GetLastError());
+        printf("[ERROR] OpenProcess failed (err %lu).\n", GetLastError());
+        printf("        Make sure you ran this launcher as Administrator.\n");
         return false;
     }
 
@@ -117,8 +153,7 @@ static bool InjectDLL(DWORD pid, const char* dllPath) {
         reinterpret_cast<LPTHREAD_START_ROUTINE>(loadLib),
         remoteMem, 0, nullptr);
     if (!hThread) {
-        printf("[ERROR] CreateRemoteThread failed (err %lu). "
-               "Try running as admin.\n", GetLastError());
+        printf("[ERROR] CreateRemoteThread failed (err %lu).\n", GetLastError());
         VirtualFreeEx(hProc, remoteMem, 0, MEM_RELEASE);
         CloseHandle(hProc);
         return false;
@@ -139,6 +174,14 @@ static bool InjectDLL(DWORD pid, const char* dllPath) {
 int main() {
     printf("ALLIN1 Launcher - GTA V MP Vehicle Injector\n");
     printf("=============================================\n\n");
+
+    // 0. Acquire SeDebugPrivilege (required for cross-process memory access).
+    if (EnableDebugPrivilege()) {
+        printf("[OK] Debug privilege enabled\n");
+    } else {
+        printf("[!!] Could not enable debug privilege.\n");
+        printf("     Make sure you run this launcher as Administrator.\n\n");
+    }
 
     // 1. Locate ALLIN1.dll next to this exe.
     char dllPath[MAX_PATH];

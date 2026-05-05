@@ -58,6 +58,13 @@ set_target_properties(ALLIN1_Launcher PROPERTIES
 
 target_link_libraries(ALLIN1_Launcher PRIVATE shlwapi)
 
+# Embed UAC manifest — launcher needs admin rights to inject into GTA V
+if(MSVC)
+    set_property(TARGET ALLIN1_Launcher APPEND_STRING PROPERTY
+        LINK_FLAGS " /MANIFEST:EMBED /MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/src/injector/launcher.manifest"
+    )
+endif()
+
 # ---------------------------------------------------------------------------
 # Release optimizations
 # ---------------------------------------------------------------------------

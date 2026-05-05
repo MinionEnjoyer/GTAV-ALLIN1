@@ -89,9 +89,13 @@ def install_cmd(ctx: click.Context) -> None:
 
     click.echo()
     click.echo("To play:")
-    click.echo("  1. Run ALLIN1-Launcher.exe")
+    click.echo("  1. Run ALLIN1-Launcher.exe (accept the admin/UAC prompt)")
     click.echo("  2. Launch GTA V normally (through Steam or Rockstar Launcher)")
     click.echo("  3. The launcher will detect the game and inject automatically")
+    click.echo()
+    click.echo("NOTE: Windows Defender may flag the launcher as a virus.")
+    click.echo("This is a false positive — any DLL injector triggers heuristic")
+    click.echo("detection. Add your GTA V folder to Defender's exclusion list.")
 
 
 # Register with a user-friendly name
