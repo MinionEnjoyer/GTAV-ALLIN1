@@ -69,22 +69,29 @@ def install_cmd(ctx: click.Context) -> None:
         click.echo(f"  {warning}")
 
     click.echo()
-    if result.asi_deployed:
-        click.echo("ALLIN1.asi deployed successfully.")
+    if result.dll_deployed:
+        click.echo("ALLIN1.dll deployed to scripts/ folder.")
     else:
-        click.echo("WARNING: ALLIN1.asi not found — build it or download from Releases.")
+        click.echo("WARNING: ALLIN1.dll not found — build it or download from Releases.")
 
     if not result.scripthookv_found:
         click.echo()
         click.echo("WARNING: ScriptHookV not found in your GTA V folder.")
-        click.echo("ALLIN1 requires ScriptHookV to load. Install it from:")
+        click.echo("ALLIN1 requires ScriptHookV. Install it from:")
         click.echo("  http://www.dev-c.com/gtav/scripthookv/")
     else:
         click.echo("ScriptHookV detected.")
 
+    if not result.shvdn_found:
+        click.echo()
+        click.echo("WARNING: ScriptHookVDotNet not found in your GTA V folder.")
+        click.echo("ALLIN1 requires ScriptHookVDotNet Enhanced. Install it from:")
+        click.echo("  https://github.com/Chiheb-Bacha/scripthookvdotnetenhanced/releases")
+    else:
+        click.echo("ScriptHookVDotNet detected.")
+
     click.echo()
-    click.echo("To play: launch GTA V normally. ScriptHookV will load ALLIN1.asi")
-    click.echo("and DLC vehicles will appear in traffic while you drive.")
+    click.echo("To play: launch GTA V normally. DLC vehicles will appear in traffic.")
 
 
 # Register with a user-friendly name

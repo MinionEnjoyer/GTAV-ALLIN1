@@ -1,14 +1,15 @@
 """Main installer orchestrator.
 
 Coordinates the install/uninstall flow: config loading, GTA V detection,
-and ASI plugin deployment.
+and ALLIN1 script deployment.
 
 File placement:
-- ALLIN1.asi → GTA V root — ASI plugin loaded by ScriptHookV at runtime.
-  The plugin discovers DLC vehicles via native API and spawns them in traffic.
+- <GTA V root>/scripts/ALLIN1.dll — SHVDN script loaded at runtime.
+  Spawns 444 GTA Online DLC vehicles into Story Mode traffic.
 
-Prerequisite: ScriptHookV must be installed separately by the user.
-It handles BattlEye bypass and ASI loading.
+Prerequisites (installed separately by the user):
+- ScriptHookV (dinput8.dll + ScriptHookV.dll)
+- ScriptHookVDotNet Enhanced (ScriptHookVDotNet.asi + ScriptHookVDotNet3.dll)
 """
 
 from __future__ import annotations
@@ -25,18 +26,16 @@ from allin1.vehicles.database import VehicleDatabase
 
 log = logging.getLogger("allin1.installer")
 
-ASI_FILENAME = "ALLIN1.asi"
+DLL_FILENAME = "ALLIN1.dll"
+SCRIPTS_DIR = "scripts"
 ALLIN1_DATA_DIR = "ALLIN1"  # Legacy data folder — cleaned up on install
 
 # Files from previous ALLIN1 versions to clean up
-LEGACY_FILES = ("ALLIN1.dll", "ALLIN1-Launcher.exe")
-
-# Proxy DLLs from other mod tools that can conflict
-PROXY_DLLS = ("dsound.dll", "dinput8.dll")
+LEGACY_FILES = ("ALLIN1.asi", "ALLIN1.dll", "ALLIN1-Launcher.exe")
 
 # Resolve directories relative to this source file (project root).
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_ASI_DIST_DIR = _PROJECT_ROOT / "asi" / "dist"
+_SCRIPT_DIST_DIR = _PROJECT_ROOT / "script" / "dist"
 
 
 def _is_enhanced(gta_path: Path) -> bool:
@@ -48,8 +47,9 @@ def _is_enhanced(gta_path: Path) -> bool:
 class InstallResult:
     gta_path: Path
     is_enhanced: bool = False
-    asi_deployed: bool = False
+    dll_deployed: bool = False
     scripthookv_found: bool = False
+    shvdn_found: bool = False
     battleye_status: str = ""
     warnings: list[str] = field(default_factory=list)
 
@@ -83,11 +83,14 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
     # --- Clean up files from previous ALLIN1 versions ---
     _clean_legacy_files(gta_path, result)
 
-    # --- Deploy ASI plugin ---
-    result.asi_deployed = _deploy_asi(gta_path)
+    # --- Deploy ALLIN1.dll script ---
+    result.dll_deployed = _deploy_script(gta_path)
 
     # --- Check for ScriptHookV ---
     result.scripthookv_found = _check_scripthookv(gta_path)
+
+    # --- Check for ScriptHookVDotNet ---
+    result.shvdn_found = _check_shvdn(gta_path)
 
     # --- Write -nobattleye to commandline.txt (belt-and-suspenders) ---
     result.battleye_status = asi_loader.ensure_nobattleye(gta_path, enhanced)
@@ -102,8 +105,16 @@ def uninstall(config: Config) -> list[Path]:
     gta_path = resolve_gta_path(config)
     removed: list[Path] = []
 
-    # Remove ASI plugin and legacy files
-    for fname in (ASI_FILENAME, *LEGACY_FILES):
+    # Remove script DLL from scripts/
+    scripts_dir = gta_path / SCRIPTS_DIR
+    dll_path = scripts_dir / DLL_FILENAME
+    if dll_path.exists():
+        dll_path.unlink()
+        removed.append(dll_path)
+        log.info("Removed %s from scripts/", DLL_FILENAME)
+
+    # Remove legacy files from game root
+    for fname in LEGACY_FILES:
         fpath = gta_path / fname
         if fpath.exists():
             fpath.unlink()
@@ -140,7 +151,7 @@ def uninstall(config: Config) -> list[Path]:
 
 def _clean_legacy_files(gta_path: Path, result: InstallResult) -> None:
     """Remove files from previous ALLIN1 versions."""
-    # Remove old injector/DLL files
+    # Remove old ASI / injector / DLL files from game root
     for fname in LEGACY_FILES:
         p = gta_path / fname
         if p.exists():
@@ -154,7 +165,7 @@ def _clean_legacy_files(gta_path: Path, result: InstallResult) -> None:
                 )
                 log.warning("Failed to remove %s: %s", fname, exc)
 
-    # Remove legacy ALLIN1/ data folder (no longer needed — native API approach)
+    # Remove legacy ALLIN1/ data folder
     data_dir = gta_path / ALLIN1_DATA_DIR
     if data_dir.exists():
         try:
@@ -170,23 +181,30 @@ def _clean_legacy_files(gta_path: Path, result: InstallResult) -> None:
             log.warning("Failed to remove %s: %s", data_dir, exc)
 
 
-def _deploy_asi(gta_path: Path) -> bool:
-    """Copy ALLIN1.asi to the GTA V root.  Returns True if deployed."""
-    src = _ASI_DIST_DIR / ASI_FILENAME
+def _deploy_script(gta_path: Path) -> bool:
+    """Copy ALLIN1.dll to GTA V scripts/ folder. Returns True if deployed."""
+    src = _SCRIPT_DIST_DIR / DLL_FILENAME
     if not src.exists():
         log.warning(
             "%s not found at %s — run the GitHub Actions build or "
             "download from Releases.",
-            ASI_FILENAME, _ASI_DIST_DIR,
+            DLL_FILENAME, _SCRIPT_DIST_DIR,
         )
         return False
-    dest = gta_path / ASI_FILENAME
+
+    scripts_dir = gta_path / SCRIPTS_DIR
+    scripts_dir.mkdir(exist_ok=True)
+    dest = scripts_dir / DLL_FILENAME
     shutil.copy2(src, dest)
-    log.info("Deployed %s → %s", ASI_FILENAME, dest)
+    log.info("Deployed %s → %s", DLL_FILENAME, dest)
     return True
 
 
 def _check_scripthookv(gta_path: Path) -> bool:
     """Check if ScriptHookV is installed in the game directory."""
-    shv_dll = gta_path / "ScriptHookV.dll"
-    return shv_dll.exists()
+    return (gta_path / "ScriptHookV.dll").exists()
+
+
+def _check_shvdn(gta_path: Path) -> bool:
+    """Check if ScriptHookVDotNet is installed in the game directory."""
+    return (gta_path / "ScriptHookVDotNet.asi").exists()
