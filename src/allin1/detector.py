@@ -78,6 +78,11 @@ def _detect_windows() -> Path | None:
         if _validate_gta_path(path):
             return path
 
+    # 6. Last resort: scan all drives for steamapps directories and GTA5.exe
+    found = _deep_scan_windows(drives)
+    if found:
+        return found
+
     return None
 
 
@@ -287,6 +292,71 @@ def _check_registry() -> Path | None:
                 continue
     except ImportError:
         pass
+    return None
+
+
+def _deep_scan_windows(drives: list[Path]) -> Path | None:
+    """Brute-force scan drives for GTA V installation.
+
+    Walks up to 3 levels deep on each drive looking for steamapps folders
+    and GTA5.exe. This catches non-standard install locations that the
+    VDF/registry methods miss.
+    """
+    gta_folder_names = {"grand theft auto v", "gtav", "gta v", "gta5"}
+    exe_names = {"gta5.exe", "gta5_enhanced.exe", "playgtav.exe"}
+
+    for drive in drives:
+        # Strategy 1: Find any steamapps/common/Grand Theft Auto V on this drive
+        # by scanning top-level and second-level directories for steamapps
+        try:
+            for depth1 in drive.iterdir():
+                if not depth1.is_dir():
+                    continue
+                # Check if this IS a steamapps dir
+                gta_via_steam = depth1 / "steamapps" / "common" / "Grand Theft Auto V"
+                if _validate_gta_path(gta_via_steam):
+                    return gta_via_steam
+                # Check one more level down
+                if depth1.name.lower() == "steamapps":
+                    gta_path = depth1 / "common" / "Grand Theft Auto V"
+                    if _validate_gta_path(gta_path):
+                        return gta_path
+                try:
+                    for depth2 in depth1.iterdir():
+                        if not depth2.is_dir():
+                            continue
+                        gta_via_steam2 = depth2 / "steamapps" / "common" / "Grand Theft Auto V"
+                        if _validate_gta_path(gta_via_steam2):
+                            return gta_via_steam2
+                        if depth2.name.lower() == "steamapps":
+                            gta_path2 = depth2 / "common" / "Grand Theft Auto V"
+                            if _validate_gta_path(gta_path2):
+                                return gta_path2
+                except (PermissionError, OSError):
+                    continue
+        except (PermissionError, OSError):
+            continue
+
+        # Strategy 2: Look for GTA V folder directly at top 2 levels
+        try:
+            for depth1 in drive.iterdir():
+                if not depth1.is_dir():
+                    continue
+                if depth1.name.lower() in gta_folder_names:
+                    if _validate_gta_path(depth1):
+                        return depth1
+                try:
+                    for depth2 in depth1.iterdir():
+                        if not depth2.is_dir():
+                            continue
+                        if depth2.name.lower() in gta_folder_names:
+                            if _validate_gta_path(depth2):
+                                return depth2
+                except (PermissionError, OSError):
+                    continue
+        except (PermissionError, OSError):
+            continue
+
     return None
 
 

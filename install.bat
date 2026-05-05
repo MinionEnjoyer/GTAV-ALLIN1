@@ -79,22 +79,44 @@ if not exist "config.toml" (
     echo [OK] Using existing config.toml
 )
 
-:: Run the installer
+:: Try auto-detection first, prompt for path if it fails
 echo.
-echo ============================================================
-echo   Installing GTA Online vehicles into Single Player...
-echo ============================================================
-echo.
+echo Searching for GTA V installation...
 allin1 install
-
 if %errorlevel% neq 0 (
     echo.
-    echo [ERROR] Installation failed. Check the error above.
-    echo If GTA V was not found, edit config.toml and set gta_path
-    echo to your GTA V installation directory.
+    echo [INFO] Auto-detection could not find GTA V.
     echo.
-    pause
-    exit /b 1
+    echo Please enter the full path to your GTA V installation folder.
+    echo Example: D:\SteamLibrary\steamapps\common\Grand Theft Auto V
+    echo.
+    set /p GTA_PATH="GTA V path: "
+    if "!GTA_PATH!"=="" (
+        echo [ERROR] No path entered. Exiting.
+        pause
+        exit /b 1
+    )
+
+    :: Write the path into config.toml
+    echo.
+    echo Updating config.toml with your GTA V path...
+    %PYTHON% -c "import re; p=open('config.toml').read(); p=re.sub(r'gta_path\s*=\s*\"[^\"]*\"', 'gta_path = \"' + r'!GTA_PATH!'.replace('\\','\\\\') + '\"', p); open('config.toml','w').write(p)"
+
+    echo.
+    echo ============================================================
+    echo   Installing GTA Online vehicles into Single Player...
+    echo ============================================================
+    echo.
+    allin1 install
+
+    if %errorlevel% neq 0 (
+        echo.
+        echo [ERROR] Installation failed. Check the error above.
+        echo Make sure the path you entered contains GTA5.exe.
+        echo.
+        pause
+        exit /b 1
+    )
 )
 
 echo.
