@@ -157,12 +157,13 @@ echo
 echo "============================================================"
 echo "  Installation complete!"
 echo
-echo "  Prerequisites (if not already installed):"
-echo "  - ASI Loader (dinput8.dll) in your GTA V folder"
-echo "  - OpenIV.asi (or OpenRPF for Enhanced Edition)"
+echo "  ALLIN1 has:"
+echo "  - Modified popgroups.ymt, dlclist.xml, gameconfig.xml"
+echo "  - Deployed ALLIN1.asi (DLC vehicle despawn fix)"
 echo
-echo "  These redirect the game to read from the mods/ folder."
-echo "  Download OpenIV from openiv.com if you haven't already."
+echo "  Prerequisite (if not already installed):"
+echo "  - ASI Loader (dinput8.dll) + OpenIV.asi in your GTA V folder"
+echo "    (Download OpenIV from openiv.com)"
 echo
 echo "  Full log saved to: allin1.log"
 echo "============================================================"

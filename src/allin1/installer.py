@@ -22,6 +22,12 @@ from allin1.vehicles.database import Vehicle, VehicleDatabase
 log = logging.getLogger("allin1.installer")
 
 
+ASI_FILENAME = "ALLIN1.asi"
+
+# Resolve the asi/dist/ directory relative to this source file.
+_ASI_DIST_DIR = Path(__file__).resolve().parent.parent.parent / "asi" / "dist"
+
+
 @dataclass
 class InstallResult:
     gta_path: Path
@@ -30,6 +36,7 @@ class InstallResult:
     dlc_packs_added: list[str] = field(default_factory=list)
     backup_dir: Path | None = None
     warnings: list[str] = field(default_factory=list)
+    asi_deployed: bool = False
 
 
 def resolve_gta_path(config: Config) -> Path:
@@ -154,15 +161,26 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
         )
         log.warning("gameconfig.xml not found — skipped")
 
+    # --- Deploy ASI plugin (DLC vehicle despawn fix) ---
+    result.asi_deployed = _deploy_asi(gta_path)
+
     log.info("=== Installation complete: %d files modified ===", len(result.files_modified))
     return result
 
 
 def uninstall(config: Config) -> list[Path]:
-    """Restore backed-up files to undo installation."""
+    """Restore backed-up files and remove ASI plugin."""
     log.info("=== Starting uninstall ===")
     gta_path = resolve_gta_path(config)
     restored = restore_backup(gta_path)
+
+    # Remove the ASI plugin from the game directory.
+    asi_dest = gta_path / ASI_FILENAME
+    if asi_dest.exists():
+        asi_dest.unlink()
+        restored.append(asi_dest)
+        log.info("Removed %s from GTA V directory", ASI_FILENAME)
+
     log.info("=== Uninstall complete: %d files restored ===", len(restored))
     return restored
 
@@ -193,3 +211,26 @@ def _load_gameconfig(mods_path: Path, orig_path: Path) -> str | None:
     if orig_path.exists():
         return orig_path.read_text(encoding="utf-8")
     return None
+
+
+def _deploy_asi(gta_path: Path) -> bool:
+    """Copy ALLIN1.asi to the GTA V root directory.
+
+    The ASI disables the DLC vehicle despawn mechanism in single player.
+    It's placed next to GTA5.exe (not in mods/) so the ASI loader picks it up.
+
+    Returns True if deployed successfully, False if the source binary is missing.
+    """
+    src = _ASI_DIST_DIR / ASI_FILENAME
+    if not src.exists():
+        log.warning(
+            "%s not found at %s — DLC despawn fix will NOT be active. "
+            "Build the ASI from asi/ or download a pre-built binary.",
+            ASI_FILENAME, _ASI_DIST_DIR,
+        )
+        return False
+
+    dest = gta_path / ASI_FILENAME
+    shutil.copy2(src, dest)
+    log.info("Deployed %s to %s", ASI_FILENAME, dest)
+    return True

@@ -80,16 +80,14 @@ def install_cmd(ctx: click.Context) -> None:
         click.echo(f"Warning: {warning}", err=True)
 
     click.echo()
-    click.echo("Installation complete.")
+    if result.asi_deployed:
+        click.echo("ALLIN1.asi deployed — DLC vehicle despawn fix is active.")
+    else:
+        click.echo("WARNING: ALLIN1.asi not found — DLC vehicles will be despawned.")
+        click.echo("Build the ASI from the asi/ directory or download a pre-built binary.")
+
     click.echo()
-    click.echo("IMPORTANT: GTA V single player actively despawns DLC vehicles.")
-    click.echo("You need one of the following for MP vehicles to appear in traffic:")
-    click.echo("  1. EnableMpCars ASI plugin (recommended, lightweight)")
-    click.echo("     https://github.com/xchgrbprsp/EnableMpCars-GTAV")
-    click.echo("  2. A trainer with 'Disable DLC Vehicle Despawn' option")
-    click.echo("     (e.g., Simple Trainer, Enhanced Native Trainer)")
-    click.echo("Without this, the game will remove DLC vehicles even if popgroups.ymt")
-    click.echo("is correctly configured.")
+    click.echo("Installation complete.")
 
 
 # Register with a user-friendly name
