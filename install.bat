@@ -30,7 +30,8 @@ if %errorlevel% neq 0 (
         echo Please install Python 3.10+ from https://www.python.org/downloads/
         echo Make sure to check "Add Python to PATH" during installation.
         echo.
-        pause
+        echo Press any key to exit...
+        pause >nul
         exit /b 1
     )
     set PYTHON=python3
@@ -46,14 +47,16 @@ for /f "tokens=1,2 delims=." %%a in ("%PYVER%") do (
 )
 if %PYMAJOR% lss 3 (
     echo [ERROR] Python 3.10+ is required. You have Python %PYVER%.
-    echo [%date% %time%] ERROR: Python %PYVER% too old (need 3.10+) >> %LOGFILE%
-    pause
+    echo [%date% %time%] ERROR: Python %PYVER% too old >> %LOGFILE%
+    echo Press any key to exit...
+    pause >nul
     exit /b 1
 )
 if %PYMAJOR% equ 3 if %PYMINOR% lss 10 (
     echo [ERROR] Python 3.10+ is required. You have Python %PYVER%.
-    echo [%date% %time%] ERROR: Python %PYVER% too old (need 3.10+) >> %LOGFILE%
-    pause
+    echo [%date% %time%] ERROR: Python %PYVER% too old >> %LOGFILE%
+    echo Press any key to exit...
+    pause >nul
     exit /b 1
 )
 echo [OK] Found Python %PYVER%
@@ -68,7 +71,8 @@ if not exist ".venv" (
     if %errorlevel% neq 0 (
         echo [ERROR] Failed to create virtual environment.
         echo [%date% %time%] ERROR: venv creation failed >> %LOGFILE%
-        pause
+        echo Press any key to exit...
+        pause >nul
         exit /b 1
     )
     echo [OK] Virtual environment created
@@ -82,11 +86,13 @@ echo.
 echo Installing dependencies...
 echo [%date% %time%] Installing dependencies... >> %LOGFILE%
 call .venv\Scripts\activate.bat
-pip install -e . --quiet 2>nul
+echo [%date% %time%] Activated venv >> %LOGFILE%
+pip install -e . --quiet
 if %errorlevel% neq 0 (
-    echo [ERROR] Failed to install dependencies.
+    echo [ERROR] Failed to install dependencies. See output above.
     echo [%date% %time%] ERROR: pip install failed >> %LOGFILE%
-    pause
+    echo Press any key to exit...
+    pause >nul
     exit /b 1
 )
 echo [OK] Dependencies installed
@@ -131,7 +137,8 @@ if %errorlevel% neq 0 (
     if "!GTA_PATH!"=="" (
         echo [ERROR] No path entered. Exiting.
         echo [%date% %time%] ERROR: No manual path entered >> %LOGFILE%
-        pause
+        echo Press any key to exit...
+        pause >nul
         exit /b 1
     )
 
@@ -159,7 +166,8 @@ if %errorlevel% neq 0 (
         echo See allin1.log for details.
         echo [%date% %time%] ERROR: Installation failed after manual path entry >> %LOGFILE%
         echo.
-        pause
+        echo Press any key to exit...
+        pause >nul
         exit /b 1
     )
 )
@@ -179,4 +187,3 @@ echo.
 echo   Full log saved to: allin1.log
 echo ============================================================
 echo.
-pause

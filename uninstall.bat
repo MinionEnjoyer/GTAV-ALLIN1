@@ -22,7 +22,6 @@ set /p CONFIRM="Are you sure you want to uninstall? (y/n): "
 if /i not "%CONFIRM%"=="y" (
     echo Cancelled.
     echo [%date% %time%] Uninstall cancelled by user >> %LOGFILE%
-    pause
     exit /b 0
 )
 
@@ -30,7 +29,8 @@ if /i not "%CONFIRM%"=="y" (
 if not exist ".venv" (
     echo [ERROR] Virtual environment not found. Was ALLIN1 installed?
     echo [%date% %time%] ERROR: .venv not found >> %LOGFILE%
-    pause
+    echo Press any key to exit...
+    pause >nul
     exit /b 1
 )
 
@@ -47,7 +47,8 @@ if %errorlevel% neq 0 (
     echo [ERROR] Uninstall failed. Check the error above.
     echo See allin1.log for details.
     echo [%date% %time%] ERROR: allin1 uninstall failed >> %LOGFILE%
-    pause
+    echo Press any key to exit...
+    pause >nul
     exit /b 1
 )
 
@@ -58,4 +59,3 @@ echo   Uninstall complete! Original files have been restored.
 echo   Full log saved to: allin1.log
 echo ============================================================
 echo.
-pause
