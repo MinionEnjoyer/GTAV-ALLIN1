@@ -141,10 +141,15 @@ namespace ALLIN1
         private const float BASE_W = 1280f;
         private const float BASE_H = 720f;
 
+        // ScriptHookV never frees DirectX textures, so we cap how many we load.
+        // 24 = two full pages of cards. Beyond this, cards show placeholders.
+        private const int MAX_TEXTURES = 24;
+
         private static readonly Dictionary<string, GTA.UI.CustomSprite> _spriteCache
             = new Dictionary<string, GTA.UI.CustomSprite>();
         private static readonly HashSet<string> _missingPreviews
             = new HashSet<string>();
+        private static bool _textureLimitReached;
 
         private static string _previewFolder;
 
@@ -158,24 +163,14 @@ namespace ALLIN1
             return _previewFolder;
         }
 
-        private static bool _loggedPreviewPath;
-
         internal static bool HasPreviewTexture(string model)
         {
-            if (!_loggedPreviewPath)
-            {
-                string folder = GetPreviewFolder();
-                bool exists = Directory.Exists(folder);
-                int count = exists ? Directory.GetFiles(folder, "*.jpg").Length : 0;
-                GTA.UI.Notification.Show(
-                    $"~b~Previews~w~: {folder} ({count} files, exists={exists})");
-                _loggedPreviewPath = true;
-            }
-
             if (_missingPreviews.Contains(model))
                 return false;
             if (_spriteCache.ContainsKey(model))
                 return true;
+            if (_textureLimitReached)
+                return false;
 
             string path = Path.Combine(GetPreviewFolder(), model + ".jpg");
             if (!File.Exists(path))
@@ -194,6 +189,9 @@ namespace ALLIN1
 
             if (!_spriteCache.TryGetValue(model, out var sprite))
             {
+                if (_textureLimitReached)
+                    return;
+
                 string path = Path.Combine(GetPreviewFolder(), model + ".jpg");
                 if (!File.Exists(path))
                 {
@@ -201,13 +199,25 @@ namespace ALLIN1
                     return;
                 }
 
-                sprite = new GTA.UI.CustomSprite(
-                    path,
-                    new SizeF(1f, 1f),
-                    new PointF(0f, 0f),
-                    Color.White);
-                sprite.Centered = true;
-                _spriteCache[model] = sprite;
+                try
+                {
+                    sprite = new GTA.UI.CustomSprite(
+                        path,
+                        new SizeF(1f, 1f),
+                        new PointF(0f, 0f),
+                        Color.White);
+                    sprite.Centered = true;
+                    _spriteCache[model] = sprite;
+
+                    if (_spriteCache.Count >= MAX_TEXTURES)
+                        _textureLimitReached = true;
+                }
+                catch
+                {
+                    _missingPreviews.Add(model);
+                    _textureLimitReached = true;
+                    return;
+                }
             }
 
             // Convert normalized 0.0-1.0 coords to 1280x720 base
