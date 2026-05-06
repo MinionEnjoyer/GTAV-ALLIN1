@@ -46,3 +46,9 @@ gbay_key = "F9"
 
 # When true, all GBAY purchases are free regardless of prices.
 gbay_free_mode = false
+
+# Max vehicles per safehouse garage (default: 4).
+garage_capacity = 4
+
+# Show debug markers at garage parking slots (for coordinate tuning).
+garage_debug = false
