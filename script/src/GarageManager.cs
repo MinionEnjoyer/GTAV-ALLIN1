@@ -130,7 +130,7 @@ namespace ALLIN1
 
         private static int _capacity = 4;
         private static bool _debug;
-        private static bool _enableLogging;
+        private static bool _enableLogging = true;
         private static bool _initialized;
 
         // ------------------------------------------------------------------ //
@@ -151,8 +151,6 @@ namespace ALLIN1
 
         private static void LogException(string context, Exception ex)
         {
-            if (!_enableLogging)
-                return;
             try
             {
                 File.AppendAllText(LOG_PATH,

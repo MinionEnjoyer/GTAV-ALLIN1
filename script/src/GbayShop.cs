@@ -68,7 +68,7 @@ namespace ALLIN1
         private bool _freeMode;
         private int _garageCapacity = 4;
         private bool _garageDebug;
-        private bool _enableLogging;
+        private bool _enableLogging = true;
 
         // --- LemonUI ---
         private ObjectPool _pool;
@@ -107,8 +107,6 @@ namespace ALLIN1
 
         private void LogException(string context, Exception ex)
         {
-            if (!_enableLogging)
-                return;
             try
             {
                 File.AppendAllText(LOG_PATH,

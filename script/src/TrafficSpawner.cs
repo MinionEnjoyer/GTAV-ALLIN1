@@ -129,7 +129,7 @@ namespace ALLIN1
             AppDomain.CurrentDomain.BaseDirectory, "scripts");
         private static readonly string CONFIG_PATH = Path.Combine(SCRIPTS_DIR, "ALLIN1.toml");
         private static readonly string LOG_PATH = Path.Combine(SCRIPTS_DIR, "ALLIN1_spawner.log");
-        private bool _enableLogging;
+        private bool _enableLogging = true;
         private bool _enableDLCPolice;
 
         // --- State ---
