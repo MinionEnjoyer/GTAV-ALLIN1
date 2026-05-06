@@ -52,59 +52,47 @@ namespace ALLIN1
         //  Safehouse definitions                                              //
         // ------------------------------------------------------------------ //
 
+        // Purchasable garages from vanilla GTA V Story Mode (Dynasty 8).
         // Coordinates are approximate -- use garage_debug = true to tune.
         internal static readonly Safehouse[] Safehouses =
         {
             new Safehouse
             {
-                Id = "michael_mansion",
-                Name = "De Santa Mansion",
+                Id = "grove_street",
+                Name = "Grove Street Garage",
+                Character = PedHash.Franklin,
+                Slots = new[]
+                {
+                    new ParkingSlot(-112.0f, -1714.0f, 28.5f, 320f),
+                    new ParkingSlot(-108.5f, -1717.0f, 28.5f, 320f),
+                    new ParkingSlot(-105.0f, -1720.0f, 28.5f, 320f),
+                    new ParkingSlot(-101.5f, -1723.0f, 28.5f, 320f),
+                },
+            },
+            new Safehouse
+            {
+                Id = "vinewood_garage",
+                Name = "Vinewood Garage",
                 Character = PedHash.Michael,
                 Slots = new[]
                 {
-                    new ParkingSlot(-813.5f, 183.1f, 72.2f, 120f),
-                    new ParkingSlot(-816.8f, 186.5f, 72.2f, 120f),
-                    new ParkingSlot(-820.1f, 189.9f, 72.2f, 120f),
-                    new ParkingSlot(-823.4f, 193.3f, 72.2f, 120f),
+                    new ParkingSlot(-285.0f, -333.0f, 30.0f, 160f),
+                    new ParkingSlot(-289.0f, -333.0f, 30.0f, 160f),
+                    new ParkingSlot(-285.0f, -339.0f, 30.0f, 160f),
+                    new ParkingSlot(-289.0f, -339.0f, 30.0f, 160f),
                 },
             },
             new Safehouse
             {
-                Id = "franklin_old",
-                Name = "Forum Drive",
-                Character = PedHash.Franklin,
-                Slots = new[]
-                {
-                    new ParkingSlot(-14.5f, -1438.5f, 31.1f, 0f),
-                    new ParkingSlot(-18.0f, -1438.5f, 31.1f, 0f),
-                    new ParkingSlot(-14.5f, -1444.0f, 31.1f, 180f),
-                    new ParkingSlot(-18.0f, -1444.0f, 31.1f, 180f),
-                },
-            },
-            new Safehouse
-            {
-                Id = "franklin_new",
-                Name = "Whispymound Drive",
-                Character = PedHash.Franklin,
-                Slots = new[]
-                {
-                    new ParkingSlot(7.8f, 543.8f, 176.0f, 250f),
-                    new ParkingSlot(4.2f, 542.0f, 176.0f, 250f),
-                    new ParkingSlot(0.6f, 540.2f, 176.0f, 250f),
-                    new ParkingSlot(-3.0f, 538.4f, 176.0f, 250f),
-                },
-            },
-            new Safehouse
-            {
-                Id = "trevor_trailer",
-                Name = "Sandy Shores",
+                Id = "pillbox_hill",
+                Name = "Pillbox Hill Garage",
                 Character = PedHash.Trevor,
                 Slots = new[]
                 {
-                    new ParkingSlot(1972.0f, 3818.0f, 33.4f, 30f),
-                    new ParkingSlot(1976.0f, 3818.0f, 33.4f, 30f),
-                    new ParkingSlot(1972.0f, 3822.0f, 33.4f, 30f),
-                    new ParkingSlot(1976.0f, 3822.0f, 33.4f, 30f),
+                    new ParkingSlot(-290.0f, -1013.0f, 27.0f, 340f),
+                    new ParkingSlot(-294.0f, -1013.0f, 27.0f, 340f),
+                    new ParkingSlot(-290.0f, -1019.0f, 27.0f, 340f),
+                    new ParkingSlot(-294.0f, -1019.0f, 27.0f, 340f),
                 },
             },
         };
