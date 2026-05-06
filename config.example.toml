@@ -35,7 +35,7 @@ disabled_vehicles = []
 
 [script]
 # Write debug info to scripts/ALLIN1.log (useful for troubleshooting).
-enable_logging = false
+enable_logging = true
 
 # Replace vanilla police cars with DLC police vehicles.
 enable_dlc_police = false

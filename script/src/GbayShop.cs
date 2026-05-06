@@ -114,7 +114,7 @@ namespace ALLIN1
             _freeMode = false;
             _garageCapacity = 4;
             _garageDebug = false;
-            _enableLogging = false;
+            _enableLogging = true;
 
             if (!File.Exists(CONFIG_PATH))
                 return;

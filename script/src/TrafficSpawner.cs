@@ -159,7 +159,7 @@ namespace ALLIN1
 
         private void LoadConfig()
         {
-            _enableLogging = false;
+            _enableLogging = true;
             _enableDLCPolice = false;
 
             if (!File.Exists(CONFIG_PATH))
