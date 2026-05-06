@@ -84,13 +84,6 @@ namespace ALLIN1
 
         public GbayShop()
         {
-            try
-            {
-                File.AppendAllText(LOG_PATH,
-                    $"[{DateTime.Now:HH:mm:ss}] GbayShop constructor called{Environment.NewLine}");
-            }
-            catch { }
-
             Tick += OnTick;
             KeyDown += OnKeyDown;
             Interval = 0;
@@ -266,6 +259,7 @@ namespace ALLIN1
                 var submenuItem = new NativeSubmenuItem(subMenu, _mainMenu,
                     $"{cat.Label} ({cat.Models.Length})");
                 submenuItem.AltTitle = $"{cat.Models.Length}";
+                _mainMenu.Add(submenuItem);
             }
 
             // --- My Garages submenu ---
@@ -275,6 +269,7 @@ namespace ALLIN1
 
             var garagesItem = new NativeSubmenuItem(_garagesMenu, _mainMenu, "My Garages");
             garagesItem.AltTitle = ">";
+            _mainMenu.Add(garagesItem);
 
             _built = true;
             Log($"Menus built: {CATEGORIES.Length} categories");
@@ -532,6 +527,7 @@ namespace ALLIN1
                     var shItem = new NativeSubmenuItem(shMenu, _garagesMenu,
                         $"{sh.Name} ({used}/{cap})");
                     shItem.AltTitle = $"{used}/{cap}";
+                    _garagesMenu.Add(shItem);
                 }
             }
             catch (Exception ex)
