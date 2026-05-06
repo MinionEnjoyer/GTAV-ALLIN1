@@ -587,6 +587,29 @@ namespace ALLIN1
             }
         }
 
+        /// <summary>
+        /// Check if the nearest road node has the OFF_ROAD flag set.
+        /// Uses GET_VEHICLE_NODE_PROPERTIES (0x0568566ACBB5DEDC).
+        /// Flag 1 = OFF_ROAD (dirt roads, alleys, carparks).
+        /// </summary>
+        private bool IsOnOffroad(Vector3 pos)
+        {
+            using (var outDensity = new OutputArgument())
+            using (var outFlags = new OutputArgument())
+            {
+                bool found = Function.Call<bool>(
+                    (Hash)0x0568566ACBB5DEDC,
+                    pos.X, pos.Y, pos.Z,
+                    outDensity, outFlags);
+
+                if (!found)
+                    return false;
+
+                int flags = outFlags.GetResult<int>();
+                return (flags & 1) != 0;
+            }
+        }
+
         private bool IsPoliceEligible(Vehicle veh, Ped player, Vector3 playerPos)
         {
             if (veh == null || !veh.Exists())
@@ -622,6 +645,9 @@ namespace ALLIN1
             if (dist < MIN_REPLACE_DIST)
                 return false;
             if (veh.IsOnScreen)
+                return false;
+            // Skip vehicles on dirt/offroad roads
+            if (IsOnOffroad(veh.Position))
                 return false;
 
             // Don't touch police with mission peds
@@ -682,6 +708,9 @@ namespace ALLIN1
                 return false;
 
             if (veh.IsOnScreen)
+                return false;
+            // Skip vehicles on dirt/offroad roads
+            if (IsOnOffroad(veh.Position))
                 return false;
 
             Ped driver = veh.Driver;
