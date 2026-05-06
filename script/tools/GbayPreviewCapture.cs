@@ -34,7 +34,8 @@ namespace ALLIN1
 
         // Timing (in frames)
         private const int SETTLE_FRAMES = 30;  // frames to wait after spawn for model to load
-        private const int CAPTURE_FRAME = 1;   // frames after settle to capture (HUD hidden)
+        private const int CLEAN_FRAMES = 5;    // extra frames with no UI drawn before capture
+        private const int CAPTURE_FRAME = 1;   // frames after clean period to capture
 
         // State
         private bool _active;
@@ -48,7 +49,8 @@ namespace ALLIN1
         private float _savedPlayerHeading;
         private string _outputDir;
         private bool _settling;   // waiting for vehicle to render
-        private bool _capturing;  // HUD hidden, about to capture
+        private bool _cleaning;   // drawing nothing so HUD/notifications fade
+        private bool _capturing;  // about to capture clean frame
 
         // Screen dimensions (cached on start)
         private int _screenW;
@@ -79,8 +81,11 @@ namespace ALLIN1
 
             GbayInput.DisableGameControls();
 
-            // Hide game HUD elements
+            // Hide game HUD and radar every frame
             Function.Call(Hash.HIDE_HUD_AND_RADAR_THIS_FRAME);
+
+            // Suppress notification feed so nothing bleeds into captures
+            Function.Call(Hash.THEFEED_FLUSH_QUEUE);
 
             // Keep vehicle frozen
             if (_vehicle != null && _vehicle.Exists())
@@ -89,27 +94,44 @@ namespace ALLIN1
                 Function.Call(Hash.SET_VEHICLE_DIRT_LEVEL, _vehicle, 0f);
             }
 
-            // State machine: settle -> capture -> next
+            // State machine: settle -> clean -> capture -> next
             if (_settling)
             {
                 _frameCounter++;
                 if (_frameCounter >= SETTLE_FRAMES)
                 {
                     _settling = false;
+                    _cleaning = true;
+                    _frameCounter = 0;
+                }
+                // Draw progress only during settling (not during clean/capture)
+                DrawProgress("Loading...");
+                return;
+            }
+
+            if (_cleaning)
+            {
+                // Draw absolutely nothing for a few frames so any leftover
+                // HUD elements, notifications, and subtitles fully clear.
+                Function.Call(Hash.HIDE_HUD_AND_RADAR_THIS_FRAME);
+                GTA.UI.Screen.ShowSubtitle("", 1); // clear any subtitle
+                _frameCounter++;
+                if (_frameCounter >= CLEAN_FRAMES)
+                {
+                    _cleaning = false;
                     _capturing = true;
                     _frameCounter = 0;
                 }
-                // Draw progress while settling
-                DrawProgress("Loading...");
                 return;
             }
 
             if (_capturing)
             {
+                // This frame is completely clean -- capture it
+                Function.Call(Hash.HIDE_HUD_AND_RADAR_THIS_FRAME);
                 _frameCounter++;
                 if (_frameCounter >= CAPTURE_FRAME)
                 {
-                    // Take screenshot this frame (no HUD drawn yet)
                     CaptureScreenshot();
                     _capturing = false;
                     _frameCounter = 0;
@@ -118,7 +140,6 @@ namespace ALLIN1
                     _currentIndex++;
                     if (_currentIndex >= VehicleList.All.Length)
                     {
-                        // All done
                         StopCapture();
                         GTA.UI.Notification.Show(
                             $"~g~Preview Capture complete!~w~\n" +
@@ -131,9 +152,6 @@ namespace ALLIN1
                 }
                 return;
             }
-
-            // Draw progress overlay
-            DrawProgress("Capturing...");
         }
 
         private void StartCapture()
@@ -180,11 +198,8 @@ namespace ALLIN1
             _camera = World.CreateCamera(Vector3.Zero, Vector3.Zero, CAM_FOV);
             World.RenderingCamera = _camera;
 
-            GTA.UI.Notification.Show(
-                $"~g~Preview Capture~w~ started.\n" +
-                $"Capturing {VehicleList.All.Length} vehicles...\n" +
-                $"Output: scripts/previews/\n" +
-                $"Press ~b~F10~w~ to stop.");
+            GTA.UI.Screen.ShowSubtitle(
+                $"~g~Preview Capture~w~ started: {VehicleList.All.Length} vehicles. F10 to stop.", 3000);
 
             // Spawn first vehicle
             SpawnCurrent();
@@ -194,6 +209,7 @@ namespace ALLIN1
         {
             _active = false;
             _settling = false;
+            _cleaning = false;
             _capturing = false;
 
             // Re-enable traffic spawner
