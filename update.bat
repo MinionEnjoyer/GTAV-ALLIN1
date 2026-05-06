@@ -51,7 +51,6 @@ echo.
 set BASE_URL=https://raw.githubusercontent.com/MinionEnjoyer/GTAV-ALLIN1/main
 set DLL_URL=%BASE_URL%/script/dist/ALLIN1.dll
 set LEMON_URL=%BASE_URL%/script/dist/LemonUI.SHVDN3.dll
-set ASI_URL=%BASE_URL%/asi/dist/ALLIN1.asi
 set CONFIG_URL=%BASE_URL%/config.example.toml
 
 :: Download ALLIN1.dll
@@ -78,25 +77,11 @@ if %errorlevel% neq 0 (
 )
 echo [OK] LemonUI.SHVDN3.dll updated
 
-:: Download ALLIN1.asi -- download to temp first in case GTA dir needs admin
-echo Downloading ALLIN1.asi...
-echo [%date% %time%] Downloading ALLIN1.asi >> %LOGFILE%
-curl --fail -sL -o "%TEMP%\ALLIN1.asi" "%ASI_URL%" 2>> %LOGFILE%
-if %errorlevel% neq 0 (
-    echo [ERROR] Failed to download ALLIN1.asi
-    echo [%date% %time%] ERROR: curl failed for ALLIN1.asi >> %LOGFILE%
-    pause >nul
-    exit /b 1
-)
-copy /y "%TEMP%\ALLIN1.asi" "!GTA_PATH!\ALLIN1.asi" >nul 2>> %LOGFILE%
-if %errorlevel% neq 0 (
-    echo [WARN] Could not copy ALLIN1.asi to GTA V folder (may need admin).
-    echo [WARN] File saved to: %TEMP%\ALLIN1.asi
-    echo [WARN] Manually copy it to: !GTA_PATH!\ALLIN1.asi
-    echo [%date% %time%] WARN: copy ALLIN1.asi failed, saved to temp >> %LOGFILE%
-) else (
-    del /q "%TEMP%\ALLIN1.asi" >nul 2>&1
-    echo [OK] ALLIN1.asi updated
+:: Remove legacy ASI if present (traffic spawner is now in the DLL)
+if exist "!GTA_PATH!\ALLIN1.asi" (
+    del /q "!GTA_PATH!\ALLIN1.asi" >nul 2>&1
+    echo [OK] Removed legacy ALLIN1.asi (no longer needed)
+    echo [%date% %time%] Removed legacy ALLIN1.asi >> %LOGFILE%
 )
 
 :: Update config example (don't overwrite user config)
@@ -119,7 +104,6 @@ echo.
 echo   Files updated:
 echo     !SCRIPTS_DIR!\ALLIN1.dll
 echo     !SCRIPTS_DIR!\LemonUI.SHVDN3.dll
-echo     !GTA_PATH!\ALLIN1.asi
 echo.
 echo   Launch GTA V to use the latest version.
 echo ============================================================
