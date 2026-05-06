@@ -73,10 +73,19 @@ def generate(db: VehicleDatabase, prices: dict[str, int]) -> str:
         w("        };")
         w("")
 
+    # Deduplicate by model name — vehicles can appear in multiple classes
+    # but dictionary keys must be unique.
+    seen: set[str] = set()
+    unique_vehicles = []
+    for v in db.all_vehicles:
+        if v.model not in seen:
+            seen.add(v.model)
+            unique_vehicles.append(v)
+
     # --- DisplayNames dictionary ---
     w("        internal static readonly Dictionary<string, string> DisplayNames = new Dictionary<string, string>")
     w("        {")
-    for v in db.all_vehicles:
+    for v in unique_vehicles:
         escaped = v.name.replace('"', '\\"')
         w(f'            {{ "{v.model}", "{escaped}" }},')
     w("        };")
@@ -85,7 +94,7 @@ def generate(db: VehicleDatabase, prices: dict[str, int]) -> str:
     # --- Prices dictionary ---
     w("        internal static readonly Dictionary<string, int> Prices = new Dictionary<string, int>")
     w("        {")
-    for v in db.all_vehicles:
+    for v in unique_vehicles:
         price = prices.get(v.model, 0)
         w(f'            {{ "{v.model}", {price} }},')
     w("        };")
@@ -94,7 +103,7 @@ def generate(db: VehicleDatabase, prices: dict[str, int]) -> str:
     # --- ClassNames dictionary (model -> class display name) ---
     w("        internal static readonly Dictionary<string, string> ClassNames = new Dictionary<string, string>")
     w("        {")
-    for v in db.all_vehicles:
+    for v in unique_vehicles:
         cs_name = CLASS_NAMES.get(v.vehicle_class, v.vehicle_class.capitalize())
         w(f'            {{ "{v.model}", "{cs_name}" }},')
     w("        };")
