@@ -498,6 +498,13 @@ namespace ALLIN1
                 catch { passengers = null; }
             }
 
+            Log($"  ReplaceVehicle: hadDriver={hadDriver} speed={speed:F1} passengers={passengers?.Length ?? 0}");
+
+            // Make driver persistent before deleting vehicle so they don't
+            // despawn when their vehicle is removed.
+            if (hadDriver)
+                driver.IsPersistent = true;
+
             // Remove old vehicle
             old.IsPersistent = true;
             old.Delete();
@@ -505,27 +512,75 @@ namespace ALLIN1
             // Create replacement
             Vehicle replacement = LoadAndCreateVehicle(newModelName, pos, heading);
             if (replacement == null)
+            {
+                // Vehicle creation failed — clean up orphaned driver
+                if (hadDriver && driver.Exists())
+                {
+                    Log($"  ReplaceVehicle: vehicle creation failed, deleting orphaned driver");
+                    driver.Delete();
+                }
                 return;
+            }
 
             if (hadDriver && driver.Exists())
             {
                 // Transfer driver
                 driver.Task.WarpIntoVehicle(replacement, VehicleSeat.Driver);
 
-                if (speed > 1f)
+                // Verify the warp actually worked
+                Script.Wait(0);
+                bool driverInSeat = !replacement.IsSeatFree(VehicleSeat.Driver);
+                Log($"  ReplaceVehicle: driver warp driverInSeat={driverInSeat}");
+
+                if (!driverInSeat)
                 {
-                    replacement.Speed = speed;
-                    // TASK_VEHICLE_DRIVE_WANDER with normal civilian style
-                    Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER,
-                        driver.Handle, replacement.Handle,
-                        speed, 786603);
+                    // Warp failed — create a new driver instead
+                    Log($"  ReplaceVehicle: warp failed, creating fallback driver");
+                    driver.IsPersistent = true;
+                    driver.Delete();
+
+                    Ped newDriver = null;
+                    try
+                    {
+                        newDriver = replacement.CreateRandomPedOnSeat(VehicleSeat.Driver);
+                    }
+                    catch { }
+
+                    if (newDriver != null && newDriver.Exists())
+                    {
+                        driver = newDriver;
+                        driverInSeat = true;
+                        Log($"  ReplaceVehicle: fallback driver created OK");
+                    }
+                    else
+                    {
+                        Log($"  ReplaceVehicle: fallback driver FAILED — car will be empty");
+                    }
+                }
+
+                if (driverInSeat)
+                {
+                    if (speed > 1f)
+                    {
+                        replacement.Speed = speed;
+                        Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER,
+                            driver.Handle, replacement.Handle,
+                            speed, 786603);
+                    }
+                    else
+                    {
+                        replacement.IsEngineRunning = false;
+                    }
+
+                    Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS,
+                        driver.Handle, true);
+                    Function.Call(Hash.SET_PED_KEEP_TASK, driver.Handle, true);
+                    driver.MarkAsNoLongerNeeded();
                 }
                 else
                 {
                     replacement.IsEngineRunning = false;
                 }
-
-                driver.MarkAsNoLongerNeeded();
 
                 // Transfer passengers
                 if (passengers != null)
@@ -544,6 +599,7 @@ namespace ALLIN1
             else
             {
                 // Parked — no driver
+                Log($"  ReplaceVehicle: parked (no driver)");
                 replacement.IsEngineRunning = false;
             }
 
