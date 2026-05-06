@@ -27,7 +27,7 @@ namespace ALLIN1
         private const float VEHICLE_HEADING = 329.5f;
 
         // Camera setup
-        private const float CAM_ANGLE = 210f; // degrees -- front-quarter view
+        private const float CAM_ANGLE = 180f; // degrees -- side profile view
         private const float CAM_FOV = 50f;
         private const float CAM_RADIUS_DEFAULT = 6.5f;
         private const float CAM_HEIGHT_DEFAULT = 1.2f;
