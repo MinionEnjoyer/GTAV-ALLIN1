@@ -75,16 +75,7 @@ namespace ALLIN1
         private void OnTick(object sender, EventArgs e)
         {
             if (!_active)
-            {
-                // Show current coordinates on screen (press F10 to start capture)
-                Vector3 pos = Game.Player.Character.Position;
-                float heading = Game.Player.Character.Heading;
-                GbayRenderer.DrawText(
-                    $"X:{pos.X:F1}  Y:{pos.Y:F1}  Z:{pos.Z:F1}  H:{heading:F1}",
-                    0.5f, 0.01f, 0.35f, Color.FromArgb(200, 100, 255, 100),
-                    GbayRenderer.FONT_CONDENSED, true);
                 return;
-            }
 
             GbayInput.DisableGameControls();
 
