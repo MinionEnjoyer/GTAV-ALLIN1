@@ -22,8 +22,8 @@ namespace ALLIN1
 {
     public class GbayPreviewCapture : Script
     {
-        // LSIA runway -- wide open, flat, clean background, fits any vehicle size
-        private static readonly Vector3 SHOWROOM_POS = new Vector3(-1336f, -3044f, 13.9f);
+        // LSIA hangar -- large open hangar near runway, clean background
+        private static readonly Vector3 SHOWROOM_POS = new Vector3(-1264f, -3015f, 13.9f);
         private const float VEHICLE_HEADING = 330f;
 
         // Camera setup
