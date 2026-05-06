@@ -126,6 +126,10 @@ namespace ALLIN1
                     {
                         _enableLogging = valLower == "true";
                     }
+                    else if (key == "spawner_debug")
+                    {
+                        TrafficSpawner.ShowSpawnMessages = valLower == "true";
+                    }
                 }
             }
             catch (Exception ex)

@@ -48,5 +48,9 @@ gbay_key = "F9"
 gbay_free_mode = false
 
 
+# Show vehicle spawn debug notifications in-game (e.g. "SPAWN: adder | OK").
+# The initial "ALLIN1: X/Y DLC vehicles available" message always shows.
+spawner_debug = false
+
 # Show debug markers at garage parking slots (for coordinate tuning).
 garage_debug = false

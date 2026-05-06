@@ -74,6 +74,9 @@ namespace ALLIN1
         /// <summary>Set to true to suppress all spawning/replacement (used by capture tool).</summary>
         public static bool Suppress;
 
+        /// <summary>Show spawn debug notifications in-game (set via spawner_debug config).</summary>
+        public static bool ShowSpawnMessages;
+
         // --- State ---
         private readonly List<Vehicle> _spawned = new List<Vehicle>();
         private readonly List<string> _validModels = new List<string>();
@@ -343,8 +346,9 @@ namespace ALLIN1
             string result = (driverExists && !seatFree) ? "OK" : "FAIL";
             Log($"  RESULT: {modelName} | method={pedMethod} | {result}");
             string status = (driverExists && !seatFree) ? "~g~OK" : "~r~FAIL";
-            GTA.UI.Notification.Show(
-                $"~y~SPAWN~w~: {modelName} | {pedMethod} | {status}");
+            if (ShowSpawnMessages)
+                GTA.UI.Notification.Show(
+                    $"~y~SPAWN~w~: {modelName} | {pedMethod} | {status}");
 
             // If all attempts failed, delete the empty vehicle
             if (!driverExists || seatFree)
