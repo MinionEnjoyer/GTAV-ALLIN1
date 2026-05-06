@@ -242,7 +242,7 @@ namespace ALLIN1
                     subMenu.Add(item);
                 }
 
-                var submenuItem = new NativeSubmenuItem(_mainMenu, subMenu,
+                var submenuItem = new NativeSubmenuItem(subMenu, _mainMenu,
                     $"{cat.label} ({cat.models.Length})");
                 submenuItem.AltTitle = $"{cat.models.Length}";
             }
@@ -252,7 +252,7 @@ namespace ALLIN1
             _pool.Add(_garagesMenu);
             _garagesMenu.Opening += (sender, e) => RebuildGaragesMenu();
 
-            var garagesItem = new NativeSubmenuItem(_mainMenu, _garagesMenu, "My Garages");
+            var garagesItem = new NativeSubmenuItem(_garagesMenu, _mainMenu, "My Garages");
             garagesItem.AltTitle = ">";
 
             _built = true;
@@ -508,7 +508,7 @@ namespace ALLIN1
                         }
                     }
 
-                    var shItem = new NativeSubmenuItem(_garagesMenu, shMenu,
+                    var shItem = new NativeSubmenuItem(shMenu, _garagesMenu,
                         $"{sh.Name} ({used}/{cap})");
                     shItem.AltTitle = $"{used}/{cap}";
                 }
