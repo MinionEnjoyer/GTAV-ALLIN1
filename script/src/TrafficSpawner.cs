@@ -151,7 +151,6 @@ namespace ALLIN1
             Tick += OnTick;
             Interval = 0;
 
-            Function.Call(Hash.DECOR_REGISTER, "MPBitset", 3);
         }
 
         // ------------------------------------------------------------------ //
@@ -220,41 +219,59 @@ namespace ALLIN1
             catch { }
         }
 
+        private void LogException(string context, Exception ex)
+        {
+            try
+            {
+                File.AppendAllText(LOG_PATH,
+                    $"[{DateTime.Now:HH:mm:ss}] EXCEPTION in {context}: {ex.Message}{Environment.NewLine}" +
+                    $"  {ex.StackTrace}{Environment.NewLine}");
+            }
+            catch { }
+        }
+
         // ------------------------------------------------------------------ //
         //  Main loop                                                          //
         // ------------------------------------------------------------------ //
 
         private void OnTick(object sender, EventArgs e)
         {
-            if (Game.IsLoading)
-                return;
-
-            if (!_initialized)
+            try
             {
-                Initialize();
-                return;
+                if (Game.IsLoading)
+                    return;
+
+                if (!_initialized)
+                {
+                    Initialize();
+                    return;
+                }
+
+                if (_validModels.Count == 0)
+                    return;
+
+                Cleanup();
+
+                int now = Game.GameTime;
+
+                // Driven spawner
+                if (now - _lastDrivenTime >= DRIVEN_COOLDOWN_MS
+                    && _spawned.Count < MAX_DRIVEN)
+                {
+                    if (SpawnDriven())
+                        _lastDrivenTime = now;
+                }
+
+                // Replacement scanner
+                if (now - _lastScanTime >= SCAN_COOLDOWN_MS)
+                {
+                    ScanAndReplace();
+                    _lastScanTime = now;
+                }
             }
-
-            if (_validModels.Count == 0)
-                return;
-
-            Cleanup();
-
-            int now = Game.GameTime;
-
-            // Driven spawner
-            if (now - _lastDrivenTime >= DRIVEN_COOLDOWN_MS
-                && _spawned.Count < MAX_DRIVEN)
+            catch (Exception ex)
             {
-                if (SpawnDriven())
-                    _lastDrivenTime = now;
-            }
-
-            // Replacement scanner
-            if (now - _lastScanTime >= SCAN_COOLDOWN_MS)
-            {
-                ScanAndReplace();
-                _lastScanTime = now;
+                LogException("OnTick", ex);
             }
         }
 
@@ -291,6 +308,7 @@ namespace ALLIN1
 
         private void Initialize()
         {
+            Function.Call(Hash.DECOR_REGISTER, "MPBitset", 3);
             LoadConfig();
 
             _validModels.Clear();
