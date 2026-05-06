@@ -22,9 +22,9 @@ namespace ALLIN1
 {
     public class GbayPreviewCapture : Script
     {
-        // LSIA hangar -- user-selected position inside hangar
-        private static readonly Vector3 SHOWROOM_POS = new Vector3(-980f, -2996f, 13.6f);
-        private const float VEHICLE_HEADING = 329.5f;
+        // Outdoor location near LSIA
+        private static readonly Vector3 SHOWROOM_POS = new Vector3(-736f, -1455.7f, 4.5f);
+        private const float VEHICLE_HEADING = 227.5f;
 
         // Camera setup
         private const float CAM_ANGLE = 180f; // degrees -- side profile view
@@ -164,6 +164,9 @@ namespace ALLIN1
             _screenW = Screen.PrimaryScreen.Bounds.Width;
             _screenH = Screen.PrimaryScreen.Bounds.Height;
 
+            // Disable traffic spawner so it doesn't interfere
+            TrafficSpawner.Suppress = true;
+
             _active = true;
             _currentIndex = 0;
             _capturedCount = 0;
@@ -201,6 +204,9 @@ namespace ALLIN1
             _active = false;
             _settling = false;
             _capturing = false;
+
+            // Re-enable traffic spawner
+            TrafficSpawner.Suppress = false;
 
             if (_vehicle != null && _vehicle.Exists())
             {

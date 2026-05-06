@@ -1,8 +1,8 @@
-// TrafficSpawner.cs -- Adds GTA Online DLC vehicles to Story Mode traffic.
+// TrafficSpawner.cs — Adds GTA Online DLC vehicles to Story Mode traffic.
 //
 // Two systems work together:
-//   1. Driven spawner -- creates new DLC vehicles with AI drivers on road nodes.
-//   2. Replacement scanner -- swaps vanilla ambient vehicles (parked or driven)
+//   1. Driven spawner — creates new DLC vehicles with AI drivers on road nodes.
+//   2. Replacement scanner — swaps vanilla ambient vehicles (parked or driven)
 //      with class-matched DLC equivalents while off-screen.
 //
 // Only road-appropriate classes are used (no planes, helis, boats, military,
@@ -50,7 +50,7 @@ namespace ALLIN1
             VehicleList.Vans,
         };
 
-        // Map VehicleClass enum -> VehicleList arrays for class-matched replacement.
+        // Map VehicleClass enum → VehicleList arrays for class-matched replacement.
         private static readonly Dictionary<VehicleClass, string[]> CLASS_MAP =
             new Dictionary<VehicleClass, string[]>
         {
@@ -67,70 +67,12 @@ namespace ALLIN1
             { VehicleClass.Vans,           VehicleList.Vans },
         };
 
-        // Story mode character vehicles and mission vehicles -- never replaced
-        // with regular DLC cars. Police models here are eligible for DLC police
-        // upgrade when enable_dlc_police=true.
-        private static readonly HashSet<int> BLACKLISTED_MODELS = new HashSet<int>();
-        private static readonly string[] BLACKLISTED_MODEL_NAMES =
-        {
-            // Michael's family
-            "tailgater",   // Michael's car
-            "sentinel2",   // Amanda's car (sentinel convertible)
-            "issi2",       // Tracey's car
-            "premier",     // used in various missions
+        // --- Logging ---
+        private static readonly string LOG_PATH = Path.Combine(
+            AppDomain.CurrentDomain.BaseDirectory, "ALLIN1.log");
 
-            // Franklin's vehicles
-            "buffalo",     // Franklin's Buffalo (pre-mission)
-            "bagger",      // Franklin's motorcycle
-
-            // Trevor's vehicles
-            "bodhi2",      // Trevor's Bodhi
-            "blazer",      // Trevor's quad
-
-            // Key mission / story vehicles
-            "pbus",        // prison bus
-            "riot",        // riot van (missions)
-            "stockade",    // Stockade (heist)
-            "trash",       // trash truck (missions)
-            "tow",         // tow truck (missions)
-            "bus",         // bus (missions)
-            "rentalbus",   // rental shuttle
-            "taxi",        // taxis (random events)
-            "ambulance",   // ambulance
-            "firetruk",    // fire truck
-
-            // Police vehicles -- blocked from regular DLC replacement,
-            // but eligible for DLC police upgrade via enable_dlc_police.
-            "policeold1",
-            "policeold2",
-            "police",
-            "police2",
-            "police3",
-            "police4",
-            "policeb",     // police bike
-            "policet",     // police transporter
-            "pranger",     // park ranger
-            "sheriff",
-            "sheriff2",
-            "fbi",
-            "fbi2",
-        };
-
-        // Vanilla police model names that can be upgraded to DLC police.
-        private static readonly string[] VANILLA_POLICE_NAMES =
-        {
-            "police", "police2", "police3", "police4",
-            "policeold1", "policeold2",
-            "sheriff", "sheriff2",
-        };
-
-        // --- Config / Logging ---
-        private static readonly string SCRIPTS_DIR =
-            AppDomain.CurrentDomain.BaseDirectory;
-        private static readonly string CONFIG_PATH = Path.Combine(SCRIPTS_DIR, "ALLIN1.toml");
-        private static readonly string LOG_PATH = Path.Combine(SCRIPTS_DIR, "ALLIN1_spawner.log");
-        private bool _enableLogging = true;
-        private bool _enableDLCPolice;
+        /// <summary>Set to true to suppress all spawning/replacement (used by capture tool).</summary>
+        public static bool Suppress;
 
         // --- State ---
         private readonly List<Vehicle> _spawned = new List<Vehicle>();
@@ -139,8 +81,6 @@ namespace ALLIN1
             new Dictionary<VehicleClass, List<string>>();
         private readonly HashSet<int> _replacedHandles = new HashSet<int>();
         private readonly HashSet<int> _dlcModelHashes = new HashSet<int>();
-        private readonly HashSet<int> _vanillaPoliceHashes = new HashSet<int>();
-        private readonly List<string> _policePool = new List<string>();
         private readonly Random _rng = new Random();
         private int _lastDrivenTime;
         private int _lastScanTime;
@@ -150,55 +90,8 @@ namespace ALLIN1
         {
             Tick += OnTick;
             Interval = 0;
-        }
 
-        // ------------------------------------------------------------------ //
-        //  Config                                                             //
-        // ------------------------------------------------------------------ //
-
-        private void LoadConfig()
-        {
-            _enableLogging = true;
-            _enableDLCPolice = false;
-
-            if (!File.Exists(CONFIG_PATH))
-                return;
-
-            try
-            {
-                string currentSection = "";
-                foreach (string rawLine in File.ReadAllLines(CONFIG_PATH))
-                {
-                    string line = rawLine.Trim();
-                    if (line.Length == 0 || line.StartsWith("#"))
-                        continue;
-
-                    // Section header: [script]
-                    if (line.StartsWith("[") && line.EndsWith("]"))
-                    {
-                        currentSection = line.Substring(1, line.Length - 2)
-                            .Trim().ToLowerInvariant();
-                        continue;
-                    }
-
-                    // Only read keys from the [script] section
-                    if (currentSection != "script")
-                        continue;
-
-                    int eq = line.IndexOf('=');
-                    if (eq < 0)
-                        continue;
-
-                    string key = line.Substring(0, eq).Trim().ToLowerInvariant();
-                    string val = line.Substring(eq + 1).Trim().ToLowerInvariant();
-
-                    if (key == "enable_logging")
-                        _enableLogging = val == "true";
-                    else if (key == "enable_dlc_police")
-                        _enableDLCPolice = val == "true";
-                }
-            }
-            catch { }
+            Function.Call(Hash.DECOR_REGISTER, "MPBitset", 3);
         }
 
         // ------------------------------------------------------------------ //
@@ -207,24 +100,10 @@ namespace ALLIN1
 
         private void Log(string msg)
         {
-            if (!_enableLogging)
-                return;
-
             try
             {
                 File.AppendAllText(LOG_PATH,
                     $"[{DateTime.Now:HH:mm:ss}] {msg}{Environment.NewLine}");
-            }
-            catch { }
-        }
-
-        private void LogException(string context, Exception ex)
-        {
-            try
-            {
-                File.AppendAllText(LOG_PATH,
-                    $"[{DateTime.Now:HH:mm:ss}] EXCEPTION in {context}: {ex.Message}{Environment.NewLine}" +
-                    $"  {ex.StackTrace}{Environment.NewLine}");
             }
             catch { }
         }
@@ -235,42 +114,35 @@ namespace ALLIN1
 
         private void OnTick(object sender, EventArgs e)
         {
-            try
+            if (Game.IsLoading)
+                return;
+
+            if (!_initialized)
             {
-                if (Game.IsLoading)
-                    return;
-
-                if (!_initialized)
-                {
-                    Initialize();
-                    return;
-                }
-
-                if (_validModels.Count == 0)
-                    return;
-
-                Cleanup();
-
-                int now = Game.GameTime;
-
-                // Driven spawner
-                if (now - _lastDrivenTime >= DRIVEN_COOLDOWN_MS
-                    && _spawned.Count < MAX_DRIVEN)
-                {
-                    if (SpawnDriven())
-                        _lastDrivenTime = now;
-                }
-
-                // Replacement scanner
-                if (now - _lastScanTime >= SCAN_COOLDOWN_MS)
-                {
-                    ScanAndReplace();
-                    _lastScanTime = now;
-                }
+                Initialize();
+                return;
             }
-            catch (Exception ex)
+
+            if (_validModels.Count == 0 || Suppress)
+                return;
+
+            Cleanup();
+
+            int now = Game.GameTime;
+
+            // Driven spawner
+            if (now - _lastDrivenTime >= DRIVEN_COOLDOWN_MS
+                && _spawned.Count < MAX_DRIVEN)
             {
-                LogException("OnTick", ex);
+                if (SpawnDriven())
+                    _lastDrivenTime = now;
+            }
+
+            // Replacement scanner
+            if (now - _lastScanTime >= SCAN_COOLDOWN_MS)
+            {
+                ScanAndReplace();
+                _lastScanTime = now;
             }
         }
 
@@ -278,38 +150,8 @@ namespace ALLIN1
         //  Initialization                                                     //
         // ------------------------------------------------------------------ //
 
-        private void BuildBlacklist()
-        {
-            BLACKLISTED_MODELS.Clear();
-            foreach (string name in BLACKLISTED_MODEL_NAMES)
-                BLACKLISTED_MODELS.Add(
-                    Function.Call<int>(Hash.GET_HASH_KEY, name));
-        }
-
-        private void BuildPolicePool()
-        {
-            _vanillaPoliceHashes.Clear();
-            _policePool.Clear();
-
-            foreach (string name in VANILLA_POLICE_NAMES)
-                _vanillaPoliceHashes.Add(
-                    Function.Call<int>(Hash.GET_HASH_KEY, name));
-
-            foreach (string name in VehicleList.Emergency)
-            {
-                var m = new Model(name);
-                if (m.IsInCdImage && m.IsVehicle)
-                    _policePool.Add(name);
-            }
-
-            Log($"  DLC police pool: {_policePool.Count} models");
-        }
-
         private void Initialize()
         {
-            Function.Call(Hash.DECOR_REGISTER, "MPBitset", 3);
-            LoadConfig();
-
             _validModels.Clear();
             _classPools.Clear();
             _dlcModelHashes.Clear();
@@ -345,13 +187,6 @@ namespace ALLIN1
                 _dlcModelHashes.Add(
                     Function.Call<int>(Hash.GET_HASH_KEY, name));
 
-            // Build blacklist of story mode / mission vehicle hashes.
-            BuildBlacklist();
-
-            // Build DLC police pool if enabled.
-            if (_enableDLCPolice)
-                BuildPolicePool();
-
             int now = Game.GameTime;
             _lastDrivenTime = now;
             _lastScanTime = now;
@@ -362,17 +197,15 @@ namespace ALLIN1
                 total += arr.Length;
 
             Log($"=== ALLIN1 Initialized: {_validModels.Count}/{total} DLC vehicles available ===");
-            Log($"  EnableDLCPolice={_enableDLCPolice}");
             foreach (var kv in _classPools)
                 Log($"  {kv.Key}: {kv.Value.Count} models");
-
 
             GTA.UI.Notification.Show(
                 $"~g~ALLIN1~w~: {_validModels.Count}/{total} DLC vehicles available");
         }
 
         // ------------------------------------------------------------------ //
-        //  Driven spawner                                                     //
+        //  Driven spawner (unchanged logic)                                   //
         // ------------------------------------------------------------------ //
 
         // Known ped models for fallback driver creation
@@ -392,12 +225,12 @@ namespace ALLIN1
                 return false;
 
             string modelName = _validModels[_rng.Next(_validModels.Count)];
-            Vehicle veh = VehicleHelper.CreateVehicle(modelName, nodePos, heading);
+            Vehicle veh = LoadAndCreateVehicle(modelName, nodePos, heading);
             if (veh == null)
                 return false;
 
             // Give the game a frame to fully register the vehicle entity
-            // before attempting ped creation.
+            // before attempting ped creation — may fix intermittent failures.
             Script.Wait(0);
 
             veh.IsEngineRunning = true;
@@ -423,6 +256,7 @@ namespace ALLIN1
             // Attempt 2: If random ped failed, try explicit ped model
             if (!driverExists || seatFree)
             {
+                // Clean up failed attempt
                 if (driverExists)
                 {
                     driver.IsPersistent = true;
@@ -505,9 +339,12 @@ namespace ALLIN1
                 Log($"  attempt3 (native {nativePedName}): exists={driverExists} seatFree={seatFree}");
             }
 
-            // Log result
+            // Log + on-screen notification
             string result = (driverExists && !seatFree) ? "OK" : "FAIL";
             Log($"  RESULT: {modelName} | method={pedMethod} | {result}");
+            string status = (driverExists && !seatFree) ? "~g~OK" : "~r~FAIL";
+            GTA.UI.Notification.Show(
+                $"~y~SPAWN~w~: {modelName} | {pedMethod} | {status}");
 
             // If all attempts failed, delete the empty vehicle
             if (!driverExists || seatFree)
@@ -555,7 +392,7 @@ namespace ALLIN1
             }
             catch
             {
-                return;
+                return; // GetNearbyVehicles can throw on some SHVDN versions
             }
 
             if (nearby == null)
@@ -567,77 +404,38 @@ namespace ALLIN1
 
             foreach (Vehicle veh in nearby)
             {
-                if (_replacedHandles.Contains(veh.Handle))
-                    continue;
-
-                // Check if this is a vanilla police vehicle eligible for
-                // DLC police upgrade (separate path from regular replacement).
-                if (_enableDLCPolice && _policePool.Count > 0
-                    && IsPoliceEligible(veh, player, playerPos))
-                {
-                    _replacedHandles.Add(veh.Handle);
-
-                    if (_rng.NextDouble() > REPLACE_CHANCE)
-                        continue;
-
-                    string newModel = _policePool[_rng.Next(_policePool.Count)];
-                    Log($"PoliceReplace: -> {newModel} (handle={veh.Handle})");
-                    ReplaceVehicle(veh, newModel);
-                    continue;
-                }
-
-                // Regular civilian vehicle replacement
                 if (!IsEligibleForReplacement(veh, player, playerPos))
                     continue;
 
+                // 30 % replacement chance
                 if (_rng.NextDouble() > REPLACE_CHANCE)
                 {
+                    // Mark as seen even when skipped so we don't re-roll
+                    // the same vehicle every scan.
                     _replacedHandles.Add(veh.Handle);
                     continue;
                 }
 
+                // Class-matched model lookup
                 VehicleClass cls = veh.ClassType;
                 if (!_classPools.TryGetValue(cls, out List<string> pool)
                     || pool.Count == 0)
                     continue;
 
                 string newModelName = pool[_rng.Next(pool.Count)];
-                Log($"ScanReplace: {cls} -> {newModelName} (handle={veh.Handle})");
+                Log($"ScanReplace: {cls} → {newModelName} (handle={veh.Handle})");
                 ReplaceVehicle(veh, newModelName);
             }
         }
 
-        /// <summary>
-        /// Check if the nearest road node has the OFF_ROAD flag set.
-        /// Uses GET_VEHICLE_NODE_PROPERTIES (0x0568566ACBB5DEDC).
-        /// Flag 1 = OFF_ROAD (dirt roads, alleys, carparks).
-        /// </summary>
-        private bool IsOnOffroad(Vector3 pos)
-        {
-            using (var outDensity = new OutputArgument())
-            using (var outFlags = new OutputArgument())
-            {
-                bool found = Function.Call<bool>(
-                    (Hash)0x0568566ACBB5DEDC,
-                    pos.X, pos.Y, pos.Z,
-                    outDensity, outFlags);
-
-                if (!found)
-                    return false;
-
-                int flags = outFlags.GetResult<int>();
-                return (flags & 1) != 0;
-            }
-        }
-
-        private bool IsPoliceEligible(Vehicle veh, Ped player, Vector3 playerPos)
+        private bool IsEligibleForReplacement(Vehicle veh, Ped player,
+                                               Vector3 playerPos)
         {
             if (veh == null || !veh.Exists())
                 return false;
 
-            // Must be a vanilla police model
-            int modelHash = Function.Call<int>(Hash.GET_ENTITY_MODEL, veh.Handle);
-            if (!_vanillaPoliceHashes.Contains(modelHash))
+            // Already processed
+            if (_replacedHandles.Contains(veh.Handle))
                 return false;
 
             // Player's own vehicle
@@ -648,124 +446,47 @@ namespace ALLIN1
             if (lastVeh != null && veh == lastVeh)
                 return false;
 
-            // Mission / persistent entities -- never touch quest police
-            if (veh.IsPersistent)
-                return false;
-            if (Function.Call<bool>(Hash.IS_ENTITY_A_MISSION_ENTITY, veh.Handle))
-                return false;
-
-            // Population type: only ambient (1-5)
-            int popType = Function.Call<int>(
-                Hash.GET_ENTITY_POPULATION_TYPE, veh.Handle);
-            if (popType == 0 || popType > 5)
-                return false;
-
-            // Distance + off-screen checks
-            float dist = veh.Position.DistanceTo(playerPos);
-            if (dist < MIN_REPLACE_DIST)
-                return false;
-            if (veh.IsOnScreen)
-                return false;
-            // Skip vehicles on dirt/offroad roads
-            if (IsOnOffroad(veh.Position))
-                return false;
-
-            // Don't touch police with mission peds
-            Ped driver = veh.Driver;
-            if (driver != null && driver.Exists())
-            {
-                if (driver.IsPersistent)
-                    return false;
-                if (Function.Call<bool>(Hash.IS_ENTITY_A_MISSION_ENTITY,
-                    driver.Handle))
-                    return false;
-            }
-
-            return true;
-        }
-
-        private bool IsEligibleForReplacement(Vehicle veh, Ped player,
-                                               Vector3 playerPos)
-        {
-            if (veh == null || !veh.Exists())
-                return false;
-
-            if (_replacedHandles.Contains(veh.Handle))
-                return false;
-
-            Vehicle currentVeh = player.CurrentVehicle;
-            if (currentVeh != null && veh == currentVeh)
-                return false;
-            Vehicle lastVeh = player.LastVehicle;
-            if (lastVeh != null && veh == lastVeh)
-                return false;
-
+            // Mission / persistent entities
             if (veh.IsPersistent)
                 return false;
 
-            if (Function.Call<bool>(Hash.IS_ENTITY_A_MISSION_ENTITY, veh.Handle))
-                return false;
-
+            // Population type: only ambient/random (1-5)
             int popType = Function.Call<int>(
                 Hash.GET_ENTITY_POPULATION_TYPE, veh.Handle);
-            if (popType == 0 || popType > 5)
+            if (popType > 5)
                 return false;
 
-            int modelHash = Function.Call<int>(
-                Hash.GET_ENTITY_MODEL, veh.Handle);
-            if (BLACKLISTED_MODELS.Contains(modelHash))
-                return false;
-
+            // Skip non-replaceable classes
             VehicleClass cls = veh.ClassType;
             if (!_classPools.ContainsKey(cls))
                 return false;
 
+            // Already a DLC vehicle
+            int modelHash = Function.Call<int>(
+                Hash.GET_ENTITY_MODEL, veh.Handle);
             if (_dlcModelHashes.Contains(modelHash))
                 return false;
 
+            // Too close — prevents pop-in even if off-screen check fails
             float dist = veh.Position.DistanceTo(playerPos);
             if (dist < MIN_REPLACE_DIST)
                 return false;
 
+            // Must be off-screen to prevent visible pop-in
             if (veh.IsOnScreen)
                 return false;
-            // Skip vehicles on dirt/offroad roads
-            if (IsOnOffroad(veh.Position))
-                return false;
 
+            // Skip if driver is a mission ped
             Ped driver = veh.Driver;
-            if (driver != null && driver.Exists())
-            {
-                if (driver.IsPersistent)
-                    return false;
-                if (Function.Call<bool>(Hash.IS_ENTITY_A_MISSION_ENTITY,
-                    driver.Handle))
-                    return false;
-            }
-
-            try
-            {
-                Ped[] passengers = veh.Passengers;
-                if (passengers != null)
-                {
-                    foreach (Ped p in passengers)
-                    {
-                        if (p != null && p.Exists()
-                            && (p.IsPersistent
-                                || Function.Call<bool>(
-                                    Hash.IS_ENTITY_A_MISSION_ENTITY,
-                                    p.Handle)))
-                            return false;
-                    }
-                }
-            }
-            catch { }
+            if (driver != null && driver.Exists() && driver.IsPersistent)
+                return false;
 
             return true;
         }
 
         private void ReplaceVehicle(Vehicle old, string newModelName)
         {
+            // Capture state
             Vector3 pos = old.Position;
             float heading = old.Heading;
             float speed = old.Speed;
@@ -782,15 +503,20 @@ namespace ALLIN1
 
             Log($"  ReplaceVehicle: hadDriver={hadDriver} speed={speed:F1} passengers={passengers?.Length ?? 0}");
 
+            // Make driver persistent before deleting vehicle so they don't
+            // despawn when their vehicle is removed.
             if (hadDriver)
                 driver.IsPersistent = true;
 
+            // Remove old vehicle
             old.IsPersistent = true;
             old.Delete();
 
-            Vehicle replacement = VehicleHelper.CreateVehicle(newModelName, pos, heading);
+            // Create replacement
+            Vehicle replacement = LoadAndCreateVehicle(newModelName, pos, heading);
             if (replacement == null)
             {
+                // Vehicle creation failed — clean up orphaned driver
                 if (hadDriver && driver.Exists())
                 {
                     Log($"  ReplaceVehicle: vehicle creation failed, deleting orphaned driver");
@@ -801,14 +527,17 @@ namespace ALLIN1
 
             if (hadDriver && driver.Exists())
             {
+                // Transfer driver
                 driver.Task.WarpIntoVehicle(replacement, VehicleSeat.Driver);
 
+                // Verify the warp actually worked
                 Script.Wait(0);
                 bool driverInSeat = !replacement.IsSeatFree(VehicleSeat.Driver);
                 Log($"  ReplaceVehicle: driver warp driverInSeat={driverInSeat}");
 
                 if (!driverInSeat)
                 {
+                    // Warp failed — create a new driver instead
                     Log($"  ReplaceVehicle: warp failed, creating fallback driver");
                     driver.IsPersistent = true;
                     driver.Delete();
@@ -828,7 +557,7 @@ namespace ALLIN1
                     }
                     else
                     {
-                        Log($"  ReplaceVehicle: fallback driver FAILED -- car will be empty");
+                        Log($"  ReplaceVehicle: fallback driver FAILED — car will be empty");
                     }
                 }
 
@@ -856,6 +585,7 @@ namespace ALLIN1
                     replacement.IsEngineRunning = false;
                 }
 
+                // Transfer passengers
                 if (passengers != null)
                 {
                     for (int i = 0; i < passengers.Length; i++)
@@ -871,6 +601,7 @@ namespace ALLIN1
             }
             else
             {
+                // Parked — no driver
                 Log($"  ReplaceVehicle: parked (no driver)");
                 replacement.IsEngineRunning = false;
             }
@@ -880,6 +611,47 @@ namespace ALLIN1
             _replacedHandles.Add(replacement.Handle);
         }
 
+        // ------------------------------------------------------------------ //
+        //  Vehicle creation                                                   //
+        // ------------------------------------------------------------------ //
+
+        private Vehicle LoadAndCreateVehicle(string modelName, Vector3 pos,
+                                              float heading)
+        {
+            var model = new Model(modelName);
+            model.Request(MODEL_LOAD_TIMEOUT);
+
+            DateTime deadline = DateTime.UtcNow.AddMilliseconds(MODEL_LOAD_TIMEOUT);
+            while (!model.IsLoaded)
+            {
+                if (DateTime.UtcNow > deadline)
+                {
+                    model.MarkAsNoLongerNeeded();
+                    return null;
+                }
+                Script.Wait(0);
+            }
+
+            Vehicle veh = World.CreateVehicle(model, pos, heading);
+            model.MarkAsNoLongerNeeded();
+
+            if (veh == null)
+                return null;
+
+            veh.PlaceOnGround();
+
+            // Random colors
+            int c1 = _rng.Next(0, 160);
+            int c2 = _rng.Next(0, 160);
+            Function.Call(Hash.SET_VEHICLE_COLOURS, veh, c1, c2);
+
+            // MPBitset decorator — prevents despawning in Story Mode
+            Function.Call(Hash.DECOR_SET_INT, veh.Handle, "MPBitset", 0);
+
+            return veh;
+        }
+
+        // ------------------------------------------------------------------ //
         //  Road node finding (for driven spawner)                             //
         // ------------------------------------------------------------------ //
 
