@@ -349,8 +349,6 @@ namespace ALLIN1
             foreach (var kv in _classPools)
                 Log($"  {kv.Key}: {kv.Value.Count} models");
 
-            GTA.UI.Notification.Show(
-                $"~g~ALLIN1~w~: {_validModels.Count}/{total} DLC vehicles loaded");
         }
 
         // ------------------------------------------------------------------ //
@@ -374,7 +372,7 @@ namespace ALLIN1
                 return false;
 
             string modelName = _validModels[_rng.Next(_validModels.Count)];
-            Vehicle veh = LoadAndCreateVehicle(modelName, nodePos, heading);
+            Vehicle veh = VehicleHelper.CreateVehicle(modelName, nodePos, heading);
             if (veh == null)
                 return false;
 
@@ -741,7 +739,7 @@ namespace ALLIN1
             old.IsPersistent = true;
             old.Delete();
 
-            Vehicle replacement = LoadAndCreateVehicle(newModelName, pos, heading);
+            Vehicle replacement = VehicleHelper.CreateVehicle(newModelName, pos, heading);
             if (replacement == null)
             {
                 if (hadDriver && driver.Exists())
@@ -833,45 +831,6 @@ namespace ALLIN1
             _replacedHandles.Add(replacement.Handle);
         }
 
-        // ------------------------------------------------------------------ //
-        //  Vehicle creation                                                   //
-        // ------------------------------------------------------------------ //
-
-        private Vehicle LoadAndCreateVehicle(string modelName, Vector3 pos,
-                                              float heading)
-        {
-            var model = new Model(modelName);
-            model.Request(MODEL_LOAD_TIMEOUT);
-
-            DateTime deadline = DateTime.UtcNow.AddMilliseconds(MODEL_LOAD_TIMEOUT);
-            while (!model.IsLoaded)
-            {
-                if (DateTime.UtcNow > deadline)
-                {
-                    model.MarkAsNoLongerNeeded();
-                    return null;
-                }
-                Script.Wait(0);
-            }
-
-            Vehicle veh = World.CreateVehicle(model, pos, heading);
-            model.MarkAsNoLongerNeeded();
-
-            if (veh == null)
-                return null;
-
-            veh.PlaceOnGround();
-
-            int c1 = _rng.Next(0, 160);
-            int c2 = _rng.Next(0, 160);
-            Function.Call(Hash.SET_VEHICLE_COLOURS, veh, c1, c2);
-
-            Function.Call(Hash.DECOR_SET_INT, veh.Handle, "MPBitset", 0);
-
-            return veh;
-        }
-
-        // ------------------------------------------------------------------ //
         //  Road node finding (for driven spawner)                             //
         // ------------------------------------------------------------------ //
 

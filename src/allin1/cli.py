@@ -208,5 +208,21 @@ def export_catalog(ctx: click.Context, output: str | None) -> None:
     click.echo(f"Exported {len(data)} vehicles to {out_path}")
 
 
+@main.command("generate-vehiclelist")
+@click.option("--output", "-o", default=None,
+              help="Output path (default: script/src/VehicleList.cs)")
+@click.pass_context
+def generate_vehiclelist(ctx: click.Context, output: str | None) -> None:
+    """Regenerate VehicleList.cs with display names and prices."""
+    from allin1.generators.vehiclelist import generate_file
+
+    out_path = (
+        Path(output) if output
+        else PROJECT_ROOT / "script" / "src" / "VehicleList.cs"
+    )
+    count = generate_file(VEHICLES_DB, PROJECT_ROOT / "prices.toml", out_path)
+    click.echo(f"Generated VehicleList.cs with {count} vehicles at {out_path}")
+
+
 if __name__ == "__main__":
     main()

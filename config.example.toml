@@ -39,3 +39,10 @@ enable_logging = false
 
 # Replace vanilla police cars with DLC police vehicles.
 enable_dlc_police = false
+
+# Key to open the GBAY vehicle shop menu (default: F9).
+# Uses .NET Keys enum names: F1-F12, NumPad0-9, etc.
+gbay_key = "F9"
+
+# When true, all GBAY purchases are free regardless of prices.
+gbay_free_mode = false
