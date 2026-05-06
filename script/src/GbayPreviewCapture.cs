@@ -29,8 +29,8 @@ namespace ALLIN1
         // Camera setup
         private const float CAM_ANGLE = 210f; // degrees -- front-quarter view
         private const float CAM_FOV = 50f;
-        private const float CAM_RADIUS_DEFAULT = 7.5f;
-        private const float CAM_HEIGHT_DEFAULT = 2.0f;
+        private const float CAM_RADIUS_DEFAULT = 6.5f;
+        private const float CAM_HEIGHT_DEFAULT = 1.2f;
 
         // Timing (in frames)
         private const int SETTLE_FRAMES = 30;  // frames to wait after spawn for model to load
