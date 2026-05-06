@@ -66,8 +66,7 @@ static void BuildValidModelList() {
 
     for (int i = 0; i < VEHICLE_MODEL_COUNT; i++) {
         Hash model = VEHICLE_MODELS[i];
-        if (STREAMING::IS_MODEL_IN_CDIMAGE(model) &&
-            STREAMING::IS_MODEL_A_VEHICLE(model)) {
+        if (STREAMING::IS_MODEL_IN_CDIMAGE(model)) {
             g_validModels.push_back(model);
         }
     }
