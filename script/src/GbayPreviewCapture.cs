@@ -1,14 +1,18 @@
-// GbayPreviewCapture.cs -- Temporary tool for capturing vehicle preview screenshots.
+// GbayPreviewCapture.cs -- Automated vehicle preview screenshot tool.
 //
-// Press F10 to start. Teleports player to Simeon's showroom, spawns each
-// vehicle one at a time with a fixed camera angle. Use N/B to cycle through
-// vehicles, take screenshots with Steam (F12) or Print Screen.
+// Press F10 to start. Automatically cycles through all 444 vehicles,
+// spawning each in Simeon's showroom with a fixed camera angle, capturing
+// a screenshot, and saving it as {model}.png to scripts/previews/.
 //
-// The model name is displayed on screen so you can name files accordingly.
-// This script is a development tool, not part of the normal GBAY experience.
+// The tool runs fully automated -- just press F10 and wait. Progress is
+// shown on screen. Press F10 again to stop early.
+//
+// Output: <GTA V>/scripts/previews/{model}.png (one per vehicle)
 
 using System;
 using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
 using System.Windows.Forms;
 using GTA;
 using GTA.Math;
@@ -20,23 +24,35 @@ namespace ALLIN1
     {
         // Simeon's showroom -- center of the main floor area
         private static readonly Vector3 SHOWROOM_POS = new Vector3(-44.7f, -1098.5f, 26.4f);
-        private const float VEHICLE_HEADING = 60f; // angled nicely in the showroom
+        private const float VEHICLE_HEADING = 60f;
 
-        // Camera offset from vehicle center
-        private const float CAM_RADIUS = 7.5f;
-        private const float CAM_HEIGHT = 2.0f;
+        // Camera setup
         private const float CAM_ANGLE = 210f; // degrees -- front-quarter view
         private const float CAM_FOV = 50f;
+        private const float CAM_RADIUS_DEFAULT = 7.5f;
+        private const float CAM_HEIGHT_DEFAULT = 2.0f;
 
+        // Timing (in frames)
+        private const int SETTLE_FRAMES = 30;  // frames to wait after spawn for model to load
+        private const int CAPTURE_FRAME = 1;   // frames after settle to capture (HUD hidden)
+
+        // State
         private bool _active;
         private int _currentIndex;
+        private int _frameCounter;
+        private int _capturedCount;
+        private int _failedCount;
         private Vehicle _vehicle;
         private Camera _camera;
         private Vector3 _savedPlayerPos;
         private float _savedPlayerHeading;
-        private bool _hideHud;
-        private float _orbitAngle;
-        private bool _autoOrbit;
+        private string _outputDir;
+        private bool _settling;   // waiting for vehicle to render
+        private bool _capturing;  // HUD hidden, about to capture
+
+        // Screen dimensions (cached on start)
+        private int _screenW;
+        private int _screenH;
 
         public GbayPreviewCapture()
         {
@@ -53,38 +69,6 @@ namespace ALLIN1
                     StartCapture();
                 else
                     StopCapture();
-                return;
-            }
-
-            if (!_active)
-                return;
-
-            switch (e.KeyCode)
-            {
-                case Keys.N: // Next vehicle
-                    _currentIndex = (_currentIndex + 1) % VehicleList.All.Length;
-                    SpawnCurrent();
-                    break;
-
-                case Keys.B: // Previous vehicle
-                    _currentIndex--;
-                    if (_currentIndex < 0)
-                        _currentIndex = VehicleList.All.Length - 1;
-                    SpawnCurrent();
-                    break;
-
-                case Keys.H: // Toggle HUD overlay
-                    _hideHud = !_hideHud;
-                    break;
-
-                case Keys.R: // Toggle auto-orbit
-                    _autoOrbit = !_autoOrbit;
-                    break;
-
-                case Keys.T: // Reset camera angle
-                    _orbitAngle = CAM_ANGLE;
-                    UpdateCamera();
-                    break;
             }
         }
 
@@ -95,77 +79,126 @@ namespace ALLIN1
 
             GbayInput.DisableGameControls();
 
-            // Manual orbit with Left/Right
-            if (Game.IsControlPressed(GTA.Control.FrontendLeft))
-            {
-                _orbitAngle -= 60f * Game.LastFrameTime;
-                UpdateCamera();
-            }
-            else if (Game.IsControlPressed(GTA.Control.FrontendRight))
-            {
-                _orbitAngle += 60f * Game.LastFrameTime;
-                UpdateCamera();
-            }
+            // Hide game HUD elements
+            Function.Call(Hash.HIDE_HUD_AND_RADAR_THIS_FRAME);
 
-            // Auto orbit
-            if (_autoOrbit)
-            {
-                _orbitAngle += 15f * Game.LastFrameTime;
-                UpdateCamera();
-            }
-
-            // Keep vehicle frozen and clean
+            // Keep vehicle frozen
             if (_vehicle != null && _vehicle.Exists())
             {
                 _vehicle.IsPositionFrozen = true;
                 Function.Call(Hash.SET_VEHICLE_DIRT_LEVEL, _vehicle, 0f);
             }
 
-            // Draw HUD overlay
-            if (!_hideHud)
-                DrawOverlay();
+            // State machine: settle -> capture -> next
+            if (_settling)
+            {
+                _frameCounter++;
+                if (_frameCounter >= SETTLE_FRAMES)
+                {
+                    _settling = false;
+                    _capturing = true;
+                    _frameCounter = 0;
+                }
+                // Draw progress while settling
+                DrawProgress("Loading...");
+                return;
+            }
+
+            if (_capturing)
+            {
+                _frameCounter++;
+                if (_frameCounter >= CAPTURE_FRAME)
+                {
+                    // Take screenshot this frame (no HUD drawn yet)
+                    CaptureScreenshot();
+                    _capturing = false;
+                    _frameCounter = 0;
+
+                    // Advance to next vehicle
+                    _currentIndex++;
+                    if (_currentIndex >= VehicleList.All.Length)
+                    {
+                        // All done
+                        StopCapture();
+                        GTA.UI.Notification.Show(
+                            $"~g~Preview Capture complete!~w~\n" +
+                            $"~b~{_capturedCount}~w~ captured, ~r~{_failedCount}~w~ failed\n" +
+                            $"Saved to: scripts/previews/");
+                        return;
+                    }
+
+                    SpawnCurrent();
+                }
+                return;
+            }
+
+            // Draw progress overlay
+            DrawProgress("Capturing...");
         }
 
         private void StartCapture()
         {
+            // Set up output directory
+            string scriptsDir = AppDomain.CurrentDomain.BaseDirectory;
+            _outputDir = Path.Combine(scriptsDir, "previews");
+            try
+            {
+                Directory.CreateDirectory(_outputDir);
+            }
+            catch (Exception ex)
+            {
+                GTA.UI.Notification.Show($"~r~Cannot create output folder:~w~ {ex.Message}");
+                return;
+            }
+
+            // Cache screen dimensions
+            _screenW = Screen.PrimaryScreen.Bounds.Width;
+            _screenH = Screen.PrimaryScreen.Bounds.Height;
+
             _active = true;
             _currentIndex = 0;
-            _hideHud = false;
-            _autoOrbit = false;
-            _orbitAngle = CAM_ANGLE;
+            _capturedCount = 0;
+            _failedCount = 0;
 
-            // Save player position
+            // Save player state
             Ped player = Game.Player.Character;
             _savedPlayerPos = player.Position;
             _savedPlayerHeading = player.Heading;
 
-            // Teleport player to showroom (hide them)
-            player.Position = SHOWROOM_POS + new Vector3(0f, 0f, -5f); // below floor
+            // Hide player below showroom floor
+            player.Position = SHOWROOM_POS + new Vector3(0f, 0f, -5f);
             player.IsVisible = false;
             player.IsPositionFrozen = true;
+
+            // Set time to noon for consistent lighting
+            World.CurrentTimeOfDay = new TimeSpan(12, 0, 0);
 
             // Create camera
             _camera = World.CreateCamera(Vector3.Zero, Vector3.Zero, CAM_FOV);
             World.RenderingCamera = _camera;
 
+            GTA.UI.Notification.Show(
+                $"~g~Preview Capture~w~ started.\n" +
+                $"Capturing {VehicleList.All.Length} vehicles...\n" +
+                $"Output: scripts/previews/\n" +
+                $"Press ~b~F10~w~ to stop.");
+
             // Spawn first vehicle
             SpawnCurrent();
-
-            GTA.UI.Notification.Show("~g~Preview Capture~w~ started.\n~b~N~w~/~b~B~w~ = Next/Prev\n~b~H~w~ = Toggle HUD\n~b~R~w~ = Auto-orbit\n~b~Left/Right~w~ = Rotate\n~b~T~w~ = Reset angle\n~b~F10~w~ = Stop");
         }
 
         private void StopCapture()
         {
             _active = false;
+            _settling = false;
+            _capturing = false;
 
-            // Clean up vehicle
             if (_vehicle != null && _vehicle.Exists())
             {
                 _vehicle.Delete();
                 _vehicle = null;
             }
 
-            // Clean up camera
             if (_camera != null)
             {
                 World.RenderingCamera = null;
@@ -173,19 +206,15 @@ namespace ALLIN1
                 _camera = null;
             }
 
-            // Restore player
             Ped player = Game.Player.Character;
             player.IsVisible = true;
             player.IsPositionFrozen = false;
             player.Position = _savedPlayerPos;
             player.Heading = _savedPlayerHeading;
-
-            GTA.UI.Notification.Show("~g~Preview Capture~w~ stopped.");
         }
 
         private void SpawnCurrent()
         {
-            // Delete old vehicle
             if (_vehicle != null && _vehicle.Exists())
             {
                 _vehicle.Delete();
@@ -193,13 +222,15 @@ namespace ALLIN1
             }
 
             string modelName = VehicleList.All[_currentIndex];
-
-            // Spawn at showroom position
             _vehicle = VehicleHelper.CreateVehicle(modelName, SHOWROOM_POS, VEHICLE_HEADING);
 
             if (_vehicle == null)
             {
-                GTA.UI.Screen.ShowSubtitle($"~r~Failed to spawn: {modelName}", 2000);
+                _failedCount++;
+                // Skip to next on failure
+                _currentIndex++;
+                if (_currentIndex < VehicleList.All.Length)
+                    SpawnCurrent();
                 return;
             }
 
@@ -208,13 +239,13 @@ namespace ALLIN1
             _vehicle.IsInvincible = true;
             _vehicle.LockStatus = VehicleLockStatus.IgnoredByPlayer;
             Function.Call(Hash.SET_VEHICLE_DIRT_LEVEL, _vehicle, 0f);
-
-            // Turn on headlights for dramatic effect
             _vehicle.AreLightsOn = true;
 
-            // Reset orbit angle and update camera
-            _orbitAngle = CAM_ANGLE;
             UpdateCamera();
+
+            // Start settling (wait for model to fully render)
+            _settling = true;
+            _frameCounter = 0;
         }
 
         private void UpdateCamera()
@@ -222,7 +253,6 @@ namespace ALLIN1
             if (_camera == null || _vehicle == null || !_vehicle.Exists())
                 return;
 
-            // Get vehicle dimensions for framing
             int hash = _vehicle.Model.Hash;
             OutputArgument minArg = new OutputArgument();
             OutputArgument maxArg = new OutputArgument();
@@ -232,56 +262,69 @@ namespace ALLIN1
 
             float length = Math.Max(vMax.Y - vMin.Y, 3f);
             float width = Math.Max(vMax.X - vMin.X, 2f);
+            float height = Math.Max(vMax.Z - vMin.Z, 1.5f);
             float extent = (float)Math.Sqrt(length * length + width * width);
-            float radius = Math.Max(extent * 1.1f, CAM_RADIUS);
-            float height = Math.Max((vMax.Z - vMin.Z) * 0.6f, CAM_HEIGHT);
+            float radius = Math.Max(extent * 1.1f, CAM_RADIUS_DEFAULT);
+            float camH = Math.Max(height * 0.6f, CAM_HEIGHT_DEFAULT);
 
-            // Camera looks at center of vehicle (slightly raised)
-            Vector3 target = _vehicle.Position + new Vector3(0f, 0f, (vMax.Z - vMin.Z) * 0.3f);
+            Vector3 target = _vehicle.Position + new Vector3(0f, 0f, height * 0.3f);
 
-            float rad = _orbitAngle * (float)Math.PI / 180f;
+            float rad = CAM_ANGLE * (float)Math.PI / 180f;
             float camX = target.X + radius * (float)Math.Cos(rad);
             float camY = target.Y + radius * (float)Math.Sin(rad);
-            float camZ = target.Z + height;
+            float camZ = target.Z + camH;
 
             _camera.Position = new Vector3(camX, camY, camZ);
             _camera.PointAt(_vehicle);
         }
 
-        private void DrawOverlay()
+        private void CaptureScreenshot()
         {
             string modelName = VehicleList.All[_currentIndex];
+            string filePath = Path.Combine(_outputDir, $"{modelName}.png");
+
+            try
+            {
+                using (var bmp = new Bitmap(_screenW, _screenH, PixelFormat.Format32bppArgb))
+                {
+                    using (var gfx = Graphics.FromImage(bmp))
+                    {
+                        gfx.CopyFromScreen(0, 0, 0, 0, new Size(_screenW, _screenH),
+                            CopyPixelOperation.SourceCopy);
+                    }
+                    bmp.Save(filePath, ImageFormat.Png);
+                }
+                _capturedCount++;
+            }
+            catch
+            {
+                _failedCount++;
+            }
+        }
+
+        private void DrawProgress(string status)
+        {
+            string modelName = _currentIndex < VehicleList.All.Length
+                ? VehicleList.All[_currentIndex] : "done";
             string displayName = VehicleList.DisplayNames.ContainsKey(modelName)
                 ? VehicleList.DisplayNames[modelName] : modelName;
 
-            // Top bar
-            GbayRenderer.DrawRect(0.5f, 0.03f, 1f, 0.06f,
-                Color.FromArgb(180, 0, 0, 0));
+            int total = VehicleList.All.Length;
+            int pct = total > 0 ? (_currentIndex * 100) / total : 100;
 
-            // Model name (for file naming)
-            GbayRenderer.DrawText($"Model: {modelName}", 0.02f, 0.008f,
-                0.35f, Color.FromArgb(255, 100, 255, 100),
-                GbayRenderer.FONT_CONDENSED);
+            // Progress bar background
+            GbayRenderer.DrawRect(0.5f, 0.03f, 0.5f, 0.05f,
+                Color.FromArgb(200, 0, 0, 0));
 
-            // Display name
-            GbayRenderer.DrawText(displayName, 0.5f, 0.008f,
-                0.40f, Color.White, GbayRenderer.FONT_CHALET, true);
+            // Progress bar fill
+            float fillW = 0.48f * pct / 100f;
+            GbayRenderer.DrawRect(0.26f + fillW / 2f, 0.03f, fillW, 0.035f,
+                Color.FromArgb(200, 45, 156, 80));
 
-            // Counter
-            string counter = $"{_currentIndex + 1} / {VehicleList.All.Length}";
-            GbayRenderer.DrawText(counter, 0.98f, 0.008f,
-                0.35f, Color.White, GbayRenderer.FONT_CONDENSED,
-                false, false, true);
-
-            // Bottom controls bar
-            GbayRenderer.DrawRect(0.5f, 0.965f, 1f, 0.05f,
-                Color.FromArgb(180, 0, 0, 0));
-
-            string status = _autoOrbit ? "Orbit: ON" : "Orbit: OFF";
-            GbayRenderer.DrawText(
-                $"[N] Next  [B] Prev  [H] Hide HUD  [R] {status}  [T] Reset  [F10] Stop",
-                0.5f, 0.948f, 0.25f, Color.White,
-                GbayRenderer.FONT_CONDENSED, true);
+            // Text
+            string text = $"{status} {_currentIndex + 1}/{total}  ({pct}%)  {modelName}";
+            GbayRenderer.DrawText(text, 0.5f, 0.012f,
+                0.30f, Color.White, GbayRenderer.FONT_CONDENSED, true);
         }
     }
 }
