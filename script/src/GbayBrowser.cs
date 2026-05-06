@@ -513,7 +513,7 @@ namespace ALLIN1
                     _hoverCard = i;
 
                 VehicleCard card = _filtered[startIdx + i];
-                DrawCard(card, cardLeft, cardTop, cardW, isSelected, isHover);
+                DrawCard(card, cardLeft, cardTop, cardW, isSelected, isHover, i);
             }
 
             // Empty state
@@ -526,7 +526,8 @@ namespace ALLIN1
         }
 
         private void DrawCard(VehicleCard card, float left, float top,
-                               float cardW, bool selected, bool hovered)
+                               float cardW, bool selected, bool hovered,
+                               int cardIndex)
         {
             float cx = left + cardW / 2f;
             float cy = top + CARD_H / 2f;
@@ -541,21 +542,34 @@ namespace ALLIN1
             GbayRenderer.DrawBorderedRect(cx, cy, cardW, CARD_H,
                 bgColor, borderColor, 0.002f);
 
-            // Top area (category-colored placeholder -- 55% of card height)
+            // Top area (preview image or category-colored placeholder -- 55% of card height)
             float topAreaH = CARD_H * 0.55f;
             float topAreaCY = top + topAreaH / 2f;
-            Color topColor = GetCategoryColor(card.Model, hovered || selected);
-            GbayRenderer.DrawRect(cx, topAreaCY, cardW - 0.004f, topAreaH - 0.004f,
-                topColor);
 
-            // Class name in the placeholder area
-            string className = VehicleList.ClassNames.ContainsKey(card.Model)
-                ? VehicleList.ClassNames[card.Model]
-                : "";
-            if (className.Length > 0)
+            if (GbayRenderer.HasPreviewTexture(card.Model))
             {
-                GbayRenderer.DrawText(className, cx, top + topAreaH * 0.35f,
-                    0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
+                // Draw dark background behind texture (in case of letterboxing)
+                GbayRenderer.DrawRect(cx, topAreaCY, cardW - 0.004f, topAreaH - 0.004f,
+                    Color.FromArgb(255, 20, 20, 20));
+                // Draw preview image
+                GbayRenderer.DrawPreviewTexture(card.Model,
+                    cx, topAreaCY, cardW - 0.004f, topAreaH - 0.004f);
+            }
+            else
+            {
+                // Fallback: colored placeholder with class name
+                Color topColor = GetCategoryColor(card.Model, hovered || selected);
+                GbayRenderer.DrawRect(cx, topAreaCY, cardW - 0.004f, topAreaH - 0.004f,
+                    topColor);
+
+                string className = VehicleList.ClassNames.ContainsKey(card.Model)
+                    ? VehicleList.ClassNames[card.Model]
+                    : "";
+                if (className.Length > 0)
+                {
+                    GbayRenderer.DrawText(className, cx, top + topAreaH * 0.35f,
+                        0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
+                }
             }
 
             // Text area below the placeholder

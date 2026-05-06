@@ -3,7 +3,9 @@
 // All coordinates use GTA's normalized 0.0-1.0 screen space.
 // DRAW_RECT uses center-based coordinates (x,y = center of rect).
 
+using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using GTA.Native;
 
 namespace ALLIN1
@@ -128,6 +130,78 @@ namespace ALLIN1
         {
             Function.Call(Hash.DRAW_SPRITE, dict, name, x, y, w, h,
                           rotation, c.R, c.G, c.B, c.A);
+        }
+
+        // ------------------------------------------------------------------ //
+        //  Custom Textures (via GTA.UI.CustomSprite)                          //
+        // ------------------------------------------------------------------ //
+
+        // Base resolution used by CustomSprite coordinate system
+        private const float BASE_W = 1280f;
+        private const float BASE_H = 720f;
+
+        private static readonly Dictionary<string, GTA.UI.CustomSprite> _spriteCache
+            = new Dictionary<string, GTA.UI.CustomSprite>();
+        private static readonly HashSet<string> _missingPreviews
+            = new HashSet<string>();
+
+        private static string _previewFolder;
+
+        private static string GetPreviewFolder()
+        {
+            if (_previewFolder != null)
+                return _previewFolder;
+
+            string baseDir = Path.GetDirectoryName(
+                System.Reflection.Assembly.GetExecutingAssembly().Location);
+            _previewFolder = Path.Combine(baseDir, "previews");
+            return _previewFolder;
+        }
+
+        internal static bool HasPreviewTexture(string model)
+        {
+            if (_missingPreviews.Contains(model))
+                return false;
+            if (_spriteCache.ContainsKey(model))
+                return true;
+
+            string path = Path.Combine(GetPreviewFolder(), model + ".jpg");
+            if (!File.Exists(path))
+            {
+                _missingPreviews.Add(model);
+                return false;
+            }
+            return true;
+        }
+
+        internal static void DrawPreviewTexture(string model,
+                                                 float x, float y, float w, float h)
+        {
+            if (_missingPreviews.Contains(model))
+                return;
+
+            if (!_spriteCache.TryGetValue(model, out var sprite))
+            {
+                string path = Path.Combine(GetPreviewFolder(), model + ".jpg");
+                if (!File.Exists(path))
+                {
+                    _missingPreviews.Add(model);
+                    return;
+                }
+
+                sprite = new GTA.UI.CustomSprite(
+                    path,
+                    new SizeF(1f, 1f),
+                    new PointF(0f, 0f),
+                    Color.White);
+                sprite.Centered = true;
+                _spriteCache[model] = sprite;
+            }
+
+            // Convert normalized 0.0-1.0 coords to 1280x720 base
+            sprite.Position = new PointF(x * BASE_W, y * BASE_H);
+            sprite.Size = new SizeF(w * BASE_W, h * BASE_H);
+            sprite.Draw();
         }
 
         /// <summary>

@@ -219,6 +219,16 @@ def _deploy_script(gta_path: Path) -> bool:
         shutil.copy2(toml_src, toml_dest)
         log.info("Deployed config %s -> %s", toml_src.name, toml_dest)
 
+    # Deploy vehicle preview images for GBAY browser
+    previews_src = _SCRIPT_DIST_DIR / "previews"
+    if previews_src.is_dir():
+        previews_dest = scripts_dir / "previews"
+        if previews_dest.exists():
+            shutil.rmtree(previews_dest)
+        shutil.copytree(previews_src, previews_dest)
+        count = sum(1 for _ in previews_dest.glob("*.jpg"))
+        log.info("Deployed %d preview images → %s", count, previews_dest)
+
     # Clean up legacy INI from previous versions
     legacy_ini = scripts_dir / "ALLIN1.ini"
     if legacy_ini.exists():

@@ -77,6 +77,32 @@ if %errorlevel% neq 0 (
 )
 echo [OK] LemonUI.SHVDN3.dll updated
 
+:: Download vehicle preview images for GBAY browser
+set PREVIEWS_DIR=!SCRIPTS_DIR!\previews
+if not exist "!PREVIEWS_DIR!" mkdir "!PREVIEWS_DIR!"
+echo Downloading vehicle preview images...
+echo [%date% %time%] Downloading preview images >> %LOGFILE%
+set PREVIEWS_URL=%BASE_URL%/script/dist/previews
+:: Download manifest and individual files via GitHub zip
+curl --fail -sL -o "%TEMP%\allin1_repo.zip" "https://github.com/MinionEnjoyer/GTAV-ALLIN1/archive/refs/heads/main.zip" 2>> %LOGFILE%
+if %errorlevel% neq 0 (
+    echo [WARN] Failed to download preview images. Skipping.
+    echo [%date% %time%] WARN: preview download failed >> %LOGFILE%
+) else (
+    echo Extracting preview images...
+    powershell -Command "Expand-Archive -Force '%TEMP%\allin1_repo.zip' '%TEMP%\allin1_extract'" 2>> %LOGFILE%
+    if exist "%TEMP%\allin1_extract\GTAV-ALLIN1-main\script\dist\previews" (
+        xcopy /s /y /q "%TEMP%\allin1_extract\GTAV-ALLIN1-main\script\dist\previews\*" "!PREVIEWS_DIR!\" >nul 2>&1
+        echo [OK] Preview images updated
+        echo [%date% %time%] Preview images updated >> %LOGFILE%
+    ) else (
+        echo [WARN] Preview images not found in archive. Skipping.
+        echo [%date% %time%] WARN: previews dir not found in archive >> %LOGFILE%
+    )
+    rd /s /q "%TEMP%\allin1_extract" >nul 2>&1
+    del /q "%TEMP%\allin1_repo.zip" >nul 2>&1
+)
+
 :: Remove legacy ASI if present (traffic spawner is now in the DLL)
 if exist "!GTA_PATH!\ALLIN1.asi" (
     del /q "!GTA_PATH!\ALLIN1.asi" >nul 2>&1
