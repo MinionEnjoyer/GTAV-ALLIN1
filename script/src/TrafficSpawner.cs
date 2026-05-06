@@ -8,11 +8,6 @@
 // Only road-appropriate classes are used (no planes, helis, boats, military,
 // emergency, etc.).  Replacement rate is ~30 % for a natural vanilla/DLC mix.
 //
-// Configuration: place ALLIN1.ini next to ALLIN1.dll in the scripts/ folder.
-//   [General]
-//   EnableLogging=false
-//   EnableDLCPolice=false
-//
 // Requires: ScriptHookV + ScriptHookVDotNet Enhanced
 
 using System;
@@ -74,7 +69,7 @@ namespace ALLIN1
 
         // Story mode character vehicles and mission vehicles -- never replaced
         // with regular DLC cars. Police models here are eligible for DLC police
-        // upgrade when EnableDLCPolice=true.
+        // upgrade when enable_dlc_police=true.
         private static readonly HashSet<int> BLACKLISTED_MODELS = new HashSet<int>();
         private static readonly string[] BLACKLISTED_MODEL_NAMES =
         {
@@ -105,7 +100,7 @@ namespace ALLIN1
             "firetruk",    // fire truck
 
             // Police vehicles -- blocked from regular DLC replacement,
-            // but eligible for DLC police upgrade via EnableDLCPolice.
+            // but eligible for DLC police upgrade via enable_dlc_police.
             "policeold1",
             "policeold2",
             "police",
@@ -132,7 +127,7 @@ namespace ALLIN1
         // --- Config / Logging ---
         private static readonly string SCRIPTS_DIR = Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory, "scripts");
-        private static readonly string INI_PATH = Path.Combine(SCRIPTS_DIR, "ALLIN1.ini");
+        private static readonly string CONFIG_PATH = Path.Combine(SCRIPTS_DIR, "ALLIN1.toml");
         private static readonly string LOG_PATH = Path.Combine(SCRIPTS_DIR, "ALLIN1.log");
         private bool _enableLogging;
         private bool _enableDLCPolice;
@@ -168,38 +163,41 @@ namespace ALLIN1
             _enableLogging = false;
             _enableDLCPolice = false;
 
-            if (!File.Exists(INI_PATH))
-            {
-                try
-                {
-                    File.WriteAllText(INI_PATH,
-                        "[General]\r\n" +
-                        "EnableLogging=false\r\n" +
-                        "EnableDLCPolice=false\r\n");
-                }
-                catch { }
+            if (!File.Exists(CONFIG_PATH))
                 return;
-            }
 
             try
             {
-                foreach (string rawLine in File.ReadAllLines(INI_PATH))
+                string currentSection = "";
+                foreach (string rawLine in File.ReadAllLines(CONFIG_PATH))
                 {
                     string line = rawLine.Trim();
-                    if (line.StartsWith(";") || line.StartsWith("#")
-                        || line.StartsWith("[") || !line.Contains("="))
+                    if (line.Length == 0 || line.StartsWith("#"))
+                        continue;
+
+                    // Section header: [script]
+                    if (line.StartsWith("[") && line.EndsWith("]"))
+                    {
+                        currentSection = line.Substring(1, line.Length - 2)
+                            .Trim().ToLowerInvariant();
+                        continue;
+                    }
+
+                    // Only read keys from the [script] section
+                    if (currentSection != "script")
                         continue;
 
                     int eq = line.IndexOf('=');
-                    string key = line.Substring(0, eq).Trim();
-                    string val = line.Substring(eq + 1).Trim();
+                    if (eq < 0)
+                        continue;
 
-                    if (key.Equals("EnableLogging", StringComparison.OrdinalIgnoreCase))
-                        _enableLogging = val.Equals("true", StringComparison.OrdinalIgnoreCase)
-                                      || val == "1";
-                    else if (key.Equals("EnableDLCPolice", StringComparison.OrdinalIgnoreCase))
-                        _enableDLCPolice = val.Equals("true", StringComparison.OrdinalIgnoreCase)
-                                        || val == "1";
+                    string key = line.Substring(0, eq).Trim().ToLowerInvariant();
+                    string val = line.Substring(eq + 1).Trim().ToLowerInvariant();
+
+                    if (key == "enable_logging")
+                        _enableLogging = val == "true";
+                    else if (key == "enable_dlc_police")
+                        _enableDLCPolice = val == "true";
                 }
             }
             catch { }

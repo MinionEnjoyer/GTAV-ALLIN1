@@ -36,10 +36,17 @@ class VehiclesConfig:
 
 
 @dataclass
+class ScriptConfig:
+    enable_logging: bool = False
+    enable_dlc_police: bool = False
+
+
+@dataclass
 class Config:
     general: GeneralConfig
     traffic: TrafficConfig
     vehicles: VehiclesConfig
+    script: ScriptConfig
 
     @classmethod
     def load(cls, path: Path) -> Config:
@@ -56,7 +63,11 @@ class Config:
 
         vehicles = VehiclesConfig(**raw.get("vehicles", {}))
 
-        return cls(general=general, traffic=traffic, vehicles=vehicles)
+        script_raw = raw.get("script", {})
+        script_fields = {f.name for f in ScriptConfig.__dataclass_fields__.values()}
+        script = ScriptConfig(**{k: v for k, v in script_raw.items() if k in script_fields})
+
+        return cls(general=general, traffic=traffic, vehicles=vehicles, script=script)
 
     @classmethod
     def default(cls) -> Config:
@@ -64,6 +75,7 @@ class Config:
             general=GeneralConfig(),
             traffic=TrafficConfig(),
             vehicles=VehiclesConfig(),
+            script=ScriptConfig(),
         )
 
 

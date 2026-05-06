@@ -6,7 +6,7 @@ and ALLIN1 script deployment.
 File placement:
 - <GTA V root>/scripts/ALLIN1.dll — SHVDN script loaded at runtime.
   Spawns 444 GTA Online DLC vehicles into Story Mode traffic.
-- <GTA V root>/scripts/ALLIN1.ini — Optional config (created on first install).
+- <GTA V root>/scripts/ALLIN1.toml — Config deployed from project config.toml.
 
 Prerequisites (installed separately by the user):
 - ScriptHookV (dinput8.dll + ScriptHookV.dll)
@@ -108,7 +108,7 @@ def uninstall(config: Config) -> list[Path]:
 
     # Remove script DLL, config, and log from scripts/
     scripts_dir = gta_path / SCRIPTS_DIR
-    for fname in (DLL_FILENAME, "ALLIN1.ini", "ALLIN1.log"):
+    for fname in (DLL_FILENAME, "ALLIN1.toml", "ALLIN1.log", "ALLIN1.ini"):
         fpath = scripts_dir / fname
         if fpath.exists():
             fpath.unlink()
@@ -200,16 +200,20 @@ def _deploy_script(gta_path: Path) -> bool:
     shutil.copy2(src, dest)
     log.info("Deployed %s → %s", DLL_FILENAME, dest)
 
-    # Create default ALLIN1.ini if it doesn't already exist
-    ini_path = scripts_dir / "ALLIN1.ini"
-    if not ini_path.exists():
-        ini_path.write_text(
-            "[General]\r\n"
-            "EnableLogging=false\r\n"
-            "EnableDLCPolice=false\r\n",
-            encoding="utf-8",
-        )
-        log.info("Created default config → %s", ini_path)
+    # Deploy config.toml as ALLIN1.toml so the C# script can read it
+    toml_dest = scripts_dir / "ALLIN1.toml"
+    toml_src = _PROJECT_ROOT / "config.toml"
+    if not toml_src.exists():
+        toml_src = _PROJECT_ROOT / "config.example.toml"
+    if toml_src.exists():
+        shutil.copy2(toml_src, toml_dest)
+        log.info("Deployed config %s -> %s", toml_src.name, toml_dest)
+
+    # Clean up legacy INI from previous versions
+    legacy_ini = scripts_dir / "ALLIN1.ini"
+    if legacy_ini.exists():
+        legacy_ini.unlink()
+        log.info("Removed legacy ALLIN1.ini")
 
     return True
 
