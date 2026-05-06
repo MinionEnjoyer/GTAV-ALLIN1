@@ -151,14 +151,10 @@ namespace ALLIN1
             float posX, float posY, float rotation, float scaleFactor,
             float r, float g, float b, float a);
 
-        // ScriptHookV never frees DirectX textures, so we cap how many we load.
-        private const int MAX_TEXTURES = 20;
-
         private static readonly Dictionary<string, int> _textureIds
             = new Dictionary<string, int>();
         private static readonly HashSet<string> _missingPreviews
             = new HashSet<string>();
-        private static bool _textureLimitReached;
         private static bool _texturesDisabled;
         private static int _drawLevel;
 
@@ -188,8 +184,6 @@ namespace ALLIN1
                 return false;
             if (_textureIds.ContainsKey(model))
                 return true;
-            if (_textureLimitReached)
-                return false;
 
             string path = Path.Combine(GetPreviewFolder(), model + ".png");
             if (!File.Exists(path))
@@ -208,9 +202,6 @@ namespace ALLIN1
 
             if (!_textureIds.TryGetValue(model, out int texId))
             {
-                if (_textureLimitReached)
-                    return;
-
                 string path = Path.Combine(GetPreviewFolder(), model + ".png");
                 if (!File.Exists(path))
                 {
@@ -224,13 +215,9 @@ namespace ALLIN1
                     if (texId < 0)
                     {
                         _missingPreviews.Add(model);
-                        _textureLimitReached = true;
                         return;
                     }
                     _textureIds[model] = texId;
-
-                    if (_textureIds.Count >= MAX_TEXTURES)
-                        _textureLimitReached = true;
                 }
                 catch
                 {
