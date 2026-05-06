@@ -22,9 +22,9 @@ namespace ALLIN1
 {
     public class GbayPreviewCapture : Script
     {
-        // Simeon's showroom -- center of the main floor area
-        private static readonly Vector3 SHOWROOM_POS = new Vector3(-44.7f, -1098.5f, 26.4f);
-        private const float VEHICLE_HEADING = 60f;
+        // LSIA runway -- wide open, flat, clean background, fits any vehicle size
+        private static readonly Vector3 SHOWROOM_POS = new Vector3(-1336f, -3044f, 13.9f);
+        private const float VEHICLE_HEADING = 330f;
 
         // Camera setup
         private const float CAM_ANGLE = 210f; // degrees -- front-quarter view
