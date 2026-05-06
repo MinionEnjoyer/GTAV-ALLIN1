@@ -19,29 +19,43 @@ namespace ALLIN1
 {
     public class GbayShop : Script
     {
-        // Category definitions: TOML class name -> display label + VehicleList array
-        private static readonly (string key, string label, string[] models)[] CATEGORIES =
+        private struct Category
         {
-            ("compacts",       "Compacts",        VehicleList.Compacts),
-            ("coupes",         "Coupes",          VehicleList.Coupes),
-            ("sedans",         "Sedans",          VehicleList.Sedans),
-            ("suvs",           "SUVs",            VehicleList.Suvs),
-            ("muscle",         "Muscle",          VehicleList.Muscle),
-            ("sportsclassics", "Sports Classics", VehicleList.Sportsclassics),
-            ("super",          "Super",           VehicleList.Super),
-            ("offroad",        "Off-Road",        VehicleList.Offroad),
-            ("motorcycles",    "Motorcycles",     VehicleList.Motorcycles),
-            ("vans",           "Vans",            VehicleList.Vans),
-            ("boats",          "Boats",           VehicleList.Boats),
-            ("helicopters",    "Helicopters",     VehicleList.Helicopters),
-            ("planes",         "Planes",          VehicleList.Planes),
-            ("military",       "Military",        VehicleList.Military),
-            ("industrial",     "Industrial",      VehicleList.Industrial),
-            ("openwheel",      "Open Wheel",      VehicleList.Openwheel),
-            ("emergency",      "Emergency",       VehicleList.Emergency),
-            ("cycles",         "Cycles",          VehicleList.Cycles),
-            ("service",        "Service",         VehicleList.Service),
-            ("special",        "Special",         VehicleList.Special),
+            internal string Key;
+            internal string Label;
+            internal string[] Models;
+
+            internal Category(string key, string label, string[] models)
+            {
+                Key = key;
+                Label = label;
+                Models = models;
+            }
+        }
+
+        // Category definitions: TOML class name -> display label + VehicleList array
+        private static readonly Category[] CATEGORIES =
+        {
+            new Category("compacts",       "Compacts",        VehicleList.Compacts),
+            new Category("coupes",         "Coupes",          VehicleList.Coupes),
+            new Category("sedans",         "Sedans",          VehicleList.Sedans),
+            new Category("suvs",           "SUVs",            VehicleList.Suvs),
+            new Category("muscle",         "Muscle",          VehicleList.Muscle),
+            new Category("sportsclassics", "Sports Classics", VehicleList.Sportsclassics),
+            new Category("super",          "Super",           VehicleList.Super),
+            new Category("offroad",        "Off-Road",        VehicleList.Offroad),
+            new Category("motorcycles",    "Motorcycles",     VehicleList.Motorcycles),
+            new Category("vans",           "Vans",            VehicleList.Vans),
+            new Category("boats",          "Boats",           VehicleList.Boats),
+            new Category("helicopters",    "Helicopters",     VehicleList.Helicopters),
+            new Category("planes",         "Planes",          VehicleList.Planes),
+            new Category("military",       "Military",        VehicleList.Military),
+            new Category("industrial",     "Industrial",      VehicleList.Industrial),
+            new Category("openwheel",      "Open Wheel",      VehicleList.Openwheel),
+            new Category("emergency",      "Emergency",       VehicleList.Emergency),
+            new Category("cycles",         "Cycles",          VehicleList.Cycles),
+            new Category("service",        "Service",         VehicleList.Service),
+            new Category("special",        "Special",         VehicleList.Special),
         };
 
         // --- Config ---
@@ -209,13 +223,13 @@ namespace ALLIN1
             // --- Vehicle category submenus ---
             foreach (var cat in CATEGORIES)
             {
-                if (cat.models.Length == 0)
+                if (cat.Models.Length == 0)
                     continue;
 
-                var subMenu = new NativeMenu(cat.label, "Select a vehicle");
+                var subMenu = new NativeMenu(cat.Label, "Select a vehicle");
                 _pool.Add(subMenu);
 
-                foreach (string model in cat.models)
+                foreach (string model in cat.Models)
                 {
                     string displayName = VehicleList.DisplayNames.ContainsKey(model)
                         ? VehicleList.DisplayNames[model]
@@ -243,8 +257,8 @@ namespace ALLIN1
                 }
 
                 var submenuItem = new NativeSubmenuItem(subMenu, _mainMenu,
-                    $"{cat.label} ({cat.models.Length})");
-                submenuItem.AltTitle = $"{cat.models.Length}";
+                    $"{cat.Label} ({cat.Models.Length})");
+                submenuItem.AltTitle = $"{cat.Models.Length}";
             }
 
             // --- My Garages submenu ---
