@@ -1201,6 +1201,16 @@ namespace ALLIN1
                 GbayRenderer.PlayNav();
             }
 
+            // Set GPS waypoint to current safehouse
+            if (input.GpsWaypoint)
+            {
+                var pos = safehouse.Slots[0].Position;
+                Function.Call((Hash)0xFE43368D2AA4F2FC, pos.X, pos.Y);
+                GbayRenderer.PlaySelect();
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~g~GPS set to ~w~{safehouse.Name}", 3000);
+            }
+
             // Back
             if (input.Back || input.MouseRightClick)
             {
@@ -1211,7 +1221,7 @@ namespace ALLIN1
             // Footer
             GbayRenderer.DrawRect(BROWSER_CX, FOOTER_CY, BROWSER_W, FOOTER_H,
                 GbayRenderer.FooterBg);
-            GbayRenderer.DrawText("[Z/X] Safehouse   [Enter] Remove   [Esc] Back",
+            GbayRenderer.DrawText("[Z/X] Safehouse   [G] Set GPS   [Enter] Remove   [Esc] Back",
                 BROWSER_CX, FOOTER_Y + 0.012f, 0.24f, GbayRenderer.TextDim,
                 GbayRenderer.FONT_CONDENSED, true);
         }
