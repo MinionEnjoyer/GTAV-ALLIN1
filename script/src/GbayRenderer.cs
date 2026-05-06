@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Runtime.InteropServices;
 using GTA.Native;
 
 namespace ALLIN1
@@ -134,22 +135,32 @@ namespace ALLIN1
         }
 
         // ------------------------------------------------------------------ //
-        //  Custom Textures (via GTA.UI.CustomSprite)                          //
+        //  Custom Textures (direct P/Invoke to ScriptHookV.dll)                //
         // ------------------------------------------------------------------ //
 
-        // Base resolution used by CustomSprite coordinate system
-        private const float BASE_W = 1280f;
-        private const float BASE_H = 720f;
+        [DllImport("ScriptHookV.dll", ExactSpelling = true,
+                   EntryPoint = "?createTexture@@YAHPEBD@Z")]
+        private static extern int SHV_CreateTexture(
+            [MarshalAs(UnmanagedType.LPStr)] string filename);
+
+        [DllImport("ScriptHookV.dll", ExactSpelling = true,
+                   EntryPoint = "?drawTexture@@YAXHHHHMMMMMMMMMMMM@Z")]
+        private static extern void SHV_DrawTexture(
+            int id, int instance, int level, int time,
+            float sizeX, float sizeY, float centerX, float centerY,
+            float posX, float posY, float rotation, float scaleFactor,
+            float r, float g, float b, float a);
 
         // ScriptHookV never frees DirectX textures, so we cap how many we load.
-        // 24 = two full pages of cards. Beyond this, cards show placeholders.
-        private const int MAX_TEXTURES = 24;
+        private const int MAX_TEXTURES = 20;
 
-        private static readonly Dictionary<string, GTA.UI.CustomSprite> _spriteCache
-            = new Dictionary<string, GTA.UI.CustomSprite>();
+        private static readonly Dictionary<string, int> _textureIds
+            = new Dictionary<string, int>();
         private static readonly HashSet<string> _missingPreviews
             = new HashSet<string>();
         private static bool _textureLimitReached;
+        private static bool _texturesDisabled;
+        private static int _drawLevel;
 
         private static string _previewFolder;
 
@@ -163,11 +174,19 @@ namespace ALLIN1
             return _previewFolder;
         }
 
+        /// <summary>Reset per-frame draw state. Call once at the start of each frame.</summary>
+        internal static void BeginFrame()
+        {
+            _drawLevel = 0;
+        }
+
         internal static bool HasPreviewTexture(string model)
         {
+            if (_texturesDisabled)
+                return false;
             if (_missingPreviews.Contains(model))
                 return false;
-            if (_spriteCache.ContainsKey(model))
+            if (_textureIds.ContainsKey(model))
                 return true;
             if (_textureLimitReached)
                 return false;
@@ -184,10 +203,10 @@ namespace ALLIN1
         internal static void DrawPreviewTexture(string model,
                                                  float x, float y, float w, float h)
         {
-            if (_missingPreviews.Contains(model))
+            if (_texturesDisabled || _missingPreviews.Contains(model))
                 return;
 
-            if (!_spriteCache.TryGetValue(model, out var sprite))
+            if (!_textureIds.TryGetValue(model, out int texId))
             {
                 if (_textureLimitReached)
                     return;
@@ -201,29 +220,49 @@ namespace ALLIN1
 
                 try
                 {
-                    sprite = new GTA.UI.CustomSprite(
-                        path,
-                        new SizeF(1f, 1f),
-                        new PointF(0f, 0f),
-                        Color.White);
-                    sprite.Centered = true;
-                    _spriteCache[model] = sprite;
+                    texId = SHV_CreateTexture(path);
+                    if (texId < 0)
+                    {
+                        _missingPreviews.Add(model);
+                        _textureLimitReached = true;
+                        return;
+                    }
+                    _textureIds[model] = texId;
 
-                    if (_spriteCache.Count >= MAX_TEXTURES)
+                    if (_textureIds.Count >= MAX_TEXTURES)
                         _textureLimitReached = true;
                 }
                 catch
                 {
-                    _missingPreviews.Add(model);
-                    _textureLimitReached = true;
+                    _texturesDisabled = true;
                     return;
                 }
             }
 
-            // Convert normalized 0.0-1.0 coords to 1280x720 base
-            sprite.Position = new PointF(x * BASE_W, y * BASE_H);
-            sprite.Size = new SizeF(w * BASE_W, h * BASE_H);
-            sprite.Draw();
+            // Screen aspect ratio for correct scaling
+            float ar = (float)GTA.UI.Screen.Resolution.Height
+                     / (float)GTA.UI.Screen.Resolution.Width;
+
+            try
+            {
+                SHV_DrawTexture(
+                    texId,
+                    0,              // instance
+                    _drawLevel++,   // draw order
+                    100,            // time (ms)
+                    w,              // sizeX (screen-space 0-1)
+                    h / ar,         // sizeY corrected for aspect ratio
+                    0.5f, 0.5f,     // center of texture
+                    x, y,           // position (screen-space 0-1, center-based)
+                    0f,             // rotation
+                    ar,             // screen height scale factor
+                    1f, 1f, 1f, 1f  // RGBA
+                );
+            }
+            catch
+            {
+                _texturesDisabled = true;
+            }
         }
 
         /// <summary>

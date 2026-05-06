@@ -235,6 +235,7 @@ namespace ALLIN1
 
             var input = GbayInput.Poll();
             GbayInput.DisableGameControls();
+            GbayRenderer.BeginFrame();
 
             // Preview and delivery states handle their own background
             if (_state != BrowserState.VehiclePreview &&
