@@ -12,6 +12,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="tools\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="ScriptHookVDotNet3" Version="3.6.0" />
     <PackageReference Include="LemonUI.SHVDN3" Version="2.2.0" />
   </ItemGroup>
