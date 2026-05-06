@@ -17,60 +17,23 @@ echo   GTA V ALLIN1 - Update from GitHub
 echo ============================================================
 echo.
 
-:: Resolve GTA V path -- check .gta_path cache, then config.toml, then ask
+:: Read GTA V path from installer cache
 set GTA_PATH=
-
-:: Try .gta_path cache file first (written by installer or detector)
 if exist ".gta_path" (
     set /p GTA_PATH=<.gta_path
-    :: Trim trailing spaces/tabs that echo or Python may leave
-    for /f "tokens=* delims= " %%a in ("!GTA_PATH!") do set GTA_PATH=%%a
 )
 
-:: If cache was empty, try to read from config.toml
-if "!GTA_PATH!"=="" if exist "config.toml" (
-    for /f "tokens=1,* delims==" %%a in ('findstr /i "gta_path" config.toml') do (
-        set _RAW=%%b
-        :: Strip quotes, spaces, and "auto"
-        set _RAW=!_RAW: =!
-        set _RAW=!_RAW:"=!
-        if /i not "!_RAW!"=="auto" if not "!_RAW!"=="" (
-            set GTA_PATH=!_RAW!
-        )
-    )
-)
-
-:: If still empty, ask the user
 if "!GTA_PATH!"=="" (
-    echo [INFO] No cached GTA V path found.
-    echo Please enter the full path to your GTA V installation folder.
-    echo Example: D:\SteamLibrary\steamapps\common\Grand Theft Auto V
-    echo.
-    set /p GTA_PATH="GTA V path: "
-    if "!GTA_PATH!"=="" (
-        echo [ERROR] No path entered. Exiting.
-        echo [%date% %time%] ERROR: No GTA path >> %LOGFILE%
-        pause >nul
-        exit /b 1
-    )
-    echo !GTA_PATH!> .gta_path
-    echo [%date% %time%] Saved GTA path: !GTA_PATH! >> %LOGFILE%
+    echo [ERROR] GTA V path not found. Run install.bat first.
+    echo [%date% %time%] ERROR: .gta_path missing >> %LOGFILE%
+    pause >nul
+    exit /b 1
 )
 
-:: Verify GTA path exists (support all editions)
-set FOUND_EXE=0
-if exist "!GTA_PATH!\GTA5.exe" set FOUND_EXE=1
-if exist "!GTA_PATH!\GTA5_Enhanced.exe" set FOUND_EXE=1
-if exist "!GTA_PATH!\PlayGTAV.exe" set FOUND_EXE=1
-if exist "!GTA_PATH!\update\update.rpf" set FOUND_EXE=1
-
-if !FOUND_EXE! equ 0 (
-    echo [ERROR] GTA V not found at: !GTA_PATH!
-    echo [%date% %time%] ERROR: No GTA V executable found at !GTA_PATH! >> %LOGFILE%
-    echo.
-    echo Expected one of: GTA5.exe, GTA5_Enhanced.exe, PlayGTAV.exe
-    echo Please check the path and try again.
-    del /q ".gta_path" >nul 2>&1
+if not exist "!GTA_PATH!" (
+    echo [ERROR] Cached path does not exist: !GTA_PATH!
+    echo [%date% %time%] ERROR: Cached path invalid >> %LOGFILE%
+    echo Run install.bat again to re-detect your GTA V location.
     pause >nul
     exit /b 1
 )
