@@ -43,21 +43,21 @@ namespace ALLIN1
 
         // Header
         private const float HEADER_Y       = 0.03f;
-        private const float HEADER_H       = 0.06f;
-        private const float HEADER_CY      = 0.06f;  // center = 0.03 + 0.06/2
+        private const float HEADER_H       = 0.07f;
+        private const float HEADER_CY      = 0.065f;  // center = 0.03 + 0.06/2
 
         // Category tab strip
-        private const float TAB_Y          = 0.09f;
-        private const float TAB_H          = 0.045f;
-        private const float TAB_CY         = 0.1125f; // center = 0.09 + 0.045/2
+        private const float TAB_Y          = 0.10f;
+        private const float TAB_H          = 0.055f;
+        private const float TAB_CY         = 0.1275f; // center = 0.09 + 0.045/2
         private const int   MAX_VISIBLE_TABS = 8;
 
         // Grid area
-        private const float GRID_TOP       = 0.14f;
+        private const float GRID_TOP       = 0.16f;
         private const float GRID_BOTTOM    = 0.88f;
-        private const int   GRID_COLS      = 4;
+        private const int   GRID_COLS      = 3;
         private const int   GRID_ROWS      = 3;
-        private const int   PAGE_SIZE      = 12;
+        private const int   PAGE_SIZE      = 9;
 
         // Footer
         private const float FOOTER_Y       = 0.88f;
@@ -65,18 +65,18 @@ namespace ALLIN1
         private const float FOOTER_CY      = 0.905f;
 
         // Card dimensions (computed per-frame for aspect ratio)
-        private const float CARD_H         = 0.22f;
-        private const float CARD_GAP_X     = 0.012f;
-        private const float CARD_GAP_Y     = 0.018f;
+        private const float CARD_H         = 0.23f;
+        private const float CARD_GAP_X     = 0.015f;
+        private const float CARD_GAP_Y     = 0.022f;
 
         // Top menu button layout
-        private const float TOP_BTN_W      = 0.30f;
-        private const float TOP_BTN_H      = 0.07f;
+        private const float TOP_BTN_W      = 0.35f;
+        private const float TOP_BTN_H      = 0.08f;
         private const float TOP_BTN_GAP    = 0.025f;
 
         // Delivery modal
-        private const float MODAL_W        = 0.40f;
-        private const float MODAL_ITEM_H   = 0.045f;
+        private const float MODAL_W        = 0.45f;
+        private const float MODAL_ITEM_H   = 0.055f;
 
         // ------------------------------------------------------------------ //
         //  Category Definitions                                               //
@@ -248,7 +248,7 @@ namespace ALLIN1
                 GbayRenderer.ModalBg);
 
             // Title
-            GbayRenderer.DrawText("GBAY", BROWSER_CX, 0.33f, 0.8f,
+            GbayRenderer.DrawText("GBAY", BROWSER_CX, 0.30f, 1.0f,
                 GbayRenderer.HeaderBg, GbayRenderer.FONT_PRICEDOWN, true);
 
             // Buttons
@@ -288,13 +288,13 @@ namespace ALLIN1
                 }
 
                 GbayRenderer.DrawRect(BROWSER_CX, btnCY, TOP_BTN_W, TOP_BTN_H, bg);
-                GbayRenderer.DrawText(labels[i], BROWSER_CX, btnY + 0.015f,
-                    0.45f, text, GbayRenderer.FONT_CHALET, true);
+                GbayRenderer.DrawText(labels[i], BROWSER_CX, btnY + 0.018f,
+                    0.50f, text, GbayRenderer.FONT_CHALET, true);
 
                 if (i == 1) // Weapons -- show "Coming Soon"
                 {
-                    GbayRenderer.DrawText("Coming Soon", BROWSER_CX, btnY + 0.045f,
-                        0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
+                    GbayRenderer.DrawText("Coming Soon", BROWSER_CX, btnY + 0.050f,
+                        0.32f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
                 }
             }
 
@@ -384,16 +384,16 @@ namespace ALLIN1
 
             // GBAY logo (left)
             GbayRenderer.DrawText("GBAY", BROWSER_LEFT + 0.01f, HEADER_Y + 0.008f,
-                0.55f, GbayRenderer.HeaderText, GbayRenderer.FONT_PRICEDOWN, false, true);
+                0.65f, GbayRenderer.HeaderText, GbayRenderer.FONT_PRICEDOWN, false, true);
 
             // Section label
             GbayRenderer.DrawText("VEHICLES", BROWSER_LEFT + 0.09f, HEADER_Y + 0.018f,
-                0.32f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
+                0.38f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
 
             // Player money (right)
             string money = $"${Game.Player.Money:N0}";
             GbayRenderer.DrawText(money, BROWSER_RIGHT - 0.01f, HEADER_Y + 0.018f,
-                0.32f, GbayRenderer.HeaderText, GbayRenderer.FONT_CHALET,
+                0.38f, GbayRenderer.HeaderText, GbayRenderer.FONT_CHALET,
                 false, false, true);
         }
 
@@ -434,7 +434,7 @@ namespace ALLIN1
                 Color textColor = isActive ? GbayRenderer.TabActive : GbayRenderer.TabInactive;
                 string label = CATEGORIES[catIdx].Label;
                 GbayRenderer.DrawText(label, tabCX, TAB_Y + 0.01f,
-                    0.27f, textColor, GbayRenderer.FONT_CONDENSED, true);
+                    0.32f, textColor, GbayRenderer.FONT_CONDENSED, true);
             }
 
             // Scroll arrows if there are more tabs than visible
@@ -506,23 +506,21 @@ namespace ALLIN1
             GbayRenderer.DrawBorderedRect(cx, cy, cardW, CARD_H,
                 bgColor, borderColor, 0.002f);
 
-            // Top area (colored placeholder -- 55% of card height)
+            // Top area (category-colored placeholder -- 55% of card height)
             float topAreaH = CARD_H * 0.55f;
             float topAreaCY = top + topAreaH / 2f;
-            Color topColor = hovered || selected
-                ? GbayRenderer.CardTopHover
-                : GbayRenderer.CardTopDefault;
+            Color topColor = GetCategoryColor(card.Model, hovered || selected);
             GbayRenderer.DrawRect(cx, topAreaCY, cardW - 0.004f, topAreaH - 0.004f,
                 topColor);
 
-            // Class name in the placeholder area (small, centered)
+            // Class name in the placeholder area
             string className = VehicleList.ClassNames.ContainsKey(card.Model)
                 ? VehicleList.ClassNames[card.Model]
                 : "";
             if (className.Length > 0)
             {
                 GbayRenderer.DrawText(className, cx, top + topAreaH * 0.35f,
-                    0.24f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
+                    0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
             }
 
             // Text area below the placeholder
@@ -531,18 +529,18 @@ namespace ALLIN1
 
             // Manufacturer
             GbayRenderer.DrawText(card.Manufacturer, textLeft, textTop,
-                0.22f, GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED);
+                0.26f, GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED);
 
             // Vehicle name
-            GbayRenderer.DrawText(card.DisplayName, textLeft, textTop + 0.025f,
-                0.28f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+            GbayRenderer.DrawText(card.DisplayName, textLeft, textTop + 0.028f,
+                0.33f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
 
             // Price
             string priceText = card.Price <= 0 ? "FREE" : $"${card.Price:N0}";
             Color priceColor = card.Price <= 0
                 ? GbayRenderer.TextPriceFree : GbayRenderer.TextPrice;
-            GbayRenderer.DrawText(priceText, textLeft, textTop + 0.052f,
-                0.25f, priceColor, GbayRenderer.FONT_CHALET);
+            GbayRenderer.DrawText(priceText, textLeft, textTop + 0.058f,
+                0.30f, priceColor, GbayRenderer.FONT_CHALET);
         }
 
         private void DrawFooter()
@@ -553,12 +551,12 @@ namespace ALLIN1
             // Page indicator
             string pageText = $"Page {_currentPage + 1}/{Math.Max(1, _totalPages)}";
             GbayRenderer.DrawText(pageText, BROWSER_LEFT + 0.02f, FOOTER_Y + 0.012f,
-                0.28f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+                0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
 
             // Control hints
             string hints = "[Q/E] Page   [Z/X] Category   [Enter] Buy   [Esc] Back";
             GbayRenderer.DrawText(hints, BROWSER_RIGHT - 0.01f, FOOTER_Y + 0.012f,
-                0.24f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED,
+                0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED,
                 false, false, true);
         }
 
@@ -674,15 +672,8 @@ namespace ALLIN1
             _deliveryIndex = 0;
             _deliveryHover = -1;
 
-            // Build delivery options
+            // Build delivery options (garage-only)
             _deliveryOptions.Clear();
-            _deliveryOptions.Add(new DeliveryOption
-            {
-                Label = "Deliver Here",
-                Info = "Instant",
-                SafehouseId = null,
-                IsFull = false,
-            });
 
             PedHash character = GbayShop.GetCurrentCharacter();
             var safehouses = GarageManager.GetSafehouses(character);
@@ -800,17 +791,10 @@ namespace ALLIN1
                 if (!selected.IsFull)
                 {
                     GbayRenderer.PlaySelect();
-                    if (selected.SafehouseId == null)
-                    {
-                        _shop.ExecuteDeliverHere(_pendingModel, _pendingPrice);
-                    }
-                    else
-                    {
-                        _shop.ExecuteDeliverToSafehouse(
-                            _pendingModel, _pendingPrice,
-                            selected.SafehouseId, selected.Label);
-                    }
-                    _state = BrowserState.Closed;
+                    _shop.ExecuteDeliverToSafehouse(
+                        _pendingModel, _pendingPrice,
+                        selected.SafehouseId, selected.Label);
+                    _state = BrowserState.VehicleBrowser;
                 }
                 else
                 {
@@ -841,9 +825,9 @@ namespace ALLIN1
             GbayRenderer.DrawRect(BROWSER_CX, HEADER_CY, BROWSER_W, HEADER_H,
                 GbayRenderer.HeaderBg);
             GbayRenderer.DrawText("GBAY", BROWSER_LEFT + 0.01f, HEADER_Y + 0.008f,
-                0.55f, GbayRenderer.HeaderText, GbayRenderer.FONT_PRICEDOWN, false, true);
+                0.65f, GbayRenderer.HeaderText, GbayRenderer.FONT_PRICEDOWN, false, true);
             GbayRenderer.DrawText("MY GARAGES", BROWSER_LEFT + 0.09f, HEADER_Y + 0.018f,
-                0.32f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
+                0.38f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
 
             if (_garageSafehouses == null || _garageSafehouses.Length == 0)
             {
@@ -1018,6 +1002,48 @@ namespace ALLIN1
         // ------------------------------------------------------------------ //
         //  Helpers                                                            //
         // ------------------------------------------------------------------ //
+
+        private static Color GetCategoryColor(string model, bool bright)
+        {
+            string cls = VehicleList.ClassNames.ContainsKey(model)
+                ? VehicleList.ClassNames[model] : "";
+
+            // Each class gets a distinct muted color for visual variety
+            int r, g, b;
+            switch (cls)
+            {
+                case "Compacts":       r = 100; g = 170; b = 200; break;
+                case "Coupes":         r = 160; g = 140; b = 200; break;
+                case "Sedans":         r = 140; g = 160; b = 180; break;
+                case "Suvs":           r = 120; g = 170; b = 140; break;
+                case "Muscle":         r = 200; g = 140; b = 120; break;
+                case "Sportsclassics": r = 180; g = 160; b = 120; break;
+                case "Super":          r = 200; g = 120; b = 140; break;
+                case "Offroad":        r = 160; g = 150; b = 120; break;
+                case "Motorcycles":    r = 140; g = 140; b = 160; break;
+                case "Vans":           r = 150; g = 170; b = 160; break;
+                case "Boats":          r = 100; g = 160; b = 200; break;
+                case "Helicopters":    r = 140; g = 180; b = 200; break;
+                case "Planes":         r = 160; g = 190; b = 210; break;
+                case "Military":       r = 130; g = 150; b = 120; break;
+                case "Industrial":     r = 170; g = 160; b = 140; break;
+                case "Openwheel":      r = 200; g = 160; b = 100; break;
+                case "Emergency":      r = 200; g = 130; b = 130; break;
+                case "Cycles":         r = 130; g = 180; b = 150; break;
+                case "Service":        r = 160; g = 160; b = 160; break;
+                case "Special":        r = 180; g = 140; b = 180; break;
+                default:               r = 180; g = 190; b = 185; break;
+            }
+
+            if (bright)
+            {
+                r = Math.Min(255, r + 20);
+                g = Math.Min(255, g + 20);
+                b = Math.Min(255, b + 20);
+            }
+
+            return Color.FromArgb(255, r, g, b);
+        }
 
         private void RebuildFilteredList()
         {
