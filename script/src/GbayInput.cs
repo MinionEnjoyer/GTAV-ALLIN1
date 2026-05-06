@@ -5,7 +5,6 @@
 
 using GTA;
 using GTA.Native;
-using Keys = System.Windows.Forms.Keys;
 
 namespace ALLIN1
 {
@@ -23,7 +22,6 @@ namespace ALLIN1
         internal float MouseY;         // 0.0 - 1.0
         internal bool MouseClick;
         internal bool MouseRightClick;
-        internal bool GpsWaypoint;
     }
 
     internal static class GbayInput
@@ -75,10 +73,6 @@ namespace ALLIN1
                 input.CategoryPrev = true;
             if (Game.IsControlJustPressed(Control.FrontendRt))
                 input.CategoryNext = true;
-
-            // GPS waypoint: G
-            if (Game.IsKeyPressed(Keys.G))
-                input.GpsWaypoint = true;
 
             return input;
         }

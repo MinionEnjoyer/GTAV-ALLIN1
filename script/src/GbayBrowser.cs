@@ -1046,6 +1046,29 @@ namespace ALLIN1
             GbayRenderer.DrawText("MY GARAGES", BROWSER_LEFT + 0.09f, HEADER_Y + 0.018f,
                 0.38f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
 
+            // "Mark on Map" button (right side of header)
+            float gpsBtnW = 0.12f;
+            float gpsBtnH = 0.04f;
+            float gpsBtnX = BROWSER_RIGHT - 0.08f;
+            float gpsBtnY = HEADER_CY;
+            bool gpsHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
+                gpsBtnX, gpsBtnY, gpsBtnW, gpsBtnH);
+            Color gpsBg = gpsHover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen;
+            GbayRenderer.DrawRect(gpsBtnX, gpsBtnY, gpsBtnW, gpsBtnH, gpsBg);
+            GbayRenderer.DrawText("Mark on Map", gpsBtnX, gpsBtnY - 0.012f,
+                0.28f, GbayRenderer.TextWhite, GbayRenderer.FONT_CONDENSED, true);
+
+            if (gpsHover && input.MouseClick && _garageSafehouses != null
+                && _garageSafehouses.Length > 0)
+            {
+                var sh = _garageSafehouses[_garageSafehouseIdx];
+                var pos = sh.Slots[0].Position;
+                Function.Call((Hash)0xFE43368D2AA4F2FC, pos.X, pos.Y);
+                GbayRenderer.PlaySelect();
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~g~GPS set to ~w~{sh.Name}", 3000);
+            }
+
             if (_garageSafehouses == null || _garageSafehouses.Length == 0)
             {
                 GbayRenderer.DrawText("No safehouses available",
@@ -1201,16 +1224,6 @@ namespace ALLIN1
                 GbayRenderer.PlayNav();
             }
 
-            // Set GPS waypoint to current safehouse
-            if (input.GpsWaypoint)
-            {
-                var pos = safehouse.Slots[0].Position;
-                Function.Call((Hash)0xFE43368D2AA4F2FC, pos.X, pos.Y);
-                GbayRenderer.PlaySelect();
-                GTA.UI.Screen.ShowSubtitle(
-                    $"~g~GPS set to ~w~{safehouse.Name}", 3000);
-            }
-
             // Back
             if (input.Back || input.MouseRightClick)
             {
@@ -1221,7 +1234,7 @@ namespace ALLIN1
             // Footer
             GbayRenderer.DrawRect(BROWSER_CX, FOOTER_CY, BROWSER_W, FOOTER_H,
                 GbayRenderer.FooterBg);
-            GbayRenderer.DrawText("[Z/X] Safehouse   [G] Set GPS   [Enter] Remove   [Esc] Back",
+            GbayRenderer.DrawText("[Z/X] Safehouse   [Enter] Remove   [Esc] Back",
                 BROWSER_CX, FOOTER_Y + 0.012f, 0.24f, GbayRenderer.TextDim,
                 GbayRenderer.FONT_CONDENSED, true);
         }

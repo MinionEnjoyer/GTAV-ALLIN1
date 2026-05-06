@@ -3,6 +3,7 @@
 // All coordinates use GTA's normalized 0.0-1.0 screen space.
 // DRAW_RECT uses center-based coordinates (x,y = center of rect).
 
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -152,14 +153,25 @@ namespace ALLIN1
             if (_previewFolder != null)
                 return _previewFolder;
 
-            string baseDir = Path.GetDirectoryName(
-                System.Reflection.Assembly.GetExecutingAssembly().Location);
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             _previewFolder = Path.Combine(baseDir, "previews");
             return _previewFolder;
         }
 
+        private static bool _loggedPreviewPath;
+
         internal static bool HasPreviewTexture(string model)
         {
+            if (!_loggedPreviewPath)
+            {
+                string folder = GetPreviewFolder();
+                bool exists = Directory.Exists(folder);
+                int count = exists ? Directory.GetFiles(folder, "*.jpg").Length : 0;
+                GTA.UI.Notification.Show(
+                    $"~b~Previews~w~: {folder} ({count} files, exists={exists})");
+                _loggedPreviewPath = true;
+            }
+
             if (_missingPreviews.Contains(model))
                 return false;
             if (_spriteCache.ContainsKey(model))
