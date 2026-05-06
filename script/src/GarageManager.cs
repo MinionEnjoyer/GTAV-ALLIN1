@@ -113,8 +113,8 @@ namespace ALLIN1
         //  State                                                              //
         // ------------------------------------------------------------------ //
 
-        private static readonly string SCRIPTS_DIR = Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory, "scripts");
+        private static readonly string SCRIPTS_DIR =
+            AppDomain.CurrentDomain.BaseDirectory;
         private static readonly string SAVE_PATH =
             Path.Combine(SCRIPTS_DIR, "ALLIN1_garages.json");
         private static readonly string LOG_PATH =

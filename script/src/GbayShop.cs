@@ -59,8 +59,8 @@ namespace ALLIN1
         };
 
         // --- Config ---
-        private static readonly string SCRIPTS_DIR = Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory, "scripts");
+        private static readonly string SCRIPTS_DIR =
+            AppDomain.CurrentDomain.BaseDirectory;
         private static readonly string CONFIG_PATH = Path.Combine(SCRIPTS_DIR, "ALLIN1.toml");
         private static readonly string LOG_PATH = Path.Combine(SCRIPTS_DIR, "ALLIN1_gbay.log");
 
@@ -294,6 +294,8 @@ namespace ALLIN1
 
             try
             {
+                // Close the shop menus before showing delivery options
+                _mainMenu.Visible = false;
                 RebuildDeliveryMenu();
                 _deliveryMenu.Visible = true;
             }
