@@ -50,7 +50,7 @@ namespace ALLIN1
             VehicleList.Vans,
         };
 
-        // Map VehicleClass enum → VehicleList arrays for class-matched replacement.
+        // Map VehicleClass enum -> VehicleList arrays for class-matched replacement.
         private static readonly Dictionary<VehicleClass, string[]> CLASS_MAP =
             new Dictionary<VehicleClass, string[]>
         {
@@ -65,6 +65,51 @@ namespace ALLIN1
             { VehicleClass.OffRoad,        VehicleList.Offroad },
             { VehicleClass.Motorcycles,    VehicleList.Motorcycles },
             { VehicleClass.Vans,           VehicleList.Vans },
+        };
+
+        // Vehicles that belong to story mode characters or are used in missions.
+        // These must NEVER be replaced.
+        private static readonly HashSet<int> BLACKLISTED_MODELS = new HashSet<int>();
+        private static readonly string[] BLACKLISTED_MODEL_NAMES =
+        {
+            // Michael's family
+            "tailgater",   // Michael's car
+            "sentinel2",   // Amanda's car (sentinel convertible)
+            "issi2",       // Tracey's car
+            "premier",     // used in various missions
+
+            // Franklin's vehicles
+            "buffalo",     // Franklin's Buffalo (pre-mission)
+            "bagger",      // Franklin's motorcycle
+
+            // Trevor's vehicles
+            "bodhi2",      // Trevor's Bodhi
+            "blazer",      // Trevor's quad
+
+            // Key mission / story vehicles
+            "pbus",        // prison bus
+            "riot",        // riot van (missions)
+            "stockade",    // Stockade (heist)
+            "trash",       // trash truck (missions)
+            "tow",         // tow truck (missions)
+            "bus",         // bus (missions)
+            "rentalbus",   // rental shuttle
+            "taxi",        // taxis (random events)
+            "ambulance",   // ambulance
+            "firetruk",    // fire truck
+            "policeold1",  // police cruiser variants
+            "policeold2",
+            "police",
+            "police2",
+            "police3",
+            "police4",
+            "policeb",     // police bike
+            "policet",     // police transporter
+            "pranger",     // park ranger
+            "sheriff",
+            "sheriff2",
+            "fbi",
+            "fbi2",
         };
 
         // --- Logging ---
@@ -147,6 +192,14 @@ namespace ALLIN1
         //  Initialization                                                     //
         // ------------------------------------------------------------------ //
 
+        private void BuildBlacklist()
+        {
+            BLACKLISTED_MODELS.Clear();
+            foreach (string name in BLACKLISTED_MODEL_NAMES)
+                BLACKLISTED_MODELS.Add(
+                    Function.Call<int>(Hash.GET_HASH_KEY, name));
+        }
+
         private void Initialize()
         {
             _validModels.Clear();
@@ -184,6 +237,9 @@ namespace ALLIN1
                 _dlcModelHashes.Add(
                     Function.Call<int>(Hash.GET_HASH_KEY, name));
 
+            // Build blacklist of story mode / mission vehicle hashes.
+            BuildBlacklist();
+
             int now = Game.GameTime;
             _lastDrivenTime = now;
             _lastScanTime = now;
@@ -202,7 +258,7 @@ namespace ALLIN1
         }
 
         // ------------------------------------------------------------------ //
-        //  Driven spawner (unchanged logic)                                   //
+        //  Driven spawner                                                     //
         // ------------------------------------------------------------------ //
 
         // Known ped models for fallback driver creation
@@ -227,7 +283,7 @@ namespace ALLIN1
                 return false;
 
             // Give the game a frame to fully register the vehicle entity
-            // before attempting ped creation — may fix intermittent failures.
+            // before attempting ped creation.
             Script.Wait(0);
 
             veh.IsEngineRunning = true;
@@ -420,7 +476,7 @@ namespace ALLIN1
                     continue;
 
                 string newModelName = pool[_rng.Next(pool.Count)];
-                Log($"ScanReplace: {cls} → {newModelName} (handle={veh.Handle})");
+                Log($"ScanReplace: {cls} -> {newModelName} (handle={veh.Handle})");
                 ReplaceVehicle(veh, newModelName);
             }
         }
@@ -443,14 +499,25 @@ namespace ALLIN1
             if (lastVeh != null && veh == lastVeh)
                 return false;
 
-            // Mission / persistent entities
+            // Mission / persistent entities -- covers scripted quest vehicles
             if (veh.IsPersistent)
                 return false;
 
+            // Script-attached entities (IS_ENTITY_A_MISSION_ENTITY)
+            if (Function.Call<bool>(Hash.IS_ENTITY_A_MISSION_ENTITY, veh.Handle))
+                return false;
+
             // Population type: only ambient/random (1-5)
+            // 0=unknown, 6=permanent, 7=mission, 8+=script
             int popType = Function.Call<int>(
                 Hash.GET_ENTITY_POPULATION_TYPE, veh.Handle);
-            if (popType > 5)
+            if (popType == 0 || popType > 5)
+                return false;
+
+            // Blacklisted story mode / mission vehicle models
+            int modelHash = Function.Call<int>(
+                Hash.GET_ENTITY_MODEL, veh.Handle);
+            if (BLACKLISTED_MODELS.Contains(modelHash))
                 return false;
 
             // Skip non-replaceable classes
@@ -459,12 +526,10 @@ namespace ALLIN1
                 return false;
 
             // Already a DLC vehicle
-            int modelHash = Function.Call<int>(
-                Hash.GET_ENTITY_MODEL, veh.Handle);
             if (_dlcModelHashes.Contains(modelHash))
                 return false;
 
-            // Too close — prevents pop-in even if off-screen check fails
+            // Too close -- prevents pop-in even if off-screen check fails
             float dist = veh.Position.DistanceTo(playerPos);
             if (dist < MIN_REPLACE_DIST)
                 return false;
@@ -475,8 +540,33 @@ namespace ALLIN1
 
             // Skip if driver is a mission ped
             Ped driver = veh.Driver;
-            if (driver != null && driver.Exists() && driver.IsPersistent)
-                return false;
+            if (driver != null && driver.Exists())
+            {
+                if (driver.IsPersistent)
+                    return false;
+                if (Function.Call<bool>(Hash.IS_ENTITY_A_MISSION_ENTITY,
+                    driver.Handle))
+                    return false;
+            }
+
+            // Skip if ANY passenger is a mission/persistent ped
+            try
+            {
+                Ped[] passengers = veh.Passengers;
+                if (passengers != null)
+                {
+                    foreach (Ped p in passengers)
+                    {
+                        if (p != null && p.Exists()
+                            && (p.IsPersistent
+                                || Function.Call<bool>(
+                                    Hash.IS_ENTITY_A_MISSION_ENTITY,
+                                    p.Handle)))
+                            return false;
+                    }
+                }
+            }
+            catch { }
 
             return true;
         }
@@ -513,7 +603,7 @@ namespace ALLIN1
             Vehicle replacement = LoadAndCreateVehicle(newModelName, pos, heading);
             if (replacement == null)
             {
-                // Vehicle creation failed — clean up orphaned driver
+                // Vehicle creation failed -- clean up orphaned driver
                 if (hadDriver && driver.Exists())
                 {
                     Log($"  ReplaceVehicle: vehicle creation failed, deleting orphaned driver");
@@ -534,7 +624,7 @@ namespace ALLIN1
 
                 if (!driverInSeat)
                 {
-                    // Warp failed — create a new driver instead
+                    // Warp failed -- create a new driver instead
                     Log($"  ReplaceVehicle: warp failed, creating fallback driver");
                     driver.IsPersistent = true;
                     driver.Delete();
@@ -554,7 +644,7 @@ namespace ALLIN1
                     }
                     else
                     {
-                        Log($"  ReplaceVehicle: fallback driver FAILED — car will be empty");
+                        Log($"  ReplaceVehicle: fallback driver FAILED -- car will be empty");
                     }
                 }
 
@@ -598,7 +688,7 @@ namespace ALLIN1
             }
             else
             {
-                // Parked — no driver
+                // Parked -- no driver
                 Log($"  ReplaceVehicle: parked (no driver)");
                 replacement.IsEngineRunning = false;
             }
@@ -642,7 +732,7 @@ namespace ALLIN1
             int c2 = _rng.Next(0, 160);
             Function.Call(Hash.SET_VEHICLE_COLOURS, veh, c1, c2);
 
-            // MPBitset decorator — prevents despawning in Story Mode
+            // MPBitset decorator -- prevents despawning in Story Mode
             Function.Call(Hash.DECOR_SET_INT, veh.Handle, "MPBitset", 0);
 
             return veh;
