@@ -24,7 +24,7 @@ namespace ALLIN1
     {
         // Outdoor location near LSIA
         private static readonly Vector3 SHOWROOM_POS = new Vector3(-736f, -1455.7f, 4.5f);
-        private const float VEHICLE_HEADING = 227.5f;
+        private const float VEHICLE_HEADING = 137.5f;
 
         // Camera setup
         private const float CAM_ANGLE = 180f; // degrees -- side profile view
