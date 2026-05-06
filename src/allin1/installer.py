@@ -6,6 +6,7 @@ and ALLIN1 script deployment.
 File placement:
 - <GTA V root>/scripts/ALLIN1.dll — SHVDN script loaded at runtime.
   Spawns 444 GTA Online DLC vehicles into Story Mode traffic.
+- <GTA V root>/scripts/ALLIN1.ini — Optional config (created on first install).
 
 Prerequisites (installed separately by the user):
 - ScriptHookV (dinput8.dll + ScriptHookV.dll)
@@ -105,13 +106,14 @@ def uninstall(config: Config) -> list[Path]:
     gta_path = resolve_gta_path(config)
     removed: list[Path] = []
 
-    # Remove script DLL from scripts/
+    # Remove script DLL, config, and log from scripts/
     scripts_dir = gta_path / SCRIPTS_DIR
-    dll_path = scripts_dir / DLL_FILENAME
-    if dll_path.exists():
-        dll_path.unlink()
-        removed.append(dll_path)
-        log.info("Removed %s from scripts/", DLL_FILENAME)
+    for fname in (DLL_FILENAME, "ALLIN1.ini", "ALLIN1.log"):
+        fpath = scripts_dir / fname
+        if fpath.exists():
+            fpath.unlink()
+            removed.append(fpath)
+            log.info("Removed %s from scripts/", fname)
 
     # Remove legacy files from game root
     for fname in LEGACY_FILES:
@@ -197,6 +199,17 @@ def _deploy_script(gta_path: Path) -> bool:
     dest = scripts_dir / DLL_FILENAME
     shutil.copy2(src, dest)
     log.info("Deployed %s → %s", DLL_FILENAME, dest)
+
+    # Create default ALLIN1.ini if it doesn't already exist
+    ini_path = scripts_dir / "ALLIN1.ini"
+    if not ini_path.exists():
+        ini_path.write_text(
+            "[General]\r\n"
+            "EnableLogging=false\r\n",
+            encoding="utf-8",
+        )
+        log.info("Created default config → %s", ini_path)
+
     return True
 
 

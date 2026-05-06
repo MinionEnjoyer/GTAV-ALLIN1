@@ -1,12 +1,16 @@
-// TrafficSpawner.cs — Adds GTA Online DLC vehicles to Story Mode traffic.
+// TrafficSpawner.cs -- Adds GTA Online DLC vehicles to Story Mode traffic.
 //
 // Two systems work together:
-//   1. Driven spawner — creates new DLC vehicles with AI drivers on road nodes.
-//   2. Replacement scanner — swaps vanilla ambient vehicles (parked or driven)
+//   1. Driven spawner -- creates new DLC vehicles with AI drivers on road nodes.
+//   2. Replacement scanner -- swaps vanilla ambient vehicles (parked or driven)
 //      with class-matched DLC equivalents while off-screen.
 //
 // Only road-appropriate classes are used (no planes, helis, boats, military,
 // emergency, etc.).  Replacement rate is ~30 % for a natural vanilla/DLC mix.
+//
+// Configuration: place ALLIN1.ini next to ALLIN1.dll in the scripts/ folder.
+//   [General]
+//   EnableLogging=false
 //
 // Requires: ScriptHookV + ScriptHookVDotNet Enhanced
 
@@ -112,9 +116,12 @@ namespace ALLIN1
             "fbi2",
         };
 
-        // --- Logging ---
-        private static readonly string LOG_PATH = Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory, "ALLIN1.log");
+        // --- Config / Logging ---
+        private static readonly string SCRIPTS_DIR = Path.Combine(
+            AppDomain.CurrentDomain.BaseDirectory, "scripts");
+        private static readonly string INI_PATH = Path.Combine(SCRIPTS_DIR, "ALLIN1.ini");
+        private static readonly string LOG_PATH = Path.Combine(SCRIPTS_DIR, "ALLIN1.log");
+        private bool _enableLogging;
 
         // --- State ---
         private readonly List<Vehicle> _spawned = new List<Vehicle>();
@@ -137,11 +144,56 @@ namespace ALLIN1
         }
 
         // ------------------------------------------------------------------ //
+        //  Config                                                             //
+        // ------------------------------------------------------------------ //
+
+        private void LoadConfig()
+        {
+            _enableLogging = false;
+
+            if (!File.Exists(INI_PATH))
+            {
+                // Create default config file
+                try
+                {
+                    File.WriteAllText(INI_PATH,
+                        "[General]\r\n" +
+                        "EnableLogging=false\r\n");
+                }
+                catch { }
+                return;
+            }
+
+            try
+            {
+                foreach (string rawLine in File.ReadAllLines(INI_PATH))
+                {
+                    string line = rawLine.Trim();
+                    if (line.StartsWith(";") || line.StartsWith("#")
+                        || line.StartsWith("[") || !line.Contains("="))
+                        continue;
+
+                    int eq = line.IndexOf('=');
+                    string key = line.Substring(0, eq).Trim();
+                    string val = line.Substring(eq + 1).Trim();
+
+                    if (key.Equals("EnableLogging", StringComparison.OrdinalIgnoreCase))
+                        _enableLogging = val.Equals("true", StringComparison.OrdinalIgnoreCase)
+                                      || val == "1";
+                }
+            }
+            catch { }
+        }
+
+        // ------------------------------------------------------------------ //
         //  Logging                                                            //
         // ------------------------------------------------------------------ //
 
         private void Log(string msg)
         {
+            if (!_enableLogging)
+                return;
+
             try
             {
                 File.AppendAllText(LOG_PATH,
@@ -202,6 +254,8 @@ namespace ALLIN1
 
         private void Initialize()
         {
+            LoadConfig();
+
             _validModels.Clear();
             _classPools.Clear();
             _dlcModelHashes.Clear();
@@ -254,7 +308,7 @@ namespace ALLIN1
                 Log($"  {kv.Key}: {kv.Value.Count} models");
 
             GTA.UI.Notification.Show(
-                $"~g~ALLIN1~w~: {_validModels.Count}/{total} DLC vehicles available");
+                $"~g~ALLIN1~w~: {_validModels.Count}/{total} DLC vehicles loaded");
         }
 
         // ------------------------------------------------------------------ //
@@ -309,7 +363,6 @@ namespace ALLIN1
             // Attempt 2: If random ped failed, try explicit ped model
             if (!driverExists || seatFree)
             {
-                // Clean up failed attempt
                 if (driverExists)
                 {
                     driver.IsPersistent = true;
@@ -392,12 +445,9 @@ namespace ALLIN1
                 Log($"  attempt3 (native {nativePedName}): exists={driverExists} seatFree={seatFree}");
             }
 
-            // Log + on-screen notification
+            // Log result
             string result = (driverExists && !seatFree) ? "OK" : "FAIL";
             Log($"  RESULT: {modelName} | method={pedMethod} | {result}");
-            string status = (driverExists && !seatFree) ? "~g~OK" : "~r~FAIL";
-            GTA.UI.Notification.Show(
-                $"~y~SPAWN~w~: {modelName} | {pedMethod} | {status}");
 
             // If all attempts failed, delete the empty vehicle
             if (!driverExists || seatFree)
@@ -445,7 +495,7 @@ namespace ALLIN1
             }
             catch
             {
-                return; // GetNearbyVehicles can throw on some SHVDN versions
+                return;
             }
 
             if (nearby == null)
@@ -463,8 +513,6 @@ namespace ALLIN1
                 // 30 % replacement chance
                 if (_rng.NextDouble() > REPLACE_CHANCE)
                 {
-                    // Mark as seen even when skipped so we don't re-roll
-                    // the same vehicle every scan.
                     _replacedHandles.Add(veh.Handle);
                     continue;
                 }
@@ -487,11 +535,9 @@ namespace ALLIN1
             if (veh == null || !veh.Exists())
                 return false;
 
-            // Already processed
             if (_replacedHandles.Contains(veh.Handle))
                 return false;
 
-            // Player's own vehicle
             Vehicle currentVeh = player.CurrentVehicle;
             if (currentVeh != null && veh == currentVeh)
                 return false;
@@ -499,46 +545,36 @@ namespace ALLIN1
             if (lastVeh != null && veh == lastVeh)
                 return false;
 
-            // Mission / persistent entities -- covers scripted quest vehicles
             if (veh.IsPersistent)
                 return false;
 
-            // Script-attached entities (IS_ENTITY_A_MISSION_ENTITY)
             if (Function.Call<bool>(Hash.IS_ENTITY_A_MISSION_ENTITY, veh.Handle))
                 return false;
 
-            // Population type: only ambient/random (1-5)
-            // 0=unknown, 6=permanent, 7=mission, 8+=script
             int popType = Function.Call<int>(
                 Hash.GET_ENTITY_POPULATION_TYPE, veh.Handle);
             if (popType == 0 || popType > 5)
                 return false;
 
-            // Blacklisted story mode / mission vehicle models
             int modelHash = Function.Call<int>(
                 Hash.GET_ENTITY_MODEL, veh.Handle);
             if (BLACKLISTED_MODELS.Contains(modelHash))
                 return false;
 
-            // Skip non-replaceable classes
             VehicleClass cls = veh.ClassType;
             if (!_classPools.ContainsKey(cls))
                 return false;
 
-            // Already a DLC vehicle
             if (_dlcModelHashes.Contains(modelHash))
                 return false;
 
-            // Too close -- prevents pop-in even if off-screen check fails
             float dist = veh.Position.DistanceTo(playerPos);
             if (dist < MIN_REPLACE_DIST)
                 return false;
 
-            // Must be off-screen to prevent visible pop-in
             if (veh.IsOnScreen)
                 return false;
 
-            // Skip if driver is a mission ped
             Ped driver = veh.Driver;
             if (driver != null && driver.Exists())
             {
@@ -549,7 +585,6 @@ namespace ALLIN1
                     return false;
             }
 
-            // Skip if ANY passenger is a mission/persistent ped
             try
             {
                 Ped[] passengers = veh.Passengers;
@@ -573,7 +608,6 @@ namespace ALLIN1
 
         private void ReplaceVehicle(Vehicle old, string newModelName)
         {
-            // Capture state
             Vector3 pos = old.Position;
             float heading = old.Heading;
             float speed = old.Speed;
@@ -590,20 +624,15 @@ namespace ALLIN1
 
             Log($"  ReplaceVehicle: hadDriver={hadDriver} speed={speed:F1} passengers={passengers?.Length ?? 0}");
 
-            // Make driver persistent before deleting vehicle so they don't
-            // despawn when their vehicle is removed.
             if (hadDriver)
                 driver.IsPersistent = true;
 
-            // Remove old vehicle
             old.IsPersistent = true;
             old.Delete();
 
-            // Create replacement
             Vehicle replacement = LoadAndCreateVehicle(newModelName, pos, heading);
             if (replacement == null)
             {
-                // Vehicle creation failed -- clean up orphaned driver
                 if (hadDriver && driver.Exists())
                 {
                     Log($"  ReplaceVehicle: vehicle creation failed, deleting orphaned driver");
@@ -614,17 +643,14 @@ namespace ALLIN1
 
             if (hadDriver && driver.Exists())
             {
-                // Transfer driver
                 driver.Task.WarpIntoVehicle(replacement, VehicleSeat.Driver);
 
-                // Verify the warp actually worked
                 Script.Wait(0);
                 bool driverInSeat = !replacement.IsSeatFree(VehicleSeat.Driver);
                 Log($"  ReplaceVehicle: driver warp driverInSeat={driverInSeat}");
 
                 if (!driverInSeat)
                 {
-                    // Warp failed -- create a new driver instead
                     Log($"  ReplaceVehicle: warp failed, creating fallback driver");
                     driver.IsPersistent = true;
                     driver.Delete();
@@ -672,7 +698,6 @@ namespace ALLIN1
                     replacement.IsEngineRunning = false;
                 }
 
-                // Transfer passengers
                 if (passengers != null)
                 {
                     for (int i = 0; i < passengers.Length; i++)
@@ -688,7 +713,6 @@ namespace ALLIN1
             }
             else
             {
-                // Parked -- no driver
                 Log($"  ReplaceVehicle: parked (no driver)");
                 replacement.IsEngineRunning = false;
             }
@@ -727,12 +751,10 @@ namespace ALLIN1
 
             veh.PlaceOnGround();
 
-            // Random colors
             int c1 = _rng.Next(0, 160);
             int c2 = _rng.Next(0, 160);
             Function.Call(Hash.SET_VEHICLE_COLOURS, veh, c1, c2);
 
-            // MPBitset decorator -- prevents despawning in Story Mode
             Function.Call(Hash.DECOR_SET_INT, veh.Handle, "MPBitset", 0);
 
             return veh;
