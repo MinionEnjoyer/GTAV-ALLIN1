@@ -191,7 +191,7 @@ namespace ALLIN1
             if (_textureLimitReached)
                 return false;
 
-            string path = Path.Combine(GetPreviewFolder(), model + ".jpg");
+            string path = Path.Combine(GetPreviewFolder(), model + ".png");
             if (!File.Exists(path))
             {
                 _missingPreviews.Add(model);
@@ -211,7 +211,7 @@ namespace ALLIN1
                 if (_textureLimitReached)
                     return;
 
-                string path = Path.Combine(GetPreviewFolder(), model + ".jpg");
+                string path = Path.Combine(GetPreviewFolder(), model + ".png");
                 if (!File.Exists(path))
                 {
                     _missingPreviews.Add(model);

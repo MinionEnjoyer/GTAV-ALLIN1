@@ -226,7 +226,7 @@ def _deploy_script(gta_path: Path) -> bool:
         if previews_dest.exists():
             shutil.rmtree(previews_dest)
         shutil.copytree(previews_src, previews_dest)
-        count = sum(1 for _ in previews_dest.glob("*.jpg"))
+        count = sum(1 for _ in previews_dest.glob("*.png"))
         log.info("Deployed %d preview images → %s", count, previews_dest)
 
     # Clean up legacy INI from previous versions
