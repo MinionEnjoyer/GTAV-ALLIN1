@@ -26,6 +26,7 @@ allin1.log
 
 # Build artifacts (keep dist/ folders tracked for pre-built binaries)
 asi/build/
+script/out/
 bin/
 obj/
 

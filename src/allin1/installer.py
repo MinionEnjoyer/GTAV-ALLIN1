@@ -28,6 +28,7 @@ from allin1.vehicles.database import VehicleDatabase
 log = logging.getLogger("allin1.installer")
 
 DLL_FILENAME = "ALLIN1.dll"
+LEMONUI_FILENAME = "LemonUI.SHVDN3.dll"
 SCRIPTS_DIR = "scripts"
 ALLIN1_DATA_DIR = "ALLIN1"  # Legacy data folder — cleaned up on install
 
@@ -108,7 +109,7 @@ def uninstall(config: Config) -> list[Path]:
 
     # Remove script DLL, config, and log from scripts/
     scripts_dir = gta_path / SCRIPTS_DIR
-    for fname in (DLL_FILENAME, "ALLIN1.toml", "ALLIN1.log", "ALLIN1.ini"):
+    for fname in (DLL_FILENAME, LEMONUI_FILENAME, "ALLIN1.toml", "ALLIN1.log", "ALLIN1.ini"):
         fpath = scripts_dir / fname
         if fpath.exists():
             fpath.unlink()
@@ -199,6 +200,13 @@ def _deploy_script(gta_path: Path) -> bool:
     dest = scripts_dir / DLL_FILENAME
     shutil.copy2(src, dest)
     log.info("Deployed %s → %s", DLL_FILENAME, dest)
+
+    # Deploy LemonUI dependency (required by GBAY menu system)
+    lemonui_src = _SCRIPT_DIST_DIR / LEMONUI_FILENAME
+    if lemonui_src.exists():
+        lemonui_dest = scripts_dir / LEMONUI_FILENAME
+        shutil.copy2(lemonui_src, lemonui_dest)
+        log.info("Deployed %s → %s", LEMONUI_FILENAME, lemonui_dest)
 
     # Deploy config.toml as ALLIN1.toml so the C# script can read it
     toml_dest = scripts_dir / "ALLIN1.toml"
