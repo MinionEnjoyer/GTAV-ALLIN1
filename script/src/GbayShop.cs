@@ -84,6 +84,13 @@ namespace ALLIN1
 
         public GbayShop()
         {
+            try
+            {
+                File.AppendAllText(LOG_PATH,
+                    $"[{DateTime.Now:HH:mm:ss}] GbayShop constructor called{Environment.NewLine}");
+            }
+            catch { }
+
             Tick += OnTick;
             KeyDown += OnKeyDown;
             Interval = 0;

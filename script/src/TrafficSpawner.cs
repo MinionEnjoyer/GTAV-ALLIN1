@@ -148,9 +148,15 @@ namespace ALLIN1
 
         public TrafficSpawner()
         {
+            try
+            {
+                File.AppendAllText(LOG_PATH,
+                    $"[{DateTime.Now:HH:mm:ss}] TrafficSpawner constructor called{Environment.NewLine}");
+            }
+            catch { }
+
             Tick += OnTick;
             Interval = 0;
-
         }
 
         // ------------------------------------------------------------------ //
@@ -234,10 +240,23 @@ namespace ALLIN1
         //  Main loop                                                          //
         // ------------------------------------------------------------------ //
 
+        private bool _tickTraced;
+
         private void OnTick(object sender, EventArgs e)
         {
             try
             {
+                if (!_tickTraced)
+                {
+                    _tickTraced = true;
+                    try
+                    {
+                        File.AppendAllText(LOG_PATH,
+                            $"[{DateTime.Now:HH:mm:ss}] TrafficSpawner.OnTick first call, IsLoading={Game.IsLoading}{Environment.NewLine}");
+                    }
+                    catch { }
+                }
+
                 if (Game.IsLoading)
                     return;
 
