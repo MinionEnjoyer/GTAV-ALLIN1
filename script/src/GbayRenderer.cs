@@ -158,6 +158,10 @@ namespace ALLIN1
         private static bool _texturesDisabled;
         private static int _drawLevel;
 
+        // Logo texture
+        private static int _logoTexId = -1;
+        private static bool _logoLoaded;
+
         private static string _previewFolder;
 
         private static string GetPreviewFolder()
@@ -174,6 +178,56 @@ namespace ALLIN1
         internal static void BeginFrame()
         {
             _drawLevel = 0;
+        }
+
+        internal static void DrawLogo(float x, float y, float h)
+        {
+            if (_texturesDisabled)
+                return;
+
+            if (!_logoLoaded)
+            {
+                _logoLoaded = true;
+                string path = Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory, "PHAT.png");
+                if (!File.Exists(path))
+                    return;
+                try
+                {
+                    _logoTexId = SHV_CreateTexture(path);
+                }
+                catch
+                {
+                    _texturesDisabled = true;
+                    return;
+                }
+            }
+
+            if (_logoTexId < 0)
+                return;
+
+            // Logo is 440x559 (portrait). Fit to given height, compute width.
+            float logoAspect = 440f / 559f;
+            float w = h * logoAspect;
+
+            float ar = (float)GTA.UI.Screen.Resolution.Height
+                     / (float)GTA.UI.Screen.Resolution.Width;
+
+            try
+            {
+                SHV_DrawTexture(
+                    _logoTexId,
+                    0, _drawLevel++, 100,
+                    w, h / ar,
+                    0.5f, 0.5f,
+                    x, y,
+                    0f, ar,
+                    1f, 1f, 1f, 1f);
+            }
+            catch
+            {
+                _texturesDisabled = true;
+            }
         }
 
         internal static bool HasPreviewTexture(string model)

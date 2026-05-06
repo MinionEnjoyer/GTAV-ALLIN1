@@ -219,6 +219,12 @@ def _deploy_script(gta_path: Path) -> bool:
         shutil.copy2(toml_src, toml_dest)
         log.info("Deployed config %s -> %s", toml_src.name, toml_dest)
 
+    # Deploy GBAY logo
+    logo_src = _SCRIPT_DIST_DIR / "PHAT.png"
+    if logo_src.exists():
+        shutil.copy2(logo_src, scripts_dir / "PHAT.png")
+        log.info("Deployed logo → %s", scripts_dir / "PHAT.png")
+
     # Deploy vehicle preview images for GBAY browser
     previews_src = _SCRIPT_DIST_DIR / "previews"
     if previews_src.is_dir():

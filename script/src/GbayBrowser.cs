@@ -283,9 +283,8 @@ namespace ALLIN1
             GbayRenderer.DrawRect(BROWSER_CX, 0.5f, panelW, panelH,
                 GbayRenderer.ModalBg);
 
-            // Title
-            GbayRenderer.DrawText("GBAY", BROWSER_CX, 0.30f, 1.0f,
-                GbayRenderer.HeaderBg, GbayRenderer.FONT_PRICEDOWN, true);
+            // Logo
+            GbayRenderer.DrawLogo(BROWSER_CX, 0.36f, 0.12f);
 
             // Buttons
             string[] labels = { "Vehicles", "Weapons", "My Garages" };
@@ -418,12 +417,11 @@ namespace ALLIN1
             GbayRenderer.DrawRect(BROWSER_CX, HEADER_CY, BROWSER_W, HEADER_H,
                 GbayRenderer.HeaderBg);
 
-            // GBAY logo (left)
-            GbayRenderer.DrawText("GBAY", BROWSER_LEFT + 0.01f, HEADER_Y + 0.008f,
-                0.65f, GbayRenderer.HeaderText, GbayRenderer.FONT_PRICEDOWN, false, true);
+            // Logo (left)
+            GbayRenderer.DrawLogo(BROWSER_LEFT + 0.035f, HEADER_CY, HEADER_H * 0.85f);
 
             // Section label
-            GbayRenderer.DrawText("VEHICLES", BROWSER_LEFT + 0.09f, HEADER_Y + 0.018f,
+            GbayRenderer.DrawText("VEHICLES", BROWSER_LEFT + 0.07f, HEADER_Y + 0.018f,
                 0.38f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
 
             // Player money (right)
@@ -1042,9 +1040,8 @@ namespace ALLIN1
             // Header
             GbayRenderer.DrawRect(BROWSER_CX, HEADER_CY, BROWSER_W, HEADER_H,
                 GbayRenderer.HeaderBg);
-            GbayRenderer.DrawText("GBAY", BROWSER_LEFT + 0.01f, HEADER_Y + 0.008f,
-                0.65f, GbayRenderer.HeaderText, GbayRenderer.FONT_PRICEDOWN, false, true);
-            GbayRenderer.DrawText("MY GARAGES", BROWSER_LEFT + 0.09f, HEADER_Y + 0.018f,
+            GbayRenderer.DrawLogo(BROWSER_LEFT + 0.035f, HEADER_CY, HEADER_H * 0.85f);
+            GbayRenderer.DrawText("MY GARAGES", BROWSER_LEFT + 0.07f, HEADER_Y + 0.018f,
                 0.38f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
 
             // "Mark on Map" button (right side of header)

@@ -12,7 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- <Compile Remove="tools\**" /> -->
+    <Compile Remove="tools\**" />
   </ItemGroup>
 
   <ItemGroup>
