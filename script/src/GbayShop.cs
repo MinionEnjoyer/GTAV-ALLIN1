@@ -66,7 +66,6 @@ namespace ALLIN1
 
         private Keys _openKey = Keys.F9;
         private bool _freeMode;
-        private int _garageCapacity = 4;
         private bool _garageDebug;
         private bool _enableLogging = true;
 
@@ -124,7 +123,6 @@ namespace ALLIN1
         {
             _openKey = Keys.F9;
             _freeMode = false;
-            _garageCapacity = 4;
             _garageDebug = false;
             _enableLogging = true;
 
@@ -168,11 +166,6 @@ namespace ALLIN1
                     {
                         _freeMode = valLower == "true";
                     }
-                    else if (key == "garage_capacity")
-                    {
-                        if (int.TryParse(val.Trim('"', '\''), out int cap))
-                            _garageCapacity = cap;
-                    }
                     else if (key == "garage_debug")
                     {
                         _garageDebug = valLower == "true";
@@ -196,11 +189,11 @@ namespace ALLIN1
         private void BuildMenus()
         {
             LoadConfig();
-            Log($"=== GBAY Initialized: key={_openKey} freeMode={_freeMode} garageCapacity={_garageCapacity} garageDebug={_garageDebug} ===");
+            Log($"=== GBAY Initialized: key={_openKey} freeMode={_freeMode} garageDebug={_garageDebug} ===");
 
             try
             {
-                GarageManager.Configure(_garageCapacity, _garageDebug, _enableLogging);
+                GarageManager.Configure(_garageDebug, _enableLogging);
                 GarageManager.Initialize();
                 _garageInitialized = true;
                 Log("GarageManager initialized");
@@ -330,7 +323,7 @@ namespace ALLIN1
             foreach (var sh in safehouses)
             {
                 int used = GarageManager.GetUsedSlots(sh.Id);
-                int cap = GarageManager.GetCapacity();
+                int cap = GarageManager.GetCapacity(sh.Id);
                 bool full = used >= cap;
 
                 var shItem = new NativeItem(
@@ -391,7 +384,7 @@ namespace ALLIN1
             _deliveryMenu.Visible = false;
 
             int used = GarageManager.GetUsedSlots(safehouseId);
-            int cap = GarageManager.GetCapacity();
+            int cap = GarageManager.GetCapacity(safehouseId);
 
             if (used >= cap)
             {
@@ -483,7 +476,7 @@ namespace ALLIN1
                 foreach (var sh in safehouses)
                 {
                     int used = GarageManager.GetUsedSlots(sh.Id);
-                    int cap = GarageManager.GetCapacity();
+                    int cap = GarageManager.GetCapacity(sh.Id);
 
                     var shMenu = new NativeMenu(sh.Name, "Stored vehicles");
                     _pool.Add(shMenu);

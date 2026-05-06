@@ -128,7 +128,6 @@ namespace ALLIN1
         private static readonly Dictionary<string, Vehicle[]> _handles =
             new Dictionary<string, Vehicle[]>();
 
-        private static int _capacity = 4;
         private static bool _debug;
         private static bool _enableLogging = true;
         private static bool _initialized;
@@ -164,9 +163,8 @@ namespace ALLIN1
         //  Public API                                                         //
         // ------------------------------------------------------------------ //
 
-        internal static void Configure(int capacity, bool debug, bool enableLogging)
+        internal static void Configure(bool debug, bool enableLogging)
         {
-            _capacity = Math.Max(1, Math.Min(capacity, Safehouses[0].Slots.Length));
             _debug = debug;
             _enableLogging = enableLogging;
         }
@@ -221,9 +219,11 @@ namespace ALLIN1
             return 0;
         }
 
-        internal static int GetCapacity()
+        internal static int GetCapacity(string safehouseId)
         {
-            return _capacity;
+            Safehouse sh = FindSafehouse(safehouseId);
+            if (sh == null) return 0;
+            return sh.Slots.Length;
         }
 
         internal static List<StoredVehicle> GetStoredVehicles(string safehouseId)
@@ -250,9 +250,9 @@ namespace ALLIN1
             if (!_stored.TryGetValue(safehouseId, out var list))
                 return false;
 
-            if (list.Count >= _capacity)
+            if (list.Count >= sh.Slots.Length)
             {
-                Log($"DeliverVehicle: {safehouseId} full ({list.Count}/{_capacity})");
+                Log($"DeliverVehicle: {safehouseId} full ({list.Count}/{sh.Slots.Length})");
                 return false;
             }
 
@@ -348,7 +348,7 @@ namespace ALLIN1
         {
             foreach (var sh in Safehouses)
             {
-                for (int i = 0; i < _capacity && i < sh.Slots.Length; i++)
+                for (int i = 0; i < sh.Slots.Length; i++)
                 {
                     Vector3 pos = sh.Slots[i].Position;
                     World.DrawMarker(
@@ -384,7 +384,7 @@ namespace ALLIN1
             foreach (var sv in list)
                 occupied.Add(sv.Slot);
 
-            for (int i = 0; i < _capacity && i < sh.Slots.Length; i++)
+            for (int i = 0; i < sh.Slots.Length; i++)
             {
                 if (!occupied.Contains(i))
                     return i;
