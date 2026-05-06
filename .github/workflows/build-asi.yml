@@ -3,9 +3,6 @@ name: Build ALLIN1
 on:
   push:
     paths:
-      - 'asi/src/**'
-      - 'asi/lib/**'
-      - 'asi/CMakeLists.txt'
       - 'script/**'
       - '.github/workflows/build-asi.yml'
       - '.gitignore'
@@ -15,46 +12,11 @@ permissions:
   contents: write
 
 jobs:
-  build-asi:
-    runs-on: windows-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure CMake
-        run: cmake -B asi/build -S asi -A x64
-
-      - name: Build Release
-        run: cmake --build asi/build --config Release
-
-      - name: Copy binary to dist
-        run: |
-          New-Item -ItemType Directory -Path "asi/dist" -Force | Out-Null
-          Copy-Item -Path "asi/build/bin/Release/ALLIN1.asi" -Destination "asi/dist/ALLIN1.asi" -Force
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ALLIN1-asi
-          path: asi/dist/ALLIN1.asi
-
-      - name: Commit pre-built binary
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add asi/dist/ALLIN1.asi
-          git diff --cached --quiet || git commit -m "Auto-build: update ALLIN1.asi"
-          git push
-
   build-script:
     runs-on: windows-latest
-    needs: build-asi
-    if: always()
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main
 
       - name: Restore NuGet packages
         run: dotnet restore script/ALLIN1.csproj -v normal
