@@ -205,7 +205,8 @@ def _deploy_script(gta_path: Path) -> bool:
     if not ini_path.exists():
         ini_path.write_text(
             "[General]\r\n"
-            "EnableLogging=false\r\n",
+            "EnableLogging=false\r\n"
+            "EnableDLCPolice=false\r\n",
             encoding="utf-8",
         )
         log.info("Created default config → %s", ini_path)

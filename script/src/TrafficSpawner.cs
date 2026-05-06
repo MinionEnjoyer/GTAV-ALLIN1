@@ -11,6 +11,7 @@
 // Configuration: place ALLIN1.ini next to ALLIN1.dll in the scripts/ folder.
 //   [General]
 //   EnableLogging=false
+//   EnableDLCPolice=false
 //
 // Requires: ScriptHookV + ScriptHookVDotNet Enhanced
 
@@ -71,8 +72,9 @@ namespace ALLIN1
             { VehicleClass.Vans,           VehicleList.Vans },
         };
 
-        // Vehicles that belong to story mode characters or are used in missions.
-        // These must NEVER be replaced.
+        // Story mode character vehicles and mission vehicles -- never replaced
+        // with regular DLC cars. Police models here are eligible for DLC police
+        // upgrade when EnableDLCPolice=true.
         private static readonly HashSet<int> BLACKLISTED_MODELS = new HashSet<int>();
         private static readonly string[] BLACKLISTED_MODEL_NAMES =
         {
@@ -101,7 +103,10 @@ namespace ALLIN1
             "taxi",        // taxis (random events)
             "ambulance",   // ambulance
             "firetruk",    // fire truck
-            "policeold1",  // police cruiser variants
+
+            // Police vehicles -- blocked from regular DLC replacement,
+            // but eligible for DLC police upgrade via EnableDLCPolice.
+            "policeold1",
             "policeold2",
             "police",
             "police2",
@@ -116,12 +121,21 @@ namespace ALLIN1
             "fbi2",
         };
 
+        // Vanilla police model names that can be upgraded to DLC police.
+        private static readonly string[] VANILLA_POLICE_NAMES =
+        {
+            "police", "police2", "police3", "police4",
+            "policeold1", "policeold2",
+            "sheriff", "sheriff2",
+        };
+
         // --- Config / Logging ---
         private static readonly string SCRIPTS_DIR = Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory, "scripts");
         private static readonly string INI_PATH = Path.Combine(SCRIPTS_DIR, "ALLIN1.ini");
         private static readonly string LOG_PATH = Path.Combine(SCRIPTS_DIR, "ALLIN1.log");
         private bool _enableLogging;
+        private bool _enableDLCPolice;
 
         // --- State ---
         private readonly List<Vehicle> _spawned = new List<Vehicle>();
@@ -130,6 +144,8 @@ namespace ALLIN1
             new Dictionary<VehicleClass, List<string>>();
         private readonly HashSet<int> _replacedHandles = new HashSet<int>();
         private readonly HashSet<int> _dlcModelHashes = new HashSet<int>();
+        private readonly HashSet<int> _vanillaPoliceHashes = new HashSet<int>();
+        private readonly List<string> _policePool = new List<string>();
         private readonly Random _rng = new Random();
         private int _lastDrivenTime;
         private int _lastScanTime;
@@ -150,15 +166,16 @@ namespace ALLIN1
         private void LoadConfig()
         {
             _enableLogging = false;
+            _enableDLCPolice = false;
 
             if (!File.Exists(INI_PATH))
             {
-                // Create default config file
                 try
                 {
                     File.WriteAllText(INI_PATH,
                         "[General]\r\n" +
-                        "EnableLogging=false\r\n");
+                        "EnableLogging=false\r\n" +
+                        "EnableDLCPolice=false\r\n");
                 }
                 catch { }
                 return;
@@ -180,6 +197,9 @@ namespace ALLIN1
                     if (key.Equals("EnableLogging", StringComparison.OrdinalIgnoreCase))
                         _enableLogging = val.Equals("true", StringComparison.OrdinalIgnoreCase)
                                       || val == "1";
+                    else if (key.Equals("EnableDLCPolice", StringComparison.OrdinalIgnoreCase))
+                        _enableDLCPolice = val.Equals("true", StringComparison.OrdinalIgnoreCase)
+                                        || val == "1";
                 }
             }
             catch { }
@@ -252,6 +272,25 @@ namespace ALLIN1
                     Function.Call<int>(Hash.GET_HASH_KEY, name));
         }
 
+        private void BuildPolicePool()
+        {
+            _vanillaPoliceHashes.Clear();
+            _policePool.Clear();
+
+            foreach (string name in VANILLA_POLICE_NAMES)
+                _vanillaPoliceHashes.Add(
+                    Function.Call<int>(Hash.GET_HASH_KEY, name));
+
+            foreach (string name in VehicleList.Emergency)
+            {
+                var m = new Model(name);
+                if (m.IsInCdImage && m.IsVehicle)
+                    _policePool.Add(name);
+            }
+
+            Log($"  DLC police pool: {_policePool.Count} models");
+        }
+
         private void Initialize()
         {
             LoadConfig();
@@ -294,6 +333,10 @@ namespace ALLIN1
             // Build blacklist of story mode / mission vehicle hashes.
             BuildBlacklist();
 
+            // Build DLC police pool if enabled.
+            if (_enableDLCPolice)
+                BuildPolicePool();
+
             int now = Game.GameTime;
             _lastDrivenTime = now;
             _lastScanTime = now;
@@ -304,6 +347,7 @@ namespace ALLIN1
                 total += arr.Length;
 
             Log($"=== ALLIN1 Initialized: {_validModels.Count}/{total} DLC vehicles available ===");
+            Log($"  EnableDLCPolice={_enableDLCPolice}");
             foreach (var kv in _classPools)
                 Log($"  {kv.Key}: {kv.Value.Count} models");
 
@@ -507,17 +551,35 @@ namespace ALLIN1
 
             foreach (Vehicle veh in nearby)
             {
+                if (_replacedHandles.Contains(veh.Handle))
+                    continue;
+
+                // Check if this is a vanilla police vehicle eligible for
+                // DLC police upgrade (separate path from regular replacement).
+                if (_enableDLCPolice && _policePool.Count > 0
+                    && IsPoliceEligible(veh, player, playerPos))
+                {
+                    _replacedHandles.Add(veh.Handle);
+
+                    if (_rng.NextDouble() > REPLACE_CHANCE)
+                        continue;
+
+                    string newModel = _policePool[_rng.Next(_policePool.Count)];
+                    Log($"PoliceReplace: -> {newModel} (handle={veh.Handle})");
+                    ReplaceVehicle(veh, newModel);
+                    continue;
+                }
+
+                // Regular civilian vehicle replacement
                 if (!IsEligibleForReplacement(veh, player, playerPos))
                     continue;
 
-                // 30 % replacement chance
                 if (_rng.NextDouble() > REPLACE_CHANCE)
                 {
                     _replacedHandles.Add(veh.Handle);
                     continue;
                 }
 
-                // Class-matched model lookup
                 VehicleClass cls = veh.ClassType;
                 if (!_classPools.TryGetValue(cls, out List<string> pool)
                     || pool.Count == 0)
@@ -527,6 +589,57 @@ namespace ALLIN1
                 Log($"ScanReplace: {cls} -> {newModelName} (handle={veh.Handle})");
                 ReplaceVehicle(veh, newModelName);
             }
+        }
+
+        private bool IsPoliceEligible(Vehicle veh, Ped player, Vector3 playerPos)
+        {
+            if (veh == null || !veh.Exists())
+                return false;
+
+            // Must be a vanilla police model
+            int modelHash = Function.Call<int>(Hash.GET_ENTITY_MODEL, veh.Handle);
+            if (!_vanillaPoliceHashes.Contains(modelHash))
+                return false;
+
+            // Player's own vehicle
+            Vehicle currentVeh = player.CurrentVehicle;
+            if (currentVeh != null && veh == currentVeh)
+                return false;
+            Vehicle lastVeh = player.LastVehicle;
+            if (lastVeh != null && veh == lastVeh)
+                return false;
+
+            // Mission / persistent entities -- never touch quest police
+            if (veh.IsPersistent)
+                return false;
+            if (Function.Call<bool>(Hash.IS_ENTITY_A_MISSION_ENTITY, veh.Handle))
+                return false;
+
+            // Population type: only ambient (1-5)
+            int popType = Function.Call<int>(
+                Hash.GET_ENTITY_POPULATION_TYPE, veh.Handle);
+            if (popType == 0 || popType > 5)
+                return false;
+
+            // Distance + off-screen checks
+            float dist = veh.Position.DistanceTo(playerPos);
+            if (dist < MIN_REPLACE_DIST)
+                return false;
+            if (veh.IsOnScreen)
+                return false;
+
+            // Don't touch police with mission peds
+            Ped driver = veh.Driver;
+            if (driver != null && driver.Exists())
+            {
+                if (driver.IsPersistent)
+                    return false;
+                if (Function.Call<bool>(Hash.IS_ENTITY_A_MISSION_ENTITY,
+                    driver.Handle))
+                    return false;
+            }
+
+            return true;
         }
 
         private bool IsEligibleForReplacement(Vehicle veh, Ped player,
