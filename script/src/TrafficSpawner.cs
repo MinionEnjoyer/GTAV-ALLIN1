@@ -12,6 +12,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using GTA;
 using GTA.Math;
 using GTA.Native;
@@ -66,6 +67,10 @@ namespace ALLIN1
             { VehicleClass.Vans,           VehicleList.Vans },
         };
 
+        // --- Logging ---
+        private static readonly string LOG_PATH = Path.Combine(
+            AppDomain.CurrentDomain.BaseDirectory, "ALLIN1.log");
+
         // --- State ---
         private readonly List<Vehicle> _spawned = new List<Vehicle>();
         private readonly List<string> _validModels = new List<string>();
@@ -84,6 +89,20 @@ namespace ALLIN1
             Interval = 0;
 
             Function.Call(Hash.DECOR_REGISTER, "MPBitset", 3);
+        }
+
+        // ------------------------------------------------------------------ //
+        //  Logging                                                            //
+        // ------------------------------------------------------------------ //
+
+        private void Log(string msg)
+        {
+            try
+            {
+                File.AppendAllText(LOG_PATH,
+                    $"[{DateTime.Now:HH:mm:ss}] {msg}{Environment.NewLine}");
+            }
+            catch { }
         }
 
         // ------------------------------------------------------------------ //
@@ -174,6 +193,10 @@ namespace ALLIN1
             foreach (var arr in ROAD_CLASSES)
                 total += arr.Length;
 
+            Log($"=== ALLIN1 Initialized: {_validModels.Count}/{total} DLC vehicles available ===");
+            foreach (var kv in _classPools)
+                Log($"  {kv.Key}: {kv.Value.Count} models");
+
             GTA.UI.Notification.Show(
                 $"~g~ALLIN1~w~: {_validModels.Count}/{total} DLC vehicles available");
         }
@@ -209,6 +232,8 @@ namespace ALLIN1
 
             veh.IsEngineRunning = true;
 
+            Log($"SpawnDriven: vehicle={modelName} handle={veh.Handle}");
+
             // Attempt 1: Let the game pick a random ped model
             Ped driver = null;
             string pedMethod = "random";
@@ -216,10 +241,14 @@ namespace ALLIN1
             {
                 driver = veh.CreateRandomPedOnSeat(VehicleSeat.Driver);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Log($"  attempt1 (random) exception: {ex.Message}");
+            }
 
             bool driverExists = driver != null && driver.Exists();
             bool seatFree = driverExists ? veh.IsSeatFree(VehicleSeat.Driver) : true;
+            Log($"  attempt1 (random): exists={driverExists} seatFree={seatFree}");
 
             // Attempt 2: If random ped failed, try explicit ped model
             if (!driverExists || seatFree)
@@ -242,7 +271,10 @@ namespace ALLIN1
                 while (!pedModel.IsLoaded)
                 {
                     if (DateTime.UtcNow > deadline)
+                    {
+                        Log($"  attempt2 (explicit): ped model {pedModelName} load TIMEOUT");
                         break;
+                    }
                     Script.Wait(0);
                 }
 
@@ -252,13 +284,17 @@ namespace ALLIN1
                     {
                         driver = veh.CreatePedOnSeat(VehicleSeat.Driver, pedModel);
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        Log($"  attempt2 (explicit) exception: {ex.Message}");
+                    }
 
                     pedModel.MarkAsNoLongerNeeded();
                 }
 
                 driverExists = driver != null && driver.Exists();
                 seatFree = driverExists ? veh.IsSeatFree(VehicleSeat.Driver) : true;
+                Log($"  attempt2 (explicit {pedModelName}): exists={driverExists} seatFree={seatFree}");
             }
 
             // Attempt 3: Raw native as last resort
@@ -271,15 +307,19 @@ namespace ALLIN1
                 }
 
                 pedMethod = "native";
-                int pedHash = Function.Call<int>(Hash.GET_HASH_KEY,
-                    FALLBACK_PED_MODELS[_rng.Next(FALLBACK_PED_MODELS.Length)]);
+                string nativePedName = FALLBACK_PED_MODELS[
+                    _rng.Next(FALLBACK_PED_MODELS.Length)];
+                int pedHash = Function.Call<int>(Hash.GET_HASH_KEY, nativePedName);
                 Function.Call(Hash.REQUEST_MODEL, pedHash);
 
                 DateTime deadline = DateTime.UtcNow.AddMilliseconds(MODEL_LOAD_TIMEOUT);
                 while (!Function.Call<bool>(Hash.HAS_MODEL_LOADED, pedHash))
                 {
                     if (DateTime.UtcNow > deadline)
+                    {
+                        Log($"  attempt3 (native): ped model {nativePedName} load TIMEOUT");
                         break;
+                    }
                     Script.Wait(0);
                 }
 
@@ -293,9 +333,12 @@ namespace ALLIN1
 
                 driverExists = driver != null && driver.Exists();
                 seatFree = driverExists ? veh.IsSeatFree(VehicleSeat.Driver) : true;
+                Log($"  attempt3 (native {nativePedName}): exists={driverExists} seatFree={seatFree}");
             }
 
-            // DEBUG: log model + method + result
+            // Log + on-screen notification
+            string result = (driverExists && !seatFree) ? "OK" : "FAIL";
+            Log($"  RESULT: {modelName} | method={pedMethod} | {result}");
             string status = (driverExists && !seatFree) ? "~g~OK" : "~r~FAIL";
             GTA.UI.Notification.Show(
                 $"~y~SPAWN~w~: {modelName} | {pedMethod} | {status}");
@@ -377,6 +420,7 @@ namespace ALLIN1
                     continue;
 
                 string newModelName = pool[_rng.Next(pool.Count)];
+                Log($"ScanReplace: {cls} → {newModelName} (handle={veh.Handle})");
                 ReplaceVehicle(veh, newModelName);
             }
         }
