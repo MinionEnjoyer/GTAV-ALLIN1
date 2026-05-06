@@ -51,7 +51,7 @@ namespace ALLIN1
 
         // Modal overlay
         internal static readonly Color ModalBg        = Color.FromArgb(250, 255, 255, 255);
-        internal static readonly Color ModalScrim     = Color.FromArgb(140, 0, 0, 0);
+        internal static readonly Color ModalScrim     = Color.FromArgb(210, 0, 0, 0);
 
         // Buttons
         internal static readonly Color BtnGreen       = Color.FromArgb(255, 45, 156, 80);

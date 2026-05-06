@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using GTA;
+using GTA.Math;
 using GTA.Native;
 
 namespace ALLIN1
@@ -16,6 +17,7 @@ namespace ALLIN1
         Closed,
         TopMenu,
         VehicleBrowser,
+        VehiclePreview,
         DeliveryConfirm,
         GarageView,
     }
@@ -153,6 +155,24 @@ namespace ALLIN1
         private int _garageHoverIdx = -1;
         private GarageManager.Safehouse[] _garageSafehouses;
 
+        // Vehicle preview (3D showroom)
+        private Vehicle _previewVehicle;
+        private Camera _previewCamera;
+        private float _previewAngle;
+        private float _previewRadius;
+        private float _previewHeight;
+        private float _previewZoom = 1.0f;
+        private string _previewModel;
+        private string _previewDisplayName;
+        private string _previewManufacturer;
+        private int _previewPrice;
+        private static readonly Vector3 PREVIEW_POS = new Vector3(0f, 0f, 1000f);
+        private const float AUTO_ORBIT_SPEED = 0.4f; // radians per second
+        private const float MANUAL_ORBIT_SPEED = 2.5f;
+        private const float ZOOM_SPEED = 0.1f;
+        private const float ZOOM_MIN = 0.5f;
+        private const float ZOOM_MAX = 2.0f;
+
         private struct DeliveryOption
         {
             internal string Label;
@@ -186,12 +206,14 @@ namespace ALLIN1
             }
             else
             {
+                ClosePreview();
                 _state = BrowserState.Closed;
             }
         }
 
         internal void Close()
         {
+            ClosePreview();
             _state = BrowserState.Closed;
         }
 
@@ -206,6 +228,7 @@ namespace ALLIN1
 
             if (Game.Player.Character.IsDead || Game.IsLoading)
             {
+                ClosePreview();
                 _state = BrowserState.Closed;
                 return;
             }
@@ -213,7 +236,13 @@ namespace ALLIN1
             var input = GbayInput.Poll();
             GbayInput.DisableGameControls();
 
-            GbayRenderer.DrawScrim();
+            // Preview and delivery states handle their own background
+            if (_state != BrowserState.VehiclePreview &&
+                _state != BrowserState.DeliveryConfirm ||
+                _state == BrowserState.DeliveryConfirm && _previewVehicle == null)
+            {
+                GbayRenderer.DrawScrim();
+            }
 
             switch (_state)
             {
@@ -223,8 +252,14 @@ namespace ALLIN1
                 case BrowserState.VehicleBrowser:
                     DrawBrowser(input);
                     break;
+                case BrowserState.VehiclePreview:
+                    DrawPreview(input);
+                    break;
                 case BrowserState.DeliveryConfirm:
-                    DrawBrowser(new FrameInput()); // draw browser behind modal (no input)
+                    if (_previewVehicle != null)
+                        UpdatePreviewCamera(); // keep camera orbiting behind modal
+                    else
+                        DrawBrowser(new FrameInput());
                     DrawDeliveryModal(input);
                     break;
                 case BrowserState.GarageView:
@@ -646,7 +681,7 @@ namespace ALLIN1
                 if (idx < _filtered.Count)
                 {
                     VehicleCard card = _filtered[idx];
-                    OpenDeliveryConfirm(card.Model, card.Price);
+                    OpenPreview(card);
                 }
             }
         }
@@ -794,6 +829,7 @@ namespace ALLIN1
                     _shop.ExecuteDeliverToSafehouse(
                         _pendingModel, _pendingPrice,
                         selected.SafehouseId, selected.Label);
+                    ClosePreview();
                     _state = BrowserState.VehicleBrowser;
                 }
                 else
@@ -805,7 +841,174 @@ namespace ALLIN1
             if (input.Back || input.MouseRightClick)
             {
                 GbayRenderer.PlayBack();
+                // Return to preview if we came from there, otherwise browser
+                _state = _previewVehicle != null
+                    ? BrowserState.VehiclePreview
+                    : BrowserState.VehicleBrowser;
+            }
+        }
+
+        // ------------------------------------------------------------------ //
+        //  Vehicle Preview (3D Showroom)                                      //
+        // ------------------------------------------------------------------ //
+
+        private void OpenPreview(VehicleCard card)
+        {
+            GbayRenderer.PlaySelect();
+
+            _previewModel = card.Model;
+            _previewDisplayName = card.DisplayName;
+            _previewManufacturer = card.Manufacturer;
+            _previewPrice = card.Price;
+            _previewAngle = 0f;
+            _previewZoom = 1.0f;
+
+            // Load model and get dimensions for camera framing
+            var model = new Model(_previewModel);
+            model.Request(5000);
+            int hash = model.Hash;
+
+            OutputArgument minArg = new OutputArgument();
+            OutputArgument maxArg = new OutputArgument();
+            Function.Call(Hash.GET_MODEL_DIMENSIONS, hash, minArg, maxArg);
+            Vector3 vMin = minArg.GetResult<Vector3>();
+            Vector3 vMax = maxArg.GetResult<Vector3>();
+
+            float length = Math.Max(vMax.Y - vMin.Y, 3f);
+            float width = Math.Max(vMax.X - vMin.X, 2f);
+            float height = Math.Max(vMax.Z - vMin.Z, 1.5f);
+            float extent = (float)Math.Sqrt(length * length + width * width);
+
+            _previewRadius = extent * 1.2f;
+            _previewHeight = height * 0.5f;
+
+            // Spawn vehicle at preview position
+            _previewVehicle = VehicleHelper.CreateVehicle(
+                _previewModel, PREVIEW_POS, 0f);
+
+            if (_previewVehicle == null)
+            {
+                GbayRenderer.PlayError();
+                GTA.UI.Screen.ShowSubtitle("~r~Failed to load vehicle model.", 3000);
+                return;
+            }
+
+            _previewVehicle.IsPositionFrozen = true;
+            _previewVehicle.IsCollisionEnabled = false;
+            _previewVehicle.IsInvincible = true;
+            Function.Call(Hash.SET_VEHICLE_DIRT_LEVEL, _previewVehicle, 0f);
+            Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, _previewVehicle);
+
+            // Create camera
+            Vector3 camPos = GetOrbitPosition();
+            _previewCamera = World.CreateCamera(camPos, Vector3.Zero, 50f);
+            _previewCamera.PointAt(_previewVehicle);
+            World.RenderingCamera = _previewCamera;
+
+            _state = BrowserState.VehiclePreview;
+        }
+
+        private Vector3 GetOrbitPosition()
+        {
+            float r = _previewRadius * _previewZoom;
+            float x = PREVIEW_POS.X + r * (float)Math.Cos(_previewAngle);
+            float y = PREVIEW_POS.Y + r * (float)Math.Sin(_previewAngle);
+            float z = PREVIEW_POS.Z + _previewHeight;
+            return new Vector3(x, y, z);
+        }
+
+        private void UpdatePreviewCamera()
+        {
+            if (_previewCamera == null || _previewVehicle == null)
+                return;
+
+            // Auto-orbit
+            _previewAngle += Game.LastFrameTime * AUTO_ORBIT_SPEED;
+
+            _previewCamera.Position = GetOrbitPosition();
+            _previewCamera.PointAt(_previewVehicle);
+        }
+
+        private void DrawPreview(FrameInput input)
+        {
+            if (_previewVehicle == null || _previewCamera == null)
+            {
                 _state = BrowserState.VehicleBrowser;
+                return;
+            }
+
+            // Manual orbit (Left/Right arrows or mouse drag)
+            if (input.DirX != 0)
+                _previewAngle += input.DirX * MANUAL_ORBIT_SPEED * Game.LastFrameTime * 4f;
+
+            // Zoom (Q/E or scroll)
+            if (input.PageLeft)
+                _previewZoom = Math.Max(ZOOM_MIN, _previewZoom - ZOOM_SPEED);
+            if (input.PageRight)
+                _previewZoom = Math.Min(ZOOM_MAX, _previewZoom + ZOOM_SPEED);
+
+            // Auto orbit + update camera
+            UpdatePreviewCamera();
+
+            // --- HUD overlay on top of 3D view ---
+
+            // Top bar with vehicle info
+            float barH = 0.09f;
+            GbayRenderer.DrawRect(0.5f, barH / 2f, 1f, barH,
+                Color.FromArgb(180, 0, 0, 0));
+
+            // Manufacturer (small, above name)
+            GbayRenderer.DrawText(_previewManufacturer, 0.5f, 0.008f,
+                0.30f, GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED, true);
+
+            // Vehicle name
+            GbayRenderer.DrawText(_previewDisplayName, 0.5f, 0.032f,
+                0.52f, GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
+
+            // Price (right side)
+            string priceText = _previewPrice <= 0 ? "FREE" : $"${_previewPrice:N0}";
+            GbayRenderer.DrawText(priceText, 0.92f, 0.025f,
+                0.42f, GbayRenderer.TextPrice, GbayRenderer.FONT_CHALET,
+                false, false, true);
+
+            // Bottom bar with controls
+            float footerY = 0.93f;
+            float footerH = 0.07f;
+            GbayRenderer.DrawRect(0.5f, footerY + footerH / 2f, 1f, footerH,
+                Color.FromArgb(180, 0, 0, 0));
+            GbayRenderer.DrawText(
+                "[Left/Right] Rotate   [Q/E] Zoom   [Enter] Purchase   [Esc] Back",
+                0.5f, footerY + 0.018f, 0.28f, GbayRenderer.TextWhite,
+                GbayRenderer.FONT_CONDENSED, true);
+
+            // Input: Buy
+            if (input.Accept)
+            {
+                OpenDeliveryConfirm(_previewModel, _previewPrice);
+            }
+
+            // Input: Back
+            if (input.Back || input.MouseRightClick)
+            {
+                GbayRenderer.PlayBack();
+                ClosePreview();
+                _state = BrowserState.VehicleBrowser;
+            }
+        }
+
+        private void ClosePreview()
+        {
+            if (_previewCamera != null)
+            {
+                World.RenderingCamera = null;
+                _previewCamera.Delete();
+                _previewCamera = null;
+            }
+
+            if (_previewVehicle != null)
+            {
+                _previewVehicle.Delete();
+                _previewVehicle = null;
             }
         }
 
