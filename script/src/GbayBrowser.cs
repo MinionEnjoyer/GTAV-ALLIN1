@@ -290,31 +290,15 @@ namespace ALLIN1
                     $"~y~DICTS: {loaded}/{_activeDicts.Count} | logo={logoLoaded} | first={firstDict ?? "none"} | PD={VehicleList.PreviewDict.Count}",
                     100);
 
-                // One-time log to file
+                // Show debug info via notification (file logging unreliable)
                 if (!_debugLogged)
                 {
                     _debugLogged = true;
-                    try
-                    {
-                        string logPath = System.IO.Path.Combine(
-                            AppDomain.CurrentDomain.BaseDirectory,
-                            "ALLIN1_texdebug.log");
-                        var lines = new System.Collections.Generic.List<string>();
-                        lines.Add($"PreviewDict entries: {VehicleList.PreviewDict.Count}");
-                        lines.Add($"Active dicts: {_activeDicts.Count}");
-                        foreach (string d in _activeDicts)
-                            lines.Add($"  dict '{d}' requested={GbayRenderer.IsDictRequested(d)} loaded={GbayRenderer.IsDictLoaded(d)}");
-                        lines.Add($"Logo dict requested={GbayRenderer.IsDictRequested("allin1_logo")} loaded={logoLoaded}");
-                        lines.Add($"First 3 PreviewDict entries:");
-                        int n = 0;
-                        foreach (var kv in VehicleList.PreviewDict)
-                        {
-                            lines.Add($"  {kv.Key} -> {kv.Value}");
-                            if (++n >= 3) break;
-                        }
-                        System.IO.File.WriteAllLines(logPath, lines);
-                    }
-                    catch { }
+                    string reqInfo = "";
+                    foreach (string d in _activeDicts)
+                        reqInfo += $"{d}:req={GbayRenderer.IsDictRequested(d)} ";
+                    GTA.UI.Notification.Show($"~y~ActiveDicts: {_activeDicts.Count} Logo:req={GbayRenderer.IsDictRequested("allin1_logo")} ld={logoLoaded}");
+                    GTA.UI.Notification.Show($"~y~PD={VehicleList.PreviewDict.Count} {reqInfo}");
                 }
             }
         }
