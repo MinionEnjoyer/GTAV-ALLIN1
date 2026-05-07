@@ -84,21 +84,21 @@ namespace RpfPatcher
                 Console.WriteLine($"RPF scanned: {rpf.AllEntries.Count} entries");
 
                 // --- Find dlclist.xml ---
-                var dlclistEntry = rpf.AllEntries
-                    .OfType<RpfFileEntry>()
-                    .FirstOrDefault(e => e.Path != null &&
-                        e.Path.EndsWith(DLCLIST_PATH, StringComparison.OrdinalIgnoreCase));
+                // update.rpf may contain nested RPFs (e.g. common.rpf\data\dlclist.xml).
+                // Search all RPFs recursively.
+                var dlclistEntry = FindFileRecursive(rpf, "dlclist.xml");
 
                 if (dlclistEntry == null)
                 {
-                    Console.Error.WriteLine("ERROR: dlclist.xml not found in update.rpf");
+                    Console.Error.WriteLine("ERROR: dlclist.xml not found in update.rpf (searched all nested RPFs)");
                     return 5;
                 }
 
                 Console.WriteLine($"Found dlclist.xml at: {dlclistEntry.Path}");
 
                 // --- Extract and parse XML ---
-                byte[] xmlBytes = rpf.ExtractFile(dlclistEntry);
+                // The entry may be inside a nested RPF, so extract from its own RPF file.
+                byte[] xmlBytes = dlclistEntry.File.ExtractFile(dlclistEntry);
                 if (xmlBytes == null || xmlBytes.Length == 0)
                 {
                     Console.Error.WriteLine("ERROR: Failed to extract dlclist.xml (empty data).");
@@ -140,13 +140,14 @@ namespace RpfPatcher
                 }
 
                 // --- Write modified XML back into RPF ---
-                Console.WriteLine("Writing modified dlclist.xml back to update.rpf...");
+                var targetRpf = dlclistEntry.File;
+                Console.WriteLine($"Writing modified dlclist.xml back to {targetRpf.Name}...");
 
-                // Ensure RPF is in a writable encryption mode
-                if (rpf.Encryption != RpfEncryption.OPEN)
+                // Ensure the RPF containing dlclist.xml is in a writable encryption mode
+                if (targetRpf.Encryption != RpfEncryption.OPEN)
                 {
-                    Console.WriteLine($"Converting RPF encryption from {rpf.Encryption} to OPEN...");
-                    RpfFile.EnsureValidEncryption(rpf, null, true);
+                    Console.WriteLine($"Converting RPF encryption from {targetRpf.Encryption} to OPEN...");
+                    RpfFile.EnsureValidEncryption(targetRpf, null, true);
                 }
 
                 byte[] newXmlBytes = Encoding.UTF8.GetBytes(doc.Declaration + "\n" + doc.ToString());
@@ -189,6 +190,30 @@ namespace RpfPatcher
             paths.Add(new XElement("Item", DLC_ENTRY));
             Console.WriteLine($"Added '{DLC_ENTRY}' to dlclist.xml.");
             return true;
+        }
+
+        private static RpfFileEntry FindFileRecursive(RpfFile rpf, string fileName)
+        {
+            // Search this RPF's entries
+            var entry = rpf.AllEntries?
+                .OfType<RpfFileEntry>()
+                .FirstOrDefault(e =>
+                    e.Name != null &&
+                    e.Name.Equals(fileName, StringComparison.OrdinalIgnoreCase));
+
+            if (entry != null) return entry;
+
+            // Recurse into nested RPFs
+            if (rpf.Children != null)
+            {
+                foreach (var child in rpf.Children)
+                {
+                    entry = FindFileRecursive(child, fileName);
+                    if (entry != null) return entry;
+                }
+            }
+
+            return null;
         }
 
         private static bool UnpatchDlcList(XElement paths)
