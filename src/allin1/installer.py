@@ -296,10 +296,10 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
         result.warnings.append("Preview images not found; skipping DLC pack.")
         return
 
-    if not (_TOOLS_DIR / "texconv.exe").exists():
-        log.warning("texconv.exe not found in tools/ — skipping DLC pack build")
+    if not (_TOOLS_DIR / "YTDToolio.exe").exists():
+        log.warning("YTDToolio.exe not found in tools/ — skipping DLC pack build")
         result.warnings.append(
-            "texconv.exe missing from tools/. Preview DLC pack was not built."
+            "YTDToolio.exe missing from tools/. Run runtools.ps1 first."
         )
         return
 

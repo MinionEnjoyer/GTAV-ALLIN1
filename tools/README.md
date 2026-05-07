@@ -1,31 +1,28 @@
 # Tools
 
 Windows CLI tools used by the installer at install time to build the preview
-texture DLC pack. Place these executables in this directory.
+texture DLC pack. Run `runtools.ps1` from the project root to fetch and build
+all required tools automatically.
 
 ## Required Files
 
-| File | Source | License |
+| File | Source | Purpose |
 |------|--------|---------|
-| `texconv.exe` | [DirectXTex](https://github.com/microsoft/DirectXTex/releases) | MIT |
-| `YTDToolio.exe` | [ytdtool](https://github.com/kngrektor/ytdtool/releases) | GPL |
-| `gtautil.exe` | [gtautil](https://github.com/indilo53/gtautil/releases) (v2.2.7) | MIT |
+| `YTDToolio.exe` | Built from [ytdtool](https://github.com/kngrektor/ytdtool) source | Packs PNG folders into GTA V `.ytd` texture dictionaries |
+| `gtautil.exe` | [gtautil](https://github.com/indilo53/gtautil/releases) v2.2.7 | Creates `.rpf` archives, extracts/rebuilds `update.rpf` |
 
-## What They Do
+## Setup
 
-- **texconv.exe** converts PNG images to DXT1/DXT5 DDS format (GPU-compressed)
-- **YTDToolio.exe** packs a folder of DDS files into a GTA V `.ytd` texture dictionary
-- **gtautil.exe** creates `.rpf` archives and can extract/rebuild `update.rpf`
+From the project root, run:
 
-## Download Instructions
+```powershell
+.\runtools.ps1
+```
 
-1. **texconv.exe**: Go to the DirectXTex releases page, download the latest
-   `texconv.exe` standalone binary for x64.
+This will download gtautil and clone + build YTDToolio from source.
 
-2. **YTDToolio.exe**: Go to the ytdtool releases page, download the latest
-   release and extract `YTDToolio.exe`.
+### Build Requirements (for YTDToolio)
 
-3. **gtautil.exe**: Go to the gtautil releases page (v2.2.7), download and
-   extract `gtautil.exe`.
-
-Place all three in this `tools/` directory.
+- .NET 5.0+ SDK
+- Visual Studio Build Tools (for native DirectXTex dependency)
+- Git (for cloning the repo)
