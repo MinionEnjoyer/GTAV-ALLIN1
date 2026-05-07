@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Downloads and builds the tools required by the ALLIN1 installer.
 
@@ -27,9 +27,9 @@ $TempDir = Join-Path $ToolsDir "_build_temp"
 if (Test-Path $TempDir) { Remove-Item -Recurse -Force $TempDir }
 New-Item -ItemType Directory -Path $TempDir | Out-Null
 
-# ─────────────────────────────────────────────────────────────────────
-#  1. gtautil.exe  (indilo53/gtautil v2.2.7 — MIT license)
-# ─────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------
+#  1. gtautil.exe  (indilo53/gtautil v2.2.7 - MIT license)
+# ---------------------------------------------------------------------
 Write-Host "`n[1/2] Downloading gtautil.exe..." -ForegroundColor Cyan
 
 $GtautilDest = Join-Path $ToolsDir "gtautil.exe"
@@ -55,11 +55,11 @@ if (Test-Path $GtautilDest) {
     Write-Host "  Saved to $GtautilDest" -ForegroundColor Green
 }
 
-# ─────────────────────────────────────────────────────────────────────
-#  2. YTDToolio.exe  (kngrektor/ytdtool — built from source)
+# ---------------------------------------------------------------------
+#  2. YTDToolio.exe  (kngrektor/ytdtool - built from source)
 #     Reads PNG files directly and packs them into .ytd archives.
 #     Uses RageLib for DXT compression internally.
-# ─────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------
 Write-Host "`n[2/2] Building YTDToolio.exe from source..." -ForegroundColor Cyan
 
 $YtdtoolDest = Join-Path $ToolsDir "YTDToolio.exe"
@@ -73,7 +73,7 @@ if (Test-Path $YtdtoolDest) {
     git clone --recursive "https://github.com/kngrektor/ytdtool.git" $YtdtoolRepo
     if ($LASTEXITCODE -ne 0) { throw "git clone failed" }
 
-    # ── Locate MSBuild via vswhere ──
+    # -- Locate MSBuild via vswhere --
     $VsWhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
     if (-not (Test-Path $VsWhere)) {
         throw "vswhere.exe not found. Install Visual Studio 2022."
@@ -98,7 +98,7 @@ if (Test-Path $YtdtoolDest) {
 
     $ToolkitDir = Join-Path (Join-Path $YtdtoolRepo "vendor") "gta-toolkit"
 
-    # ── Step A: Patch gta-toolkit (remove DirectXTex dependency) ──
+    # -- Step A: Patch gta-toolkit (remove DirectXTex dependency) --
     # This mirrors what dev_win.bat does:
     # Remove test/benchmark projects from solution, remove DirectXTex
     # reference, delete helper files that depend on DirectXTex.
@@ -153,7 +153,7 @@ if (Test-Path $YtdtoolDest) {
         Pop-Location
     }
 
-    # ── Step B: Build FuckDX (DXT compressor, replaces DirectXTex) ──
+    # -- Step B: Build FuckDX (DXT compressor, replaces DirectXTex) --
     Write-Host "  Building FuckDX..."
 
     # Download premake5
@@ -192,10 +192,10 @@ if (Test-Path $YtdtoolDest) {
         Copy-Item $FuckDxDll.FullName -Destination $YtdBinDir
         Write-Host "  FuckDX.dll built."
     } else {
-        Write-Warning "  FuckDX.dll not found — DXT compression may not work."
+        Write-Warning "  FuckDX.dll not found - DXT compression may not work."
     }
 
-    # ── Step C: Publish YTDToolio ──
+    # -- Step C: Publish YTDToolio --
     Write-Host "  Publishing YTDToolio..."
     $YtdtoolioCsproj = Join-Path (Join-Path $YtdtoolRepo "ytdtoolio") "YTDToolio.csproj"
     dotnet publish $YtdtoolioCsproj -c Release -r win-x64 --self-contained true --nologo
@@ -210,15 +210,15 @@ if (Test-Path $YtdtoolDest) {
     Write-Host "  Saved to $YtdtoolDest" -ForegroundColor Green
 }
 
-# ─────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------
 #  Cleanup
-# ─────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------
 Write-Host "`nCleaning up temp files..." -ForegroundColor Cyan
 if (Test-Path $TempDir) { Remove-Item -Recurse -Force $TempDir }
 
-# ─────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------
 #  Summary
-# ─────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------
 Write-Host "`n=== Tools Summary ===" -ForegroundColor Green
 $tools = @("gtautil.exe", "YTDToolio.exe")
 $allPresent = $true
