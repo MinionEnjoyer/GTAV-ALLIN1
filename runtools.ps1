@@ -16,7 +16,7 @@
 #>
 
 $ErrorActionPreference = "Stop"
-$ScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
+if ($PSScriptRoot) { $ScriptRoot = $PSScriptRoot } else { $ScriptRoot = (Get-Location).Path }
 $ToolsDir = Join-Path $ScriptRoot "tools"
 
 if (-not (Test-Path $ToolsDir)) {
