@@ -77,13 +77,38 @@ if (Test-Path $YtdtoolDest) {
     git clone --recursive "https://github.com/kngrektor/ytdtool.git" $YtdtoolRepo
     if ($LASTEXITCODE -ne 0) { throw "git clone failed" }
 
-    # -- Locate MSBuild via vswhere --
+    # -- Locate Visual Studio and ensure C++ workload is installed --
     $VsWhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
     if (-not (Test-Path $VsWhere)) {
         throw "vswhere.exe not found. Install Visual Studio 2022."
     }
     $VsInstall = & $VsWhere -latest -property installationPath 2>$null
     if (-not $VsInstall) { throw "No Visual Studio installation found." }
+
+    # Check if C++ desktop workload is installed
+    $HasCpp = & $VsWhere -latest -requires Microsoft.VisualStudio.Workload.NativeDesktop -property installationPath 2>$null
+    if (-not $HasCpp) {
+        Write-Host "  C++ desktop workload not found. Installing..." -ForegroundColor Yellow
+        $VsInstaller = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vs_installer.exe"
+        if (-not (Test-Path $VsInstaller)) {
+            throw "VS Installer not found. Open Visual Studio Installer and add 'Desktop development with C++' manually."
+        }
+        # Install the C++ workload silently
+        $installArgs = @(
+            "modify",
+            "--installPath", $VsInstall,
+            "--add", "Microsoft.VisualStudio.Workload.NativeDesktop",
+            "--includeRecommended",
+            "--passive",
+            "--norestart"
+        )
+        Write-Host "  Running VS Installer (this may take a few minutes)..."
+        $proc = Start-Process -FilePath $VsInstaller -ArgumentList $installArgs -Wait -PassThru
+        if ($proc.ExitCode -ne 0) {
+            throw "VS Installer failed (exit code $($proc.ExitCode)). Open Visual Studio Installer and add 'Desktop development with C++' manually."
+        }
+        Write-Host "  C++ workload installed." -ForegroundColor Green
+    }
 
     # Init VS developer environment (sets up cl.exe, msbuild paths, etc.)
     $VsDevCmd = Join-Path (Join-Path $VsInstall "Common7") "Tools\VsDevCmd.bat"
