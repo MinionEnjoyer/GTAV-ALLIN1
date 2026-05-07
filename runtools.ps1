@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Downloads and builds the tools required by the ALLIN1 installer.
 
@@ -176,12 +176,20 @@ if (Test-Path $YtdtoolDest) {
             & $Premake5Exe vs2019
         }
         if ($LASTEXITCODE -ne 0) { throw "premake5 failed to generate project files" }
-
-        $exitCode = Invoke-VsDev "msbuild FuckDX.sln -m -nologo -v:m -p:Configuration=Release"
-        if ($exitCode -ne 0) { throw "MSBuild failed for FuckDX" }
     } finally {
         Pop-Location
     }
+
+    # premake5 generates into fuckdx/build/
+    $FuckDxSln = Join-Path (Join-Path $FuckDxDir "build") "FuckDX.sln"
+    if (-not (Test-Path $FuckDxSln)) {
+        # Fallback: check fuckdx/ root
+        $FuckDxSln = Join-Path $FuckDxDir "FuckDX.sln"
+    }
+    if (-not (Test-Path $FuckDxSln)) { throw "FuckDX.sln not found after premake5" }
+
+    $exitCode = Invoke-VsDev "msbuild `"$FuckDxSln`" -m -nologo -v:m -p:Configuration=Release"
+    if ($exitCode -ne 0) { throw "MSBuild failed for FuckDX" }
 
     # Copy FuckDX.dll to ytdtool bin
     $YtdBinDir = Join-Path $YtdtoolRepo "bin"
