@@ -197,7 +197,7 @@ if errorlevel 1 (
     exit /b 1
 )
 cd /d "$FuckDxOut"
-cl /nologo /O2 /std:c++17 /LD /EHsc /I"$FuckDxDir" "$FuckDxSrc" /Fe:"$FuckDxDll" /link /DLL /MACHINE:X64
+cl /nologo /O2 /std:c++17 /LD /EHsc /I"$FuckDxDir" "$FuckDxSrc" /Fe:"$FuckDxDll"
 exit /b %errorlevel%
 "@ | Set-Content -Path $buildBat -Encoding ASCII
 
