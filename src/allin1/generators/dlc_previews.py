@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 import shutil
-import subprocess
 from pathlib import Path
 
 from lxml import etree
@@ -111,58 +110,25 @@ def create_dlc_pack(
     return dlc_root
 
 
-def build_dlc_rpf(
+def deploy_dlc_loose(
     dlc_folder: Path,
-    output_dir: Path,
-    gtautil: Path,
-) -> Path:
-    """Pack the DLC folder into dlc.rpf using gtautil.
-
-    Args:
-        dlc_folder: Path to the DLC folder (output of create_dlc_pack).
-        output_dir: Where to write dlc.rpf.
-        gtautil: Path to gtautil.exe.
-
-    Returns:
-        Path to the created dlc.rpf.
-    """
-    if not gtautil.exists():
-        raise FileNotFoundError(f"gtautil.exe not found at {gtautil}")
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    cmd = [
-        str(gtautil), "createarchive",
-        "--input", str(dlc_folder),
-        "--output", str(output_dir),
-        "--name", "dlc",
-    ]
-    log.info("Building dlc.rpf...")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        log.error("gtautil failed (rc=%d):\n%s", result.returncode, result.stderr)
-        raise RuntimeError(f"gtautil createarchive failed: {result.stderr[:500]}")
-
-    rpf_path = output_dir / "dlc.rpf"
-    log.info("Created %s", rpf_path)
-    return rpf_path
-
-
-def deploy_dlc_pack(
-    dlc_rpf: Path,
     gta_path: Path,
 ) -> Path:
-    """Deploy the DLC pack to the GTA V directory.
+    """Deploy the DLC pack as loose files to the GTA V directory.
 
-    Places dlc.rpf at: <GTA V>/update/x64/dlcpacks/allin1_previews/dlc.rpf
+    Copies the entire DLC folder structure to:
+        <GTA V>/update/x64/dlcpacks/allin1_previews/
+
+    GTA V loads loose DLC packs the same way as RPF archives — no need
+    to pack into dlc.rpf.
 
     Returns the deployment directory.
     """
     dest_dir = gta_path / "update" / "x64" / "dlcpacks" / DLC_NAME
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
-    dest = dest_dir / "dlc.rpf"
-    shutil.copy2(dlc_rpf, dest)
-    log.info("Deployed dlc.rpf -> %s", dest)
+    if dest_dir.exists():
+        shutil.rmtree(dest_dir)
+    shutil.copytree(dlc_folder, dest_dir)
+    log.info("Deployed loose DLC pack -> %s", dest_dir)
     return dest_dir
 
 
