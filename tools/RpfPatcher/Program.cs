@@ -63,6 +63,38 @@ namespace RpfPatcher
 
                 Console.WriteLine("Encryption keys loaded.");
 
+                // LoadFromPath only loads decrypt tables. We need encrypt tables
+                // for writing back to NG-encrypted RPFs.
+                if (GTA5Keys.PC_NG_DECRYPT_TABLES != null && GTA5Keys.PC_NG_ENCRYPT_TABLES == null)
+                {
+                    Console.WriteLine("Generating NG encrypt tables (this may take a moment)...");
+                    GTA5Keys.PC_NG_ENCRYPT_TABLES = new uint[17][][];
+                    for (int i = 0; i < 17; i++)
+                    {
+                        GTA5Keys.PC_NG_ENCRYPT_TABLES[i] = new uint[16][];
+                        for (int j = 0; j < 16; j++)
+                        {
+                            GTA5Keys.PC_NG_ENCRYPT_TABLES[i][j] = new uint[256];
+                        }
+                    }
+                    GTA5Keys.PC_NG_ENCRYPT_LUTs = new GTA5NGLUT[17][];
+                    for (int i = 0; i < 17; i++)
+                    {
+                        GTA5Keys.PC_NG_ENCRYPT_LUTs[i] = new GTA5NGLUT[16];
+                        for (int j = 0; j < 16; j++)
+                            GTA5Keys.PC_NG_ENCRYPT_LUTs[i][j] = new GTA5NGLUT();
+                    }
+
+                    GTA5Keys.PC_NG_ENCRYPT_TABLES[0] = RandomGauss.Solve(GTA5Keys.PC_NG_DECRYPT_TABLES[0]);
+                    GTA5Keys.PC_NG_ENCRYPT_TABLES[1] = RandomGauss.Solve(GTA5Keys.PC_NG_DECRYPT_TABLES[1]);
+                    for (int k = 2; k <= 15; k++)
+                    {
+                        GTA5Keys.PC_NG_ENCRYPT_LUTs[k] = LookUpTableGenerator.BuildLUTs2(GTA5Keys.PC_NG_DECRYPT_TABLES[k]);
+                    }
+                    GTA5Keys.PC_NG_ENCRYPT_TABLES[16] = RandomGauss.Solve(GTA5Keys.PC_NG_DECRYPT_TABLES[16]);
+                    Console.WriteLine("NG encrypt tables ready.");
+                }
+
                 // --- Open update.rpf ---
                 string rpfPath = Path.Combine(gtaPath, "update", "update.rpf");
                 if (!File.Exists(rpfPath))
