@@ -142,6 +142,7 @@ namespace ALLIN1
         private int _hoverTab = -1;
         private readonly List<VehicleCard> _filtered = new List<VehicleCard>();
         private readonly HashSet<string> _activeDicts = new HashSet<string>();
+        private bool _debugLogged;
 
         // Delivery confirm
         private string _pendingModel;
@@ -275,7 +276,7 @@ namespace ALLIN1
             GbayRenderer.DrawCursor();
 
             // DEBUG: show texture dict loading status
-            if (_state == BrowserState.VehicleBrowser && _activeDicts.Count > 0)
+            if (_state == BrowserState.VehicleBrowser)
             {
                 int loaded = 0;
                 string firstDict = null;
@@ -284,9 +285,37 @@ namespace ALLIN1
                     if (firstDict == null) firstDict = d;
                     if (GbayRenderer.IsDictLoaded(d)) loaded++;
                 }
+                bool logoLoaded = GbayRenderer.IsDictLoaded("allin1_logo");
                 GTA.UI.Screen.ShowSubtitle(
-                    $"~y~DICTS: {loaded}/{_activeDicts.Count} loaded | first={firstDict ?? "none"} | PreviewDict={VehicleList.PreviewDict.Count}",
+                    $"~y~DICTS: {loaded}/{_activeDicts.Count} | logo={logoLoaded} | first={firstDict ?? "none"} | PD={VehicleList.PreviewDict.Count}",
                     100);
+
+                // One-time log to file
+                if (!_debugLogged)
+                {
+                    _debugLogged = true;
+                    try
+                    {
+                        string logPath = System.IO.Path.Combine(
+                            System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location),
+                            "ALLIN1_texdebug.log");
+                        var lines = new System.Collections.Generic.List<string>();
+                        lines.Add($"PreviewDict entries: {VehicleList.PreviewDict.Count}");
+                        lines.Add($"Active dicts: {_activeDicts.Count}");
+                        foreach (string d in _activeDicts)
+                            lines.Add($"  dict '{d}' requested={GbayRenderer.IsDictRequested(d)} loaded={GbayRenderer.IsDictLoaded(d)}");
+                        lines.Add($"Logo dict requested={GbayRenderer.IsDictRequested("allin1_logo")} loaded={logoLoaded}");
+                        lines.Add($"First 3 PreviewDict entries:");
+                        int n = 0;
+                        foreach (var kv in VehicleList.PreviewDict)
+                        {
+                            lines.Add($"  {kv.Key} -> {kv.Value}");
+                            if (++n >= 3) break;
+                        }
+                        System.IO.File.WriteAllLines(logPath, lines);
+                    }
+                    catch { }
+                }
             }
         }
 

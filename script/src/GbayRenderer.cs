@@ -148,6 +148,9 @@ namespace ALLIN1
                 Function.Call(Hash.REQUEST_STREAMED_TEXTURE_DICT, dict, false);
         }
 
+        /// <summary>Check if a texture dictionary has been requested.</summary>
+        internal static bool IsDictRequested(string dict) => _requestedDicts.Contains(dict);
+
         /// <summary>Check if a streamed texture dictionary is loaded.</summary>
         internal static bool IsDictLoaded(string dict)
         {
