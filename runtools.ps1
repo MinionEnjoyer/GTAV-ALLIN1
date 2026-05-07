@@ -244,13 +244,21 @@ if (Test-Path $RpfPatcherExe) {
         throw "RpfPatcher.csproj not found at $RpfPatcherProj"
     }
 
-    # Ensure CodeWalker submodule is initialized
-    $CwCorePath = Join-Path (Join-Path (Join-Path (Join-Path $ScriptRoot "tools") "CodeWalker") "CodeWalker.Core") "CodeWalker.Core.csproj"
+    # Ensure CodeWalker source is available
+    $CwDir = Join-Path (Join-Path $ScriptRoot "tools") "CodeWalker"
+    $CwCorePath = Join-Path (Join-Path $CwDir "CodeWalker.Core") "CodeWalker.Core.csproj"
     if (-not (Test-Path $CwCorePath)) {
-        Write-Host "  Initializing CodeWalker submodule..."
-        Push-Location $ScriptRoot
-        git submodule update --init --recursive tools/CodeWalker
-        Pop-Location
+        $GitDir = Join-Path $ScriptRoot ".git"
+        if (Test-Path $GitDir) {
+            Write-Host "  Initializing CodeWalker submodule..."
+            Push-Location $ScriptRoot
+            git submodule update --init --recursive tools/CodeWalker
+            Pop-Location
+        } else {
+            Write-Host "  Cloning CodeWalker (not a git repo, can't use submodule)..."
+            git clone --depth 1 "https://github.com/dexyfex/CodeWalker.git" $CwDir
+            if ($LASTEXITCODE -ne 0) { throw "Failed to clone CodeWalker" }
+        }
     }
 
     Write-Host "  Publishing RpfPatcher (self-contained win-x64)..."
