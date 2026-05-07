@@ -187,8 +187,12 @@ if (Test-Path $YtdtoolDest) {
     $FuckDxSrc = Join-Path $FuckDxDir "main.cpp"
     $FuckDxDll = Join-Path $FuckDxOut "FuckDX.dll"
 
-    # Write a self-contained batch file that sets up VS env and compiles
+    # Write a self-contained batch file that sets up the VS environment,
+    # compiles to .obj, then links into a DLL as two separate steps.
+    # Using /c (compile-only) + explicit link avoids cl's implicit linker
+    # invocation which can hang on some systems.
     $buildBat = Join-Path $TempDir "build_fuckdx.bat"
+    $FuckDxObj = Join-Path $FuckDxOut "main.obj"
     @"
 @echo off
 call "$VsDevCmd" -arch=amd64 >nul 2>&1
@@ -197,17 +201,24 @@ if errorlevel 1 (
     exit /b 1
 )
 cd /d "$FuckDxOut"
-cl /nologo /O2 /std:c++17 /LD /EHsc /I"$FuckDxDir" "$FuckDxSrc" /Fe:"$FuckDxDll"
+echo Compiling main.cpp...
+cl /nologo /O2 /std:c++17 /c /EHsc /I"$FuckDxDir" "$FuckDxSrc" /Fo:"$FuckDxObj"
+if errorlevel 1 (
+    echo Compilation failed
+    exit /b 1
+)
+echo Linking FuckDX.dll...
+link /nologo /DLL /MACHINE:X64 /OUT:"$FuckDxDll" "$FuckDxObj"
 exit /b %errorlevel%
 "@ | Set-Content -Path $buildBat -Encoding ASCII
 
-    Write-Host "  Compiling with cl.exe..."
+    Write-Host "  Compiling and linking FuckDX.dll..."
     $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $buildBat -Wait -PassThru -NoNewWindow
     if ($proc.ExitCode -ne 0) {
-        throw "Failed to compile FuckDX.dll (exit code $($proc.ExitCode)). Ensure VS 2022 C++ desktop workload is installed."
+        throw "Failed to build FuckDX.dll (exit code $($proc.ExitCode)). Ensure VS 2022 C++ desktop workload is installed."
     }
     if (-not (Test-Path $FuckDxDll)) {
-        throw "FuckDX.dll was not created after compilation."
+        throw "FuckDX.dll was not created after build."
     }
 
     # Copy FuckDX.dll next to YTDToolio.exe (it loads it at runtime)
