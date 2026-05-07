@@ -20,13 +20,14 @@ from allin1.generators.vehiclelist import TEXTURES_PER_YTD, YTD_PREFIX
 log = logging.getLogger("allin1.generators.ytd_builder")
 
 
-def _run(cmd: list[str | Path], label: str) -> None:
+def _run(cmd: list[str | Path], label: str, cwd: Path | None = None) -> None:
     """Run a subprocess, raising on failure."""
     log.debug("Running: %s", " ".join(str(c) for c in cmd))
     result = subprocess.run(
         [str(c) for c in cmd],
         capture_output=True,
         text=True,
+        cwd=str(cwd) if cwd else None,
     )
     if result.stdout:
         log.debug("%s stdout: %s", label, result.stdout.strip())
@@ -35,6 +36,9 @@ def _run(cmd: list[str | Path], label: str) -> None:
     if result.returncode != 0:
         log.error("%s failed (rc=%d):\n%s", label, result.returncode, result.stderr)
         raise RuntimeError(f"{label} failed: {result.stderr[:500]}")
+    if result.stderr and "exception" in result.stderr.lower():
+        log.error("%s crashed:\n%s", label, result.stderr)
+        raise RuntimeError(f"{label} crashed: {result.stderr[:500]}")
 
 
 def _pack_ytd(png_dir: Path, output_path: Path, ytdtool: Path) -> None:
@@ -42,6 +46,7 @@ def _pack_ytd(png_dir: Path, output_path: Path, ytdtool: Path) -> None:
     _run(
         [ytdtool, "pack", png_dir, "-d", output_path],
         f"YTDToolio ({output_path.name})",
+        cwd=ytdtool.parent,  # so FuckDX.dll is found next to the exe
     )
 
 

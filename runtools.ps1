@@ -157,50 +157,31 @@ if (Test-Path $YtdtoolDest) {
         Pop-Location
     }
 
-    # -- Step B: Build FuckDX (optional DXT compressor) --
-    # FuckDX is optional - YTDToolio may work without it using RageLib's
-    # built-in compression. We try to build it but don't fail if it doesn't work.
-    Write-Host "  Building FuckDX (optional)..."
-    $FuckDxBuilt = $false
-    try {
-        $Premake5Url = "https://github.com/premake/premake-core/releases/download/v5.0.0-beta8/premake-5.0.0-beta8-windows.zip"
-        $Premake5Zip = Join-Path $TempDir "premake5.zip"
-        $Premake5Dir = Join-Path $TempDir "premake5"
-        Invoke-WebRequest -Uri $Premake5Url -OutFile $Premake5Zip -UseBasicParsing
-        Expand-Archive -Path $Premake5Zip -DestinationPath $Premake5Dir -Force
-        $Premake5Exe = Join-Path $Premake5Dir "premake5.exe"
+    # -- Step B: Build FuckDX.dll (required DXT compressor for YTDToolio) --
+    # Compile directly with cl.exe instead of premake5 + MSBuild.
+    # FuckDX is a single C++ source file that builds into a DLL.
+    Write-Host "  Building FuckDX.dll..."
 
-        $FuckDxDir = Join-Path $YtdtoolRepo "fuckdx"
-        Push-Location $FuckDxDir
-        try {
-            & $Premake5Exe vs2022
-            if ($LASTEXITCODE -ne 0) { & $Premake5Exe vs2019 }
-        } finally {
-            Pop-Location
-        }
+    $FuckDxDir = Join-Path $YtdtoolRepo "fuckdx"
+    $FuckDxOut = Join-Path $TempDir "fuckdx_build"
+    if (-not (Test-Path $FuckDxOut)) { New-Item -ItemType Directory -Path $FuckDxOut | Out-Null }
 
-        # Find the generated .sln
-        $FuckDxSln = Get-ChildItem -Path $FuckDxDir -Filter "FuckDX.sln" -Recurse | Select-Object -First 1
-        if ($FuckDxSln) {
-            $exitCode = Invoke-VsDev "msbuild `"$($FuckDxSln.FullName)`" -m -nologo -v:m -p:Configuration=Release"
-            if ($exitCode -eq 0) {
-                $YtdBinDir = Join-Path $YtdtoolRepo "bin"
-                if (-not (Test-Path $YtdBinDir)) { New-Item -ItemType Directory -Path $YtdBinDir | Out-Null }
-                $FuckDxDll = Get-ChildItem -Path $FuckDxDir -Filter "FuckDX.dll" -Recurse |
-                    Where-Object { $_.FullName -match "Release" } | Select-Object -First 1
-                if ($FuckDxDll) {
-                    Copy-Item $FuckDxDll.FullName -Destination $YtdBinDir
-                    $FuckDxBuilt = $true
-                    Write-Host "  FuckDX.dll built." -ForegroundColor Green
-                }
-            }
-        }
-    } catch {
-        # Non-fatal
+    $FuckDxSrc = Join-Path $FuckDxDir "main.cpp"
+    $FuckDxDll = Join-Path $FuckDxOut "FuckDX.dll"
+
+    # Compile with cl.exe via VS developer environment
+    $clCmd = "cd /d `"$FuckDxOut`" && cl /nologo /O2 /std:c++17 /LD /EHsc /I`"$FuckDxDir`" `"$FuckDxSrc`" /Fe:`"$FuckDxDll`" /link /DLL"
+    $exitCode = Invoke-VsDev $clCmd
+    if ($exitCode -ne 0) {
+        throw "Failed to compile FuckDX.dll. Ensure VS 2022 C++ desktop workload is installed."
     }
-    if (-not $FuckDxBuilt) {
-        Write-Warning "  FuckDX build skipped/failed - YTDToolio will use RageLib compression."
+    if (-not (Test-Path $FuckDxDll)) {
+        throw "FuckDX.dll was not created after compilation."
     }
+
+    # Copy FuckDX.dll next to YTDToolio.exe (it loads it at runtime)
+    Copy-Item $FuckDxDll -Destination $ToolsDir -Force
+    Write-Host "  FuckDX.dll built and placed in tools/." -ForegroundColor Green
 
     # -- Step C: Publish YTDToolio --
     Write-Host "  Publishing YTDToolio..."
@@ -230,6 +211,7 @@ Write-Host "`n=== Tools Summary ===" -ForegroundColor Green
 $toolPaths = @{
     "gtautil.exe" = Join-Path (Join-Path $ToolsDir "gtautil") "gtautil.exe"
     "YTDToolio.exe" = Join-Path $ToolsDir "YTDToolio.exe"
+    "FuckDX.dll" = Join-Path $ToolsDir "FuckDX.dll"
 }
 $allPresent = $true
 foreach ($entry in $toolPaths.GetEnumerator()) {
