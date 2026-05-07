@@ -297,7 +297,7 @@ namespace ALLIN1
                     try
                     {
                         string logPath = System.IO.Path.Combine(
-                            System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location),
+                            AppDomain.CurrentDomain.BaseDirectory,
                             "ALLIN1_texdebug.log");
                         var lines = new System.Collections.Generic.List<string>();
                         lines.Add($"PreviewDict entries: {VehicleList.PreviewDict.Count}");
