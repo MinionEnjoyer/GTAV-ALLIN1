@@ -142,7 +142,6 @@ namespace ALLIN1
         private int _hoverTab = -1;
         private readonly List<VehicleCard> _filtered = new List<VehicleCard>();
         private readonly HashSet<string> _activeDicts = new HashSet<string>();
-        private bool _debugLogged;
 
         // Delivery confirm
         private string _pendingModel;
@@ -286,20 +285,11 @@ namespace ALLIN1
                     if (GbayRenderer.IsDictLoaded(d)) loaded++;
                 }
                 bool logoLoaded = GbayRenderer.IsDictLoaded("allin1_logo");
+                bool logoReq = GbayRenderer.IsDictRequested("allin1_logo");
+                bool firstReq = firstDict != null && GbayRenderer.IsDictRequested(firstDict);
                 GTA.UI.Screen.ShowSubtitle(
-                    $"~y~DICTS: {loaded}/{_activeDicts.Count} | logo={logoLoaded} | first={firstDict ?? "none"} | PD={VehicleList.PreviewDict.Count}",
+                    $"~y~D:{loaded}/{_activeDicts.Count} logo:r={logoReq},l={logoLoaded} 1st={firstDict ?? "?"}:r={firstReq} PD={VehicleList.PreviewDict.Count}",
                     100);
-
-                // Show debug info via notification (file logging unreliable)
-                if (!_debugLogged)
-                {
-                    _debugLogged = true;
-                    string reqInfo = "";
-                    foreach (string d in _activeDicts)
-                        reqInfo += $"{d}:req={GbayRenderer.IsDictRequested(d)} ";
-                    GTA.UI.Notification.Show($"~y~ActiveDicts: {_activeDicts.Count} Logo:req={GbayRenderer.IsDictRequested("allin1_logo")} ld={logoLoaded}");
-                    GTA.UI.Notification.Show($"~y~PD={VehicleList.PreviewDict.Count} {reqInfo}");
-                }
             }
         }
 
