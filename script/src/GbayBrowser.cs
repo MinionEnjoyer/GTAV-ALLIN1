@@ -549,12 +549,13 @@ namespace ALLIN1
             float topAreaH = CARD_H * 0.55f;
             float topAreaCY = top + topAreaH / 2f;
 
-            if (GbayRenderer.HasPreviewTexture(card.Model))
+            // Try to draw preview texture; fall back to placeholder if not loaded
+            bool previewDrawn = GbayRenderer.HasPreviewTexture(card.Model);
+            if (previewDrawn)
             {
                 // Draw dark background behind texture (in case of letterboxing)
                 GbayRenderer.DrawRect(cx, topAreaCY, cardW - 0.004f, topAreaH - 0.004f,
                     Color.FromArgb(255, 20, 20, 20));
-                // Draw preview image
                 GbayRenderer.DrawPreviewTexture(card.Model,
                     cx, topAreaCY, cardW - 0.004f, topAreaH - 0.004f);
             }

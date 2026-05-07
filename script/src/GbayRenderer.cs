@@ -173,24 +173,28 @@ namespace ALLIN1
             }
         }
 
-        /// <summary>Check if a preview texture exists for a model.</summary>
+        /// <summary>Check if a preview texture is ready to draw right now.</summary>
         internal static bool HasPreviewTexture(string model)
         {
-            return VehicleList.PreviewDict.ContainsKey(model);
+            if (!VehicleList.PreviewDict.TryGetValue(model, out string dict))
+                return false;
+            return IsDictLoaded(dict);
         }
 
-        /// <summary>Draw a vehicle preview from the DLC texture dictionary.</summary>
-        internal static void DrawPreviewTexture(string model,
+        /// <summary>Draw a vehicle preview from the DLC texture dictionary.
+        /// Returns true if the sprite was actually drawn.</summary>
+        internal static bool DrawPreviewTexture(string model,
                                                  float x, float y, float w, float h)
         {
             if (!VehicleList.PreviewDict.TryGetValue(model, out string dict))
-                return;
+                return false;
             if (!IsDictLoaded(dict))
             {
                 RequestDict(dict);
-                return;
+                return false;
             }
             DrawSprite(dict, model, x, y, w, h, Color.White);
+            return true;
         }
 
         /// <summary>Draw the PHAT logo from the DLC texture dictionary.</summary>
