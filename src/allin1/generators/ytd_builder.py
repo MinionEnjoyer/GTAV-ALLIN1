@@ -28,6 +28,10 @@ def _run(cmd: list[str | Path], label: str) -> None:
         capture_output=True,
         text=True,
     )
+    if result.stdout:
+        log.debug("%s stdout: %s", label, result.stdout.strip())
+    if result.stderr:
+        log.debug("%s stderr: %s", label, result.stderr.strip())
     if result.returncode != 0:
         log.error("%s failed (rc=%d):\n%s", label, result.returncode, result.stderr)
         raise RuntimeError(f"{label} failed: {result.stderr[:500]}")
@@ -95,11 +99,28 @@ def build_ytd_files(
             _pack_ytd(png_dir, ytd_path, ytdtool)
             if not ytd_path.exists():
                 log.error("YTDToolio reported success but %s not found", ytd_path)
-                # Check if it was created in CWD instead
-                cwd_ytd = Path.cwd() / f"{dict_name}.ytd"
-                if cwd_ytd.exists():
-                    log.info("Found %s in CWD, moving to %s", cwd_ytd, ytd_path)
-                    shutil.move(str(cwd_ytd), str(ytd_path))
+                # Search for the .ytd file in likely locations
+                search_locations = [
+                    Path.cwd() / f"{dict_name}.ytd",
+                    png_dir / f"{dict_name}.ytd",
+                    png_dir.parent / f"{dict_name}.ytd",
+                    # YTDToolio might name it after the folder
+                    output_dir / f"_tmp_{dict_name}.ytd",
+                ]
+                # Also list what's actually in the output directory
+                log.debug("Files in %s: %s", output_dir,
+                          [f.name for f in output_dir.iterdir()] if output_dir.exists() else "DIR NOT FOUND")
+                log.debug("Files in %s: %s", png_dir.parent,
+                          [f.name for f in png_dir.parent.iterdir()] if png_dir.parent.exists() else "DIR NOT FOUND")
+
+                found = None
+                for loc in search_locations:
+                    if loc.exists():
+                        found = loc
+                        break
+                if found:
+                    log.info("Found .ytd at %s, moving to %s", found, ytd_path)
+                    shutil.move(str(found), str(ytd_path))
                 else:
                     raise FileNotFoundError(f"{ytd_path} was not created")
             ytd_files.append(ytd_path)
