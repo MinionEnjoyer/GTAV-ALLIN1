@@ -273,6 +273,21 @@ namespace ALLIN1
             }
 
             GbayRenderer.DrawCursor();
+
+            // DEBUG: show texture dict loading status
+            if (_state == BrowserState.VehicleBrowser && _activeDicts.Count > 0)
+            {
+                int loaded = 0;
+                string firstDict = null;
+                foreach (string d in _activeDicts)
+                {
+                    if (firstDict == null) firstDict = d;
+                    if (GbayRenderer.IsDictLoaded(d)) loaded++;
+                }
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~y~DICTS: {loaded}/{_activeDicts.Count} loaded | first={firstDict ?? "none"} | PreviewDict={VehicleList.PreviewDict.Count}",
+                    100);
+            }
         }
 
         // ------------------------------------------------------------------ //
