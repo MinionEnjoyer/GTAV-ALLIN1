@@ -116,15 +116,6 @@ if (Test-Path $YtdtoolDest) {
         throw "VsDevCmd.bat not found. Visual Studio installation may be incomplete."
     }
 
-    # Helper: run a command inside VS developer environment
-    function Invoke-VsDev {
-        param([string]$Command)
-        $bat = Join-Path $TempDir "_vsdev.bat"
-        Set-Content -Path $bat -Value "@echo off`r`ncall `"$VsDevCmd`" >nul 2>&1`r`n$Command"
-        cmd /c $bat
-        return $LASTEXITCODE
-    }
-
     $ToolkitDir = Join-Path (Join-Path $YtdtoolRepo "vendor") "gta-toolkit"
 
     # -- Step A: Patch gta-toolkit (remove DirectXTex dependency) --
@@ -183,8 +174,8 @@ if (Test-Path $YtdtoolDest) {
     }
 
     # -- Step B: Build FuckDX.dll (required DXT compressor for YTDToolio) --
-    # Compile directly with cl.exe instead of premake5 + MSBuild.
-    # FuckDX is a single C++ source file that builds into a DLL.
+    # FuckDX is a single C++ file that compiles into a DLL.
+    # We write a small batch script to set up the VS environment and compile.
     Write-Host "  Building FuckDX.dll..."
 
     $FuckDxDir = Join-Path $YtdtoolRepo "fuckdx"
@@ -194,11 +185,24 @@ if (Test-Path $YtdtoolDest) {
     $FuckDxSrc = Join-Path $FuckDxDir "main.cpp"
     $FuckDxDll = Join-Path $FuckDxOut "FuckDX.dll"
 
-    # Compile with cl.exe via VS developer environment
-    $clCmd = "cd /d `"$FuckDxOut`" && cl /nologo /O2 /std:c++17 /LD /EHsc /I`"$FuckDxDir`" `"$FuckDxSrc`" /Fe:`"$FuckDxDll`" /link /DLL"
-    $exitCode = Invoke-VsDev $clCmd
-    if ($exitCode -ne 0) {
-        throw "Failed to compile FuckDX.dll. Ensure VS 2022 C++ desktop workload is installed."
+    # Write a self-contained batch file that sets up VS env and compiles
+    $buildBat = Join-Path $TempDir "build_fuckdx.bat"
+    @"
+@echo off
+call "$VsDevCmd" >nul 2>&1
+if errorlevel 1 (
+    echo VsDevCmd failed
+    exit /b 1
+)
+cd /d "$FuckDxOut"
+cl /nologo /O2 /std:c++17 /LD /EHsc /I"$FuckDxDir" "$FuckDxSrc" /Fe:"$FuckDxDll" /link /DLL
+exit /b %errorlevel%
+"@ | Set-Content -Path $buildBat -Encoding ASCII
+
+    Write-Host "  Compiling with cl.exe..."
+    $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $buildBat -Wait -PassThru -NoNewWindow
+    if ($proc.ExitCode -ne 0) {
+        throw "Failed to compile FuckDX.dll (exit code $($proc.ExitCode)). Ensure VS 2022 C++ desktop workload is installed."
     }
     if (-not (Test-Path $FuckDxDll)) {
         throw "FuckDX.dll was not created after compilation."
