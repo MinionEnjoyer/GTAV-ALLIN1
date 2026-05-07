@@ -331,7 +331,7 @@ def _check_openrpf(gta_path: Path, enhanced: bool) -> bool:
 
 
 def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
-    """Build .ytd texture dicts from preview PNGs and deploy as a loose DLC pack."""
+    """Build .ytd texture dicts from preview PNGs and pack into dlc.rpf."""
     from allin1.generators import dlc_previews, ytd_builder
 
     previews_src = _SCRIPT_DIST_DIR / "previews"
@@ -350,6 +350,13 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
         result.warnings.append("YTDToolio.exe missing; run runtools.ps1 first.")
         return
 
+    rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
+    if not rpf_patcher.exists():
+        log.warning("RpfPatcher.exe not found — skipping DLC pack build. "
+                     "Run runtools.ps1 first.")
+        result.warnings.append("RpfPatcher.exe missing; run runtools.ps1 first.")
+        return
+
     models = sorted(p.stem for p in previews_src.glob("*.png"))
     if not models:
         log.warning("No PNG files found in previews/")
@@ -366,8 +373,24 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
             ytd_out, _TOOLS_DIR, models,
         )
         dlc_folder = dlc_previews.create_dlc_pack(ytd_files, tmp_path / "dlc")
-        dest_dir = dlc_previews.deploy_dlc_loose(dlc_folder, gta_path)
-        log.info("Preview DLC deployed (%d .ytd files) -> %s",
+
+        # Pack the loose DLC folder into dlc.rpf using RpfPatcher
+        dlc_rpf_path = tmp_path / "dlc.rpf"
+        log.info("Packing DLC folder into dlc.rpf...")
+        proc = subprocess.run(
+            [str(rpf_patcher), "build-dlc",
+             str(dlc_folder), str(dlc_rpf_path)],
+            capture_output=True, text=True, timeout=120,
+        )
+        if proc.stdout:
+            for line in proc.stdout.strip().splitlines():
+                log.info("RpfPatcher: %s", line)
+        if proc.returncode != 0:
+            error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
+            raise RuntimeError(f"RpfPatcher build-dlc failed: {error_msg}")
+
+        dest_dir = dlc_previews.deploy_dlc_rpf(dlc_rpf_path, gta_path)
+        log.info("Preview DLC deployed (dlc.rpf with %d .ytd files) -> %s",
                  len(ytd_files), dest_dir)
 
 

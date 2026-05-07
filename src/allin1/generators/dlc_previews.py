@@ -110,28 +110,28 @@ def create_dlc_pack(
     return dlc_root
 
 
-def deploy_dlc_loose(
-    dlc_folder: Path,
+def deploy_dlc_rpf(
+    dlc_rpf: Path,
     gta_path: Path,
 ) -> Path:
-    """Deploy the DLC pack as loose files into the mods folder.
+    """Deploy dlc.rpf into the mods dlcpacks folder.
 
-    Copies the entire DLC folder structure to:
-        <GTA V>/mods/update/x64/dlcpacks/allin1_previews/
+    Copies the built dlc.rpf to:
+        <GTA V>/mods/update/x64/dlcpacks/allin1_previews/dlc.rpf
 
-    OpenRPF/OpenIV.asi redirects game file access from update/ to
-    mods/update/, so DLC packs must live under the mods tree.
+    GTA V requires each DLC pack to have its content inside a dlc.rpf
+    archive — loose files in the dlcpacks directory are not loaded.
 
     Returns the deployment directory.
     """
     dest_dir = gta_path / "mods" / "update" / "x64" / "dlcpacks" / DLC_NAME
     if dest_dir.exists():
         shutil.rmtree(dest_dir)
-    dest_dir.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(dlc_folder, dest_dir)
-    log.info("Deployed loose DLC pack -> %s", dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(dlc_rpf, dest_dir / "dlc.rpf")
+    log.info("Deployed dlc.rpf -> %s", dest_dir / "dlc.rpf")
 
-    # Clean up old location (pre-mods-folder installs)
+    # Clean up old location (pre-mods-folder installs) and any stale loose files
     old_dir = gta_path / "update" / "x64" / "dlcpacks" / DLC_NAME
     if old_dir.exists():
         shutil.rmtree(old_dir)

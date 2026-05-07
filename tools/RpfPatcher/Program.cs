@@ -1,10 +1,10 @@
-// RpfPatcher — Patches dlclist.xml inside a mods-folder copy of update.rpf
+// RpfPatcher — Tools for managing ALLIN1 DLC content in GTA V RPF archives.
 // Uses CodeWalker.Core to read/write RPF7 archives.
-// Requires OpenRPF (Enhanced) or OpenIV.asi (Legacy) to load the mods copy.
 //
-// Usage:
-//   RpfPatcher.exe patch   <gta_path>   — add allin1_previews to dlclist.xml
-//   RpfPatcher.exe unpatch <gta_path>   — remove allin1_previews from dlclist.xml
+// Commands:
+//   RpfPatcher.exe patch     <gta_path>                  — add allin1_previews to dlclist.xml
+//   RpfPatcher.exe unpatch   <gta_path>                  — remove allin1_previews from dlclist.xml
+//   RpfPatcher.exe build-dlc <loose_folder> <output_rpf> — pack loose DLC folder into dlc.rpf
 
 using System;
 using System.IO;
@@ -23,18 +23,114 @@ namespace RpfPatcher
         {
             if (args.Length < 2)
             {
-                Console.Error.WriteLine("Usage: RpfPatcher.exe <patch|unpatch> <gta_path>");
+                Console.Error.WriteLine(
+                    "Usage:\n" +
+                    "  RpfPatcher.exe patch     <gta_path>\n" +
+                    "  RpfPatcher.exe unpatch   <gta_path>\n" +
+                    "  RpfPatcher.exe build-dlc <loose_folder> <output_rpf>");
                 return 1;
             }
 
             string command = args[0].ToLower();
-            string gtaPath = args[1];
 
-            if (command != "patch" && command != "unpatch")
+            if (command == "build-dlc")
+                return BuildDlc(args);
+            if (command == "patch" || command == "unpatch")
+                return PatchCommand(command, args);
+
+            Console.Error.WriteLine($"ERROR: Unknown command '{command}'.");
+            return 1;
+        }
+
+        // ================================================================
+        //  build-dlc: Pack a loose DLC folder into a dlc.rpf archive
+        // ================================================================
+
+        static int BuildDlc(string[] args)
+        {
+            if (args.Length < 3)
             {
-                Console.Error.WriteLine($"ERROR: Unknown command '{command}'. Use 'patch' or 'unpatch'.");
+                Console.Error.WriteLine("Usage: RpfPatcher.exe build-dlc <loose_folder> <output_rpf>");
                 return 1;
             }
+
+            string looseFolder = args[1];
+            string outputRpf = args[2];
+
+            if (!Directory.Exists(looseFolder))
+            {
+                Console.Error.WriteLine($"ERROR: Folder not found: {looseFolder}");
+                return 4;
+            }
+
+            try
+            {
+                Console.WriteLine($"Building dlc.rpf from: {looseFolder}");
+                Console.WriteLine($"Output: {outputRpf}");
+
+                // Ensure output directory exists
+                string outputDir = Path.GetDirectoryName(outputRpf);
+                if (!string.IsNullOrEmpty(outputDir))
+                    Directory.CreateDirectory(outputDir);
+
+                // Delete existing output file if present
+                if (File.Exists(outputRpf))
+                    File.Delete(outputRpf);
+
+                // Create a new RPF archive with OPEN encryption (no keys needed)
+                var rpf = RpfFile.CreateNew(outputDir ?? ".", Path.GetFileName(outputRpf),
+                    RpfEncryption.OPEN);
+
+                Console.WriteLine("Created empty RPF archive.");
+
+                // Recursively add all files from the loose folder
+                int fileCount = AddDirectoryContents(rpf.Root, looseFolder);
+
+                Console.WriteLine($"Added {fileCount} files to dlc.rpf.");
+                Console.WriteLine("dlc.rpf built successfully.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: Failed to build dlc.rpf: {ex.Message}");
+                Console.Error.WriteLine(ex.StackTrace);
+                return 7;
+            }
+        }
+
+        static int AddDirectoryContents(RpfDirectoryEntry parentEntry, string sourceDir)
+        {
+            int count = 0;
+
+            // Add files in this directory
+            foreach (string filePath in Directory.GetFiles(sourceDir))
+            {
+                string fileName = Path.GetFileName(filePath);
+                byte[] data = File.ReadAllBytes(filePath);
+                RpfFile.CreateFile(parentEntry, fileName, data, true);
+                Console.WriteLine($"  + {fileName} ({data.Length:N0} bytes)");
+                count++;
+            }
+
+            // Recurse into subdirectories
+            foreach (string subDir in Directory.GetDirectories(sourceDir))
+            {
+                string dirName = Path.GetFileName(subDir);
+                var subEntry = RpfFile.CreateDirectory(parentEntry, dirName);
+                Console.WriteLine($"  / {dirName}/");
+                count += AddDirectoryContents(subEntry, subDir);
+            }
+
+            return count;
+        }
+
+        // ================================================================
+        //  patch / unpatch: Modify dlclist.xml inside mods/update.rpf
+        // ================================================================
+
+        static int PatchCommand(string command, string[] args)
+        {
+            string gtaPath = args[1];
 
             try
             {
@@ -108,9 +204,6 @@ namespace RpfPatcher
                 Console.WriteLine($"RPF scanned: {rpf.AllEntries.Count} entries");
 
                 // --- Convert mods copy to OPEN encryption (recursively) ---
-                // Safe because we're working on our own copy, not the original.
-                // OPEN encryption allows writing without needing NG encrypt tables.
-                // Must convert BEFORE CreateFile, which calls WriteHeader internally.
                 Console.WriteLine("Ensuring mods RPF uses OPEN encryption...");
                 RpfFile.EnsureValidEncryption(rpf, null, true);
                 Console.WriteLine("Encryption converted to OPEN.");
