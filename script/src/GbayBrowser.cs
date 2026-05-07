@@ -141,8 +141,6 @@ namespace ALLIN1
         private int _tabScrollOffset;
         private int _hoverTab = -1;
         private readonly List<VehicleCard> _filtered = new List<VehicleCard>();
-        private readonly HashSet<string> _activeDicts = new HashSet<string>();
-
         // Delivery confirm
         private string _pendingModel;
         private int _pendingPrice;
@@ -204,12 +202,10 @@ namespace ALLIN1
                 _state = BrowserState.TopMenu;
                 _topMenuIndex = 0;
                 GbayRenderer.EnsureTextures();
-                GbayRenderer.RequestDict("allin1_logo");
             }
             else
             {
                 ClosePreview();
-                ReleaseAllDicts();
                 _state = BrowserState.Closed;
             }
         }
@@ -217,7 +213,6 @@ namespace ALLIN1
         internal void Close()
         {
             ClosePreview();
-            ReleaseAllDicts();
             _state = BrowserState.Closed;
         }
 
@@ -233,7 +228,6 @@ namespace ALLIN1
             if (Game.Player.Character.IsDead || Game.IsLoading)
             {
                 ClosePreview();
-                ReleaseAllDicts();
                 _state = BrowserState.Closed;
                 return;
             }
@@ -658,14 +652,12 @@ namespace ALLIN1
             {
                 _currentPage--;
                 _selectedCard = Math.Min(_selectedCard, GetPageCount() - 1);
-                UpdateActiveDicts();
                 GbayRenderer.PlayNav();
             }
             else if (input.PageRight && _currentPage < _totalPages - 1)
             {
                 _currentPage++;
                 _selectedCard = Math.Min(_selectedCard, GetPageCount() - 1);
-                UpdateActiveDicts();
                 GbayRenderer.PlayNav();
             }
 
@@ -1290,44 +1282,6 @@ namespace ALLIN1
             return Color.FromArgb(255, r, g, b);
         }
 
-        private void UpdateActiveDicts()
-        {
-            var needed = new HashSet<string>();
-
-            // Collect dicts for current page + next page (pre-fetch)
-            for (int page = _currentPage; page <= _currentPage + 1; page++)
-            {
-                int start = page * PAGE_SIZE;
-                int count = Math.Min(PAGE_SIZE, _filtered.Count - start);
-                for (int i = 0; i < count; i++)
-                {
-                    if (VehicleList.PreviewDict.TryGetValue(
-                            _filtered[start + i].Model, out string dict))
-                        needed.Add(dict);
-                }
-            }
-
-            // Release dicts no longer needed
-            foreach (string d in _activeDicts)
-                if (!needed.Contains(d))
-                    GbayRenderer.ReleaseDict(d);
-
-            // Request new dicts
-            foreach (string d in needed)
-                GbayRenderer.RequestDict(d);
-
-            _activeDicts.Clear();
-            _activeDicts.UnionWith(needed);
-        }
-
-        private void ReleaseAllDicts()
-        {
-            foreach (string d in _activeDicts)
-                GbayRenderer.ReleaseDict(d);
-            _activeDicts.Clear();
-            GbayRenderer.ReleaseDict("allin1_logo");
-        }
-
         private void RebuildFilteredList()
         {
             _filtered.Clear();
@@ -1362,7 +1316,6 @@ namespace ALLIN1
             }
 
             _totalPages = Math.Max(1, (_filtered.Count + PAGE_SIZE - 1) / PAGE_SIZE);
-            UpdateActiveDicts();
         }
 
         private void EnsureTabVisible(int categoryIndex)

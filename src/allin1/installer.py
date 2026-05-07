@@ -17,15 +17,12 @@ from __future__ import annotations
 
 import logging
 import shutil
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from allin1 import asi_loader
 from allin1.config import Config
 from allin1.detector import detect_gta_path, validate_gta_path
-from allin1.generators import dlc_previews, ytd_builder
-from allin1.generators.dlclist import patch_dlclist, unpatch_dlclist
 from allin1.vehicles.database import VehicleDatabase
 
 log = logging.getLogger("allin1.installer")
@@ -92,13 +89,8 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
     # --- Deploy ALLIN1.dll script ---
     result.dll_deployed = _deploy_script(gta_path)
 
-    # --- Build and deploy preview texture DLC pack ---
-    try:
-        _deploy_preview_dlc(gta_path, result)
-        _patch_dlclist(gta_path, result)
-    except Exception as exc:
-        log.error("Preview DLC pack failed: %s", exc, exc_info=True)
-        result.warnings.append(f"Preview DLC pack failed: {exc}")
+    # --- Deploy preview images ---
+    _deploy_previews(gta_path, result)
 
     # --- Check for ScriptHookV ---
     result.scripthookv_found = _check_scripthookv(gta_path)
@@ -146,26 +138,24 @@ def uninstall(config: Config) -> list[Path]:
         shutil.rmtree(data_dir)
         log.info("Removed %s/ data folder", ALLIN1_DATA_DIR)
 
-    # Remove preview DLC pack
-    if dlc_previews.remove_dlc_pack(gta_path):
-        removed.append(gta_path / "update" / "x64" / "dlcpacks" / "allin1_previews")
-        log.info("Removed preview DLC pack")
-
-    # Remove ALLIN1 entries from dlclist.xml
-    try:
-        _unpatch_dlclist(gta_path)
-    except Exception as exc:
-        log.warning("Could not unpatch dlclist.xml: %s", exc)
-
-    # Remove legacy loose preview files
+    # Remove preview images
     scripts_dir_previews = scripts_dir / "previews"
     if scripts_dir_previews.exists():
         shutil.rmtree(scripts_dir_previews)
-        log.info("Removed legacy previews/ folder")
-    legacy_logo = scripts_dir / "PHAT.png"
-    if legacy_logo.exists():
-        legacy_logo.unlink()
-        log.info("Removed legacy PHAT.png")
+        removed.append(scripts_dir_previews)
+        log.info("Removed previews/ folder")
+    logo_file = scripts_dir / "PHAT.png"
+    if logo_file.exists():
+        logo_file.unlink()
+        removed.append(logo_file)
+        log.info("Removed PHAT.png")
+
+    # Remove legacy DLC pack from previous versions
+    dlc_dir = gta_path / "update" / "x64" / "dlcpacks" / "allin1_previews"
+    if dlc_dir.exists():
+        shutil.rmtree(dlc_dir)
+        removed.append(dlc_dir)
+        log.info("Removed legacy DLC pack")
 
     # Remove -nobattleye from commandline.txt (or the whole file if it only
     # contained that flag).
@@ -252,15 +242,6 @@ def _deploy_script(gta_path: Path) -> bool:
         shutil.copy2(toml_src, toml_dest)
         log.info("Deployed config %s -> %s", toml_src.name, toml_dest)
 
-    # Clean up old loose preview files from previous versions
-    for legacy in (scripts_dir / "PHAT.png", scripts_dir / "previews"):
-        if legacy.is_file():
-            legacy.unlink()
-            log.info("Removed legacy %s", legacy.name)
-        elif legacy.is_dir():
-            shutil.rmtree(legacy)
-            log.info("Removed legacy %s/", legacy.name)
-
     # Clean up legacy INI from previous versions
     legacy_ini = scripts_dir / "ALLIN1.ini"
     if legacy_ini.exists():
@@ -280,149 +261,28 @@ def _check_shvdn(gta_path: Path) -> bool:
     return (gta_path / "ScriptHookVDotNet.asi").exists()
 
 
-def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
-    """Build and deploy preview texture DLC pack as loose files.
+def _deploy_previews(gta_path: Path, result: InstallResult) -> None:
+    """Copy preview PNGs and logo to scripts/previews/ and scripts/PHAT.png.
 
-    Pipeline: PNG → YTD (YTDToolio) → loose DLC folder
-    → deployed to update/x64/dlcpacks/allin1_previews/
+    The C# script lazy-loads these via ScriptHookV's createTexture at runtime.
     """
     previews_src = _SCRIPT_DIST_DIR / "previews"
     logo_src = _SCRIPT_DIST_DIR / "PHAT.png"
+    scripts_dir = gta_path / SCRIPTS_DIR
 
-    # Check prerequisites
     if not previews_src.is_dir():
-        log.warning("No previews/ directory found — skipping DLC pack build")
-        result.warnings.append("Preview images not found; skipping DLC pack.")
+        log.warning("No previews/ directory found — skipping preview deployment")
+        result.warnings.append("Preview images not found; vehicle thumbnails "
+                               "will show colored placeholders.")
         return
 
-    if not (_TOOLS_DIR / "YTDToolio.exe").exists():
-        log.warning("YTDToolio.exe not found in tools/ — skipping DLC pack build")
-        result.warnings.append(
-            "YTDToolio.exe missing from tools/. Run runtools.ps1 first."
-        )
-        return
+    dest_previews = scripts_dir / "previews"
+    if dest_previews.exists():
+        shutil.rmtree(dest_previews)
+    shutil.copytree(previews_src, dest_previews)
+    count = sum(1 for _ in dest_previews.glob("*.png"))
+    log.info("Deployed %d preview images -> %s", count, dest_previews)
 
-    # Collect model names from available PNGs
-    models = sorted(p.stem for p in previews_src.glob("*.png"))
-    if not models:
-        log.warning("No PNG files found in previews/")
-        return
-
-    log.info("Building preview DLC pack for %d vehicles...", len(models))
-
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-
-        # Step 1: Build .ytd files from PNGs
-        ytd_out = tmp_path / "ytd"
-        ytd_files = ytd_builder.build_ytd_files(
-            previews_src,
-            logo_src if logo_src.exists() else None,
-            ytd_out,
-            _TOOLS_DIR,
-            models,
-        )
-
-        # Step 2: Create DLC pack folder structure
-        dlc_folder = dlc_previews.create_dlc_pack(ytd_files, tmp_path / "dlc")
-
-        # Step 3: Deploy loose folder to GTA V (no RPF needed)
-        dest_dir = dlc_previews.deploy_dlc_loose(dlc_folder, gta_path)
-        log.info(
-            "Preview DLC pack deployed (%d .ytd files) -> %s",
-            len(ytd_files), dest_dir,
-        )
-
-
-def _find_dlclist_xml(gta_path: Path) -> Path | None:
-    """Locate a writable dlclist.xml.
-
-    Checks (in priority order):
-    1. OpenIV mods folder: mods/update/update.rpf/common/data/dlclist.xml
-       (loose override — preferred because it leaves the vanilla RPF untouched)
-    2. Extract from update.rpf using gtautil (extract only, no rebuild needed
-       because we write back to the mods folder as a loose file)
-
-    Returns the path to the dlclist.xml file, or None if not found.
-    """
-    # Option 1: OpenIV mods folder (loose override)
-    mods_dlclist = (gta_path / "mods" / "update" / "update.rpf"
-                    / "common" / "data" / "dlclist.xml")
-    if mods_dlclist.exists():
-        log.info("Found dlclist.xml in OpenIV mods folder")
-        return mods_dlclist
-
-    # Option 2: Extract from vanilla update.rpf into mods folder
-    import subprocess
-    gtautil = _TOOLS_DIR / "gtautil" / "gtautil.exe"
-    update_rpf = gta_path / "update" / "update.rpf"
-
-    if gtautil.exists() and update_rpf.exists():
-        log.info("Extracting dlclist.xml from update.rpf...")
-        with tempfile.TemporaryDirectory() as tmp:
-            extract_dir = Path(tmp) / "extracted"
-            result = subprocess.run(
-                [str(gtautil), "extractarchive",
-                 "--input", str(update_rpf),
-                 "--output", str(extract_dir)],
-                capture_output=True, text=True, timeout=120,
-            )
-            if result.returncode == 0:
-                src = extract_dir / "common" / "data" / "dlclist.xml"
-                if src.exists():
-                    # Write into mods folder as a loose override
-                    mods_dlclist.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(src, mods_dlclist)
-                    log.info("Copied dlclist.xml to mods folder: %s", mods_dlclist)
-                    return mods_dlclist
-            else:
-                log.warning("gtautil extract failed (rc=%d): %s",
-                            result.returncode, result.stderr[:300])
-
-    return None
-
-
-def _patch_dlclist(gta_path: Path, result: InstallResult) -> None:
-    """Patch dlclist.xml to register custom DLC packs.
-
-    Uses the OpenIV mods folder for a loose file override so we never need
-    to rebuild update.rpf.
-    """
-    dlclist_path = _find_dlclist_xml(gta_path)
-    if dlclist_path is None:
-        msg = (
-            "Could not locate dlclist.xml. "
-            "Use OpenIV to add 'dlcpacks:/allin1_previews/' to dlclist.xml, "
-            "or set up an OpenIV mods folder."
-        )
-        log.warning(msg)
-        result.warnings.append(msg)
-        return
-
-    xml_content = dlclist_path.read_text(encoding="utf-8")
-    patched_xml, added = patch_dlclist(xml_content)
-
-    if not added:
-        log.info("dlclist.xml already up to date")
-        return
-
-    dlclist_path.write_text(patched_xml, encoding="utf-8")
-    log.info("Patched dlclist.xml (added: %s)", ", ".join(added))
-
-
-def _unpatch_dlclist(gta_path: Path) -> None:
-    """Remove ALLIN1 custom entries from dlclist.xml."""
-    # Check the mods folder location
-    mods_dlclist = (gta_path / "mods" / "update" / "update.rpf"
-                    / "common" / "data" / "dlclist.xml")
-    if not mods_dlclist.exists():
-        return
-
-    xml_content = mods_dlclist.read_text(encoding="utf-8")
-    patched_xml, removed = unpatch_dlclist(xml_content)
-
-    if not removed:
-        return
-
-    mods_dlclist.write_text(patched_xml, encoding="utf-8")
-    log.info("Removed custom DLC entries from dlclist.xml")
+    if logo_src.exists():
+        shutil.copy2(logo_src, scripts_dir / "PHAT.png")
+        log.info("Deployed PHAT.png -> %s", scripts_dir / "PHAT.png")

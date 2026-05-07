@@ -58,9 +58,7 @@ REQUIRED_DLC_PACKS = [
 ]
 
 # Custom DLC packs shipped by ALLIN1.
-CUSTOM_DLC_PACKS = [
-    "allin1_previews",  # Vehicle preview texture dictionaries for GBAY browser
-]
+CUSTOM_DLC_PACKS: list[str] = []
 
 
 def patch_dlclist(dlclist_xml: str) -> tuple[str, list[str]]:
