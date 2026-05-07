@@ -176,27 +176,25 @@ if (Test-Path $YtdtoolDest) {
     }
 
     # -- Step B: Build FuckDX.dll (required DXT compressor for YTDToolio) --
-    # FuckDX is a single C++ file that compiles into a DLL.
-    # We write a small batch script to set up the VS environment and compile.
-    Write-Host "  Building FuckDX.dll..."
+    # FuckDX is a single C++ file (rgbcx.h texture encoder) compiled into a DLL.
+    # Skip if already built — it's a pure library with no source changes.
+    $FuckDxFinal = Join-Path $ToolsDir "FuckDX.dll"
+    if (Test-Path $FuckDxFinal) {
+        Write-Host "  FuckDX.dll already exists, skipping build."
+    } else {
+        Write-Host "  Building FuckDX.dll..."
 
-    $FuckDxDir = Join-Path $YtdtoolRepo "fuckdx"
-    # Use system %TEMP% for FuckDX build output to avoid OneDrive file-sync
-    # locking issues that can cause link.exe to hang indefinitely.
-    $FuckDxOut = Join-Path ([System.IO.Path]::GetTempPath()) "fuckdx_build"
-    if (Test-Path $FuckDxOut) { Remove-Item -Recurse -Force $FuckDxOut }
-    New-Item -ItemType Directory -Path $FuckDxOut | Out-Null
+        $FuckDxDir = Join-Path $YtdtoolRepo "fuckdx"
+        $FuckDxOut = Join-Path ([System.IO.Path]::GetTempPath()) "fuckdx_build"
+        if (Test-Path $FuckDxOut) { Remove-Item -Recurse -Force $FuckDxOut }
+        New-Item -ItemType Directory -Path $FuckDxOut | Out-Null
 
-    $FuckDxSrc = Join-Path $FuckDxDir "main.cpp"
-    $FuckDxDll = Join-Path $FuckDxOut "FuckDX.dll"
+        $FuckDxSrc = Join-Path $FuckDxDir "main.cpp"
+        $FuckDxDll = Join-Path $FuckDxOut "FuckDX.dll"
+        $FuckDxObj = Join-Path $FuckDxOut "main.obj"
 
-    # Write a self-contained batch file that sets up the VS environment,
-    # compiles to .obj, then links into a DLL as two separate steps.
-    # Using /c (compile-only) + explicit link avoids cl's implicit linker
-    # invocation which can hang on some systems.
-    $buildBat = Join-Path $TempDir "build_fuckdx.bat"
-    $FuckDxObj = Join-Path $FuckDxOut "main.obj"
-    @"
+        $buildBat = Join-Path $TempDir "build_fuckdx.bat"
+        @"
 @echo off
 call "$VsDevCmd" -arch=amd64 >nul 2>&1
 if errorlevel 1 (
@@ -205,28 +203,28 @@ if errorlevel 1 (
 )
 cd /d "$FuckDxOut"
 echo Compiling main.cpp...
-cl /nologo /O2 /std:c++17 /c /EHsc /I"$FuckDxDir" "$FuckDxSrc" /Fo:"$FuckDxObj"
+cl /nologo /O1 /std:c++17 /c /EHsc /I"$FuckDxDir" "$FuckDxSrc" /Fo:"$FuckDxObj"
 if errorlevel 1 (
     echo Compilation failed
     exit /b 1
 )
 echo Linking FuckDX.dll...
-link /nologo /DLL /MACHINE:X64 /OUT:"$FuckDxDll" "$FuckDxObj"
+link /nologo /DLL /MACHINE:X64 /INCREMENTAL:NO /OPT:REF /OPT:ICF /OUT:"$FuckDxDll" "$FuckDxObj"
 exit /b %errorlevel%
 "@ | Set-Content -Path $buildBat -Encoding ASCII
 
-    Write-Host "  Compiling and linking FuckDX.dll..."
-    $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $buildBat -Wait -PassThru -NoNewWindow
-    if ($proc.ExitCode -ne 0) {
-        throw "Failed to build FuckDX.dll (exit code $($proc.ExitCode)). Ensure VS 2022 C++ desktop workload is installed."
-    }
-    if (-not (Test-Path $FuckDxDll)) {
-        throw "FuckDX.dll was not created after build."
-    }
+        Write-Host "  Compiling and linking FuckDX.dll (this may take a moment)..."
+        $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $buildBat -Wait -PassThru -NoNewWindow
+        if ($proc.ExitCode -ne 0) {
+            throw "Failed to build FuckDX.dll (exit code $($proc.ExitCode)). Ensure VS 2022 C++ desktop workload is installed."
+        }
+        if (-not (Test-Path $FuckDxDll)) {
+            throw "FuckDX.dll was not created after build."
+        }
 
-    # Copy FuckDX.dll next to YTDToolio.exe (it loads it at runtime)
-    Copy-Item $FuckDxDll -Destination $ToolsDir -Force
-    Write-Host "  FuckDX.dll built and placed in tools/." -ForegroundColor Green
+        Copy-Item $FuckDxDll -Destination $ToolsDir -Force
+        Write-Host "  FuckDX.dll built and placed in tools/." -ForegroundColor Green
+    }
 
     # -- Step C: Publish YTDToolio --
     Write-Host "  Publishing YTDToolio..."
@@ -250,36 +248,33 @@ Write-Host "`n[3/3] Building RpfPatcher.exe..." -ForegroundColor Cyan
 
 $RpfPatcherDir = Join-Path $ToolsDir "RpfPatcher"
 $RpfPatcherExe = Join-Path $RpfPatcherDir "RpfPatcher.exe"
-if (Test-Path $RpfPatcherExe) {
-    Write-Host "  Already exists, skipping."
-} else {
-    $RpfPatcherProj = Join-Path (Join-Path (Join-Path $ScriptRoot "tools") "RpfPatcher") "RpfPatcher.csproj"
-    if (-not (Test-Path $RpfPatcherProj)) {
-        throw "RpfPatcher.csproj not found at $RpfPatcherProj"
-    }
-
-    # Ensure CodeWalker source is available
-    $CwDir = Join-Path (Join-Path $ScriptRoot "tools") "CodeWalker"
-    $CwCorePath = Join-Path (Join-Path $CwDir "CodeWalker.Core") "CodeWalker.Core.csproj"
-    if (-not (Test-Path $CwCorePath)) {
-        $GitDir = Join-Path $ScriptRoot ".git"
-        if (Test-Path $GitDir) {
-            Write-Host "  Initializing CodeWalker submodule..."
-            Push-Location $ScriptRoot
-            git submodule update --init --recursive tools/CodeWalker
-            Pop-Location
-        } else {
-            Write-Host "  Cloning CodeWalker (not a git repo, can't use submodule)..."
-            git clone --depth 1 "https://github.com/dexyfex/CodeWalker.git" $CwDir
-            if ($LASTEXITCODE -ne 0) { throw "Failed to clone CodeWalker" }
-        }
-    }
-
-    Write-Host "  Publishing RpfPatcher (self-contained win-x64)..."
-    dotnet publish $RpfPatcherProj -c Release -r win-x64 --self-contained true -o $RpfPatcherDir --nologo
-    if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for RpfPatcher" }
-    Write-Host "  Saved to $RpfPatcherDir" -ForegroundColor Green
+# Always rebuild RpfPatcher — it's fast and source may have changed.
+$RpfPatcherProj = Join-Path (Join-Path (Join-Path $ScriptRoot "tools") "RpfPatcher") "RpfPatcher.csproj"
+if (-not (Test-Path $RpfPatcherProj)) {
+    throw "RpfPatcher.csproj not found at $RpfPatcherProj"
 }
+
+# Ensure CodeWalker source is available
+$CwDir = Join-Path (Join-Path $ScriptRoot "tools") "CodeWalker"
+$CwCorePath = Join-Path (Join-Path $CwDir "CodeWalker.Core") "CodeWalker.Core.csproj"
+if (-not (Test-Path $CwCorePath)) {
+    $GitDir = Join-Path $ScriptRoot ".git"
+    if (Test-Path $GitDir) {
+        Write-Host "  Initializing CodeWalker submodule..."
+        Push-Location $ScriptRoot
+        git submodule update --init --recursive tools/CodeWalker
+        Pop-Location
+    } else {
+        Write-Host "  Cloning CodeWalker (not a git repo, can't use submodule)..."
+        git clone --depth 1 "https://github.com/dexyfex/CodeWalker.git" $CwDir
+        if ($LASTEXITCODE -ne 0) { throw "Failed to clone CodeWalker" }
+    }
+}
+
+Write-Host "  Publishing RpfPatcher (self-contained win-x64)..."
+dotnet publish $RpfPatcherProj -c Release -r win-x64 --self-contained true -o $RpfPatcherDir --nologo
+if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for RpfPatcher" }
+Write-Host "  Saved to $RpfPatcherDir" -ForegroundColor Green
 
 # ---------------------------------------------------------------------
 #  Cleanup
