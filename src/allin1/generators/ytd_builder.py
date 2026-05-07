@@ -93,8 +93,17 @@ def build_ytd_files(
 
             ytd_path = output_dir / f"{dict_name}.ytd"
             _pack_ytd(png_dir, ytd_path, ytdtool)
+            if not ytd_path.exists():
+                log.error("YTDToolio reported success but %s not found", ytd_path)
+                # Check if it was created in CWD instead
+                cwd_ytd = Path.cwd() / f"{dict_name}.ytd"
+                if cwd_ytd.exists():
+                    log.info("Found %s in CWD, moving to %s", cwd_ytd, ytd_path)
+                    shutil.move(str(cwd_ytd), str(ytd_path))
+                else:
+                    raise FileNotFoundError(f"{ytd_path} was not created")
             ytd_files.append(ytd_path)
-            log.info("Created %s", ytd_path.name)
+            log.info("Created %s (%d bytes)", ytd_path.name, ytd_path.stat().st_size)
         finally:
             shutil.rmtree(png_dir, ignore_errors=True)
 

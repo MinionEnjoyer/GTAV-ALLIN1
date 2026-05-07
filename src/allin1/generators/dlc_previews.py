@@ -93,6 +93,7 @@ def create_dlc_pack(
     ytd_names: list[str] = []
     for ytd in ytd_files:
         dest = textures_dir / ytd.name
+        log.debug("Copying %s (%s) -> %s", ytd, "exists" if ytd.exists() else "MISSING", dest)
         shutil.copy2(ytd, dest)
         ytd_names.append(ytd.stem)
         log.debug("Copied %s -> %s", ytd.name, dest)
