@@ -152,10 +152,17 @@ namespace RpfPatcher
 
             try
             {
-                // Load encryption keys
-                bool isGen9 = File.Exists(Path.Combine(gtaPath, "GTA5_Enhanced.exe"))
-                           || File.Exists(Path.Combine(gtaPath, "eboot.bin"));
-                GTA5Keys.LoadFromPath(gtaPath, isGen9, null);
+                // Try to load encryption keys (optional — OPEN RPFs don't need them)
+                try
+                {
+                    bool isGen9 = File.Exists(Path.Combine(gtaPath, "GTA5_Enhanced.exe"))
+                               || File.Exists(Path.Combine(gtaPath, "eboot.bin"));
+                    GTA5Keys.LoadFromPath(gtaPath, isGen9, null);
+                }
+                catch
+                {
+                    Console.WriteLine("Warning: Could not load encryption keys. Encrypted RPFs may fail.");
+                }
 
                 // Open and scan RPF
                 var rpf = new RpfFile(rpfPath, rpfPath);
