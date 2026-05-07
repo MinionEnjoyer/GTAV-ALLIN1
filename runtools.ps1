@@ -181,8 +181,11 @@ if (Test-Path $YtdtoolDest) {
     Write-Host "  Building FuckDX.dll..."
 
     $FuckDxDir = Join-Path $YtdtoolRepo "fuckdx"
-    $FuckDxOut = Join-Path $TempDir "fuckdx_build"
-    if (-not (Test-Path $FuckDxOut)) { New-Item -ItemType Directory -Path $FuckDxOut | Out-Null }
+    # Use system %TEMP% for FuckDX build output to avoid OneDrive file-sync
+    # locking issues that can cause link.exe to hang indefinitely.
+    $FuckDxOut = Join-Path ([System.IO.Path]::GetTempPath()) "fuckdx_build"
+    if (Test-Path $FuckDxOut) { Remove-Item -Recurse -Force $FuckDxOut }
+    New-Item -ItemType Directory -Path $FuckDxOut | Out-Null
 
     $FuckDxSrc = Join-Path $FuckDxDir "main.cpp"
     $FuckDxDll = Join-Path $FuckDxOut "FuckDX.dll"
