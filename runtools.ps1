@@ -32,13 +32,14 @@ New-Item -ItemType Directory -Path $TempDir | Out-Null
 # ---------------------------------------------------------------------
 Write-Host "`n[1/2] Downloading gtautil.exe..." -ForegroundColor Cyan
 
-$GtautilDest = Join-Path $ToolsDir "gtautil.exe"
+$GtautilDir = Join-Path $ToolsDir "gtautil"
+$GtautilDest = Join-Path $GtautilDir "gtautil.exe"
 if (Test-Path $GtautilDest) {
     Write-Host "  Already exists, skipping."
 } else {
     $GtautilZipUrl = "https://github.com/indilo53/gtautil/releases/download/2.2.7/gtautil-2.2.7.zip"
     $GtautilZip = Join-Path $TempDir "gtautil.zip"
-    $GtautilExtract = Join-Path $TempDir "gtautil"
+    $GtautilExtract = Join-Path $TempDir "gtautil_extract"
 
     Write-Host "  Downloading from $GtautilZipUrl"
     Invoke-WebRequest -Uri $GtautilZipUrl -OutFile $GtautilZip -UseBasicParsing
@@ -46,13 +47,16 @@ if (Test-Path $GtautilDest) {
     Write-Host "  Extracting..."
     Expand-Archive -Path $GtautilZip -DestinationPath $GtautilExtract -Force
 
-    # Find gtautil.exe in the extracted contents
+    # Copy entire extracted folder contents into tools/gtautil/
+    # gtautil needs its dependency DLLs alongside the exe
+    if (-not (Test-Path $GtautilDir)) { New-Item -ItemType Directory -Path $GtautilDir | Out-Null }
     $GtautilExe = Get-ChildItem -Path $GtautilExtract -Filter "gtautil.exe" -Recurse | Select-Object -First 1
     if (-not $GtautilExe) {
         throw "gtautil.exe not found in downloaded archive"
     }
-    Copy-Item $GtautilExe.FullName -Destination $GtautilDest
-    Write-Host "  Saved to $GtautilDest" -ForegroundColor Green
+    # Copy all files from the folder containing gtautil.exe
+    Copy-Item (Join-Path $GtautilExe.DirectoryName "*") -Destination $GtautilDir -Recurse -Force
+    Write-Host "  Saved to $GtautilDir" -ForegroundColor Green
 }
 
 # ---------------------------------------------------------------------
@@ -223,15 +227,17 @@ if (Test-Path $TempDir) { Remove-Item -Recurse -Force $TempDir }
 #  Summary
 # ---------------------------------------------------------------------
 Write-Host "`n=== Tools Summary ===" -ForegroundColor Green
-$tools = @("gtautil.exe", "YTDToolio.exe")
+$toolPaths = @{
+    "gtautil.exe" = Join-Path (Join-Path $ToolsDir "gtautil") "gtautil.exe"
+    "YTDToolio.exe" = Join-Path $ToolsDir "YTDToolio.exe"
+}
 $allPresent = $true
-foreach ($tool in $tools) {
-    $path = Join-Path $ToolsDir $tool
-    if (Test-Path $path) {
-        $size = (Get-Item $path).Length / 1KB
-        Write-Host "  [OK] $tool ($([math]::Round($size, 0)) KB)" -ForegroundColor Green
+foreach ($entry in $toolPaths.GetEnumerator()) {
+    if (Test-Path $entry.Value) {
+        $size = (Get-Item $entry.Value).Length / 1KB
+        Write-Host "  [OK] $($entry.Key) ($([math]::Round($size, 0)) KB)" -ForegroundColor Green
     } else {
-        Write-Host "  [MISSING] $tool" -ForegroundColor Red
+        Write-Host "  [MISSING] $($entry.Key)" -ForegroundColor Red
         $allPresent = $false
     }
 }

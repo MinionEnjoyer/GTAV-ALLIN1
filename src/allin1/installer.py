@@ -288,7 +288,7 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
     """
     previews_src = _SCRIPT_DIST_DIR / "previews"
     logo_src = _SCRIPT_DIST_DIR / "PHAT.png"
-    gtautil = _TOOLS_DIR / "gtautil.exe"
+    gtautil = _TOOLS_DIR / "gtautil" / "gtautil.exe"
 
     # Check prerequisites
     if not previews_src.is_dir():
@@ -346,7 +346,7 @@ def _patch_dlclist_rpf(gta_path: Path) -> None:
     """
     import subprocess
 
-    gtautil = _TOOLS_DIR / "gtautil.exe"
+    gtautil = _TOOLS_DIR / "gtautil" / "gtautil.exe"
     if not gtautil.exists():
         log.warning("gtautil.exe not found — cannot patch dlclist.xml")
         return
@@ -420,7 +420,7 @@ def _unpatch_dlclist_rpf(gta_path: Path) -> None:
     """Remove ALLIN1 custom entries from dlclist.xml inside update.rpf."""
     import subprocess
 
-    gtautil = _TOOLS_DIR / "gtautil.exe"
+    gtautil = _TOOLS_DIR / "gtautil" / "gtautil.exe"
     if not gtautil.exists():
         return
 
