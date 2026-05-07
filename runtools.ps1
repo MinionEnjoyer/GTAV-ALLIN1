@@ -7,8 +7,7 @@
     All tools are placed in the tools/ directory.
 
     Prerequisites:
-    - .NET 5.0+ SDK (for building YTDToolio)
-    - MSBuild / Visual Studio Build Tools (for native DirectXTex dependency)
+    - .NET SDK (for building YTDToolio)
     - Internet connection
     - Git
 
@@ -74,72 +73,34 @@ if (Test-Path $YtdtoolDest) {
     git clone --recursive "https://github.com/kngrektor/ytdtool.git" $YtdtoolRepo
     if ($LASTEXITCODE -ne 0) { throw "git clone failed" }
 
-    # Step 2a: Build gta-toolkit (RageLib + RageLib.GTA5)
+    # Build only the projects we need — skip the full Toolkit.sln which
+    # references missing test/benchmark projects and requires native C++ builds.
     $ToolkitDir = Join-Path (Join-Path $YtdtoolRepo "vendor") "gta-toolkit"
-    $ToolkitBinDir = Join-Path $ToolkitDir "bin"
-    if (-not (Test-Path $ToolkitBinDir)) {
-        New-Item -ItemType Directory -Path $ToolkitBinDir | Out-Null
-    }
 
-    Write-Host "  Building gta-toolkit (RageLib)..."
+    # Build RageLib (core library)
+    $RageLibProj = Join-Path (Join-Path $ToolkitDir "RageLib") "RageLib.csproj"
+    Write-Host "  Restoring & building RageLib..."
+    dotnet restore $RageLibProj --nologo
+    if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed for RageLib" }
+    dotnet build $RageLibProj -c Release --nologo --no-restore
+    if ($LASTEXITCODE -ne 0) { throw "dotnet build failed for RageLib" }
 
-    # Locate MSBuild via vswhere (needed for native DirectXTex C++ project)
-    $VsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-    $MsBuildPath = $null
+    # Build RageLib.GTA5 (GTA V specific library)
+    $RageLibGta5Proj = Join-Path (Join-Path $ToolkitDir "RageLib.GTA5") "RageLib.GTA5.csproj"
+    Write-Host "  Restoring & building RageLib.GTA5..."
+    dotnet restore $RageLibGta5Proj --nologo
+    if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed for RageLib.GTA5" }
+    dotnet build $RageLibGta5Proj -c Release --nologo --no-restore
+    if ($LASTEXITCODE -ne 0) { throw "dotnet build failed for RageLib.GTA5" }
 
-    if (Test-Path $VsWhere) {
-        $VsInstall = & $VsWhere -latest -property installationPath 2>$null
-        if ($VsInstall) {
-            $MsBuildPath = Get-ChildItem -Path $VsInstall -Filter "MSBuild.exe" -Recurse |
-                Where-Object { $_.FullName -match "Current" } |
-                Select-Object -First 1
-        }
-    }
+    Write-Host "  RageLib projects built."
 
-    # Build Toolkit.sln (includes RageLib + native DirectXTex)
-    $ToolkitSln = Join-Path $ToolkitDir "Toolkit.sln"
-    if ($MsBuildPath) {
-        Write-Host "  Using MSBuild at: $($MsBuildPath.FullName)"
-        & $MsBuildPath.FullName $ToolkitSln /p:Configuration=Release /m /nologo /v:m
-        if ($LASTEXITCODE -ne 0) {
-            Write-Warning "  MSBuild failed. Trying dotnet build as fallback..."
-            dotnet build $ToolkitSln -c Release --nologo
-        }
-    } else {
-        Write-Host "  MSBuild not found, trying dotnet build..."
-        dotnet build $ToolkitSln -c Release --nologo
-    }
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to build gta-toolkit. Install Visual Studio Build Tools with C++ workload."
-    }
-
-    # Copy built RageLib DLLs to the location YTDToolio expects
-    $RageLibDll = Get-ChildItem -Path $ToolkitDir -Filter "RageLib.dll" -Recurse |
-        Where-Object { $_.FullName -match "Release" } | Select-Object -First 1
-    $RageLibGta5Dll = Get-ChildItem -Path $ToolkitDir -Filter "RageLib.GTA5.dll" -Recurse |
-        Where-Object { $_.FullName -match "Release" } | Select-Object -First 1
-
-    if (-not $RageLibDll -or -not $RageLibGta5Dll) {
-        throw "RageLib DLLs not found after build. Ensure .NET 5+ SDK and VS Build Tools are installed."
-    }
-
-    Copy-Item $RageLibDll.FullName -Destination $ToolkitBinDir
-    Copy-Item $RageLibGta5Dll.FullName -Destination $ToolkitBinDir
-
-    # Copy native DirectXTexNet DLL if present
-    $DirectXTexDll = Get-ChildItem -Path $ToolkitDir -Filter "DirectXTexNet*.dll" -Recurse |
-        Where-Object { $_.FullName -match "Release" } | Select-Object -First 1
-    if ($DirectXTexDll) {
-        Copy-Item $DirectXTexDll.FullName -Destination $ToolkitBinDir
-    }
-
-    Write-Host "  RageLib DLLs ready."
-
-    # Step 2b: Publish YTDToolio as self-contained exe
+    # Publish YTDToolio as self-contained exe
     Write-Host "  Publishing YTDToolio..."
     $YtdtoolioCsproj = Join-Path (Join-Path $YtdtoolRepo "ytdtoolio") "YTDToolio.csproj"
-    dotnet publish $YtdtoolioCsproj -c Release -r win-x64 --self-contained true --nologo
+    dotnet restore $YtdtoolioCsproj --nologo
+    if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed for YTDToolio" }
+    dotnet publish $YtdtoolioCsproj -c Release -r win-x64 --self-contained true --nologo --no-restore
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for YTDToolio" }
 
     $PublishedExe = Get-ChildItem -Path (Join-Path $YtdtoolRepo "ytdtoolio") -Filter "YTDToolio.exe" -Recurse |
