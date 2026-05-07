@@ -165,12 +165,13 @@ def uninstall(config: Config) -> list[Path]:
         removed.append(logo_file)
         log.info("Removed PHAT.png")
 
-    # Remove preview DLC pack
-    dlc_dir = gta_path / "update" / "x64" / "dlcpacks" / "allin1_previews"
-    if dlc_dir.exists():
-        shutil.rmtree(dlc_dir)
-        removed.append(dlc_dir)
-        log.info("Removed preview DLC pack")
+    # Remove preview DLC pack (check both mods and original locations)
+    for base in ("mods/update", "update"):
+        dlc_dir = gta_path / base / "x64" / "dlcpacks" / "allin1_previews"
+        if dlc_dir.exists():
+            shutil.rmtree(dlc_dir)
+            removed.append(dlc_dir)
+            log.info("Removed preview DLC pack at %s", dlc_dir)
 
     # Unpatch dlclist.xml in mods/update/update.rpf (leave the RPF intact
     # since other mods may also have entries in it)

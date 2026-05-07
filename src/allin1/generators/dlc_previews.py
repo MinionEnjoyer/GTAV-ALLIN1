@@ -114,29 +114,39 @@ def deploy_dlc_loose(
     dlc_folder: Path,
     gta_path: Path,
 ) -> Path:
-    """Deploy the DLC pack as loose files to the GTA V directory.
+    """Deploy the DLC pack as loose files into the mods folder.
 
     Copies the entire DLC folder structure to:
-        <GTA V>/update/x64/dlcpacks/allin1_previews/
+        <GTA V>/mods/update/x64/dlcpacks/allin1_previews/
 
-    GTA V loads loose DLC packs the same way as RPF archives — no need
-    to pack into dlc.rpf.
+    OpenRPF/OpenIV.asi redirects game file access from update/ to
+    mods/update/, so DLC packs must live under the mods tree.
 
     Returns the deployment directory.
     """
-    dest_dir = gta_path / "update" / "x64" / "dlcpacks" / DLC_NAME
+    dest_dir = gta_path / "mods" / "update" / "x64" / "dlcpacks" / DLC_NAME
     if dest_dir.exists():
         shutil.rmtree(dest_dir)
+    dest_dir.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(dlc_folder, dest_dir)
     log.info("Deployed loose DLC pack -> %s", dest_dir)
+
+    # Clean up old location (pre-mods-folder installs)
+    old_dir = gta_path / "update" / "x64" / "dlcpacks" / DLC_NAME
+    if old_dir.exists():
+        shutil.rmtree(old_dir)
+        log.info("Removed old DLC pack at %s", old_dir)
+
     return dest_dir
 
 
 def remove_dlc_pack(gta_path: Path) -> bool:
-    """Remove the ALLIN1 preview DLC pack from the GTA V directory."""
-    dest_dir = gta_path / "update" / "x64" / "dlcpacks" / DLC_NAME
-    if dest_dir.exists():
-        shutil.rmtree(dest_dir)
-        log.info("Removed DLC pack at %s", dest_dir)
-        return True
-    return False
+    """Remove the ALLIN1 preview DLC pack from the game directory."""
+    removed = False
+    for base in ("mods/update", "update"):
+        dest_dir = gta_path / base / "x64" / "dlcpacks" / DLC_NAME
+        if dest_dir.exists():
+            shutil.rmtree(dest_dir)
+            log.info("Removed DLC pack at %s", dest_dir)
+            removed = True
+    return removed
