@@ -5,6 +5,7 @@
 //   RpfPatcher.exe patch     <gta_path>                  — add allin1_previews to dlclist.xml
 //   RpfPatcher.exe unpatch   <gta_path>                  — remove allin1_previews from dlclist.xml
 //   RpfPatcher.exe build-dlc <loose_folder> <output_rpf> — pack loose DLC folder into dlc.rpf
+//   RpfPatcher.exe inspect   <gta_path> <rpf_path>       — dump RPF structure + XML contents
 
 using System;
 using System.IO;
@@ -27,7 +28,8 @@ namespace RpfPatcher
                     "Usage:\n" +
                     "  RpfPatcher.exe patch     <gta_path>\n" +
                     "  RpfPatcher.exe unpatch   <gta_path>\n" +
-                    "  RpfPatcher.exe build-dlc <loose_folder> <output_rpf>");
+                    "  RpfPatcher.exe build-dlc <loose_folder> <output_rpf>\n" +
+                    "  RpfPatcher.exe inspect   <gta_path> <rpf_path>");
                 return 1;
             }
 
@@ -35,6 +37,8 @@ namespace RpfPatcher
 
             if (command == "build-dlc")
                 return BuildDlc(args);
+            if (command == "inspect")
+                return InspectRpf(args);
             if (command == "patch" || command == "unpatch")
                 return PatchCommand(command, args);
 
@@ -121,6 +125,167 @@ namespace RpfPatcher
             }
 
             return count;
+        }
+
+        // ================================================================
+        //  inspect: Dump RPF structure and XML file contents
+        // ================================================================
+
+        static int InspectRpf(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: RpfPatcher.exe inspect <gta_path> <rpf_path>");
+                Console.Error.WriteLine("  gta_path: GTA V root (needed for encryption keys)");
+                Console.Error.WriteLine("  rpf_path: path to the .rpf file to inspect");
+                return 1;
+            }
+
+            string gtaPath = args[1];
+            string rpfPath = args[2];
+
+            if (!File.Exists(rpfPath))
+            {
+                Console.Error.WriteLine($"ERROR: File not found: {rpfPath}");
+                return 4;
+            }
+
+            try
+            {
+                // Load encryption keys
+                bool isGen9 = File.Exists(Path.Combine(gtaPath, "GTA5_Enhanced.exe"))
+                           || File.Exists(Path.Combine(gtaPath, "eboot.bin"));
+                GTA5Keys.LoadFromPath(gtaPath, isGen9, null);
+
+                // Open and scan RPF
+                var rpf = new RpfFile(rpfPath, rpfPath);
+                rpf.ScanStructure(null, err => { });
+
+                Console.WriteLine($"=== RPF: {rpfPath} ===");
+                Console.WriteLine($"Version: {rpf.Version}");
+                Console.WriteLine($"Encryption: {rpf.Encryption}");
+                Console.WriteLine($"Entries: {rpf.AllEntries?.Count ?? 0}");
+                Console.WriteLine();
+
+                // Print file tree
+                Console.WriteLine("--- File Tree ---");
+                PrintTree(rpf, "", rpf.Root);
+                Console.WriteLine();
+
+                // Extract and print XML files
+                if (rpf.AllEntries != null)
+                {
+                    foreach (var entry in rpf.AllEntries.OfType<RpfFileEntry>())
+                    {
+                        if (entry.Name == null) continue;
+                        string lower = entry.Name.ToLowerInvariant();
+                        if (lower.EndsWith(".xml") || lower.EndsWith(".meta"))
+                        {
+                            Console.WriteLine($"--- {entry.Path} ---");
+                            try
+                            {
+                                byte[] data = entry.File.ExtractFile(entry);
+                                if (data != null && data.Length > 0)
+                                {
+                                    string text = Encoding.UTF8.GetString(data).TrimStart('\uFEFF');
+                                    Console.WriteLine(text);
+                                }
+                                else
+                                {
+                                    Console.WriteLine("(empty)");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"(extract failed: {ex.Message})");
+                            }
+                            Console.WriteLine();
+                        }
+                    }
+                }
+
+                // Recurse into child RPFs
+                if (rpf.Children != null)
+                {
+                    foreach (var child in rpf.Children)
+                    {
+                        Console.WriteLine($"\n=== Nested RPF: {child.Name} ===");
+                        Console.WriteLine($"Version: {child.Version}");
+                        Console.WriteLine($"Encryption: {child.Encryption}");
+                        Console.WriteLine($"Entries: {child.AllEntries?.Count ?? 0}");
+                        Console.WriteLine();
+                        Console.WriteLine("--- File Tree ---");
+                        PrintTree(child, "", child.Root);
+                        Console.WriteLine();
+
+                        if (child.AllEntries != null)
+                        {
+                            foreach (var entry in child.AllEntries.OfType<RpfFileEntry>())
+                            {
+                                if (entry.Name == null) continue;
+                                string lower = entry.Name.ToLowerInvariant();
+                                if (lower.EndsWith(".xml") || lower.EndsWith(".meta"))
+                                {
+                                    Console.WriteLine($"--- {entry.Path} ---");
+                                    try
+                                    {
+                                        byte[] data = entry.File.ExtractFile(entry);
+                                        if (data != null && data.Length > 0)
+                                        {
+                                            string text = Encoding.UTF8.GetString(data).TrimStart('\uFEFF');
+                                            Console.WriteLine(text);
+                                        }
+                                        else
+                                        {
+                                            Console.WriteLine("(empty)");
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.WriteLine($"(extract failed: {ex.Message})");
+                                    }
+                                    Console.WriteLine();
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                Console.Error.WriteLine(ex.StackTrace);
+                return 99;
+            }
+        }
+
+        static void PrintTree(RpfFile rpf, string indent, RpfDirectoryEntry dir)
+        {
+            if (dir == null) return;
+
+            if (dir.Directories != null)
+            {
+                foreach (var sub in dir.Directories)
+                {
+                    Console.WriteLine($"{indent}{sub.Name}/");
+                    PrintTree(rpf, indent + "  ", sub);
+                }
+            }
+
+            if (dir.Files != null)
+            {
+                foreach (var file in dir.Files)
+                {
+                    string size = file is RpfResourceFileEntry res
+                        ? $"{res.FileSize:N0}b (res v{res.Version})"
+                        : file is RpfBinaryFileEntry bin
+                            ? $"{bin.FileUncompressedSize:N0}b"
+                            : "?b";
+                    Console.WriteLine($"{indent}{file.Name}  [{size}]");
+                }
+            }
         }
 
         // ================================================================
