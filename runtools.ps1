@@ -75,7 +75,7 @@ if (Test-Path $YtdtoolDest) {
     if ($LASTEXITCODE -ne 0) { throw "git clone failed" }
 
     # Step 2a: Build gta-toolkit (RageLib + RageLib.GTA5)
-    $ToolkitDir = Join-Path $YtdtoolRepo "vendor" "gta-toolkit"
+    $ToolkitDir = Join-Path (Join-Path $YtdtoolRepo "vendor") "gta-toolkit"
     $ToolkitBinDir = Join-Path $ToolkitDir "bin"
     if (-not (Test-Path $ToolkitBinDir)) {
         New-Item -ItemType Directory -Path $ToolkitBinDir | Out-Null
@@ -138,7 +138,7 @@ if (Test-Path $YtdtoolDest) {
 
     # Step 2b: Publish YTDToolio as self-contained exe
     Write-Host "  Publishing YTDToolio..."
-    $YtdtoolioCsproj = Join-Path $YtdtoolRepo "ytdtoolio" "YTDToolio.csproj"
+    $YtdtoolioCsproj = Join-Path (Join-Path $YtdtoolRepo "ytdtoolio") "YTDToolio.csproj"
     dotnet publish $YtdtoolioCsproj -c Release -r win-x64 --self-contained true --nologo
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for YTDToolio" }
 
