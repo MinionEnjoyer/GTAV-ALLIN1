@@ -74,6 +74,14 @@ namespace RpfPatcher
                     return 4;
                 }
 
+                // If a directory exists at the target path (left by another tool),
+                // remove it so we can place the RPF file there.
+                if (Directory.Exists(modsRpf))
+                {
+                    Console.WriteLine($"Removing stale directory at {modsRpf}...");
+                    Directory.Delete(modsRpf, true);
+                }
+
                 if (!File.Exists(modsRpf))
                 {
                     Console.WriteLine($"Copying update.rpf to mods folder ({modsDir})...");
