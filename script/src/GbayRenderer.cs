@@ -3,11 +3,8 @@
 // All coordinates use GTA's normalized 0.0-1.0 screen space.
 // DRAW_RECT uses center-based coordinates (x,y = center of rect).
 
-using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.IO;
-using System.Runtime.InteropServices;
 using GTA.Native;
 
 namespace ALLIN1
@@ -135,175 +132,77 @@ namespace ALLIN1
         }
 
         // ------------------------------------------------------------------ //
-        //  Custom Textures (direct P/Invoke to ScriptHookV.dll)                //
+        //  Streamed Preview Textures (DLC-based .ytd dictionaries)             //
         // ------------------------------------------------------------------ //
 
-        [DllImport("ScriptHookV.dll", ExactSpelling = true,
-                   EntryPoint = "?createTexture@@YAHPEBD@Z")]
-        private static extern int SHV_CreateTexture(
-            [MarshalAs(UnmanagedType.LPStr)] string filename);
+        private static readonly HashSet<string> _requestedDicts = new HashSet<string>();
+        private static readonly HashSet<string> _loadedDicts = new HashSet<string>();
 
-        [DllImport("ScriptHookV.dll", ExactSpelling = true,
-                   EntryPoint = "?drawTexture@@YAXHHHHMMMMMMMMMMMM@Z")]
-        private static extern void SHV_DrawTexture(
-            int id, int instance, int level, int time,
-            float sizeX, float sizeY, float centerX, float centerY,
-            float posX, float posY, float rotation, float scaleFactor,
-            float r, float g, float b, float a);
+        private const string LOGO_DICT = "allin1_logo";
+        private const string LOGO_TEX  = "phat";
 
-        private static readonly Dictionary<string, int> _textureIds
-            = new Dictionary<string, int>();
-        private static readonly HashSet<string> _missingPreviews
-            = new HashSet<string>();
-        private static bool _texturesDisabled;
-        private static int _drawLevel;
-
-        // Logo texture
-        private static int _logoTexId = -1;
-        private static bool _logoLoaded;
-
-        private static string _previewFolder;
-
-        private static string GetPreviewFolder()
+        /// <summary>Request a texture dictionary for async streaming.</summary>
+        internal static void RequestDict(string dict)
         {
-            if (_previewFolder != null)
-                return _previewFolder;
-
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            _previewFolder = Path.Combine(baseDir, "previews");
-            return _previewFolder;
+            if (_requestedDicts.Add(dict))
+                Function.Call(Hash.REQUEST_STREAMED_TEXTURE_DICT, dict, false);
         }
 
-        /// <summary>Reset per-frame draw state. Call once at the start of each frame.</summary>
-        internal static void BeginFrame()
+        /// <summary>Check if a streamed texture dictionary is loaded.</summary>
+        internal static bool IsDictLoaded(string dict)
         {
-            _drawLevel = 0;
+            if (_loadedDicts.Contains(dict))
+                return true;
+            if (!_requestedDicts.Contains(dict))
+                return false;
+            if (Function.Call<bool>(Hash.HAS_STREAMED_TEXTURE_DICT_LOADED, dict))
+            {
+                _loadedDicts.Add(dict);
+                return true;
+            }
+            return false;
         }
 
-        internal static void DrawLogo(float x, float y, float h)
+        /// <summary>Release a texture dictionary from VRAM.</summary>
+        internal static void ReleaseDict(string dict)
         {
-            if (_texturesDisabled)
-                return;
-
-            if (!_logoLoaded)
+            if (_requestedDicts.Remove(dict))
             {
-                _logoLoaded = true;
-                string path = Path.Combine(
-                    AppDomain.CurrentDomain.BaseDirectory, "PHAT.png");
-                if (!File.Exists(path))
-                    return;
-                try
-                {
-                    _logoTexId = SHV_CreateTexture(path);
-                }
-                catch
-                {
-                    _texturesDisabled = true;
-                    return;
-                }
-            }
-
-            if (_logoTexId < 0)
-                return;
-
-            // Logo is 440x559 (portrait). Fit to given height, compute width.
-            float logoAspect = 440f / 559f;
-            float w = h * logoAspect;
-
-            float ar = (float)GTA.UI.Screen.Resolution.Height
-                     / (float)GTA.UI.Screen.Resolution.Width;
-
-            try
-            {
-                SHV_DrawTexture(
-                    _logoTexId,
-                    0, _drawLevel++, 100,
-                    w, h / ar,
-                    0.5f, 0.5f,
-                    x, y,
-                    0f, ar,
-                    1f, 1f, 1f, 1f);
-            }
-            catch
-            {
-                _texturesDisabled = true;
+                Function.Call(Hash.SET_STREAMED_TEXTURE_DICT_AS_NO_LONGER_NEEDED, dict);
+                _loadedDicts.Remove(dict);
             }
         }
 
+        /// <summary>Check if a preview texture exists for a model.</summary>
         internal static bool HasPreviewTexture(string model)
         {
-            if (_texturesDisabled)
-                return false;
-            if (_missingPreviews.Contains(model))
-                return false;
-            if (_textureIds.ContainsKey(model))
-                return true;
-
-            string path = Path.Combine(GetPreviewFolder(), model + ".png");
-            if (!File.Exists(path))
-            {
-                _missingPreviews.Add(model);
-                return false;
-            }
-            return true;
+            return VehicleList.PreviewDict.ContainsKey(model);
         }
 
+        /// <summary>Draw a vehicle preview from the DLC texture dictionary.</summary>
         internal static void DrawPreviewTexture(string model,
                                                  float x, float y, float w, float h)
         {
-            if (_texturesDisabled || _missingPreviews.Contains(model))
+            if (!VehicleList.PreviewDict.TryGetValue(model, out string dict))
                 return;
-
-            if (!_textureIds.TryGetValue(model, out int texId))
+            if (!IsDictLoaded(dict))
             {
-                string path = Path.Combine(GetPreviewFolder(), model + ".png");
-                if (!File.Exists(path))
-                {
-                    _missingPreviews.Add(model);
-                    return;
-                }
-
-                try
-                {
-                    texId = SHV_CreateTexture(path);
-                    if (texId < 0)
-                    {
-                        _missingPreviews.Add(model);
-                        return;
-                    }
-                    _textureIds[model] = texId;
-                }
-                catch
-                {
-                    _texturesDisabled = true;
-                    return;
-                }
+                RequestDict(dict);
+                return;
             }
+            DrawSprite(dict, model, x, y, w, h, Color.White);
+        }
 
-            // Screen aspect ratio for correct scaling
-            float ar = (float)GTA.UI.Screen.Resolution.Height
-                     / (float)GTA.UI.Screen.Resolution.Width;
-
-            try
+        /// <summary>Draw the PHAT logo from the DLC texture dictionary.</summary>
+        internal static void DrawLogo(float x, float y, float h)
+        {
+            if (!IsDictLoaded(LOGO_DICT))
             {
-                SHV_DrawTexture(
-                    texId,
-                    0,              // instance
-                    _drawLevel++,   // draw order
-                    100,            // time (ms)
-                    w,              // sizeX (screen-space 0-1)
-                    h / ar,         // sizeY corrected for aspect ratio
-                    0.5f, 0.5f,     // center of texture
-                    x, y,           // position (screen-space 0-1, center-based)
-                    0f,             // rotation
-                    ar,             // screen height scale factor
-                    1f, 1f, 1f, 1f  // RGBA
-                );
+                RequestDict(LOGO_DICT);
+                return;
             }
-            catch
-            {
-                _texturesDisabled = true;
-            }
+            float w = h * (440f / 559f);
+            DrawSprite(LOGO_DICT, LOGO_TEX, x, y, w, h, Color.White);
         }
 
         /// <summary>

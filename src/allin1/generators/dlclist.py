@@ -1,7 +1,8 @@
 """dlclist.xml patcher.
 
 Ensures all GTA Online DLC packs are registered in dlclist.xml so the game
-engine loads their vehicle models in single player.
+engine loads their vehicle models in single player.  Also registers ALLIN1's
+own custom DLC packs (e.g. preview texture dictionaries).
 """
 
 from __future__ import annotations
@@ -56,6 +57,11 @@ REQUIRED_DLC_PACKS = [
     "mp2025_01",
 ]
 
+# Custom DLC packs shipped by ALLIN1.
+CUSTOM_DLC_PACKS = [
+    "allin1_previews",  # Vehicle preview texture dictionaries for GBAY browser
+]
+
 
 def patch_dlclist(dlclist_xml: str) -> tuple[str, list[str]]:
     """Ensure all required DLC packs are in dlclist.xml.
@@ -84,7 +90,8 @@ def patch_dlclist(dlclist_xml: str) -> tuple[str, list[str]]:
     log.debug("Found %d existing DLC pack(s) in dlclist.xml", len(existing))
 
     added: list[str] = []
-    for pack in REQUIRED_DLC_PACKS:
+    all_packs = REQUIRED_DLC_PACKS + CUSTOM_DLC_PACKS
+    for pack in all_packs:
         if pack.lower() not in existing:
             item = etree.SubElement(paths_el, "Item")
             item.text = f"dlcpacks:/{pack}/"
@@ -94,7 +101,40 @@ def patch_dlclist(dlclist_xml: str) -> tuple[str, list[str]]:
     if added:
         log.info("Added %d DLC pack(s) to dlclist.xml", len(added))
     else:
-        log.info("All %d required DLC packs already present", len(REQUIRED_DLC_PACKS))
+        log.info("All %d required DLC packs already present", len(all_packs))
 
     output = '<?xml version="1.0" encoding="UTF-8"?>\n' + etree.tostring(root, pretty_print=True, encoding="unicode")
     return output, added
+
+
+def unpatch_dlclist(dlclist_xml: str) -> tuple[str, list[str]]:
+    """Remove ALLIN1 custom DLC packs from dlclist.xml.
+
+    Only removes entries from CUSTOM_DLC_PACKS, not Rockstar DLC packs.
+
+    Returns:
+        Tuple of (patched XML string, list of packs that were removed).
+    """
+    parser = etree.XMLParser(remove_blank_text=True)
+    root = etree.fromstring(dlclist_xml.encode(), parser)
+
+    paths_el = root.find("Paths")
+    if paths_el is None:
+        return dlclist_xml, []
+
+    custom_lower = {p.lower() for p in CUSTOM_DLC_PACKS}
+    removed: list[str] = []
+
+    for item in list(paths_el.findall("Item")):
+        if item.text:
+            pack = item.text.strip().strip("/").split("/")[-1].lower()
+            if pack in custom_lower:
+                paths_el.remove(item)
+                removed.append(pack)
+                log.debug("Removed custom DLC pack: %s", pack)
+
+    if removed:
+        log.info("Removed %d custom DLC pack(s) from dlclist.xml", len(removed))
+
+    output = '<?xml version="1.0" encoding="UTF-8"?>\n' + etree.tostring(root, pretty_print=True, encoding="unicode")
+    return output, removed
