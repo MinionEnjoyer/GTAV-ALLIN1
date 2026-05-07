@@ -16,12 +16,15 @@ Prerequisites (installed separately by the user):
 
 from __future__ import annotations
 
+import io
 import logging
 import shutil
 import subprocess
 import tempfile
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.request import urlopen, Request
 
 from allin1 import asi_loader
 from allin1.config import Config
@@ -93,6 +96,15 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
     # --- Deploy ALLIN1.dll script ---
     result.dll_deployed = _deploy_script(gta_path)
 
+    # --- Check for ScriptHookV ---
+    result.scripthookv_found = _check_scripthookv(gta_path)
+
+    # --- Check for ScriptHookVDotNet ---
+    result.shvdn_found = _check_shvdn(gta_path)
+
+    # --- Install OpenRPF / check OpenIV.asi (mods folder support) ---
+    result.openrpf_found = _check_openrpf(gta_path, enhanced)
+
     # --- Build and deploy preview texture DLC pack ---
     try:
         _deploy_preview_dlc(gta_path, result)
@@ -100,15 +112,6 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
     except Exception as exc:
         log.error("Preview DLC pack failed: %s", exc, exc_info=True)
         result.warnings.append(f"Preview DLC pack failed: {exc}")
-
-    # --- Check for ScriptHookV ---
-    result.scripthookv_found = _check_scripthookv(gta_path)
-
-    # --- Check for ScriptHookVDotNet ---
-    result.shvdn_found = _check_shvdn(gta_path)
-
-    # --- Check for OpenRPF / OpenIV.asi (mods folder support) ---
-    result.openrpf_found = _check_openrpf(gta_path, enhanced)
 
     # --- Write -nobattleye to commandline.txt (belt-and-suspenders) ---
     result.battleye_status = asi_loader.ensure_nobattleye(gta_path, enhanced)
@@ -277,20 +280,53 @@ def _check_shvdn(gta_path: Path) -> bool:
     return (gta_path / "ScriptHookVDotNet.asi").exists()
 
 
+_OPENRPF_URL = "https://gta5mod.net/download-mod/247100"
+
+
 def _check_openrpf(gta_path: Path, enhanced: bool) -> bool:
-    """Check if OpenRPF (Enhanced) or OpenIV.asi (Legacy) is installed."""
-    asi_name = "OpenRPF.asi" if enhanced else "OpenIV.asi"
-    found = (gta_path / asi_name).exists()
-    if found:
-        log.info("%s found — mods folder support available", asi_name)
-    else:
+    """Check for OpenRPF/OpenIV.asi; auto-install OpenRPF for Enhanced."""
+    if not enhanced:
+        found = (gta_path / "OpenIV.asi").exists()
+        if found:
+            log.info("OpenIV.asi found — mods folder support available")
+        else:
+            log.warning(
+                "OpenIV.asi not found. Install OpenIV for vehicle preview "
+                "textures to work."
+            )
+        return found
+
+    # Enhanced edition — check for OpenRPF.asi
+    asi_path = gta_path / "OpenRPF.asi"
+    if asi_path.exists():
+        log.info("OpenRPF.asi found — mods folder support available")
+        return True
+
+    # Auto-download OpenRPF.asi
+    log.info("OpenRPF.asi not found — downloading...")
+    try:
+        req = Request(_OPENRPF_URL, headers={"User-Agent": "ALLIN1-Installer"})
+        with urlopen(req, timeout=30) as resp:
+            data = resp.read()
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            # Extract OpenRPF.asi to GTA V root
+            for name in zf.namelist():
+                if name.lower().endswith(".asi"):
+                    dest = gta_path / Path(name).name
+                    dest.write_bytes(zf.read(name))
+                    log.info("Installed %s -> %s", name, dest)
+        if asi_path.exists():
+            log.info("OpenRPF.asi installed successfully")
+            return True
+        log.warning("OpenRPF.asi not found in downloaded archive")
+        return False
+    except Exception as exc:
+        log.warning("Failed to download OpenRPF: %s", exc)
         log.warning(
-            "%s not found. Install %s for vehicle preview textures to work. "
-            "Download from gta5-mods.com.",
-            asi_name,
-            "OpenRPF" if enhanced else "OpenIV",
+            "Download OpenRPF manually from gta5-mods.com and place "
+            "OpenRPF.asi in your GTA V folder."
         )
-    return found
+        return False
 
 
 def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
