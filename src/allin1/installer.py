@@ -97,7 +97,7 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
         _deploy_preview_dlc(gta_path, result)
         _patch_dlclist_rpf(gta_path)
     except Exception as exc:
-        log.error("Preview DLC pack failed: %s", exc)
+        log.error("Preview DLC pack failed: %s", exc, exc_info=True)
         result.warnings.append(f"Preview DLC pack failed: {exc}")
 
     # --- Check for ScriptHookV ---
