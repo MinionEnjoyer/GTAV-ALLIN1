@@ -239,13 +239,13 @@ $RpfPatcherExe = Join-Path $RpfPatcherDir "RpfPatcher.exe"
 if (Test-Path $RpfPatcherExe) {
     Write-Host "  Already exists, skipping."
 } else {
-    $RpfPatcherProj = Join-Path $ScriptRoot "tools" "RpfPatcher" "RpfPatcher.csproj"
+    $RpfPatcherProj = Join-Path (Join-Path (Join-Path $ScriptRoot "tools") "RpfPatcher") "RpfPatcher.csproj"
     if (-not (Test-Path $RpfPatcherProj)) {
         throw "RpfPatcher.csproj not found at $RpfPatcherProj"
     }
 
     # Ensure CodeWalker submodule is initialized
-    $CwCorePath = Join-Path $ScriptRoot "tools" "CodeWalker" "CodeWalker.Core" "CodeWalker.Core.csproj"
+    $CwCorePath = Join-Path (Join-Path (Join-Path (Join-Path $ScriptRoot "tools") "CodeWalker") "CodeWalker.Core") "CodeWalker.Core.csproj"
     if (-not (Test-Path $CwCorePath)) {
         Write-Host "  Initializing CodeWalker submodule..."
         Push-Location $ScriptRoot
