@@ -45,19 +45,9 @@ namespace RpfPatcher
         // ================================================================
         //  build-dlc: Pack a loose DLC folder into a dlc.rpf archive
         //
-        //  The loose folder is expected to contain:
-        //    content.xml, setup2.xml, x64/textures/*.ytd
-        //
-        //  The output dlc.rpf will have:
-        //    content.xml, setup2.xml at root
-        //    x64/textures/allin1_textures.rpf (nested RPF with all .ytd files)
-        //
-        //  GTA V requires texture dictionaries to be inside a nested RPF
-        //  registered as RPF_FILE in content.xml — loose .ytd files inside
-        //  the dlc.rpf are not loaded by the streaming system.
+        //  Recursively adds all files/directories from the loose folder
+        //  into a flat RPF archive with OPEN encryption.
         // ================================================================
-
-        private const string TEXTURES_RPF_NAME = "allin1_textures.rpf";
 
         static int BuildDlc(string[] args)
         {
@@ -90,48 +80,15 @@ namespace RpfPatcher
                 if (File.Exists(outputRpf))
                     File.Delete(outputRpf);
 
-                // Create the outer dlc.rpf (OPEN encryption, no keys needed)
+                // Create dlc.rpf with OPEN encryption (no game keys needed)
                 var rpf = RpfFile.CreateNew(outputDir ?? ".", Path.GetFileName(outputRpf),
                     RpfEncryption.OPEN);
                 Console.WriteLine("Created dlc.rpf.");
 
-                // Add content.xml and setup2.xml at root
-                AddFileIfExists(rpf.Root, looseFolder, "content.xml");
-                AddFileIfExists(rpf.Root, looseFolder, "setup2.xml");
+                // Recursively add all files from the loose folder
+                int fileCount = AddDirectoryContents(rpf.Root, looseFolder);
 
-                // Create x64/textures/ directory structure
-                var x64Dir = RpfFile.CreateDirectory(rpf.Root, "x64");
-                var texturesDir = RpfFile.CreateDirectory(x64Dir, "textures");
-
-                // Find all .ytd files from the loose folder's x64/textures/
-                string ytdSourceDir = Path.Combine(looseFolder, "x64", "textures");
-                if (!Directory.Exists(ytdSourceDir))
-                {
-                    Console.Error.WriteLine($"ERROR: No x64/textures/ directory in {looseFolder}");
-                    return 4;
-                }
-
-                string[] ytdFiles = Directory.GetFiles(ytdSourceDir, "*.ytd");
-                if (ytdFiles.Length == 0)
-                {
-                    Console.Error.WriteLine("ERROR: No .ytd files found in x64/textures/");
-                    return 4;
-                }
-
-                // Create a nested RPF inside x64/textures/ containing all .ytd files
-                Console.WriteLine($"Creating nested {TEXTURES_RPF_NAME} with {ytdFiles.Length} .ytd files...");
-                var nestedRpf = RpfFile.CreateNew(texturesDir, TEXTURES_RPF_NAME,
-                    RpfEncryption.OPEN);
-
-                foreach (string ytdPath in ytdFiles)
-                {
-                    string ytdName = Path.GetFileName(ytdPath);
-                    byte[] data = File.ReadAllBytes(ytdPath);
-                    RpfFile.CreateFile(nestedRpf.Root, ytdName, data, true);
-                    Console.WriteLine($"  + {ytdName} ({data.Length:N0} bytes)");
-                }
-
-                Console.WriteLine($"dlc.rpf built successfully ({ytdFiles.Length} textures).");
+                Console.WriteLine($"dlc.rpf built successfully ({fileCount} files).");
                 return 0;
             }
             catch (Exception ex)
@@ -142,15 +99,28 @@ namespace RpfPatcher
             }
         }
 
-        static void AddFileIfExists(RpfDirectoryEntry parent, string sourceDir, string fileName)
+        static int AddDirectoryContents(RpfDirectoryEntry parentEntry, string sourceDir)
         {
-            string path = Path.Combine(sourceDir, fileName);
-            if (File.Exists(path))
+            int count = 0;
+
+            foreach (string filePath in Directory.GetFiles(sourceDir))
             {
-                byte[] data = File.ReadAllBytes(path);
-                RpfFile.CreateFile(parent, fileName, data, true);
+                string fileName = Path.GetFileName(filePath);
+                byte[] data = File.ReadAllBytes(filePath);
+                RpfFile.CreateFile(parentEntry, fileName, data, true);
                 Console.WriteLine($"  + {fileName} ({data.Length:N0} bytes)");
+                count++;
             }
+
+            foreach (string subDir in Directory.GetDirectories(sourceDir))
+            {
+                string dirName = Path.GetFileName(subDir);
+                var subEntry = RpfFile.CreateDirectory(parentEntry, dirName);
+                Console.WriteLine($"  / {dirName}/");
+                count += AddDirectoryContents(subEntry, subDir);
+            }
+
+            return count;
         }
 
         // ================================================================

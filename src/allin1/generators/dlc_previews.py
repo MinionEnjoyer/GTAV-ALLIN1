@@ -18,17 +18,11 @@ DLC_NAME = "allin1_previews"
 DEVICE_NAME = f"dlc_{DLC_NAME}"
 
 
-TEXTURES_RPF_NAME = "allin1_textures"
+def _build_content_xml(ytd_names: list[str]) -> bytes:
+    """Generate content.xml registering each .ytd as a TEXTUREDICT.
 
-
-def _build_content_xml() -> bytes:
-    """Generate content.xml registering the textures RPF as an RPF_FILE.
-
-    GTA V loads .ytd texture dictionaries from nested RPF archives inside
-    the DLC pack. Individual .ytd files cannot be registered directly as
-    TEXTUREDICT — they must be inside a nested .rpf that is registered as
-    RPF_FILE. The game then scans the RPF and makes its .ytd contents
-    available for streaming via REQUEST_STREAMED_TEXTURE_DICT.
+    Each texture dictionary is registered individually and enabled via
+    a content change set that runs at startup.
     """
     root = etree.Element("CDataFileMgr__ContentsOfDataFileXml")
 
@@ -37,26 +31,30 @@ def _build_content_xml() -> bytes:
     etree.SubElement(root, "includedDataFiles")
 
     data_files = etree.SubElement(root, "dataFiles")
+    changeset_files: list[str] = []
 
-    # Register the textures RPF — %PLATFORM% is resolved by the game to x64
-    rpf_path = f"{DEVICE_NAME}:/%PLATFORM%/textures/{TEXTURES_RPF_NAME}.rpf"
+    for name in ytd_names:
+        path = f"{DEVICE_NAME}:/x64/textures/{name}.ytd"
 
-    item = etree.SubElement(data_files, "Item")
-    etree.SubElement(item, "filename").text = rpf_path
-    etree.SubElement(item, "fileType").text = "RPF_FILE"
-    el = etree.SubElement(item, "overlay")
-    el.set("value", "false")
-    el = etree.SubElement(item, "disabled")
-    el.set("value", "true")
-    el = etree.SubElement(item, "persistent")
-    el.set("value", "true")
+        item = etree.SubElement(data_files, "Item")
+        etree.SubElement(item, "filename").text = path
+        etree.SubElement(item, "fileType").text = "TEXTUREDICT"
+        el = etree.SubElement(item, "overlay")
+        el.set("value", "false")
+        el = etree.SubElement(item, "disabled")
+        el.set("value", "true")
+        el = etree.SubElement(item, "persistent")
+        el.set("value", "false")
+
+        changeset_files.append(path)
 
     change_sets = etree.SubElement(root, "contentChangeSets")
     cs_item = etree.SubElement(change_sets, "Item")
     etree.SubElement(cs_item, "changeSetName").text = f"{DLC_NAME}_AUTOGEN"
     etree.SubElement(cs_item, "filesToDisable")
     files_to_enable = etree.SubElement(cs_item, "filesToEnable")
-    etree.SubElement(files_to_enable, "Item").text = rpf_path
+    for f in changeset_files:
+        etree.SubElement(files_to_enable, "Item").text = f
     etree.SubElement(cs_item, "txdToLoad")
     etree.SubElement(cs_item, "txdToUnload")
     etree.SubElement(cs_item, "residentResources")
@@ -112,7 +110,7 @@ def create_dlc_pack(
         log.debug("Copied %s -> %s", ytd.name, dest)
 
     # Generate XML metadata
-    content_xml = _build_content_xml()
+    content_xml = _build_content_xml(ytd_names)
     (dlc_root / "content.xml").write_bytes(content_xml)
     log.debug("Wrote content.xml")
 
