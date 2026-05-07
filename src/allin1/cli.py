@@ -90,6 +90,16 @@ def install_cmd(ctx: click.Context) -> None:
     else:
         click.echo("ScriptHookVDotNet detected.")
 
+    if not result.openrpf_found:
+        click.echo()
+        asi_name = "OpenRPF" if result.is_enhanced else "OpenIV"
+        click.echo(f"WARNING: {asi_name} not found in your GTA V folder.")
+        click.echo(f"ALLIN1 requires {asi_name} for vehicle preview textures.")
+        click.echo("  https://www.gta5-mods.com/tools/openrpf-openiv-asi-for-gta-v-enhanced")
+    else:
+        asi_name = "OpenRPF" if result.is_enhanced else "OpenIV.asi"
+        click.echo(f"{asi_name} detected.")
+
     click.echo()
     click.echo("To play: launch GTA V normally. DLC vehicles will appear in traffic.")
 

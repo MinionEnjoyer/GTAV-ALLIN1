@@ -11,6 +11,7 @@ File placement:
 Prerequisites (installed separately by the user):
 - ScriptHookV (dinput8.dll + ScriptHookV.dll)
 - ScriptHookVDotNet Enhanced (ScriptHookVDotNet.asi + ScriptHookVDotNet3.dll)
+- OpenRPF (Enhanced) or OpenIV.asi (Legacy) — needed for mods folder support
 """
 
 from __future__ import annotations
@@ -55,6 +56,7 @@ class InstallResult:
     dll_deployed: bool = False
     scripthookv_found: bool = False
     shvdn_found: bool = False
+    openrpf_found: bool = False
     battleye_status: str = ""
     warnings: list[str] = field(default_factory=list)
 
@@ -104,6 +106,9 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
 
     # --- Check for ScriptHookVDotNet ---
     result.shvdn_found = _check_shvdn(gta_path)
+
+    # --- Check for OpenRPF / OpenIV.asi (mods folder support) ---
+    result.openrpf_found = _check_openrpf(gta_path, enhanced)
 
     # --- Write -nobattleye to commandline.txt (belt-and-suspenders) ---
     result.battleye_status = asi_loader.ensure_nobattleye(gta_path, enhanced)
@@ -164,7 +169,8 @@ def uninstall(config: Config) -> list[Path]:
         removed.append(dlc_dir)
         log.info("Removed preview DLC pack")
 
-    # Unpatch dlclist.xml in update.rpf
+    # Unpatch dlclist.xml in mods/update/update.rpf (leave the RPF intact
+    # since other mods may also have entries in it)
     _unpatch_dlclist_rpf(gta_path)
 
     # Remove -nobattleye from commandline.txt (or the whole file if it only
@@ -269,6 +275,22 @@ def _check_scripthookv(gta_path: Path) -> bool:
 def _check_shvdn(gta_path: Path) -> bool:
     """Check if ScriptHookVDotNet is installed in the game directory."""
     return (gta_path / "ScriptHookVDotNet.asi").exists()
+
+
+def _check_openrpf(gta_path: Path, enhanced: bool) -> bool:
+    """Check if OpenRPF (Enhanced) or OpenIV.asi (Legacy) is installed."""
+    asi_name = "OpenRPF.asi" if enhanced else "OpenIV.asi"
+    found = (gta_path / asi_name).exists()
+    if found:
+        log.info("%s found — mods folder support available", asi_name)
+    else:
+        log.warning(
+            "%s not found. Install %s for vehicle preview textures to work. "
+            "Download from gta5-mods.com.",
+            asi_name,
+            "OpenRPF" if enhanced else "OpenIV",
+        )
+    return found
 
 
 def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:

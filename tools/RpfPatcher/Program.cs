@@ -1,5 +1,6 @@
-// RpfPatcher — Patches dlclist.xml inside GTA V's update.rpf
+// RpfPatcher — Patches dlclist.xml inside a mods-folder copy of update.rpf
 // Uses CodeWalker.Core to read/write RPF7 archives.
+// Requires OpenRPF (Enhanced) or OpenIV.asi (Legacy) to load the mods copy.
 //
 // Usage:
 //   RpfPatcher.exe patch   <gta_path>   — add allin1_previews to dlclist.xml
@@ -17,7 +18,6 @@ namespace RpfPatcher
     class Program
     {
         private const string DLC_ENTRY = "dlcpacks:/allin1_previews/";
-        private const string DLCLIST_PATH = "common/data/dlclist.xml";
 
         static int Main(string[] args)
         {
@@ -63,48 +63,32 @@ namespace RpfPatcher
 
                 Console.WriteLine("Encryption keys loaded.");
 
-                // LoadFromPath only loads decrypt tables. We need encrypt tables
-                // for writing back to NG-encrypted RPFs.
-                if (GTA5Keys.PC_NG_DECRYPT_TABLES != null && GTA5Keys.PC_NG_ENCRYPT_TABLES == null)
-                {
-                    Console.WriteLine("Generating NG encrypt tables (this may take a moment)...");
-                    GTA5Keys.PC_NG_ENCRYPT_TABLES = new uint[17][][];
-                    for (int i = 0; i < 17; i++)
-                    {
-                        GTA5Keys.PC_NG_ENCRYPT_TABLES[i] = new uint[16][];
-                        for (int j = 0; j < 16; j++)
-                        {
-                            GTA5Keys.PC_NG_ENCRYPT_TABLES[i][j] = new uint[256];
-                        }
-                    }
-                    GTA5Keys.PC_NG_ENCRYPT_LUTs = new GTA5NGLUT[17][];
-                    for (int i = 0; i < 17; i++)
-                    {
-                        GTA5Keys.PC_NG_ENCRYPT_LUTs[i] = new GTA5NGLUT[16];
-                        for (int j = 0; j < 16; j++)
-                            GTA5Keys.PC_NG_ENCRYPT_LUTs[i][j] = new GTA5NGLUT();
-                    }
+                // --- Set up mods folder copy of update.rpf ---
+                string originalRpf = Path.Combine(gtaPath, "update", "update.rpf");
+                string modsDir = Path.Combine(gtaPath, "mods", "update");
+                string modsRpf = Path.Combine(modsDir, "update.rpf");
 
-                    GTA5Keys.PC_NG_ENCRYPT_TABLES[0] = RandomGauss.Solve(GTA5Keys.PC_NG_DECRYPT_TABLES[0]);
-                    GTA5Keys.PC_NG_ENCRYPT_TABLES[1] = RandomGauss.Solve(GTA5Keys.PC_NG_DECRYPT_TABLES[1]);
-                    for (int k = 2; k <= 15; k++)
-                    {
-                        GTA5Keys.PC_NG_ENCRYPT_LUTs[k] = LookUpTableGenerator.BuildLUTs2(GTA5Keys.PC_NG_DECRYPT_TABLES[k]);
-                    }
-                    GTA5Keys.PC_NG_ENCRYPT_TABLES[16] = RandomGauss.Solve(GTA5Keys.PC_NG_DECRYPT_TABLES[16]);
-                    Console.WriteLine("NG encrypt tables ready.");
-                }
-
-                // --- Open update.rpf ---
-                string rpfPath = Path.Combine(gtaPath, "update", "update.rpf");
-                if (!File.Exists(rpfPath))
+                if (!File.Exists(originalRpf))
                 {
-                    Console.Error.WriteLine($"ERROR: {rpfPath} not found");
+                    Console.Error.WriteLine($"ERROR: {originalRpf} not found");
                     return 4;
                 }
 
-                Console.WriteLine($"Opening {rpfPath}...");
-                var rpf = new RpfFile(rpfPath, rpfPath);
+                if (!File.Exists(modsRpf))
+                {
+                    Console.WriteLine($"Copying update.rpf to mods folder ({modsDir})...");
+                    Directory.CreateDirectory(modsDir);
+                    File.Copy(originalRpf, modsRpf);
+                    Console.WriteLine("Copied update.rpf to mods folder.");
+                }
+                else
+                {
+                    Console.WriteLine("Mods copy of update.rpf already exists.");
+                }
+
+                // --- Open the mods copy ---
+                Console.WriteLine($"Opening {modsRpf}...");
+                var rpf = new RpfFile(modsRpf, modsRpf);
                 rpf.ScanStructure(null, err => Console.Error.WriteLine($"RPF scan warning: {err}"));
 
                 if (rpf.AllEntries == null || rpf.AllEntries.Count == 0)
@@ -115,9 +99,15 @@ namespace RpfPatcher
 
                 Console.WriteLine($"RPF scanned: {rpf.AllEntries.Count} entries");
 
+                // --- Convert mods copy to OPEN encryption (recursively) ---
+                // Safe because we're working on our own copy, not the original.
+                // OPEN encryption allows writing without needing NG encrypt tables.
+                // Must convert BEFORE CreateFile, which calls WriteHeader internally.
+                Console.WriteLine("Ensuring mods RPF uses OPEN encryption...");
+                RpfFile.EnsureValidEncryption(rpf, null, true);
+                Console.WriteLine("Encryption converted to OPEN.");
+
                 // --- Find dlclist.xml ---
-                // update.rpf may contain nested RPFs (e.g. common.rpf\data\dlclist.xml).
-                // Search all RPFs recursively.
                 var dlclistEntry = FindFileRecursive(rpf, "dlclist.xml");
 
                 if (dlclistEntry == null)
@@ -129,7 +119,6 @@ namespace RpfPatcher
                 Console.WriteLine($"Found dlclist.xml at: {dlclistEntry.Path}");
 
                 // --- Extract and parse XML ---
-                // The entry may be inside a nested RPF, so extract from its own RPF file.
                 byte[] xmlBytes = dlclistEntry.File.ExtractFile(dlclistEntry);
                 if (xmlBytes == null || xmlBytes.Length == 0)
                 {
@@ -172,11 +161,7 @@ namespace RpfPatcher
                 }
 
                 // --- Write modified XML back into RPF ---
-                Console.WriteLine($"Writing modified dlclist.xml back to RPF...");
-
-                // Do NOT call EnsureValidEncryption — it converts NG encryption to OPEN,
-                // which corrupts the RPF for Enhanced Edition (err_fil_pack_3).
-                // CodeWalker's CreateFile/WriteHeader handles NG encryption natively.
+                Console.WriteLine("Writing modified dlclist.xml back to mods RPF...");
 
                 byte[] newXmlBytes = Encoding.UTF8.GetBytes(doc.Declaration + "\n" + doc.ToString());
 
@@ -190,7 +175,7 @@ namespace RpfPatcher
                     return 7;
                 }
 
-                Console.WriteLine("dlclist.xml updated successfully.");
+                Console.WriteLine("dlclist.xml updated successfully in mods/update/update.rpf.");
                 return 0;
             }
             catch (Exception ex)
@@ -203,7 +188,6 @@ namespace RpfPatcher
 
         private static bool PatchDlcList(XElement paths)
         {
-            // Check if entry already exists
             foreach (var item in paths.Elements("Item"))
             {
                 string text = item.Value?.Trim().TrimEnd('/').ToLower() ?? "";
@@ -214,7 +198,6 @@ namespace RpfPatcher
                 }
             }
 
-            // Add new entry
             paths.Add(new XElement("Item", DLC_ENTRY));
             Console.WriteLine($"Added '{DLC_ENTRY}' to dlclist.xml.");
             return true;
@@ -222,7 +205,6 @@ namespace RpfPatcher
 
         private static RpfFileEntry FindFileRecursive(RpfFile rpf, string fileName)
         {
-            // Search this RPF's entries
             var entry = rpf.AllEntries?
                 .OfType<RpfFileEntry>()
                 .FirstOrDefault(e =>
@@ -231,7 +213,6 @@ namespace RpfPatcher
 
             if (entry != null) return entry;
 
-            // Recurse into nested RPFs
             if (rpf.Children != null)
             {
                 foreach (var child in rpf.Children)
