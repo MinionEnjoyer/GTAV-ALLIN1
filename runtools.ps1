@@ -189,13 +189,13 @@ if (Test-Path $YtdtoolDest) {
     $buildBat = Join-Path $TempDir "build_fuckdx.bat"
     @"
 @echo off
-call "$VsDevCmd" >nul 2>&1
+call "$VsDevCmd" -arch=amd64 >nul 2>&1
 if errorlevel 1 (
     echo VsDevCmd failed
     exit /b 1
 )
 cd /d "$FuckDxOut"
-cl /nologo /O2 /std:c++17 /LD /EHsc /I"$FuckDxDir" "$FuckDxSrc" /Fe:"$FuckDxDll" /link /DLL
+cl /nologo /O2 /std:c++17 /LD /EHsc /I"$FuckDxDir" "$FuckDxSrc" /Fe:"$FuckDxDll" /link /DLL /MACHINE:X64
 exit /b %errorlevel%
 "@ | Set-Content -Path $buildBat -Encoding ASCII
 
