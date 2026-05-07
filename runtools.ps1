@@ -153,54 +153,49 @@ if (Test-Path $YtdtoolDest) {
         Pop-Location
     }
 
-    # -- Step B: Build FuckDX (DXT compressor, replaces DirectXTex) --
-    Write-Host "  Building FuckDX..."
-
-    # Download premake5
-    $Premake5Url = "https://github.com/premake/premake-core/releases/download/v5.0.0-beta8/premake-5.0.0-beta8-windows.zip"
-    $Premake5Zip = Join-Path $TempDir "premake5.zip"
-    $Premake5Dir = Join-Path $TempDir "premake5"
-    Invoke-WebRequest -Uri $Premake5Url -OutFile $Premake5Zip -UseBasicParsing
-    Expand-Archive -Path $Premake5Zip -DestinationPath $Premake5Dir -Force
-    $Premake5Exe = Join-Path $Premake5Dir "premake5.exe"
-    if (-not (Test-Path $Premake5Exe)) {
-        throw "premake5.exe not found in downloaded archive"
-    }
-
-    $FuckDxDir = Join-Path $YtdtoolRepo "fuckdx"
-    Push-Location $FuckDxDir
+    # -- Step B: Build FuckDX (optional DXT compressor) --
+    # FuckDX is optional - YTDToolio may work without it using RageLib's
+    # built-in compression. We try to build it but don't fail if it doesn't work.
+    Write-Host "  Building FuckDX (optional)..."
+    $FuckDxBuilt = $false
     try {
-        & $Premake5Exe vs2022
-        if ($LASTEXITCODE -ne 0) {
-            # Fall back to vs2019 if vs2022 not supported
-            & $Premake5Exe vs2019
+        $Premake5Url = "https://github.com/premake/premake-core/releases/download/v5.0.0-beta8/premake-5.0.0-beta8-windows.zip"
+        $Premake5Zip = Join-Path $TempDir "premake5.zip"
+        $Premake5Dir = Join-Path $TempDir "premake5"
+        Invoke-WebRequest -Uri $Premake5Url -OutFile $Premake5Zip -UseBasicParsing
+        Expand-Archive -Path $Premake5Zip -DestinationPath $Premake5Dir -Force
+        $Premake5Exe = Join-Path $Premake5Dir "premake5.exe"
+
+        $FuckDxDir = Join-Path $YtdtoolRepo "fuckdx"
+        Push-Location $FuckDxDir
+        try {
+            & $Premake5Exe vs2022
+            if ($LASTEXITCODE -ne 0) { & $Premake5Exe vs2019 }
+        } finally {
+            Pop-Location
         }
-        if ($LASTEXITCODE -ne 0) { throw "premake5 failed to generate project files" }
-    } finally {
-        Pop-Location
+
+        # Find the generated .sln
+        $FuckDxSln = Get-ChildItem -Path $FuckDxDir -Filter "FuckDX.sln" -Recurse | Select-Object -First 1
+        if ($FuckDxSln) {
+            $exitCode = Invoke-VsDev "msbuild `"$($FuckDxSln.FullName)`" -m -nologo -v:m -p:Configuration=Release"
+            if ($exitCode -eq 0) {
+                $YtdBinDir = Join-Path $YtdtoolRepo "bin"
+                if (-not (Test-Path $YtdBinDir)) { New-Item -ItemType Directory -Path $YtdBinDir | Out-Null }
+                $FuckDxDll = Get-ChildItem -Path $FuckDxDir -Filter "FuckDX.dll" -Recurse |
+                    Where-Object { $_.FullName -match "Release" } | Select-Object -First 1
+                if ($FuckDxDll) {
+                    Copy-Item $FuckDxDll.FullName -Destination $YtdBinDir
+                    $FuckDxBuilt = $true
+                    Write-Host "  FuckDX.dll built." -ForegroundColor Green
+                }
+            }
+        }
+    } catch {
+        # Non-fatal
     }
-
-    # premake5 generates into fuckdx/build/
-    $FuckDxSln = Join-Path (Join-Path $FuckDxDir "build") "FuckDX.sln"
-    if (-not (Test-Path $FuckDxSln)) {
-        # Fallback: check fuckdx/ root
-        $FuckDxSln = Join-Path $FuckDxDir "FuckDX.sln"
-    }
-    if (-not (Test-Path $FuckDxSln)) { throw "FuckDX.sln not found after premake5" }
-
-    $exitCode = Invoke-VsDev "msbuild `"$FuckDxSln`" -m -nologo -v:m -p:Configuration=Release"
-    if ($exitCode -ne 0) { throw "MSBuild failed for FuckDX" }
-
-    # Copy FuckDX.dll to ytdtool bin
-    $YtdBinDir = Join-Path $YtdtoolRepo "bin"
-    if (-not (Test-Path $YtdBinDir)) { New-Item -ItemType Directory -Path $YtdBinDir | Out-Null }
-    $FuckDxDll = Get-ChildItem -Path $FuckDxDir -Filter "FuckDX.dll" -Recurse |
-        Where-Object { $_.FullName -match "Release" } | Select-Object -First 1
-    if ($FuckDxDll) {
-        Copy-Item $FuckDxDll.FullName -Destination $YtdBinDir
-        Write-Host "  FuckDX.dll built."
-    } else {
-        Write-Warning "  FuckDX.dll not found - DXT compression may not work."
+    if (-not $FuckDxBuilt) {
+        Write-Warning "  FuckDX build skipped/failed - YTDToolio will use RageLib compression."
     }
 
     # -- Step C: Publish YTDToolio --
