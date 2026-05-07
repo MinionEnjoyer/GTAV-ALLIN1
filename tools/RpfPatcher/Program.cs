@@ -140,15 +140,11 @@ namespace RpfPatcher
                 }
 
                 // --- Write modified XML back into RPF ---
-                var targetRpf = dlclistEntry.File;
-                Console.WriteLine($"Writing modified dlclist.xml back to {targetRpf.Name}...");
+                Console.WriteLine($"Writing modified dlclist.xml back to RPF...");
 
-                // Ensure the RPF containing dlclist.xml is in a writable encryption mode
-                if (targetRpf.Encryption != RpfEncryption.OPEN)
-                {
-                    Console.WriteLine($"Converting RPF encryption from {targetRpf.Encryption} to OPEN...");
-                    RpfFile.EnsureValidEncryption(targetRpf, null, true);
-                }
+                // Do NOT call EnsureValidEncryption — it converts NG encryption to OPEN,
+                // which corrupts the RPF for Enhanced Edition (err_fil_pack_3).
+                // CodeWalker's CreateFile/WriteHeader handles NG encryption natively.
 
                 byte[] newXmlBytes = Encoding.UTF8.GetBytes(doc.Declaration + "\n" + doc.ToString());
 
