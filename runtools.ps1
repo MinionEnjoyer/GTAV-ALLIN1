@@ -17,7 +17,8 @@
 #>
 
 $ErrorActionPreference = "Stop"
-$ToolsDir = Join-Path $PSScriptRoot "tools"
+$ScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
+$ToolsDir = Join-Path $ScriptRoot "tools"
 
 if (-not (Test-Path $ToolsDir)) {
     New-Item -ItemType Directory -Path $ToolsDir | Out-Null
