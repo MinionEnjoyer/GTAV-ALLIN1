@@ -3,12 +3,8 @@
 // All coordinates use GTA's normalized 0.0-1.0 screen space.
 // DRAW_RECT uses center-based coordinates (x,y = center of rect).
 
-using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.IO;
-using System.Runtime.InteropServices;
-using GTA;
 using GTA.Native;
 
 namespace ALLIN1
@@ -136,119 +132,80 @@ namespace ALLIN1
         }
 
         // ------------------------------------------------------------------ //
-        //  SHV Preview Textures (lazy-loaded PNGs via ScriptHookV)             //
+        //  Streamed Preview Textures (DLC-based .ytd dictionaries)             //
         // ------------------------------------------------------------------ //
 
-        // SHV P/Invoke — createTexture loads a PNG into a permanent DirectX
-        // texture and returns an integer ID.  drawTexture renders it.  There is
-        // no delete/free function, so we cap the total number of loaded textures
-        // to avoid exhausting VRAM.
+        private static readonly HashSet<string> _requestedDicts = new HashSet<string>();
+        private static readonly HashSet<string> _loadedDicts = new HashSet<string>();
 
-        [DllImport("ScriptHookV.dll", EntryPoint = "createTexture",
-                    CallingConvention = CallingConvention.Cdecl)]
-        private static extern int SHV_CreateTexture(
-            [MarshalAs(UnmanagedType.LPStr)] string texFileName);
+        private const string LOGO_DICT = "allin1_logo";
+        private const string LOGO_TEX  = "phat";
 
-        [DllImport("ScriptHookV.dll", EntryPoint = "drawTexture",
-                    CallingConvention = CallingConvention.Cdecl)]
-        private static extern void SHV_DrawTexture(
-            int id, int index, int level, int time,
-            float sizeX, float sizeY, float centerX, float centerY,
-            float posX, float posY, float rotation, float screenHeightScaleFactor,
-            float r, float g, float b, float a);
-
-        // model -> SHV texture ID (-1 = not loaded, -2 = file missing)
-        private static readonly Dictionary<string, int> _textures
-            = new Dictionary<string, int>();
-        private static int _textureCount;
-
-        // 512x288 RGBA = ~576 KB each.  200 textures = ~112 MB — safe.
-        private const int MAX_TEXTURES = 200;
-
-        private static int _logoTexId = -1;
-        private static string _previewFolder;
-
-        /// <summary>Locate the previews folder next to the script DLL.</summary>
-        private static string GetPreviewFolder()
+        /// <summary>Request a texture dictionary for async streaming.</summary>
+        internal static void RequestDict(string dict)
         {
-            if (_previewFolder != null) return _previewFolder;
-            string dllPath = typeof(GbayRenderer).Assembly.Location;
-            string scriptsDir = Path.GetDirectoryName(dllPath);
-            _previewFolder = Path.Combine(scriptsDir, "previews");
-            return _previewFolder;
+            if (_requestedDicts.Add(dict))
+                Function.Call(Hash.REQUEST_STREAMED_TEXTURE_DICT, dict, false);
         }
 
-        /// <summary>Check if a preview texture is loaded or can be loaded.</summary>
+        /// <summary>Check if a streamed texture dictionary is loaded.</summary>
+        internal static bool IsDictLoaded(string dict)
+        {
+            if (_loadedDicts.Contains(dict))
+                return true;
+            if (!_requestedDicts.Contains(dict))
+                return false;
+            if (Function.Call<bool>(Hash.HAS_STREAMED_TEXTURE_DICT_LOADED, dict))
+            {
+                _loadedDicts.Add(dict);
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>Release a texture dictionary from VRAM.</summary>
+        internal static void ReleaseDict(string dict)
+        {
+            if (_requestedDicts.Remove(dict))
+            {
+                Function.Call(Hash.SET_STREAMED_TEXTURE_DICT_AS_NO_LONGER_NEEDED, dict);
+                _loadedDicts.Remove(dict);
+            }
+        }
+
+        /// <summary>Check if a preview texture exists for this model.</summary>
         internal static bool HasPreviewTexture(string model)
         {
-            if (_textures.TryGetValue(model, out int id))
-                return id >= 0;
-
-            // Not yet attempted — check if PNG exists and we're under cap
-            if (_textureCount >= MAX_TEXTURES) return false;
-            string path = Path.Combine(GetPreviewFolder(), model + ".png");
-            return File.Exists(path);
+            if (!VehicleList.PreviewDict.TryGetValue(model, out string dict))
+                return false;
+            return IsDictLoaded(dict);
         }
 
-        /// <summary>Draw a vehicle preview. Lazy-loads the PNG on first use.
-        /// Returns true if the texture was drawn.</summary>
+        /// <summary>Draw a vehicle preview via DRAW_SPRITE. Returns true if drawn.</summary>
         internal static bool DrawPreviewTexture(string model,
                                                  float x, float y, float w, float h)
         {
-            int id;
-            if (!_textures.TryGetValue(model, out id))
+            if (!VehicleList.PreviewDict.TryGetValue(model, out string dict))
+                return false;
+            if (!IsDictLoaded(dict))
             {
-                // First request — try to load
-                if (_textureCount >= MAX_TEXTURES)
-                    return false;
-
-                string path = Path.Combine(GetPreviewFolder(), model + ".png");
-                if (!File.Exists(path))
-                {
-                    _textures[model] = -2; // missing
-                    return false;
-                }
-
-                id = SHV_CreateTexture(path);
-                _textures[model] = id;
-                if (id >= 0) _textureCount++;
+                RequestDict(dict);
+                return false;
             }
-
-            if (id < 0) return false;
-
-            // drawTexture uses top-left positioning and pixel-based sizing.
-            // Convert normalized coords to SHV's expected format.
-            float aspect = GetAspectRatio();
-            SHV_DrawTexture(id, 0, 0, 0,
-                w, h,                    // size (normalized)
-                0.5f, 0.5f,              // center of texture
-                x, y,                    // position (center, normalized)
-                0f,                      // rotation
-                aspect,                  // screen height scale factor
-                1f, 1f, 1f, 1f);         // RGBA (white = no tint)
+            DrawSprite(dict, model, x, y, w, h, Color.White);
             return true;
         }
 
-        /// <summary>Draw the PHAT logo (loaded from scripts/PHAT.png).</summary>
+        /// <summary>Draw the PHAT logo from the DLC texture dict.</summary>
         internal static void DrawLogo(float x, float y, float h)
         {
-            if (_logoTexId == -1)
+            if (!IsDictLoaded(LOGO_DICT))
             {
-                string dllPath = typeof(GbayRenderer).Assembly.Location;
-                string scriptsDir = Path.GetDirectoryName(dllPath);
-                string logoPath = Path.Combine(scriptsDir, "PHAT.png");
-                if (File.Exists(logoPath))
-                    _logoTexId = SHV_CreateTexture(logoPath);
-                else
-                    _logoTexId = -2;
+                RequestDict(LOGO_DICT);
+                return;
             }
-            if (_logoTexId < 0) return;
-
             float w = h * (440f / 559f);
-            float aspect = GetAspectRatio();
-            SHV_DrawTexture(_logoTexId, 0, 0, 0,
-                w, h, 0.5f, 0.5f, x, y, 0f, aspect,
-                1f, 1f, 1f, 1f);
+            DrawSprite(LOGO_DICT, LOGO_TEX, x, y, w, h, Color.White);
         }
 
         /// <summary>

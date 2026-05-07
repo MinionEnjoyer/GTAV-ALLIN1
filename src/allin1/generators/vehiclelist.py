@@ -5,6 +5,7 @@ Produces a C# static class with:
 - All[] master array
 - DisplayNames dictionary (model -> display name)
 - Prices dictionary (model -> price in dollars)
+- PreviewDict dictionary (model -> YTD texture dict name)
 """
 
 from __future__ import annotations
@@ -13,6 +14,28 @@ from pathlib import Path
 
 from allin1.config import load_prices
 from allin1.vehicles.database import VehicleDatabase
+
+# Number of textures packed into each .ytd file.  GTA V has a 16 MB per-ytd
+# limit; at 512x256 DXT1 (~64 KB each) 89 textures ≈ 5.7 MB — well under.
+TEXTURES_PER_YTD = 89
+YTD_PREFIX = "allin1_prev"
+
+
+def build_preview_dict(
+    models: list[str],
+    textures_per_ytd: int = TEXTURES_PER_YTD,
+) -> dict[str, str]:
+    """Map each model name to its containing YTD dict name.
+
+    Models are sorted alphabetically and assigned to sequential dicts
+    named ``allin1_prev_01``, ``allin1_prev_02``, etc.
+    """
+    mapping: dict[str, str] = {}
+    for idx, model in enumerate(sorted(models)):
+        dict_num = idx // textures_per_ytd + 1
+        mapping[model] = f"{YTD_PREFIX}_{dict_num:02d}"
+    return mapping
+
 
 # Map TOML class names to C# array names.
 CLASS_NAMES: dict[str, str] = {
@@ -108,6 +131,14 @@ def generate(db: VehicleDatabase, prices: dict[str, int]) -> str:
         w(f'            {{ "{v.model}", "{cs_name}" }},')
     w("        };")
     w("")
+
+    # --- PreviewDict dictionary (model -> YTD texture dict name) ---
+    preview_mapping = build_preview_dict([v.model for v in unique_vehicles])
+    w("        internal static readonly Dictionary<string, string> PreviewDict = new Dictionary<string, string>")
+    w("        {")
+    for model, dict_name in sorted(preview_mapping.items()):
+        w(f'            {{ "{model}", "{dict_name}" }},')
+    w("        };")
 
     w("    }")
     w("}")

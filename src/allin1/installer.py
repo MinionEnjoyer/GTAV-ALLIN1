@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import logging
 import shutil
+import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -89,8 +91,13 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
     # --- Deploy ALLIN1.dll script ---
     result.dll_deployed = _deploy_script(gta_path)
 
-    # --- Deploy preview images ---
-    _deploy_previews(gta_path, result)
+    # --- Build and deploy preview texture DLC pack ---
+    try:
+        _deploy_preview_dlc(gta_path, result)
+        _patch_dlclist_rpf(gta_path, result)
+    except Exception as exc:
+        log.error("Preview DLC pack failed: %s", exc, exc_info=True)
+        result.warnings.append(f"Preview DLC pack failed: {exc}")
 
     # --- Check for ScriptHookV ---
     result.scripthookv_found = _check_scripthookv(gta_path)
@@ -138,24 +145,27 @@ def uninstall(config: Config) -> list[Path]:
         shutil.rmtree(data_dir)
         log.info("Removed %s/ data folder", ALLIN1_DATA_DIR)
 
-    # Remove preview images
+    # Remove legacy loose preview images (from SHV-era installs)
     scripts_dir_previews = scripts_dir / "previews"
     if scripts_dir_previews.exists():
         shutil.rmtree(scripts_dir_previews)
         removed.append(scripts_dir_previews)
-        log.info("Removed previews/ folder")
+        log.info("Removed legacy previews/ folder")
     logo_file = scripts_dir / "PHAT.png"
     if logo_file.exists():
         logo_file.unlink()
         removed.append(logo_file)
         log.info("Removed PHAT.png")
 
-    # Remove legacy DLC pack from previous versions
+    # Remove preview DLC pack
     dlc_dir = gta_path / "update" / "x64" / "dlcpacks" / "allin1_previews"
     if dlc_dir.exists():
         shutil.rmtree(dlc_dir)
         removed.append(dlc_dir)
-        log.info("Removed legacy DLC pack")
+        log.info("Removed preview DLC pack")
+
+    # Unpatch dlclist.xml in update.rpf
+    _unpatch_dlclist_rpf(gta_path)
 
     # Remove -nobattleye from commandline.txt (or the whole file if it only
     # contained that flag).
@@ -261,28 +271,87 @@ def _check_shvdn(gta_path: Path) -> bool:
     return (gta_path / "ScriptHookVDotNet.asi").exists()
 
 
-def _deploy_previews(gta_path: Path, result: InstallResult) -> None:
-    """Copy preview PNGs and logo to scripts/previews/ and scripts/PHAT.png.
+def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
+    """Build .ytd texture dicts from preview PNGs and deploy as a loose DLC pack."""
+    from allin1.generators import dlc_previews, ytd_builder
 
-    The C# script lazy-loads these via ScriptHookV's createTexture at runtime.
-    """
     previews_src = _SCRIPT_DIST_DIR / "previews"
     logo_src = _SCRIPT_DIST_DIR / "PHAT.png"
-    scripts_dir = gta_path / SCRIPTS_DIR
 
     if not previews_src.is_dir():
-        log.warning("No previews/ directory found — skipping preview deployment")
+        log.warning("No previews/ directory found — skipping DLC pack build")
         result.warnings.append("Preview images not found; vehicle thumbnails "
                                "will show colored placeholders.")
         return
 
-    dest_previews = scripts_dir / "previews"
-    if dest_previews.exists():
-        shutil.rmtree(dest_previews)
-    shutil.copytree(previews_src, dest_previews)
-    count = sum(1 for _ in dest_previews.glob("*.png"))
-    log.info("Deployed %d preview images -> %s", count, dest_previews)
+    ytdtoolio = _TOOLS_DIR / "YTDToolio.exe"
+    if not ytdtoolio.exists():
+        log.warning("YTDToolio.exe not found — skipping DLC pack build. "
+                     "Run runtools.ps1 first.")
+        result.warnings.append("YTDToolio.exe missing; run runtools.ps1 first.")
+        return
 
-    if logo_src.exists():
-        shutil.copy2(logo_src, scripts_dir / "PHAT.png")
-        log.info("Deployed PHAT.png -> %s", scripts_dir / "PHAT.png")
+    models = sorted(p.stem for p in previews_src.glob("*.png"))
+    if not models:
+        log.warning("No PNG files found in previews/")
+        return
+
+    log.info("Building preview DLC pack for %d vehicles...", len(models))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        ytd_out = tmp_path / "ytd"
+        ytd_files = ytd_builder.build_ytd_files(
+            previews_src,
+            logo_src if logo_src.exists() else None,
+            ytd_out, _TOOLS_DIR, models,
+        )
+        dlc_folder = dlc_previews.create_dlc_pack(ytd_files, tmp_path / "dlc")
+        dest_dir = dlc_previews.deploy_dlc_loose(dlc_folder, gta_path)
+        log.info("Preview DLC deployed (%d .ytd files) -> %s",
+                 len(ytd_files), dest_dir)
+
+
+def _patch_dlclist_rpf(gta_path: Path, result: InstallResult) -> None:
+    """Patch dlclist.xml inside update.rpf using the RpfPatcher tool."""
+    rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
+    if not rpf_patcher.exists():
+        msg = "RpfPatcher.exe not found. Run runtools.ps1 first."
+        log.warning(msg)
+        result.warnings.append(msg)
+        return
+
+    log.info("Patching dlclist.xml in update.rpf...")
+    proc = subprocess.run(
+        [str(rpf_patcher), "patch", str(gta_path)],
+        capture_output=True, text=True, timeout=120,
+    )
+    if proc.stdout:
+        for line in proc.stdout.strip().splitlines():
+            log.info("RpfPatcher: %s", line)
+    if proc.returncode != 0:
+        error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
+        raise RuntimeError(f"RpfPatcher failed: {error_msg}")
+    log.info("dlclist.xml patched successfully.")
+
+
+def _unpatch_dlclist_rpf(gta_path: Path) -> None:
+    """Remove ALLIN1 entry from dlclist.xml inside update.rpf."""
+    rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
+    if not rpf_patcher.exists():
+        log.debug("RpfPatcher.exe not found — skipping dlclist unpatch")
+        return
+
+    try:
+        proc = subprocess.run(
+            [str(rpf_patcher), "unpatch", str(gta_path)],
+            capture_output=True, text=True, timeout=120,
+        )
+        if proc.returncode == 0:
+            log.info("Unpatched dlclist.xml in update.rpf")
+        else:
+            log.warning("RpfPatcher unpatch failed (rc=%d): %s",
+                        proc.returncode,
+                        (proc.stderr or "")[:300])
+    except Exception as exc:
+        log.warning("Could not unpatch dlclist.xml: %s", exc)

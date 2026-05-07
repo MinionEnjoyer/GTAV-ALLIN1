@@ -3,11 +3,13 @@
     Downloads and builds the tools required by the ALLIN1 installer.
 
 .DESCRIPTION
-    Fetches gtautil.exe and builds YTDToolio.exe from source.
+    Fetches gtautil.exe, builds YTDToolio.exe from source, and builds
+    the RpfPatcher tool (CodeWalker.Core-based dlclist.xml patcher).
     All tools are placed in the tools/ directory.
 
     Prerequisites:
     - Visual Studio 2022 (with .NET and C++ desktop workloads)
+    - .NET 6.0+ SDK (for RpfPatcher)
     - Internet connection
     - Git
 
@@ -30,7 +32,7 @@ New-Item -ItemType Directory -Path $TempDir | Out-Null
 # ---------------------------------------------------------------------
 #  1. gtautil.exe  (indilo53/gtautil v2.2.7 - MIT license)
 # ---------------------------------------------------------------------
-Write-Host "`n[1/2] Downloading gtautil.exe..." -ForegroundColor Cyan
+Write-Host "`n[1/3] Downloading gtautil.exe..." -ForegroundColor Cyan
 
 $GtautilDir = Join-Path $ToolsDir "gtautil"
 $GtautilDest = Join-Path $GtautilDir "gtautil.exe"
@@ -64,7 +66,7 @@ if (Test-Path $GtautilDest) {
 #     Reads PNG files directly and packs them into .ytd archives.
 #     Uses RageLib for DXT compression internally.
 # ---------------------------------------------------------------------
-Write-Host "`n[2/2] Building YTDToolio.exe from source..." -ForegroundColor Cyan
+Write-Host "`n[2/3] Building YTDToolio.exe from source..." -ForegroundColor Cyan
 
 $YtdtoolDest = Join-Path $ToolsDir "YTDToolio.exe"
 if (Test-Path $YtdtoolDest) {
@@ -228,6 +230,36 @@ exit /b %errorlevel%
 }
 
 # ---------------------------------------------------------------------
+#  3. RpfPatcher.exe  (CodeWalker.Core-based dlclist.xml patcher)
+# ---------------------------------------------------------------------
+Write-Host "`n[3/3] Building RpfPatcher.exe..." -ForegroundColor Cyan
+
+$RpfPatcherDir = Join-Path $ToolsDir "RpfPatcher"
+$RpfPatcherExe = Join-Path $RpfPatcherDir "RpfPatcher.exe"
+if (Test-Path $RpfPatcherExe) {
+    Write-Host "  Already exists, skipping."
+} else {
+    $RpfPatcherProj = Join-Path $ScriptRoot "tools" "RpfPatcher" "RpfPatcher.csproj"
+    if (-not (Test-Path $RpfPatcherProj)) {
+        throw "RpfPatcher.csproj not found at $RpfPatcherProj"
+    }
+
+    # Ensure CodeWalker submodule is initialized
+    $CwCorePath = Join-Path $ScriptRoot "tools" "CodeWalker" "CodeWalker.Core" "CodeWalker.Core.csproj"
+    if (-not (Test-Path $CwCorePath)) {
+        Write-Host "  Initializing CodeWalker submodule..."
+        Push-Location $ScriptRoot
+        git submodule update --init --recursive tools/CodeWalker
+        Pop-Location
+    }
+
+    Write-Host "  Publishing RpfPatcher (self-contained win-x64)..."
+    dotnet publish $RpfPatcherProj -c Release -r win-x64 --self-contained true -o $RpfPatcherDir --nologo
+    if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for RpfPatcher" }
+    Write-Host "  Saved to $RpfPatcherDir" -ForegroundColor Green
+}
+
+# ---------------------------------------------------------------------
 #  Cleanup
 # ---------------------------------------------------------------------
 Write-Host "`nCleaning up temp files..." -ForegroundColor Cyan
@@ -238,9 +270,10 @@ if (Test-Path $TempDir) { Remove-Item -Recurse -Force $TempDir }
 # ---------------------------------------------------------------------
 Write-Host "`n=== Tools Summary ===" -ForegroundColor Green
 $toolPaths = @{
-    "gtautil.exe" = Join-Path (Join-Path $ToolsDir "gtautil") "gtautil.exe"
-    "YTDToolio.exe" = Join-Path $ToolsDir "YTDToolio.exe"
-    "FuckDX.dll" = Join-Path $ToolsDir "FuckDX.dll"
+    "gtautil.exe"    = Join-Path (Join-Path $ToolsDir "gtautil") "gtautil.exe"
+    "YTDToolio.exe"  = Join-Path $ToolsDir "YTDToolio.exe"
+    "FuckDX.dll"     = Join-Path $ToolsDir "FuckDX.dll"
+    "RpfPatcher.exe" = Join-Path (Join-Path $ToolsDir "RpfPatcher") "RpfPatcher.exe"
 }
 $allPresent = $true
 foreach ($entry in $toolPaths.GetEnumerator()) {
