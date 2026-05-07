@@ -331,7 +331,20 @@ def _check_openrpf(gta_path: Path, enhanced: bool) -> bool:
 
 
 def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
-    """Build .ytd texture dicts from preview PNGs and pack into dlc.rpf."""
+    """Build .ytd texture dicts from preview PNGs and pack into dlc.rpf.
+
+    The DLC pack uses a nested RPF structure matching Rockstar's own DLCs:
+
+        dlc.rpf/
+          content.xml          — registers textures.rpf as RPF_FILE
+          setup2.xml           — DLC metadata
+          x64/textures/
+            textures.rpf       — nested RPF containing all .ytd files
+
+    This is built in two phases by RpfPatcher:
+    1. Build textures.rpf as standalone file from .ytd files
+    2. Build outer dlc.rpf from content.xml+setup2.xml, embedding textures.rpf
+    """
     from allin1.generators import dlc_previews, ytd_builder
 
     previews_src = _SCRIPT_DIST_DIR / "previews"
@@ -372,14 +385,21 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
             logo_src if logo_src.exists() else None,
             ytd_out, _TOOLS_DIR, models,
         )
-        dlc_folder = dlc_previews.create_dlc_pack(ytd_files, tmp_path / "dlc")
 
-        # Pack the loose DLC folder into dlc.rpf using RpfPatcher
+        # create_dlc_pack returns (dlc_root, ytd_staging_dir)
+        dlc_folder, ytd_staging = dlc_previews.create_dlc_pack(
+            ytd_files, tmp_path / "dlc")
+
+        # Build dlc.rpf with nested textures.rpf using RpfPatcher
+        # --embed-rpf builds textures.rpf from ytd_staging as a standalone
+        # RPF, then embeds its raw bytes at x64/textures/textures.rpf
+        # inside the outer dlc.rpf.
         dlc_rpf_path = tmp_path / "dlc.rpf"
-        log.info("Packing DLC folder into dlc.rpf...")
+        log.info("Packing DLC folder into dlc.rpf (with nested textures.rpf)...")
         proc = subprocess.run(
             [str(rpf_patcher), "build-dlc",
-             str(dlc_folder), str(dlc_rpf_path)],
+             str(dlc_folder), str(dlc_rpf_path),
+             "--embed-rpf", str(ytd_staging), "x64/textures/textures.rpf"],
             capture_output=True, text=True, timeout=120,
         )
         if proc.stdout:
@@ -390,7 +410,7 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
             raise RuntimeError(f"RpfPatcher build-dlc failed: {error_msg}")
 
         dest_dir = dlc_previews.deploy_dlc_rpf(dlc_rpf_path, gta_path)
-        log.info("Preview DLC deployed (dlc.rpf with %d .ytd files) -> %s",
+        log.info("Preview DLC deployed (dlc.rpf with %d .ytd files in nested textures.rpf) -> %s",
                  len(ytd_files), dest_dir)
 
 

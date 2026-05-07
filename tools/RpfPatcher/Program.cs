@@ -4,7 +4,7 @@
 // Commands:
 //   RpfPatcher.exe patch     <gta_path>                  — add allin1_previews to dlclist.xml
 //   RpfPatcher.exe unpatch   <gta_path>                  — remove allin1_previews from dlclist.xml
-//   RpfPatcher.exe build-dlc <loose_folder> <output_rpf> — pack loose DLC folder into dlc.rpf
+//   RpfPatcher.exe build-dlc <loose_folder> <output_rpf> [--embed-rpf <src_folder> <dest_path>]
 //   RpfPatcher.exe inspect   <gta_path> <rpf_path>       — dump RPF structure + XML contents
 
 using System;
@@ -28,7 +28,7 @@ namespace RpfPatcher
                     "Usage:\n" +
                     "  RpfPatcher.exe patch     <gta_path>\n" +
                     "  RpfPatcher.exe unpatch   <gta_path>\n" +
-                    "  RpfPatcher.exe build-dlc <loose_folder> <output_rpf>\n" +
+                    "  RpfPatcher.exe build-dlc <loose_folder> <output_rpf> [--embed-rpf <src> <dest>]\n" +
                     "  RpfPatcher.exe inspect   <gta_path> <rpf_path>");
                 return 1;
             }
@@ -51,18 +51,40 @@ namespace RpfPatcher
         //
         //  Recursively adds all files/directories from the loose folder
         //  into a flat RPF archive with OPEN encryption.
+        //
+        //  Optional --embed-rpf <src_folder> <dest_path>:
+        //    First builds a standalone RPF from <src_folder>, then embeds
+        //    its raw bytes at <dest_path> inside the outer DLC RPF.
+        //    Example: --embed-rpf /tmp/ytds x64/textures/textures.rpf
+        //    This avoids CodeWalker's buggy in-place nested RPF creation.
         // ================================================================
 
         static int BuildDlc(string[] args)
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: RpfPatcher.exe build-dlc <loose_folder> <output_rpf>");
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe build-dlc <loose_folder> <output_rpf> " +
+                    "[--embed-rpf <src_folder> <dest_path>]");
                 return 1;
             }
 
             string looseFolder = args[1];
             string outputRpf = args[2];
+
+            // Parse optional --embed-rpf flag
+            string embedSrcFolder = null;
+            string embedDestPath = null;
+
+            for (int i = 3; i < args.Length; i++)
+            {
+                if (args[i] == "--embed-rpf" && i + 2 < args.Length)
+                {
+                    embedSrcFolder = args[i + 1];
+                    embedDestPath = args[i + 2];
+                    i += 2;
+                }
+            }
 
             if (!Directory.Exists(looseFolder))
             {
@@ -70,27 +92,91 @@ namespace RpfPatcher
                 return 4;
             }
 
+            if (embedSrcFolder != null && !Directory.Exists(embedSrcFolder))
+            {
+                Console.Error.WriteLine($"ERROR: Embed source folder not found: {embedSrcFolder}");
+                return 4;
+            }
+
             try
             {
+                byte[] innerRpfBytes = null;
+
+                // Phase 1: Build inner RPF as standalone file if requested
+                if (embedSrcFolder != null)
+                {
+                    Console.WriteLine($"Building inner RPF from: {embedSrcFolder}");
+
+                    string tempDir = Path.GetDirectoryName(outputRpf);
+                    if (string.IsNullOrEmpty(tempDir)) tempDir = ".";
+                    string tempInnerPath = Path.Combine(tempDir, "_inner_temp.rpf");
+
+                    // Clean up any previous temp file
+                    if (File.Exists(tempInnerPath))
+                        File.Delete(tempInnerPath);
+
+                    var innerRpf = RpfFile.CreateNew(tempDir, "_inner_temp.rpf",
+                        RpfEncryption.OPEN);
+
+                    int innerCount = AddDirectoryContents(innerRpf.Root, embedSrcFolder);
+                    Console.WriteLine($"Inner RPF: {innerCount} files packed.");
+
+                    // Read the finished RPF bytes
+                    innerRpfBytes = File.ReadAllBytes(tempInnerPath);
+                    Console.WriteLine($"Inner RPF size: {innerRpfBytes.Length:N0} bytes");
+
+                    // Clean up temp file
+                    File.Delete(tempInnerPath);
+                }
+
+                // Phase 2: Build outer dlc.rpf
                 Console.WriteLine($"Building dlc.rpf from: {looseFolder}");
                 Console.WriteLine($"Output: {outputRpf}");
 
-                // Ensure output directory exists
                 string outputDir = Path.GetDirectoryName(outputRpf);
                 if (!string.IsNullOrEmpty(outputDir))
                     Directory.CreateDirectory(outputDir);
 
-                // Delete existing output file if present
                 if (File.Exists(outputRpf))
                     File.Delete(outputRpf);
 
-                // Create dlc.rpf with OPEN encryption (no game keys needed)
                 var rpf = RpfFile.CreateNew(outputDir ?? ".", Path.GetFileName(outputRpf),
                     RpfEncryption.OPEN);
                 Console.WriteLine("Created dlc.rpf.");
 
-                // Recursively add all files from the loose folder
                 int fileCount = AddDirectoryContents(rpf.Root, looseFolder);
+
+                // Phase 3: Embed inner RPF at the specified path
+                if (innerRpfBytes != null && embedDestPath != null)
+                {
+                    // Navigate/create directory structure for dest path
+                    // e.g. "x64/textures/textures.rpf"
+                    string[] parts = embedDestPath.Replace('\\', '/').Split('/');
+                    RpfDirectoryEntry currentDir = rpf.Root;
+
+                    // Create intermediate directories (all parts except last)
+                    for (int i = 0; i < parts.Length - 1; i++)
+                    {
+                        string dirName = parts[i];
+                        // Check if directory already exists
+                        var existingDir = currentDir.Directories?
+                            .FirstOrDefault(d => d.Name.Equals(dirName,
+                                StringComparison.OrdinalIgnoreCase));
+                        if (existingDir != null)
+                        {
+                            currentDir = existingDir;
+                        }
+                        else
+                        {
+                            currentDir = RpfFile.CreateDirectory(currentDir, dirName);
+                        }
+                    }
+
+                    string innerFileName = parts[parts.Length - 1];
+                    RpfFile.CreateFile(currentDir, innerFileName, innerRpfBytes, true);
+                    Console.WriteLine($"  + {embedDestPath} ({innerRpfBytes.Length:N0} bytes, nested RPF)");
+                    fileCount++;
+                }
 
                 Console.WriteLine($"dlc.rpf built successfully ({fileCount} files).");
                 return 0;

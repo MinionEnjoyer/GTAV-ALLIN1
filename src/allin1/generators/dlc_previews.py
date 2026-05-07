@@ -1,7 +1,19 @@
 """Generate a GTA V DLC pack for ALLIN1 preview texture dictionaries.
 
-Creates the folder structure with content.xml and setup2.xml, then
-optionally builds dlc.rpf using gtautil.
+Creates the folder structure with content.xml and setup2.xml.  The .ytd
+files are placed into a staging directory that RpfPatcher packs into a
+nested ``textures.rpf`` inside the outer ``dlc.rpf``.
+
+The DLC pack mirrors Rockstar's own structure:
+
+    dlc.rpf/
+      content.xml
+      setup2.xml
+      x64/textures/textures.rpf   <-- nested RPF containing all .ytd files
+
+``content.xml`` registers ``textures.rpf`` as an ``RPF_FILE`` so that
+GTA's streaming system can find the .ytd files inside it and serve them
+via ``REQUEST_STREAMED_TEXTURE_DICT``.
 """
 
 from __future__ import annotations
@@ -16,13 +28,15 @@ log = logging.getLogger("allin1.generators.dlc_previews")
 
 DLC_NAME = "allin1_previews"
 DEVICE_NAME = f"dlc_{DLC_NAME}"
+TEXTURES_RPF = "textures.rpf"
 
 
-def _build_content_xml(ytd_names: list[str]) -> bytes:
-    """Generate content.xml registering each .ytd as a TEXTUREDICT.
+def _build_content_xml() -> bytes:
+    """Generate content.xml registering the nested textures.rpf as RPF_FILE.
 
-    Each texture dictionary is registered individually and enabled via
-    a content change set that runs at startup.
+    Matches the structure of working Rockstar / community DLC packs:
+    each dataFile entry has locked=false, disabled=true, persistent=true,
+    overlay=true, and the contentChangeSet enables them at startup.
     """
     root = etree.Element("CDataFileMgr__ContentsOfDataFileXml")
 
@@ -31,34 +45,25 @@ def _build_content_xml(ytd_names: list[str]) -> bytes:
     etree.SubElement(root, "includedDataFiles")
 
     data_files = etree.SubElement(root, "dataFiles")
-    changeset_files: list[str] = []
 
-    for name in ytd_names:
-        path = f"{DEVICE_NAME}:/x64/textures/{name}.ytd"
+    # Register the nested textures.rpf as RPF_FILE — the game's streaming
+    # system will index the .ytd files inside it automatically.
+    rpf_path = f"{DEVICE_NAME}:/%PLATFORM%/textures/{TEXTURES_RPF}"
 
-        item = etree.SubElement(data_files, "Item")
-        etree.SubElement(item, "filename").text = path
-        etree.SubElement(item, "fileType").text = "TEXTUREDICT"
-        el = etree.SubElement(item, "overlay")
-        el.set("value", "false")
-        el = etree.SubElement(item, "disabled")
-        el.set("value", "true")
-        el = etree.SubElement(item, "persistent")
-        el.set("value", "false")
+    item = etree.SubElement(data_files, "Item")
+    etree.SubElement(item, "filename").text = rpf_path
+    etree.SubElement(item, "fileType").text = "RPF_FILE"
+    etree.SubElement(item, "locked").set("value", "false")
+    etree.SubElement(item, "disabled").set("value", "true")
+    etree.SubElement(item, "persistent").set("value", "true")
+    etree.SubElement(item, "overlay").set("value", "true")
 
-        changeset_files.append(path)
-
+    # Content change set — enable the RPF at startup
     change_sets = etree.SubElement(root, "contentChangeSets")
     cs_item = etree.SubElement(change_sets, "Item")
     etree.SubElement(cs_item, "changeSetName").text = f"{DLC_NAME}_AUTOGEN"
-    etree.SubElement(cs_item, "filesToDisable")
     files_to_enable = etree.SubElement(cs_item, "filesToEnable")
-    for f in changeset_files:
-        etree.SubElement(files_to_enable, "Item").text = f
-    etree.SubElement(cs_item, "txdToLoad")
-    etree.SubElement(cs_item, "txdToUnload")
-    etree.SubElement(cs_item, "residentResources")
-    etree.SubElement(cs_item, "unregisterResources")
+    etree.SubElement(files_to_enable, "Item").text = rpf_path
 
     etree.SubElement(root, "patchFiles")
 
@@ -91,26 +96,31 @@ def _build_setup2_xml() -> bytes:
 def create_dlc_pack(
     ytd_files: list[Path],
     output_dir: Path,
-) -> Path:
-    """Create the DLC folder structure with content.xml, setup2.xml, and .ytd files.
+) -> tuple[Path, Path]:
+    """Create the DLC folder structure with content.xml, setup2.xml, and .ytd staging.
 
-    Returns the path to the DLC pack root folder (ready for RPF packing).
+    The .ytd files are placed into a separate staging directory
+    (``<output_dir>/ytd_staging/``) rather than directly in the DLC tree.
+    The caller is responsible for packing them into ``textures.rpf`` (via
+    RpfPatcher) and placing the result at ``x64/textures/textures.rpf``
+    inside the DLC root before packing the outer ``dlc.rpf``.
+
+    Returns ``(dlc_root, ytd_staging_dir)``.
     """
     dlc_root = output_dir / DLC_NAME
-    textures_dir = dlc_root / "x64" / "textures"
-    textures_dir.mkdir(parents=True, exist_ok=True)
+    dlc_root.mkdir(parents=True, exist_ok=True)
 
-    # Copy .ytd files into the texture directory
-    ytd_names: list[str] = []
+    # Stage .ytd files in a separate flat directory for inner RPF packing
+    ytd_staging = output_dir / "ytd_staging"
+    ytd_staging.mkdir(parents=True, exist_ok=True)
+
     for ytd in ytd_files:
-        dest = textures_dir / ytd.name
-        log.debug("Copying %s (%s) -> %s", ytd, "exists" if ytd.exists() else "MISSING", dest)
+        dest = ytd_staging / ytd.name
         shutil.copy2(ytd, dest)
-        ytd_names.append(ytd.stem)
-        log.debug("Copied %s -> %s", ytd.name, dest)
+        log.debug("Staged %s -> %s", ytd.name, dest)
 
     # Generate XML metadata
-    content_xml = _build_content_xml(ytd_names)
+    content_xml = _build_content_xml()
     (dlc_root / "content.xml").write_bytes(content_xml)
     log.debug("Wrote content.xml")
 
@@ -118,8 +128,8 @@ def create_dlc_pack(
     (dlc_root / "setup2.xml").write_bytes(setup2_xml)
     log.debug("Wrote setup2.xml")
 
-    log.info("Created DLC pack at %s (%d .ytd files)", dlc_root, len(ytd_names))
-    return dlc_root
+    log.info("Created DLC pack at %s (%d .ytd files staged)", dlc_root, len(ytd_files))
+    return dlc_root, ytd_staging
 
 
 def deploy_dlc_rpf(
