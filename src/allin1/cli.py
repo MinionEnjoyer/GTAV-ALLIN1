@@ -200,7 +200,7 @@ def export_catalog(ctx: click.Context, output: str | None) -> None:
     from allin1.config import load_prices
 
     db = VehicleDatabase.load(VEHICLES_DB)
-    prices = load_prices(PROJECT_ROOT / "prices.toml")
+    prices = load_prices(PROJECT_ROOT / "prices_vehicles.toml")
 
     data = []
     for v in db.all_vehicles:
@@ -233,8 +233,28 @@ def generate_vehiclelist(ctx: click.Context, output: str | None) -> None:
         Path(output) if output
         else PROJECT_ROOT / "script" / "src" / "VehicleList.cs"
     )
-    count = generate_file(VEHICLES_DB, PROJECT_ROOT / "prices.toml", out_path)
+    count = generate_file(VEHICLES_DB, PROJECT_ROOT / "prices_vehicles.toml", out_path)
     click.echo(f"Generated VehicleList.cs with {count} vehicles at {out_path}")
+
+
+@main.command("generate-weaponlist")
+@click.option("--output", "-o", default=None,
+              help="Output path (default: script/src/WeaponList.cs)")
+@click.pass_context
+def generate_weaponlist(ctx: click.Context, output: str | None) -> None:
+    """Regenerate WeaponList.cs from weapons.toml + prices_weapons.toml."""
+    from allin1.generators.weaponlist import generate_file
+
+    out_path = (
+        Path(output) if output
+        else PROJECT_ROOT / "script" / "src" / "WeaponList.cs"
+    )
+    count = generate_file(
+        DATA_DIR / "weapons.toml",
+        PROJECT_ROOT / "prices_weapons.toml",
+        out_path,
+    )
+    click.echo(f"Generated WeaponList.cs with {count} weapons at {out_path}")
 
 
 if __name__ == "__main__":

@@ -253,6 +253,55 @@ namespace ALLIN1
         }
 
         // ------------------------------------------------------------------ //
+        //  Weapon Purchase (called by GbayBrowser)                            //
+        // ------------------------------------------------------------------ //
+
+        internal void ExecuteGiveWeapon(string weaponName, int price)
+        {
+            Ped player = Game.Player.Character;
+            Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
+
+            // Check if already owned
+            bool hasWeapon = Function.Call<bool>(
+                (Hash)0x8DECB02F88F428BC, player, weaponHash, false);  // HAS_PED_GOT_WEAPON
+
+            if (hasWeapon)
+            {
+                // Give max ammo instead
+                Function.Call((Hash)0x14E56BC5B5DB6A19,
+                    player, weaponHash, 9999, false);  // SET_PED_AMMO
+                string name = WeaponList.DisplayNames.ContainsKey(weaponName)
+                    ? WeaponList.DisplayNames[weaponName] : weaponName;
+                GTA.UI.Screen.ShowSubtitle($"~g~{name}~w~ ammo refilled!", 3000);
+                Log($"GiveWeapon: {weaponName} already owned, refilled ammo");
+                return;
+            }
+
+            // Check funds
+            if (!_freeMode && price > 0 && Game.Player.Money < price)
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~Insufficient funds.", 3000);
+                return;
+            }
+
+            // Give weapon with ammo
+            Function.Call((Hash)0xBF0FD6E56C964FCB,
+                player, weaponHash, 9999, false, true);  // GIVE_WEAPON_TO_PED
+
+            if (!_freeMode && price > 0)
+                Game.Player.Money -= price;
+
+            string displayName = WeaponList.DisplayNames.ContainsKey(weaponName)
+                ? WeaponList.DisplayNames[weaponName] : weaponName;
+            string msg = _freeMode || price <= 0
+                ? $"~g~{displayName}~w~ added!"
+                : $"~g~{displayName}~w~ purchased for ~g~${price:N0}";
+            GTA.UI.Screen.ShowSubtitle(msg, 3000);
+
+            Log($"GiveWeapon: {weaponName}, price=${price}");
+        }
+
+        // ------------------------------------------------------------------ //
         //  Helpers                                                            //
         // ------------------------------------------------------------------ //
 

@@ -6,7 +6,7 @@
 gta_path = "auto"
 
 # When true, all vehicles are free (no in-game cost).
-# When false, vehicles use prices from prices.toml (editable).
+# When false, vehicles use prices from prices_vehicles.toml (editable).
 free_mode = false
 
 # Create backups of original game files before modifying.

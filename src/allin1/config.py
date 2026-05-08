@@ -80,7 +80,7 @@ class Config:
 
 
 def load_prices(path: Path) -> dict[str, int]:
-    """Load the prices.toml file. Returns a dict of model_name -> price."""
+    """Load a prices TOML file. Returns a dict of name -> price."""
     if not path.exists():
         return {}
     with open(path, "rb") as f:

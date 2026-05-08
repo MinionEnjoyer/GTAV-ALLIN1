@@ -20,6 +20,7 @@ namespace ALLIN1
         VehiclePreview,
         DeliveryConfirm,
         GarageView,
+        WeaponBrowser,
     }
 
     internal struct VehicleCard
@@ -28,6 +29,15 @@ namespace ALLIN1
         internal string DisplayName;
         internal string Manufacturer;
         internal int Price;
+    }
+
+    internal struct WeaponCard
+    {
+        internal string WeaponName;
+        internal string DisplayName;
+        internal string Category;
+        internal int Price;
+        internal bool Owned;
     }
 
     internal class GbayBrowser
@@ -121,6 +131,33 @@ namespace ALLIN1
             new Category("Special",         VehicleList.Special),
         };
 
+        private struct WeaponCategory
+        {
+            internal string Label;
+            internal string[] Weapons;
+
+            internal WeaponCategory(string label, string[] weapons)
+            {
+                Label = label;
+                Weapons = weapons;
+            }
+        }
+
+        private static readonly WeaponCategory[] WEAPON_CATEGORIES =
+        {
+            new WeaponCategory("All",             WeaponList.All),
+            new WeaponCategory("Pistols",         WeaponList.Pistols),
+            new WeaponCategory("SMGs",            WeaponList.Smgs),
+            new WeaponCategory("Shotguns",        WeaponList.Shotguns),
+            new WeaponCategory("Assault Rifles",  WeaponList.Rifles),
+            new WeaponCategory("Machine Guns",    WeaponList.MachineGuns),
+            new WeaponCategory("Sniper Rifles",   WeaponList.Snipers),
+            new WeaponCategory("Heavy Weapons",   WeaponList.Heavy),
+            new WeaponCategory("Melee",           WeaponList.Melee),
+            new WeaponCategory("Throwables",      WeaponList.Throwables),
+            new WeaponCategory("Miscellaneous",   WeaponList.Misc),
+        };
+
         // ------------------------------------------------------------------ //
         //  State                                                              //
         // ------------------------------------------------------------------ //
@@ -155,6 +192,16 @@ namespace ALLIN1
         private int _garageVehicleIdx;
         private int _garageHoverIdx = -1;
         private GarageManager.Safehouse[] _garageSafehouses;
+
+        // Weapon browser
+        private int _weaponCategoryIndex;
+        private int _weaponPage;
+        private int _weaponTotalPages;
+        private int _weaponSelectedCard;
+        private int _weaponHoverCard = -1;
+        private int _weaponTabScrollOffset;
+        private int _weaponHoverTab = -1;
+        private readonly List<WeaponCard> _weaponFiltered = new List<WeaponCard>();
 
         // Vehicle preview (3D showroom)
         private Vehicle _previewVehicle;
@@ -270,6 +317,9 @@ namespace ALLIN1
                 case BrowserState.GarageView:
                     DrawGarageView(input);
                     break;
+                case BrowserState.WeaponBrowser:
+                    DrawWeaponBrowser(input);
+                    break;
             }
 
             GbayRenderer.DrawCursor();
@@ -310,7 +360,7 @@ namespace ALLIN1
 
             // Buttons
             string[] labels = { "Vehicles", "Weapons", "My Garages" };
-            bool[] enabled = { true, false, true };
+            bool[] enabled = { true, true, true };
             float startY = 0.42f;
 
             _topMenuHover = -1;
@@ -347,12 +397,6 @@ namespace ALLIN1
                 GbayRenderer.DrawRect(BROWSER_CX, btnCY, TOP_BTN_W, TOP_BTN_H, bg);
                 GbayRenderer.DrawText(labels[i], BROWSER_CX, btnY + 0.018f,
                     0.50f, text, GbayRenderer.FONT_CHALET, true);
-
-                if (i == 1) // Weapons -- show "Coming Soon"
-                {
-                    GbayRenderer.DrawText("Coming Soon", BROWSER_CX, btnY + 0.050f,
-                        0.32f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
-                }
             }
 
             // Input handling
@@ -385,6 +429,15 @@ namespace ALLIN1
                     _selectedCard = 0;
                     _tabScrollOffset = 0;
                     RebuildFilteredList();
+                }
+                else if (activateIdx == 1) // Weapons
+                {
+                    _state = BrowserState.WeaponBrowser;
+                    _weaponCategoryIndex = 0;
+                    _weaponPage = 0;
+                    _weaponSelectedCard = 0;
+                    _weaponTabScrollOffset = 0;
+                    RebuildWeaponFilteredList();
                 }
                 else if (activateIdx == 2) // My Garages
                 {
@@ -1260,6 +1313,380 @@ namespace ALLIN1
             GbayRenderer.DrawText("[Z/X] Safehouse   [Enter] Remove   [Esc] Back",
                 BROWSER_CX, FOOTER_Y + 0.012f, 0.24f, GbayRenderer.TextDim,
                 GbayRenderer.FONT_CONDENSED, true);
+        }
+
+        // ------------------------------------------------------------------ //
+        //  Weapon Browser                                                     //
+        // ------------------------------------------------------------------ //
+
+        private void DrawWeaponBrowser(FrameInput input)
+        {
+            float aspect = GbayRenderer.GetAspectRatio();
+            float cardW = CARD_H / aspect;
+
+            // Browser background
+            float bgCY = (BROWSER_TOP + BROWSER_BOTTOM) / 2f;
+            float bgH = BROWSER_BOTTOM - BROWSER_TOP;
+            GbayRenderer.DrawRect(BROWSER_CX, bgCY, BROWSER_W, bgH,
+                GbayRenderer.BodyBg);
+
+            // Header
+            DrawWeaponHeader();
+
+            // Category tabs
+            DrawWeaponCategoryTabs(input, aspect);
+
+            // Grid
+            DrawWeaponGrid(input, cardW);
+
+            // Footer
+            DrawWeaponFooter();
+
+            // Handle input
+            HandleWeaponBrowserInput(input);
+        }
+
+        private void DrawWeaponHeader()
+        {
+            GbayRenderer.DrawRect(BROWSER_CX, HEADER_CY, BROWSER_W, HEADER_H,
+                GbayRenderer.HeaderBg);
+
+            GbayRenderer.DrawLogo(BROWSER_LEFT + 0.035f, HEADER_CY, HEADER_H * 0.85f);
+
+            GbayRenderer.DrawText("WEAPONS", BROWSER_LEFT + 0.07f, HEADER_Y + 0.018f,
+                0.38f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
+
+            string money = $"${Game.Player.Money:N0}";
+            GbayRenderer.DrawText(money, BROWSER_RIGHT - 0.01f, HEADER_Y + 0.018f,
+                0.38f, GbayRenderer.HeaderText, GbayRenderer.FONT_CHALET,
+                false, false, true);
+        }
+
+        private void DrawWeaponCategoryTabs(FrameInput input, float aspect)
+        {
+            GbayRenderer.DrawRect(BROWSER_CX, TAB_CY, BROWSER_W, TAB_H,
+                GbayRenderer.TabBg);
+
+            int visibleCount = Math.Min(MAX_VISIBLE_TABS, WEAPON_CATEGORIES.Length - _weaponTabScrollOffset);
+            float tabAreaW = BROWSER_W - 0.04f;
+            float singleTabW = tabAreaW / MAX_VISIBLE_TABS;
+            float tabStartX = BROWSER_LEFT + 0.02f;
+
+            _weaponHoverTab = -1;
+
+            for (int i = 0; i < visibleCount; i++)
+            {
+                int catIdx = _weaponTabScrollOffset + i;
+                float tabCX = tabStartX + singleTabW * i + singleTabW / 2f;
+                bool isActive = catIdx == _weaponCategoryIndex;
+                bool isHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
+                    tabCX, TAB_CY, singleTabW - 0.004f, TAB_H);
+
+                if (isHover)
+                    _weaponHoverTab = catIdx;
+
+                if (isHover && !isActive)
+                    GbayRenderer.DrawRect(tabCX, TAB_CY, singleTabW - 0.004f,
+                        TAB_H, GbayRenderer.TabHover);
+
+                if (isActive)
+                    GbayRenderer.DrawRect(tabCX, TAB_Y + TAB_H - 0.004f,
+                        singleTabW - 0.01f, 0.004f, GbayRenderer.TabIndicator);
+
+                Color textColor = isActive ? GbayRenderer.TabActive : GbayRenderer.TabInactive;
+                string label = WEAPON_CATEGORIES[catIdx].Label;
+                GbayRenderer.DrawText(label, tabCX, TAB_Y + 0.01f,
+                    0.32f, textColor, GbayRenderer.FONT_CONDENSED, true);
+            }
+
+            if (_weaponTabScrollOffset > 0)
+            {
+                GbayRenderer.DrawText("<", BROWSER_LEFT + 0.008f, TAB_Y + 0.008f,
+                    0.35f, GbayRenderer.TabActive, GbayRenderer.FONT_CHALET);
+            }
+            if (_weaponTabScrollOffset + MAX_VISIBLE_TABS < WEAPON_CATEGORIES.Length)
+            {
+                GbayRenderer.DrawText(">", BROWSER_RIGHT - 0.018f, TAB_Y + 0.008f,
+                    0.35f, GbayRenderer.TabActive, GbayRenderer.FONT_CHALET);
+            }
+        }
+
+        private void DrawWeaponGrid(FrameInput input, float cardW)
+        {
+            float gridW = GRID_COLS * cardW + (GRID_COLS - 1) * CARD_GAP_X;
+            float gridStartX = BROWSER_CX - gridW / 2f;
+            float gridStartY = GRID_TOP + 0.01f;
+
+            int startIdx = _weaponPage * PAGE_SIZE;
+            int count = Math.Min(PAGE_SIZE, _weaponFiltered.Count - startIdx);
+
+            _weaponHoverCard = -1;
+
+            for (int i = 0; i < count; i++)
+            {
+                int col = i % GRID_COLS;
+                int row = i / GRID_COLS;
+                float cardLeft = gridStartX + col * (cardW + CARD_GAP_X);
+                float cardTop = gridStartY + row * (CARD_H + CARD_GAP_Y);
+                float cardCX = cardLeft + cardW / 2f;
+                float cardCY = cardTop + CARD_H / 2f;
+
+                bool isSelected = i == _weaponSelectedCard;
+                bool isHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
+                    cardCX, cardCY, cardW, CARD_H);
+
+                if (isHover)
+                    _weaponHoverCard = i;
+
+                WeaponCard card = _weaponFiltered[startIdx + i];
+                DrawWeaponCard(card, cardLeft, cardTop, cardW, isSelected, isHover);
+            }
+
+            if (count == 0)
+            {
+                GbayRenderer.DrawText("No weapons in this category",
+                    BROWSER_CX, 0.45f, 0.4f, GbayRenderer.TextDim,
+                    GbayRenderer.FONT_CHALET, true);
+            }
+        }
+
+        private void DrawWeaponCard(WeaponCard card, float left, float top,
+                                     float cardW, bool selected, bool hovered)
+        {
+            float cx = left + cardW / 2f;
+            float cy = top + CARD_H / 2f;
+
+            Color bgColor = selected ? GbayRenderer.CardSelected
+                          : hovered ? GbayRenderer.CardHover
+                          : GbayRenderer.CardBg;
+            Color borderColor = selected ? GbayRenderer.CardBorderSel
+                              : GbayRenderer.CardBorder;
+
+            GbayRenderer.DrawBorderedRect(cx, cy, cardW, CARD_H,
+                bgColor, borderColor, 0.002f);
+
+            // Top area: category-colored placeholder (55% of card height)
+            float topAreaH = CARD_H * 0.55f;
+            float topAreaCY = top + topAreaH / 2f;
+
+            Color topColor = GetWeaponCategoryColor(card.Category, hovered || selected);
+            GbayRenderer.DrawRect(cx, topAreaCY, cardW - 0.004f, topAreaH - 0.004f,
+                topColor);
+
+            // Category label in the placeholder area
+            GbayRenderer.DrawText(card.Category, cx, top + topAreaH * 0.35f,
+                0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
+
+            // Text area below
+            float textTop = top + topAreaH + 0.005f;
+            float textLeft = left + 0.008f;
+
+            // Weapon name
+            GbayRenderer.DrawText(card.DisplayName, textLeft, textTop + 0.005f,
+                0.33f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+
+            // Price or OWNED
+            if (card.Owned)
+            {
+                GbayRenderer.DrawText("OWNED", textLeft, textTop + 0.038f,
+                    0.30f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CHALET);
+            }
+            else
+            {
+                string priceText = card.Price <= 0 ? "FREE" : $"${card.Price:N0}";
+                Color priceColor = card.Price <= 0
+                    ? GbayRenderer.TextPriceFree : GbayRenderer.TextPrice;
+                GbayRenderer.DrawText(priceText, textLeft, textTop + 0.038f,
+                    0.30f, priceColor, GbayRenderer.FONT_CHALET);
+            }
+        }
+
+        private void DrawWeaponFooter()
+        {
+            GbayRenderer.DrawRect(BROWSER_CX, FOOTER_CY, BROWSER_W, FOOTER_H,
+                GbayRenderer.FooterBg);
+
+            string pageText = $"Page {_weaponPage + 1}/{Math.Max(1, _weaponTotalPages)}";
+            GbayRenderer.DrawText(pageText, BROWSER_LEFT + 0.02f, FOOTER_Y + 0.012f,
+                0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+
+            string hints = "[Q/E] Page   [Z/X] Category   [Enter] Buy   [Esc] Back";
+            GbayRenderer.DrawText(hints, BROWSER_RIGHT - 0.01f, FOOTER_Y + 0.012f,
+                0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED,
+                false, false, true);
+        }
+
+        private void HandleWeaponBrowserInput(FrameInput input)
+        {
+            if (input.Back || input.MouseRightClick)
+            {
+                GbayRenderer.PlayBack();
+                _state = BrowserState.TopMenu;
+                return;
+            }
+
+            // Category tab click
+            if (input.MouseClick && _weaponHoverTab >= 0 && _weaponHoverTab != _weaponCategoryIndex)
+            {
+                _weaponCategoryIndex = _weaponHoverTab;
+                _weaponPage = 0;
+                _weaponSelectedCard = 0;
+                RebuildWeaponFilteredList();
+                GbayRenderer.PlayNav();
+                return;
+            }
+
+            // Category scroll (Z/X)
+            if (input.CategoryPrev && _weaponCategoryIndex > 0)
+            {
+                _weaponCategoryIndex--;
+                _weaponPage = 0;
+                _weaponSelectedCard = 0;
+                EnsureWeaponTabVisible(_weaponCategoryIndex);
+                RebuildWeaponFilteredList();
+                GbayRenderer.PlayNav();
+            }
+            else if (input.CategoryNext && _weaponCategoryIndex < WEAPON_CATEGORIES.Length - 1)
+            {
+                _weaponCategoryIndex++;
+                _weaponPage = 0;
+                _weaponSelectedCard = 0;
+                EnsureWeaponTabVisible(_weaponCategoryIndex);
+                RebuildWeaponFilteredList();
+                GbayRenderer.PlayNav();
+            }
+
+            // Page navigation (Q/E)
+            if (input.PageLeft && _weaponPage > 0)
+            {
+                _weaponPage--;
+                _weaponSelectedCard = Math.Min(_weaponSelectedCard, GetWeaponPageCount() - 1);
+                GbayRenderer.PlayNav();
+            }
+            else if (input.PageRight && _weaponPage < _weaponTotalPages - 1)
+            {
+                _weaponPage++;
+                _weaponSelectedCard = Math.Min(_weaponSelectedCard, GetWeaponPageCount() - 1);
+                GbayRenderer.PlayNav();
+            }
+
+            // Grid navigation (arrows)
+            if (input.DirX != 0 || input.DirY != 0)
+            {
+                int col = _weaponSelectedCard % GRID_COLS;
+                int row = _weaponSelectedCard / GRID_COLS;
+                int maxIdx = GetWeaponPageCount() - 1;
+
+                if (input.DirX != 0)
+                    col = Math.Max(0, Math.Min(col + input.DirX, GRID_COLS - 1));
+                if (input.DirY != 0)
+                    row = Math.Max(0, Math.Min(row + input.DirY, GRID_ROWS - 1));
+
+                int newIdx = Math.Min(row * GRID_COLS + col, maxIdx);
+                if (newIdx != _weaponSelectedCard)
+                {
+                    _weaponSelectedCard = newIdx;
+                    GbayRenderer.PlayNav();
+                }
+            }
+
+            // Mouse hover updates selection
+            if (_weaponHoverCard >= 0 && _weaponHoverCard != _weaponSelectedCard)
+                _weaponSelectedCard = _weaponHoverCard;
+
+            // Purchase weapon
+            bool accepted = input.Accept || (input.MouseClick && _weaponHoverCard >= 0);
+            if (accepted && _weaponFiltered.Count > 0)
+            {
+                int idx = _weaponPage * PAGE_SIZE + _weaponSelectedCard;
+                if (idx < _weaponFiltered.Count)
+                {
+                    WeaponCard card = _weaponFiltered[idx];
+                    GbayRenderer.PlaySelect();
+                    _shop.ExecuteGiveWeapon(card.WeaponName, card.Price);
+                    // Refresh owned status
+                    RebuildWeaponFilteredList();
+                }
+            }
+        }
+
+        private void RebuildWeaponFilteredList()
+        {
+            _weaponFiltered.Clear();
+
+            Ped player = Game.Player.Character;
+            string[] weapons = WEAPON_CATEGORIES[_weaponCategoryIndex].Weapons;
+
+            foreach (string weaponName in weapons)
+            {
+                string displayName = WeaponList.DisplayNames.ContainsKey(weaponName)
+                    ? WeaponList.DisplayNames[weaponName] : weaponName;
+
+                int price = 0;
+                if (WeaponList.Prices.ContainsKey(weaponName))
+                    price = WeaponList.Prices[weaponName];
+
+                string category = WeaponList.CategoryNames.ContainsKey(weaponName)
+                    ? WeaponList.CategoryNames[weaponName] : "";
+
+                // Check if player already owns this weapon
+                Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
+                bool owned = Function.Call<bool>(
+                    (Hash)0x8DECB02F88F428BC, player, weaponHash, false);  // HAS_PED_GOT_WEAPON
+
+                _weaponFiltered.Add(new WeaponCard
+                {
+                    WeaponName = weaponName,
+                    DisplayName = displayName,
+                    Category = category,
+                    Price = _shop.FreeMode ? 0 : price,
+                    Owned = owned,
+                });
+            }
+
+            _weaponTotalPages = Math.Max(1, (_weaponFiltered.Count + PAGE_SIZE - 1) / PAGE_SIZE);
+        }
+
+        private static Color GetWeaponCategoryColor(string category, bool bright)
+        {
+            int r, g, b;
+            switch (category)
+            {
+                case "Pistols":        r = 140; g = 160; b = 200; break;
+                case "SMGs":           r = 160; g = 140; b = 180; break;
+                case "Shotguns":       r = 200; g = 140; b = 120; break;
+                case "Assault Rifles": r = 140; g = 180; b = 140; break;
+                case "Machine Guns":   r = 180; g = 160; b = 120; break;
+                case "Sniper Rifles":  r = 120; g = 160; b = 180; break;
+                case "Heavy Weapons":  r = 200; g = 130; b = 130; break;
+                case "Melee":          r = 170; g = 170; b = 150; break;
+                case "Throwables":     r = 200; g = 170; b = 100; break;
+                case "Miscellaneous":  r = 160; g = 160; b = 160; break;
+                default:               r = 180; g = 190; b = 185; break;
+            }
+
+            if (bright)
+            {
+                r = Math.Min(255, r + 20);
+                g = Math.Min(255, g + 20);
+                b = Math.Min(255, b + 20);
+            }
+
+            return Color.FromArgb(255, r, g, b);
+        }
+
+        private void EnsureWeaponTabVisible(int categoryIndex)
+        {
+            if (categoryIndex < _weaponTabScrollOffset)
+                _weaponTabScrollOffset = categoryIndex;
+            else if (categoryIndex >= _weaponTabScrollOffset + MAX_VISIBLE_TABS)
+                _weaponTabScrollOffset = categoryIndex - MAX_VISIBLE_TABS + 1;
+        }
+
+        private int GetWeaponPageCount()
+        {
+            int startIdx = _weaponPage * PAGE_SIZE;
+            return Math.Min(PAGE_SIZE, _weaponFiltered.Count - startIdx);
         }
 
         // ------------------------------------------------------------------ //

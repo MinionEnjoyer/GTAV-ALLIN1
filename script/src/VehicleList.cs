@@ -1,4 +1,4 @@
-// VehicleList.cs - Auto-generated from data/vehicles.toml + prices.toml
+// VehicleList.cs - Auto-generated from data/vehicles.toml + prices_vehicles.toml
 // 444 GTA Online DLC vehicles by class.
 using System.Collections.Generic;
 

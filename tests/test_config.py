@@ -70,7 +70,7 @@ disabled_vehicles = ["oppressor2"]
 
 
 def test_load_prices(tmp_path):
-    prices_file = tmp_path / "prices.toml"
+    prices_file = tmp_path / "prices_vehicles.toml"
     prices_file.write_text("""
 [super]
 entity3 = 2000000

@@ -1,0 +1,651 @@
+# =============================================================================
+# GTA Online Weapon Database
+# All GTA Online weapons with internal name, display label, category, and price.
+# Prices based on GTA Online Ammu-Nation pricing.
+# =============================================================================
+
+# =============================================================================
+# PISTOLS
+# =============================================================================
+
+[[weapons]]
+name = "WEAPON_PISTOL"
+label = "Pistol"
+category = "pistols"
+price = 0
+
+[[weapons]]
+name = "WEAPON_PISTOL_MK2"
+label = "Pistol Mk II"
+category = "pistols"
+price = 73750
+
+[[weapons]]
+name = "WEAPON_COMBATPISTOL"
+label = "Combat Pistol"
+category = "pistols"
+price = 5000
+
+[[weapons]]
+name = "WEAPON_APPISTOL"
+label = "AP Pistol"
+category = "pistols"
+price = 5000
+
+[[weapons]]
+name = "WEAPON_STUNGUN"
+label = "Stun Gun"
+category = "pistols"
+price = 100
+
+[[weapons]]
+name = "WEAPON_PISTOL50"
+label = "Pistol .50"
+category = "pistols"
+price = 3000
+
+[[weapons]]
+name = "WEAPON_SNSPISTOL"
+label = "SNS Pistol"
+category = "pistols"
+price = 2750
+
+[[weapons]]
+name = "WEAPON_SNSPISTOL_MK2"
+label = "SNS Pistol Mk II"
+category = "pistols"
+price = 97500
+
+[[weapons]]
+name = "WEAPON_HEAVYPISTOL"
+label = "Heavy Pistol"
+category = "pistols"
+price = 3750
+
+[[weapons]]
+name = "WEAPON_VINTAGEPISTOL"
+label = "Vintage Pistol"
+category = "pistols"
+price = 3450
+
+[[weapons]]
+name = "WEAPON_FLAREGUN"
+label = "Flare Gun"
+category = "pistols"
+price = 5750
+
+[[weapons]]
+name = "WEAPON_MARKSMANPISTOL"
+label = "Marksman Pistol"
+category = "pistols"
+price = 4350
+
+[[weapons]]
+name = "WEAPON_REVOLVER"
+label = "Heavy Revolver"
+category = "pistols"
+price = 5400
+
+[[weapons]]
+name = "WEAPON_REVOLVER_MK2"
+label = "Heavy Revolver Mk II"
+category = "pistols"
+price = 149000
+
+[[weapons]]
+name = "WEAPON_DOUBLEACTION"
+label = "Double-Action Revolver"
+category = "pistols"
+price = 12500
+
+[[weapons]]
+name = "WEAPON_RAYPISTOL"
+label = "Up-n-Atomizer"
+category = "pistols"
+price = 399000
+
+[[weapons]]
+name = "WEAPON_CERAMICPISTOL"
+label = "Ceramic Pistol"
+category = "pistols"
+price = 20000
+
+[[weapons]]
+name = "WEAPON_NAVYREVOLVER"
+label = "Navy Revolver"
+category = "pistols"
+price = 15200
+
+[[weapons]]
+name = "WEAPON_GADGETPISTOL"
+label = "Perico Pistol"
+category = "pistols"
+price = 17500
+
+# =============================================================================
+# SMGS
+# =============================================================================
+
+[[weapons]]
+name = "WEAPON_MICROSMG"
+label = "Micro SMG"
+category = "smgs"
+price = 0
+
+[[weapons]]
+name = "WEAPON_SMG"
+label = "SMG"
+category = "smgs"
+price = 7500
+
+[[weapons]]
+name = "WEAPON_SMG_MK2"
+label = "SMG Mk II"
+category = "smgs"
+price = 85000
+
+[[weapons]]
+name = "WEAPON_ASSAULTSMG"
+label = "Assault SMG"
+category = "smgs"
+price = 12000
+
+[[weapons]]
+name = "WEAPON_COMBATPDW"
+label = "Combat PDW"
+category = "smgs"
+price = 12175
+
+[[weapons]]
+name = "WEAPON_MACHINEPISTOL"
+label = "Machine Pistol"
+category = "smgs"
+price = 6250
+
+[[weapons]]
+name = "WEAPON_MINISMG"
+label = "Mini SMG"
+category = "smgs"
+price = 8900
+
+[[weapons]]
+name = "WEAPON_RAYCARBINE"
+label = "Unholy Hellbringer"
+category = "smgs"
+price = 449000
+
+# =============================================================================
+# SHOTGUNS
+# =============================================================================
+
+[[weapons]]
+name = "WEAPON_PUMPSHOTGUN"
+label = "Pump Shotgun"
+category = "shotguns"
+price = 0
+
+[[weapons]]
+name = "WEAPON_PUMPSHOTGUN_MK2"
+label = "Pump Shotgun Mk II"
+category = "shotguns"
+price = 82500
+
+[[weapons]]
+name = "WEAPON_SAWNOFFSHOTGUN"
+label = "Sawed-Off Shotgun"
+category = "shotguns"
+price = 3000
+
+[[weapons]]
+name = "WEAPON_ASSAULTSHOTGUN"
+label = "Assault Shotgun"
+category = "shotguns"
+price = 10000
+
+[[weapons]]
+name = "WEAPON_BULLPUPSHOTGUN"
+label = "Bullpup Shotgun"
+category = "shotguns"
+price = 8000
+
+[[weapons]]
+name = "WEAPON_MUSKET"
+label = "Musket"
+category = "shotguns"
+price = 21400
+
+[[weapons]]
+name = "WEAPON_HEAVYSHOTGUN"
+label = "Heavy Shotgun"
+category = "shotguns"
+price = 13550
+
+[[weapons]]
+name = "WEAPON_DBSHOTGUN"
+label = "Double Barrel Shotgun"
+category = "shotguns"
+price = 15450
+
+[[weapons]]
+name = "WEAPON_AUTOSHOTGUN"
+label = "Sweeper Shotgun"
+category = "shotguns"
+price = 14900
+
+[[weapons]]
+name = "WEAPON_COMBATSHOTGUN"
+label = "Combat Shotgun"
+category = "shotguns"
+price = 295000
+
+# =============================================================================
+# ASSAULT RIFLES
+# =============================================================================
+
+[[weapons]]
+name = "WEAPON_ASSAULTRIFLE"
+label = "Assault Rifle"
+category = "rifles"
+price = 0
+
+[[weapons]]
+name = "WEAPON_ASSAULTRIFLE_MK2"
+label = "Assault Rifle Mk II"
+category = "rifles"
+price = 98750
+
+[[weapons]]
+name = "WEAPON_CARBINERIFLE"
+label = "Carbine Rifle"
+category = "rifles"
+price = 13000
+
+[[weapons]]
+name = "WEAPON_CARBINERIFLE_MK2"
+label = "Carbine Rifle Mk II"
+category = "rifles"
+price = 107500
+
+[[weapons]]
+name = "WEAPON_ADVANCEDRIFLE"
+label = "Advanced Rifle"
+category = "rifles"
+price = 14250
+
+[[weapons]]
+name = "WEAPON_SPECIALCARBINE"
+label = "Special Carbine"
+category = "rifles"
+price = 14750
+
+[[weapons]]
+name = "WEAPON_SPECIALCARBINE_MK2"
+label = "Special Carbine Mk II"
+category = "rifles"
+price = 135000
+
+[[weapons]]
+name = "WEAPON_BULLPUPRIFLE"
+label = "Bullpup Rifle"
+category = "rifles"
+price = 14500
+
+[[weapons]]
+name = "WEAPON_BULLPUPRIFLE_MK2"
+label = "Bullpup Rifle Mk II"
+category = "rifles"
+price = 105750
+
+[[weapons]]
+name = "WEAPON_COMPACTRIFLE"
+label = "Compact Rifle"
+category = "rifles"
+price = 14650
+
+[[weapons]]
+name = "WEAPON_MILITARYRIFLE"
+label = "Military Rifle"
+category = "rifles"
+price = 395000
+
+[[weapons]]
+name = "WEAPON_HEAVYRIFLE"
+label = "Heavy Rifle"
+category = "rifles"
+price = 430500
+
+[[weapons]]
+name = "WEAPON_TACTICALRIFLE"
+label = "Service Carbine"
+category = "rifles"
+price = 405000
+
+# =============================================================================
+# MACHINE GUNS
+# =============================================================================
+
+[[weapons]]
+name = "WEAPON_MG"
+label = "MG"
+category = "machineguns"
+price = 9000
+
+[[weapons]]
+name = "WEAPON_COMBATMG"
+label = "Combat MG"
+category = "machineguns"
+price = 15000
+
+[[weapons]]
+name = "WEAPON_COMBATMG_MK2"
+label = "Combat MG Mk II"
+category = "machineguns"
+price = 119000
+
+[[weapons]]
+name = "WEAPON_GUSENBERG"
+label = "Gusenberg Sweeper"
+category = "machineguns"
+price = 14600
+
+# =============================================================================
+# SNIPER RIFLES
+# =============================================================================
+
+[[weapons]]
+name = "WEAPON_SNIPERRIFLE"
+label = "Sniper Rifle"
+category = "snipers"
+price = 20000
+
+[[weapons]]
+name = "WEAPON_HEAVYSNIPER"
+label = "Heavy Sniper"
+category = "snipers"
+price = 38150
+
+[[weapons]]
+name = "WEAPON_HEAVYSNIPER_MK2"
+label = "Heavy Sniper Mk II"
+category = "snipers"
+price = 165375
+
+[[weapons]]
+name = "WEAPON_MARKSMANRIFLE"
+label = "Marksman Rifle"
+category = "snipers"
+price = 15750
+
+[[weapons]]
+name = "WEAPON_MARKSMANRIFLE_MK2"
+label = "Marksman Rifle Mk II"
+category = "snipers"
+price = 149000
+
+[[weapons]]
+name = "WEAPON_PRECISIONRIFLE"
+label = "Precision Rifle"
+category = "snipers"
+price = 450000
+
+# =============================================================================
+# HEAVY WEAPONS
+# =============================================================================
+
+[[weapons]]
+name = "WEAPON_RPG"
+label = "RPG"
+category = "heavy"
+price = 26250
+
+[[weapons]]
+name = "WEAPON_GRENADELAUNCHER"
+label = "Grenade Launcher"
+category = "heavy"
+price = 32400
+
+[[weapons]]
+name = "WEAPON_MINIGUN"
+label = "Minigun"
+category = "heavy"
+price = 50000
+
+[[weapons]]
+name = "WEAPON_FIREWORK"
+label = "Firework Launcher"
+category = "heavy"
+price = 60000
+
+[[weapons]]
+name = "WEAPON_RAILGUN"
+label = "Railgun"
+category = "heavy"
+price = 250000
+
+[[weapons]]
+name = "WEAPON_HOMINGLAUNCHER"
+label = "Homing Launcher"
+category = "heavy"
+price = 75000
+
+[[weapons]]
+name = "WEAPON_COMPACTLAUNCHER"
+label = "Compact Grenade Launcher"
+category = "heavy"
+price = 45900
+
+[[weapons]]
+name = "WEAPON_RAYMINIGUN"
+label = "Widowmaker"
+category = "heavy"
+price = 499000
+
+[[weapons]]
+name = "WEAPON_EMPLAUNCHER"
+label = "EMP Launcher"
+category = "heavy"
+price = 325000
+
+# =============================================================================
+# MELEE
+# =============================================================================
+
+[[weapons]]
+name = "WEAPON_KNIFE"
+label = "Knife"
+category = "melee"
+price = 0
+
+[[weapons]]
+name = "WEAPON_NIGHTSTICK"
+label = "Nightstick"
+category = "melee"
+price = 0
+
+[[weapons]]
+name = "WEAPON_HAMMER"
+label = "Hammer"
+category = "melee"
+price = 0
+
+[[weapons]]
+name = "WEAPON_BAT"
+label = "Baseball Bat"
+category = "melee"
+price = 0
+
+[[weapons]]
+name = "WEAPON_GOLFCLUB"
+label = "Golf Club"
+category = "melee"
+price = 0
+
+[[weapons]]
+name = "WEAPON_CROWBAR"
+label = "Crowbar"
+category = "melee"
+price = 0
+
+[[weapons]]
+name = "WEAPON_BOTTLE"
+label = "Broken Bottle"
+category = "melee"
+price = 0
+
+[[weapons]]
+name = "WEAPON_DAGGER"
+label = "Antique Cavalry Dagger"
+category = "melee"
+price = 2000
+
+[[weapons]]
+name = "WEAPON_HATCHET"
+label = "Hatchet"
+category = "melee"
+price = 0
+
+[[weapons]]
+name = "WEAPON_KNUCKLE"
+label = "Knuckle Dusters"
+category = "melee"
+price = 0
+
+[[weapons]]
+name = "WEAPON_MACHETE"
+label = "Machete"
+category = "melee"
+price = 0
+
+[[weapons]]
+name = "WEAPON_FLASHLIGHT"
+label = "Flashlight"
+category = "melee"
+price = 0
+
+[[weapons]]
+name = "WEAPON_SWITCHBLADE"
+label = "Switchblade"
+category = "melee"
+price = 1950
+
+[[weapons]]
+name = "WEAPON_POOLCUE"
+label = "Pool Cue"
+category = "melee"
+price = 0
+
+[[weapons]]
+name = "WEAPON_WRENCH"
+label = "Pipe Wrench"
+category = "melee"
+price = 0
+
+[[weapons]]
+name = "WEAPON_BATTLEAXE"
+label = "Battle Axe"
+category = "melee"
+price = 0
+
+[[weapons]]
+name = "WEAPON_STONE_HATCHET"
+label = "Stone Hatchet"
+category = "melee"
+price = 0
+
+# =============================================================================
+# THROWABLES
+# =============================================================================
+
+[[weapons]]
+name = "WEAPON_GRENADE"
+label = "Grenade"
+category = "throwables"
+price = 250
+
+[[weapons]]
+name = "WEAPON_BZGAS"
+label = "BZ Gas"
+category = "throwables"
+price = 150
+
+[[weapons]]
+name = "WEAPON_MOLOTOV"
+label = "Molotov Cocktail"
+category = "throwables"
+price = 200
+
+[[weapons]]
+name = "WEAPON_STICKYBOMB"
+label = "Sticky Bomb"
+category = "throwables"
+price = 600
+
+[[weapons]]
+name = "WEAPON_PROXMINE"
+label = "Proximity Mine"
+category = "throwables"
+price = 1000
+
+[[weapons]]
+name = "WEAPON_SNOWBALL"
+label = "Snowball"
+category = "throwables"
+price = 0
+
+[[weapons]]
+name = "WEAPON_PIPEBOMB"
+label = "Pipe Bomb"
+category = "throwables"
+price = 750
+
+[[weapons]]
+name = "WEAPON_BALL"
+label = "Ball"
+category = "throwables"
+price = 0
+
+[[weapons]]
+name = "WEAPON_SMOKEGRENADE"
+label = "Tear Gas"
+category = "throwables"
+price = 150
+
+[[weapons]]
+name = "WEAPON_FLARE"
+label = "Flare"
+category = "throwables"
+price = 0
+
+# =============================================================================
+# MISCELLANEOUS
+# =============================================================================
+
+[[weapons]]
+name = "WEAPON_PETROLCAN"
+label = "Jerry Can"
+category = "misc"
+price = 0
+
+[[weapons]]
+name = "WEAPON_FIREEXTINGUISHER"
+label = "Fire Extinguisher"
+category = "misc"
+price = 0
+
+[[weapons]]
+name = "WEAPON_HAZARDCAN"
+label = "Hazardous Jerry Can"
+category = "misc"
+price = 0
+
+[[weapons]]
+name = "WEAPON_FERTILIZERCAN"
+label = "Fertilizer Can"
+category = "misc"
+price = 0
+
+[[weapons]]
+name = "WEAPON_ACIDPACKAGE"
+label = "Acid Package"
+category = "misc"
+price = 0

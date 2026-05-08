@@ -1,4 +1,4 @@
-"""Generate VehicleList.cs from data/vehicles.toml + prices.toml.
+"""Generate VehicleList.cs from data/vehicles.toml + prices_vehicles.toml.
 
 Produces a C# static class with:
 - Per-class string arrays (model names)
@@ -67,7 +67,7 @@ def generate(db: VehicleDatabase, prices: dict[str, int]) -> str:
     lines: list[str] = []
     w = lines.append
 
-    w("// VehicleList.cs - Auto-generated from data/vehicles.toml + prices.toml")
+    w("// VehicleList.cs - Auto-generated from data/vehicles.toml + prices_vehicles.toml")
     w(f"// {len(db)} GTA Online DLC vehicles by class.")
     w("using System.Collections.Generic;")
     w("")

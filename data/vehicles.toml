@@ -2,7 +2,7 @@
 # GTA Online Vehicle Database
 # Every GTA Online-exclusive vehicle with model, display name, class,
 # manufacturer, and traffic group assignments.
-# Prices are stored separately in prices.toml.
+# Prices are stored separately in prices_vehicles.toml.
 # =============================================================================
 
 # =============================================================================

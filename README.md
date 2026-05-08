@@ -7,7 +7,7 @@ ALLIN1 is a mod installer that ports Online content into SP mode for GTA V.
 ## Features
 
 - A traffic spawn sytstem to integrate DLC content around Los Santos.
-- GBAY web portal to purchase/deliver DLC content.  (Vehicles can be made free in config.  Prices can be adjusted in the prices.toml file).
+- GBAY web portal to purchase/deliver DLC content.  (Can be made free in config.  Prices can be adjusted in prices_vehicles.toml and prices_weapons.toml).
 - DLC spawner for emergency vehicles. (Enable in config file).
 
 ## If you found this project useful, consider supporting me here: https://buymeacoffee.com/minionenjoyer Thank you!
