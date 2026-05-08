@@ -165,17 +165,19 @@ def uninstall(config: Config) -> list[Path]:
         removed.append(logo_file)
         log.info("Removed PHAT.png")
 
-    # Remove preview DLC pack (check both mods and original locations)
+    # Remove preview DLC pack (legacy — DLC approach replaced by script_txds.rpf)
     for base in ("mods/update", "update"):
         dlc_dir = gta_path / base / "x64" / "dlcpacks" / "allin1_previews"
         if dlc_dir.exists():
             shutil.rmtree(dlc_dir)
             removed.append(dlc_dir)
-            log.info("Removed preview DLC pack at %s", dlc_dir)
+            log.info("Removed legacy preview DLC pack at %s", dlc_dir)
 
-    # Unpatch dlclist.xml in mods/update/update.rpf (leave the RPF intact
-    # since other mods may also have entries in it)
+    # Unpatch dlclist.xml in mods/update/update.rpf (legacy cleanup)
     _unpatch_dlclist_rpf(gta_path)
+
+    # Remove ALLIN1 .ytd files from script_txds.rpf inside mods/update.rpf
+    _remove_preview_ytds(gta_path)
 
     # Remove -nobattleye from commandline.txt (or the whole file if it only
     # contained that flag).
@@ -331,41 +333,39 @@ def _check_openrpf(gta_path: Path, enhanced: bool) -> bool:
 
 
 def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
-    """Build .ytd texture dicts from preview PNGs and pack into dlc.rpf.
+    """Build .ytd texture dicts from preview PNGs and inject into script_txds.rpf.
 
-    The DLC pack uses a nested RPF structure matching Rockstar's own DLCs:
+    The .ytd files are injected directly into
+    ``mods/update/update.rpf/x64/textures/script_txds.rpf`` — the game's
+    standard location for streaming texture dictionaries that can be loaded
+    via ``REQUEST_STREAMED_TEXTURE_DICT`` / ``DRAW_SPRITE``.
 
-        dlc.rpf/
-          content.xml          — registers textures.rpf as RPF_FILE
-          setup2.xml           — DLC metadata
-          x64/textures/
-            textures.rpf       — nested RPF containing all .ytd files
-
-    This is built in two phases by RpfPatcher:
-    1. Build textures.rpf as standalone file from .ytd files
-    2. Build outer dlc.rpf from content.xml+setup2.xml, embedding textures.rpf
+    This is simpler and more reliable than the DLC pack approach because
+    ``script_txds.rpf`` is already indexed by the game's streaming system.
+    No separate DLC registration (dlclist.xml, content.xml, setup2.xml) is
+    needed.
     """
-    from allin1.generators import dlc_previews, ytd_builder
+    from allin1.generators import ytd_builder
 
     previews_src = _SCRIPT_DIST_DIR / "previews"
     logo_src = _SCRIPT_DIST_DIR / "PHAT.png"
 
     if not previews_src.is_dir():
-        log.warning("No previews/ directory found — skipping DLC pack build")
+        log.warning("No previews/ directory found — skipping preview build")
         result.warnings.append("Preview images not found; vehicle thumbnails "
                                "will show colored placeholders.")
         return
 
     ytdtoolio = _TOOLS_DIR / "YTDToolio.exe"
     if not ytdtoolio.exists():
-        log.warning("YTDToolio.exe not found — skipping DLC pack build. "
+        log.warning("YTDToolio.exe not found — skipping preview build. "
                      "Run runtools.ps1 first.")
         result.warnings.append("YTDToolio.exe missing; run runtools.ps1 first.")
         return
 
     rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
     if not rpf_patcher.exists():
-        log.warning("RpfPatcher.exe not found — skipping DLC pack build. "
+        log.warning("RpfPatcher.exe not found — skipping preview build. "
                      "Run runtools.ps1 first.")
         result.warnings.append("RpfPatcher.exe missing; run runtools.ps1 first.")
         return
@@ -375,7 +375,7 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
         log.warning("No PNG files found in previews/")
         return
 
-    log.info("Building preview DLC pack for %d vehicles...", len(models))
+    log.info("Building preview textures for %d vehicles...", len(models))
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -386,59 +386,35 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
             ytd_out, _TOOLS_DIR, models,
         )
 
-        # create_dlc_pack returns (dlc_root, ytd_staging_dir)
-        dlc_folder, ytd_staging = dlc_previews.create_dlc_pack(
-            ytd_files, tmp_path / "dlc")
-
-        # Build dlc.rpf with nested textures.rpf using RpfPatcher
-        # --embed-rpf builds textures.rpf from ytd_staging as a standalone
-        # RPF, then embeds its raw bytes at x64/textures/textures.rpf
-        # inside the outer dlc.rpf.
-        dlc_rpf_path = tmp_path / "dlc.rpf"
-        log.info("Packing DLC folder into dlc.rpf (with nested textures.rpf)...")
+        # Inject .ytd files directly into script_txds.rpf inside
+        # mods/update/update.rpf — the game's streaming system already
+        # knows to look there for texture dictionaries.
+        log.info("Injecting %d .ytd files into script_txds.rpf...", len(ytd_files))
         proc = subprocess.run(
-            [str(rpf_patcher), "build-dlc",
-             str(dlc_folder), str(dlc_rpf_path),
-             "--embed-rpf", str(ytd_staging), "x64/textures/textures.rpf"],
-            capture_output=True, text=True, timeout=120,
+            [str(rpf_patcher), "inject-ytd", str(gta_path), str(ytd_out)],
+            capture_output=True, text=True, timeout=300,
         )
         if proc.stdout:
             for line in proc.stdout.strip().splitlines():
                 log.info("RpfPatcher: %s", line)
         if proc.returncode != 0:
             error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
-            raise RuntimeError(f"RpfPatcher build-dlc failed: {error_msg}")
+            raise RuntimeError(f"RpfPatcher inject-ytd failed: {error_msg}")
 
-        dest_dir = dlc_previews.deploy_dlc_rpf(dlc_rpf_path, gta_path)
-        log.info("Preview DLC deployed (dlc.rpf with %d .ytd files in nested textures.rpf) -> %s",
-                 len(ytd_files), dest_dir)
+        log.info("Preview textures injected into script_txds.rpf (%d .ytd files)",
+                 len(ytd_files))
 
 
 def _patch_dlclist_rpf(gta_path: Path, result: InstallResult) -> None:
-    """Patch dlclist.xml inside update.rpf using the RpfPatcher tool."""
-    rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
-    if not rpf_patcher.exists():
-        msg = "RpfPatcher.exe not found. Run runtools.ps1 first."
-        log.warning(msg)
-        result.warnings.append(msg)
-        return
+    """No longer needed — textures are injected into script_txds.rpf.
 
-    log.info("Patching dlclist.xml in update.rpf...")
-    proc = subprocess.run(
-        [str(rpf_patcher), "patch", str(gta_path)],
-        capture_output=True, text=True, timeout=120,
-    )
-    if proc.stdout:
-        for line in proc.stdout.strip().splitlines():
-            log.info("RpfPatcher: %s", line)
-    if proc.returncode != 0:
-        error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
-        raise RuntimeError(f"RpfPatcher failed: {error_msg}")
-    log.info("dlclist.xml patched successfully.")
+    Kept as a no-op for now in case the DLC pack approach is revisited.
+    """
+    pass
 
 
 def _unpatch_dlclist_rpf(gta_path: Path) -> None:
-    """Remove ALLIN1 entry from dlclist.xml inside update.rpf."""
+    """Remove ALLIN1 entry from dlclist.xml inside update.rpf (legacy cleanup)."""
     rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
     if not rpf_patcher.exists():
         log.debug("RpfPatcher.exe not found — skipping dlclist unpatch")
@@ -457,3 +433,29 @@ def _unpatch_dlclist_rpf(gta_path: Path) -> None:
                         (proc.stderr or "")[:300])
     except Exception as exc:
         log.warning("Could not unpatch dlclist.xml: %s", exc)
+
+
+def _remove_preview_ytds(gta_path: Path) -> None:
+    """Remove ALLIN1 preview .ytd files from script_txds.rpf."""
+    rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
+    if not rpf_patcher.exists():
+        log.debug("RpfPatcher.exe not found — skipping ytd removal")
+        return
+
+    # Remove all .ytd files whose name starts with "allin1_"
+    try:
+        proc = subprocess.run(
+            [str(rpf_patcher), "remove-ytd", str(gta_path), "allin1_"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if proc.stdout:
+            for line in proc.stdout.strip().splitlines():
+                log.info("RpfPatcher: %s", line)
+        if proc.returncode == 0:
+            log.info("Removed ALLIN1 .ytd files from script_txds.rpf")
+        else:
+            log.warning("RpfPatcher remove-ytd failed (rc=%d): %s",
+                        proc.returncode,
+                        (proc.stderr or "")[:300])
+    except Exception as exc:
+        log.warning("Could not remove .ytd files from script_txds.rpf: %s", exc)

@@ -2,10 +2,12 @@
 // Uses CodeWalker.Core to read/write RPF7 archives.
 //
 // Commands:
-//   RpfPatcher.exe patch     <gta_path>                  — add allin1_previews to dlclist.xml
-//   RpfPatcher.exe unpatch   <gta_path>                  — remove allin1_previews from dlclist.xml
-//   RpfPatcher.exe build-dlc <loose_folder> <output_rpf> [--embed-rpf <src_folder> <dest_path>]
-//   RpfPatcher.exe inspect   <gta_path> <rpf_path>       — dump RPF structure + XML contents
+//   RpfPatcher.exe inject-ytd <gta_path> <ytd_folder>    — inject .ytd files into script_txds.rpf
+//   RpfPatcher.exe remove-ytd <gta_path> <prefix>        — remove ALLIN1 .ytd files from script_txds.rpf
+//   RpfPatcher.exe patch      <gta_path>                 — add allin1_previews to dlclist.xml
+//   RpfPatcher.exe unpatch    <gta_path>                 — remove allin1_previews from dlclist.xml
+//   RpfPatcher.exe build-dlc  <loose_folder> <output_rpf> [--embed-rpf <src_folder> <dest_path>]
+//   RpfPatcher.exe inspect    <gta_path> <rpf_path>      — dump RPF structure + XML contents
 
 using System;
 using System.IO;
@@ -26,15 +28,21 @@ namespace RpfPatcher
             {
                 Console.Error.WriteLine(
                     "Usage:\n" +
-                    "  RpfPatcher.exe patch     <gta_path>\n" +
-                    "  RpfPatcher.exe unpatch   <gta_path>\n" +
-                    "  RpfPatcher.exe build-dlc <loose_folder> <output_rpf> [--embed-rpf <src> <dest>]\n" +
-                    "  RpfPatcher.exe inspect   <gta_path> <rpf_path>");
+                    "  RpfPatcher.exe inject-ytd <gta_path> <ytd_folder>\n" +
+                    "  RpfPatcher.exe remove-ytd <gta_path> <prefix>\n" +
+                    "  RpfPatcher.exe patch      <gta_path>\n" +
+                    "  RpfPatcher.exe unpatch    <gta_path>\n" +
+                    "  RpfPatcher.exe build-dlc  <loose_folder> <output_rpf> [--embed-rpf <src> <dest>]\n" +
+                    "  RpfPatcher.exe inspect    <gta_path> <rpf_path>");
                 return 1;
             }
 
             string command = args[0].ToLower();
 
+            if (command == "inject-ytd")
+                return InjectYtd(args);
+            if (command == "remove-ytd")
+                return RemoveYtd(args);
             if (command == "build-dlc")
                 return BuildDlc(args);
             if (command == "inspect")
@@ -44,6 +52,261 @@ namespace RpfPatcher
 
             Console.Error.WriteLine($"ERROR: Unknown command '{command}'.");
             return 1;
+        }
+
+        // ================================================================
+        //  Shared: Open mods/update/update.rpf with encryption keys
+        // ================================================================
+
+        /// <summary>
+        /// Detect edition, load keys, copy update.rpf to mods/ if needed,
+        /// open and scan the mods copy, convert to OPEN encryption.
+        /// Returns the opened RpfFile or null on failure (error printed).
+        /// </summary>
+        static RpfFile OpenModsUpdateRpf(string gtaPath, out int errorCode)
+        {
+            errorCode = 0;
+
+            bool isGen9 = File.Exists(Path.Combine(gtaPath, "GTA5_Enhanced.exe"))
+                       || File.Exists(Path.Combine(gtaPath, "eboot.bin"));
+            string exeName = isGen9 ? "GTA5_Enhanced.exe" : "GTA5.exe";
+
+            if (!File.Exists(Path.Combine(gtaPath, exeName)))
+            {
+                Console.Error.WriteLine($"ERROR: {exeName} not found in {gtaPath}");
+                errorCode = 2;
+                return null;
+            }
+
+            Console.WriteLine($"Edition: {(isGen9 ? "Enhanced" : "Legacy")}");
+
+            Console.WriteLine("Loading encryption keys...");
+            GTA5Keys.LoadFromPath(gtaPath, isGen9, null);
+
+            if (GTA5Keys.PC_AES_KEY == null)
+            {
+                Console.Error.WriteLine("ERROR: Failed to load encryption keys.");
+                errorCode = 3;
+                return null;
+            }
+            Console.WriteLine("Encryption keys loaded.");
+
+            string originalRpf = Path.Combine(gtaPath, "update", "update.rpf");
+            string modsDir = Path.Combine(gtaPath, "mods", "update");
+            string modsRpf = Path.Combine(modsDir, "update.rpf");
+
+            if (!File.Exists(originalRpf))
+            {
+                Console.Error.WriteLine($"ERROR: {originalRpf} not found");
+                errorCode = 4;
+                return null;
+            }
+
+            if (Directory.Exists(modsRpf))
+            {
+                Console.WriteLine($"Removing stale directory at {modsRpf}...");
+                Directory.Delete(modsRpf, true);
+            }
+
+            if (!File.Exists(modsRpf))
+            {
+                Console.WriteLine($"Copying update.rpf to mods folder...");
+                Directory.CreateDirectory(modsDir);
+                File.Copy(originalRpf, modsRpf);
+                Console.WriteLine("Copied update.rpf to mods folder.");
+            }
+            else
+            {
+                Console.WriteLine("Mods copy of update.rpf already exists.");
+            }
+
+            Console.WriteLine($"Opening {modsRpf}...");
+            var rpf = new RpfFile(modsRpf, modsRpf);
+            rpf.ScanStructure(null, err => Console.Error.WriteLine($"RPF scan warning: {err}"));
+
+            if (rpf.AllEntries == null || rpf.AllEntries.Count == 0)
+            {
+                Console.Error.WriteLine("ERROR: RPF scan returned no entries.");
+                errorCode = 4;
+                return null;
+            }
+
+            Console.WriteLine($"RPF scanned: {rpf.AllEntries.Count} entries");
+
+            Console.WriteLine("Ensuring OPEN encryption...");
+            RpfFile.EnsureValidEncryption(rpf, null, true);
+            Console.WriteLine("Encryption converted to OPEN.");
+
+            return rpf;
+        }
+
+        /// <summary>Find script_txds.rpf nested inside update.rpf.</summary>
+        static RpfFile FindScriptTxdsRpf(RpfFile updateRpf)
+        {
+            // Path: x64/textures/script_txds.rpf (nested RPF inside update.rpf)
+            if (updateRpf.Children == null) return null;
+
+            foreach (var child in updateRpf.Children)
+            {
+                if (child.Name != null &&
+                    child.Name.Equals("script_txds.rpf", StringComparison.OrdinalIgnoreCase))
+                    return child;
+            }
+
+            // Search deeper — it might be nested inside another child
+            foreach (var child in updateRpf.Children)
+            {
+                var found = FindScriptTxdsRpf(child);
+                if (found != null) return found;
+            }
+
+            return null;
+        }
+
+        // ================================================================
+        //  inject-ytd: Add .ytd files into script_txds.rpf inside
+        //  mods/update/update.rpf so they're available via
+        //  REQUEST_STREAMED_TEXTURE_DICT.
+        // ================================================================
+
+        static int InjectYtd(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe inject-ytd <gta_path> <ytd_folder>");
+                return 1;
+            }
+
+            string gtaPath = args[1];
+            string ytdFolder = args[2];
+
+            if (!Directory.Exists(ytdFolder))
+            {
+                Console.Error.WriteLine($"ERROR: Folder not found: {ytdFolder}");
+                return 4;
+            }
+
+            string[] ytdFiles = Directory.GetFiles(ytdFolder, "*.ytd");
+            if (ytdFiles.Length == 0)
+            {
+                Console.Error.WriteLine("ERROR: No .ytd files found in folder.");
+                return 4;
+            }
+
+            try
+            {
+                var rpf = OpenModsUpdateRpf(gtaPath, out int err);
+                if (rpf == null) return err;
+
+                var scriptTxds = FindScriptTxdsRpf(rpf);
+                if (scriptTxds == null)
+                {
+                    Console.Error.WriteLine(
+                        "ERROR: script_txds.rpf not found inside update.rpf");
+                    return 5;
+                }
+
+                Console.WriteLine($"Found script_txds.rpf ({scriptTxds.AllEntries?.Count ?? 0} entries)");
+
+                int injected = 0;
+                foreach (string ytdPath in ytdFiles)
+                {
+                    string fileName = Path.GetFileName(ytdPath);
+                    byte[] data = File.ReadAllBytes(ytdPath);
+
+                    // Check if already exists — overwrite if so
+                    var existing = scriptTxds.AllEntries?
+                        .OfType<RpfFileEntry>()
+                        .FirstOrDefault(e => e.Name != null &&
+                            e.Name.Equals(fileName, StringComparison.OrdinalIgnoreCase));
+
+                    if (existing != null)
+                    {
+                        RpfFile.CreateFile(existing.Parent, fileName, data, true);
+                        Console.WriteLine($"  ~ {fileName} ({data.Length:N0} bytes, replaced)");
+                    }
+                    else
+                    {
+                        RpfFile.CreateFile(scriptTxds.Root, fileName, data, true);
+                        Console.WriteLine($"  + {fileName} ({data.Length:N0} bytes)");
+                    }
+                    injected++;
+                }
+
+                Console.WriteLine($"Injected {injected} .ytd files into script_txds.rpf.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                Console.Error.WriteLine(ex.StackTrace);
+                return 99;
+            }
+        }
+
+        // ================================================================
+        //  remove-ytd: Remove .ytd files matching a prefix from
+        //  script_txds.rpf inside mods/update/update.rpf.
+        // ================================================================
+
+        static int RemoveYtd(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe remove-ytd <gta_path> <prefix>\n" +
+                    "  Removes all .ytd entries whose name starts with <prefix>.");
+                return 1;
+            }
+
+            string gtaPath = args[1];
+            string prefix = args[2].ToLowerInvariant();
+
+            try
+            {
+                var rpf = OpenModsUpdateRpf(gtaPath, out int err);
+                if (rpf == null) return err;
+
+                var scriptTxds = FindScriptTxdsRpf(rpf);
+                if (scriptTxds == null)
+                {
+                    Console.Error.WriteLine(
+                        "ERROR: script_txds.rpf not found inside update.rpf");
+                    return 5;
+                }
+
+                Console.WriteLine($"Found script_txds.rpf ({scriptTxds.AllEntries?.Count ?? 0} entries)");
+
+                // Find matching entries
+                var toRemove = scriptTxds.AllEntries?
+                    .OfType<RpfFileEntry>()
+                    .Where(e => e.Name != null &&
+                        e.Name.ToLowerInvariant().StartsWith(prefix) &&
+                        e.Name.ToLowerInvariant().EndsWith(".ytd"))
+                    .ToList() ?? new System.Collections.Generic.List<RpfFileEntry>();
+
+                if (toRemove.Count == 0)
+                {
+                    Console.WriteLine($"No .ytd files matching prefix '{prefix}' found.");
+                    return 0;
+                }
+
+                foreach (var entry in toRemove)
+                {
+                    RpfFile.DeleteEntry(entry);
+                    Console.WriteLine($"  - {entry.Name}");
+                }
+
+                Console.WriteLine($"Removed {toRemove.Count} .ytd files from script_txds.rpf.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                Console.Error.WriteLine(ex.StackTrace);
+                return 99;
+            }
         }
 
         // ================================================================
@@ -391,79 +654,8 @@ namespace RpfPatcher
 
             try
             {
-                // --- Detect edition ---
-                bool isGen9 = File.Exists(Path.Combine(gtaPath, "GTA5_Enhanced.exe"))
-                           || File.Exists(Path.Combine(gtaPath, "eboot.bin"));
-                string exeName = isGen9 ? "GTA5_Enhanced.exe" : "GTA5.exe";
-
-                if (!File.Exists(Path.Combine(gtaPath, exeName)))
-                {
-                    Console.Error.WriteLine($"ERROR: {exeName} not found in {gtaPath}");
-                    return 2;
-                }
-
-                Console.WriteLine($"Edition: {(isGen9 ? "Enhanced" : "Legacy")}");
-
-                // --- Load encryption keys from game exe ---
-                Console.WriteLine("Loading encryption keys...");
-                GTA5Keys.LoadFromPath(gtaPath, isGen9, null);
-
-                if (GTA5Keys.PC_AES_KEY == null)
-                {
-                    Console.Error.WriteLine("ERROR: Failed to load encryption keys from game executable.");
-                    return 3;
-                }
-
-                Console.WriteLine("Encryption keys loaded.");
-
-                // --- Set up mods folder copy of update.rpf ---
-                string originalRpf = Path.Combine(gtaPath, "update", "update.rpf");
-                string modsDir = Path.Combine(gtaPath, "mods", "update");
-                string modsRpf = Path.Combine(modsDir, "update.rpf");
-
-                if (!File.Exists(originalRpf))
-                {
-                    Console.Error.WriteLine($"ERROR: {originalRpf} not found");
-                    return 4;
-                }
-
-                // If a directory exists at the target path (left by another tool),
-                // remove it so we can place the RPF file there.
-                if (Directory.Exists(modsRpf))
-                {
-                    Console.WriteLine($"Removing stale directory at {modsRpf}...");
-                    Directory.Delete(modsRpf, true);
-                }
-
-                if (!File.Exists(modsRpf))
-                {
-                    Console.WriteLine($"Copying update.rpf to mods folder ({modsDir})...");
-                    Directory.CreateDirectory(modsDir);
-                    File.Copy(originalRpf, modsRpf);
-                    Console.WriteLine("Copied update.rpf to mods folder.");
-                }
-                else
-                {
-                    Console.WriteLine("Mods copy of update.rpf already exists.");
-                }
-
-                // --- Open the mods copy ---
-                Console.WriteLine($"Opening {modsRpf}...");
-                var rpf = new RpfFile(modsRpf, modsRpf);
-                rpf.ScanStructure(null, err => Console.Error.WriteLine($"RPF scan warning: {err}"));
-
-                if (rpf.AllEntries == null || rpf.AllEntries.Count == 0)
-                {
-                    Console.Error.WriteLine("ERROR: RPF scan returned no entries.");
-                    return 4;
-                }
-
-                Console.WriteLine($"RPF scanned: {rpf.AllEntries.Count} entries");
-
-                // --- Convert mods copy to OPEN encryption (recursively) ---
-                Console.WriteLine("Ensuring mods RPF uses OPEN encryption...");
-                RpfFile.EnsureValidEncryption(rpf, null, true);
-                Console.WriteLine("Encryption converted to OPEN.");
+                var rpf = OpenModsUpdateRpf(gtaPath, out int err);
+                if (rpf == null) return err;
 
                 // --- Find dlclist.xml ---
                 var dlclistEntry = FindFileRecursive(rpf, "dlclist.xml");
