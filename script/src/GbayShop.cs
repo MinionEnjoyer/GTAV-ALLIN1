@@ -526,10 +526,12 @@ namespace ALLIN1
         // ------------------------------------------------------------------ //
 
         private const string BALLISTIC_CLIPSET = "ANIM_GROUP_MOVE_BALLISTIC";
-        private const int JUGGERNAUT_MAX_HEALTH = 800;
+        private const int JUGGERNAUT_MAX_HEALTH = 1000;
         private static int _lastKnownHealth;
         private static int _savedPropDrawable;
         private static int _savedPropTexture;
+        private static int _savedEarPropDrawable;
+        private static int _savedEarPropTexture;
 
         private void ApplyJuggernaut(Ped player)
         {
@@ -544,20 +546,25 @@ namespace ALLIN1
                     Hash.GET_PED_TEXTURE_VARIATION, player, i);
             }
 
-            // Save helmet/hat prop
+            // Save helmet/hat prop and ear prop
             _savedPropDrawable = Function.Call<int>(
                 Hash.GET_PED_PROP_INDEX, player, 0);
             _savedPropTexture = Function.Call<int>(
                 Hash.GET_PED_PROP_TEXTURE_INDEX, player, 0);
+            _savedEarPropDrawable = Function.Call<int>(
+                Hash.GET_PED_PROP_INDEX, player, 2);
+            _savedEarPropTexture = Function.Call<int>(
+                Hash.GET_PED_PROP_TEXTURE_INDEX, player, 2);
 
             // Apply Paleto Score ballistic outfit
-            ApplyBallisticOutfit(player);
+            PedHash ch = GetCurrentCharacter();
+            ApplyBallisticOutfit(player, ch);
 
-            // Health + armor boost (5-10x effective HP from damage reduction)
+            // Health boost to 1000 (matches Paleto Score mission values)
             _savedMaxHealth = player.MaxHealth;
             player.MaxHealth = JUGGERNAUT_MAX_HEALTH;
             player.Health = JUGGERNAUT_MAX_HEALTH;
-            player.Armor = 100;
+            player.Armor = 0; // armor value isn't what makes it tanky
             _lastKnownHealth = JUGGERNAUT_MAX_HEALTH;
 
             // Disable headshot bonus damage
@@ -600,6 +607,13 @@ namespace ALLIN1
             else
                 Function.Call(Hash.CLEAR_PED_PROP, player, 0);
 
+            // Restore ear prop
+            if (_savedEarPropDrawable >= 0)
+                Function.Call(Hash.SET_PED_PROP_INDEX, player, 2,
+                    _savedEarPropDrawable, _savedEarPropTexture, true);
+            else
+                Function.Call(Hash.CLEAR_PED_PROP, player, 2);
+
             // Restore health
             player.MaxHealth = _savedMaxHealth > 0 ? _savedMaxHealth : 200;
             if (player.Health > player.MaxHealth)
@@ -614,17 +628,52 @@ namespace ALLIN1
             JuggernautActive = false;
         }
 
-        private static void ApplyBallisticOutfit(Ped player)
+        private static void ApplyBallisticOutfit(Ped player, PedHash ch)
         {
-            // Paleto Score juggernaut suit drawable IDs from extracted assets:
-            //   uppr_020_u.ydd  -> Component 11 (Torso/Upper), drawable 20
-            //   lowr_012_u.ydd  -> Component 4  (Legs/Lower),  drawable 12
-            //   p_head_018.ydd  -> Prop 0       (Helmet),      drawable 18
+            // Paleto Score juggernaut suit — confirmed in-game on Enhanced Edition
+            // via F10 debug overlay during the heist mission.
             //
-            // These are the same across story-mode protagonists.
-            Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 11, 20, 0, 0);  // torso armor
-            Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 4, 12, 0, 0);   // leg armor
-            Function.Call(Hash.SET_PED_PROP_INDEX, player, 0, 18, 0, true);         // ballistic helmet
+            // The suit is built from multiple component slots + helmet prop.
+            // Each character has different drawable IDs.
+
+            if (ch == PedHash.Michael)
+            {
+                // Michael — captured during Paleto Score (Enhanced)
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 3,  5, 1, 0); // torso
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 4,  5, 1, 0); // legs
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 5,  1, 1, 0); // hands
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 6,  1, 1, 0); // shoes
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 8,  5, 2, 0); // shirt/accessory
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 9,  1, 2, 0); // body armor
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 11, 0, 1, 0); // aux/torso2
+                Function.Call(Hash.SET_PED_PROP_INDEX, player, 0, 26, 1, true);       // helmet
+                Function.Call(Hash.SET_PED_PROP_INDEX, player, 2,  0, 1, true);       // ears
+            }
+            else if (ch == PedHash.Trevor)
+            {
+                // Trevor — captured during Paleto Score (Enhanced)
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 3,  2, 1, 0); // torso
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 4,  2, 1, 0); // legs
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 5,  1, 1, 0); // hands
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 6,  1, 1, 0); // shoes
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 8,  2, 1, 0); // shirt/accessory
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 9,  1, 4, 0); // body armor
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 11, 0, 0, 0); // aux/torso2
+                Function.Call(Hash.SET_PED_PROP_INDEX, player, 0, 24, 1, true);       // helmet
+            }
+            else
+            {
+                // Franklin — not yet captured, use Michael's pattern as base.
+                // TODO: capture actual Franklin IDs during Paleto Score replay.
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 3,  5, 1, 0); // torso
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 4,  5, 1, 0); // legs
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 5,  1, 1, 0); // hands
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 6,  1, 1, 0); // shoes
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 8,  5, 2, 0); // shirt/accessory
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 9,  1, 2, 0); // body armor
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 11, 0, 1, 0); // aux/torso2
+                Function.Call(Hash.SET_PED_PROP_INDEX, player, 0, 26, 1, true);       // helmet
+            }
         }
 
         /// <summary>
