@@ -93,8 +93,8 @@ namespace ALLIN1
 
         // Top menu button layout
         private const float TOP_BTN_W      = 0.35f;
-        private const float TOP_BTN_H      = 0.08f;
-        private const float TOP_BTN_GAP    = 0.025f;
+        private const float TOP_BTN_H      = 0.065f;
+        private const float TOP_BTN_GAP    = 0.018f;
 
         // Delivery modal
         private const float MODAL_W        = 0.45f;
@@ -355,19 +355,24 @@ namespace ALLIN1
 
         private void DrawTopMenu(FrameInput input)
         {
-            // Background panel
+            // Layout constants for 4 buttons + logo, centered on screen
             float panelW = 0.40f;
-            float panelH = 0.40f;
-            GbayRenderer.DrawRect(BROWSER_CX, 0.5f, panelW, panelH,
+            float panelH = 0.50f;
+            float panelCY = 0.50f;
+            float panelTop = panelCY - panelH / 2f;  // 0.25
+
+            GbayRenderer.DrawRect(BROWSER_CX, panelCY, panelW, panelH,
                 GbayRenderer.ModalBg);
 
             // Logo
-            GbayRenderer.DrawLogo(BROWSER_CX, 0.36f, 0.12f);
+            float logoH = 0.10f;
+            float logoCY = panelTop + 0.03f + logoH / 2f;  // 0.33
+            GbayRenderer.DrawLogo(BROWSER_CX, logoCY, logoH);
 
             // Buttons
             string[] labels = { "Vehicles", "Weapons", "Gear", "My Garage" };
             bool[] enabled = { true, true, true, true };
-            float startY = 0.39f;
+            float startY = panelTop + 0.03f + logoH + 0.025f;  // 0.405
 
             _topMenuHover = -1;
 
@@ -401,8 +406,8 @@ namespace ALLIN1
                 }
 
                 GbayRenderer.DrawRect(BROWSER_CX, btnCY, TOP_BTN_W, TOP_BTN_H, bg);
-                GbayRenderer.DrawText(labels[i], BROWSER_CX, btnY + 0.018f,
-                    0.50f, text, GbayRenderer.FONT_CHALET, true);
+                GbayRenderer.DrawText(labels[i], BROWSER_CX, btnY + 0.014f,
+                    0.45f, text, GbayRenderer.FONT_CHALET, true);
             }
 
             // Input handling
