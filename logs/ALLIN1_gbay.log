@@ -1,15 +1,15 @@
-[03:59:06] Initialize() starting
-[03:59:06] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
-[03:59:06] [Garage] Loaded 5 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garage.json
-[03:59:06] [Garage] GarageManager initialized (Eclipse Towers 10-car interior)
-[03:59:06] GarageManager initialized
-[03:59:06] Creating GbayBrowser
-[03:59:06] GbayBrowser created
-[03:59:06] Initialize() complete
-[03:59:06.913] [Browser] Toggle() called, current state=Closed
-[03:59:06.913] [Browser] Opening: setting state=TopMenu
-[03:59:06.913] [Browser] Calling EnsureTextures
-[03:59:06.914] [Browser] Calling RequestDict(allin1_logo)
-[03:59:06.915] [Browser] Toggle open complete
-[03:59:06.921] [Browser] Draw alive: state=TopMenu frame=1
-[03:59:07.929] [Browser] Draw alive: state=TopMenu frame=82
+[04:16:25] Initialize() starting
+[04:16:25] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[04:16:25] [Garage] Loaded 5 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garage.json
+[04:16:25] [Garage] GarageManager initialized (Eclipse Towers 10-car interior)
+[04:16:25] GarageManager initialized
+[04:16:25] Creating GbayBrowser
+[04:16:25] GbayBrowser created
+[04:16:25] Initialize() complete
+[04:16:25.527] [Browser] Toggle() called, current state=Closed
+[04:16:25.527] [Browser] Opening: setting state=TopMenu
+[04:16:25.528] [Browser] Calling EnsureTextures
+[04:16:25.528] [Browser] Calling RequestDict(allin1_logo)
+[04:16:25.529] [Browser] Toggle open complete
+[04:16:25.536] [Browser] Draw alive: state=TopMenu frame=1
+[04:16:26.541] [Browser] Draw alive: state=TopMenu frame=78
