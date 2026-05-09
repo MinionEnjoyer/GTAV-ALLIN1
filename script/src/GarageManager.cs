@@ -51,7 +51,7 @@ namespace ALLIN1
 
         // Entrance marker on the street near Eclipse Towers
         private static readonly Vector3 ENTRANCE_POS =
-            new Vector3(-773.4f, 341.8f, 85.7f);
+            new Vector3(-796f, 303f, 85.2f);
 
         // Player spawn point inside the garage interior
         private static readonly Vector3 INTERIOR_SPAWN =
