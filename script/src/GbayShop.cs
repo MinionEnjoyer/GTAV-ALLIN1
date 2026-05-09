@@ -346,6 +346,47 @@ namespace ALLIN1
             return totalCost;
         }
 
+        // ------------------------------------------------------------------ //
+        //  Gear Purchase (called by GbayBrowser)                              //
+        // ------------------------------------------------------------------ //
+
+        internal void ExecuteGiveGear(string gearId, int price)
+        {
+            Ped player = Game.Player.Character;
+
+            // Check funds
+            if (!_freeMode && price > 0 && Game.Player.Money < price)
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~Insufficient funds.", 3000);
+                return;
+            }
+
+            if (gearId == GearList.ARMOR_ID)
+            {
+                // Set armor to 100
+                Function.Call((Hash)0xCEA04D83135264CC, player, 100);  // SET_PED_ARMOUR
+            }
+            else
+            {
+                // Give as weapon/gadget
+                Hash itemHash = (Hash)Game.GenerateHash(gearId);
+                Function.Call((Hash)0xBF0FD6E56C964FCB,
+                    player, itemHash, 1, false, true);  // GIVE_WEAPON_TO_PED
+            }
+
+            if (!_freeMode && price > 0)
+                Game.Player.Money -= price;
+
+            string displayName = GearList.DisplayNames.ContainsKey(gearId)
+                ? GearList.DisplayNames[gearId] : gearId;
+            string msg = _freeMode || price <= 0
+                ? $"~g~{displayName}~w~ acquired!"
+                : $"~g~{displayName}~w~ purchased for ~g~${price:N0}";
+            GTA.UI.Screen.ShowSubtitle(msg, 3000);
+
+            Log($"GiveGear: {gearId}, price=${price}");
+        }
+
         /// <summary>
         /// Get the ammo refill cost for an owned weapon. Returns -1 if not
         /// applicable (melee/misc), 0 if fully stocked, otherwise the cost.
