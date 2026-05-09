@@ -1835,9 +1835,19 @@ namespace ALLIN1
             // Status or price
             if (card.Owned)
             {
-                string statusText = GearList.IsArmor(card.GearId) ? "EQUIPPED" : "OWNED";
-                GbayRenderer.DrawText(statusText, textLeft, statusY,
-                    0.28f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CHALET);
+                if (GearList.IsArmor(card.GearId))
+                {
+                    GbayRenderer.DrawText("EQUIPPED", textLeft, statusY,
+                        0.24f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CONDENSED);
+                    GbayRenderer.DrawText("[Enter] Remove", textRight, statusY,
+                        0.22f, Color.FromArgb(255, 200, 80, 80), GbayRenderer.FONT_CONDENSED,
+                        false, false, true);
+                }
+                else
+                {
+                    GbayRenderer.DrawText("OWNED", textLeft, statusY,
+                        0.28f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CHALET);
+                }
             }
             else
             {
@@ -1858,7 +1868,7 @@ namespace ALLIN1
             GbayRenderer.DrawText(pageText, BROWSER_LEFT + 0.02f, FOOTER_Y + 0.012f,
                 0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
 
-            string hints = "[Q/E] Page   [Z/X] Category   [Enter] Buy   [Esc] Back";
+            string hints = "[Q/E] Page   [Z/X] Category   [Enter] Buy/Remove   [Esc] Back";
             GbayRenderer.DrawText(hints, BROWSER_RIGHT - 0.01f, FOOTER_Y + 0.012f,
                 0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED,
                 false, false, true);
@@ -1945,15 +1955,17 @@ namespace ALLIN1
                 {
                     GearCard card = _gearFiltered[idx];
 
-                    if (card.Owned && !GearList.IsArmor(card.GearId))
+                    if (card.Owned && GearList.IsArmor(card.GearId))
+                    {
+                        // Equipped armor -> remove it
+                        GbayRenderer.PlaySelect();
+                        _shop.ExecuteRemoveArmor(card.GearId);
+                        RebuildGearFilteredList();
+                    }
+                    else if (card.Owned)
                     {
                         GbayRenderer.PlayError();
                         GTA.UI.Screen.ShowSubtitle("~y~Already owned.", 3000);
-                    }
-                    else if (card.GearId == GearList.ARMOR_JUGGERNAUT && GbayShop.JuggernautActive)
-                    {
-                        GbayRenderer.PlayError();
-                        GTA.UI.Screen.ShowSubtitle("~y~Juggernaut armor already equipped.", 3000);
                     }
                     else
                     {

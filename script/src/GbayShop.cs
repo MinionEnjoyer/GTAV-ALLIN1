@@ -523,6 +523,30 @@ namespace ALLIN1
         }
 
         // ------------------------------------------------------------------ //
+        //  Armor Removal (called by GbayBrowser gear tab)                     //
+        // ------------------------------------------------------------------ //
+
+        internal void ExecuteRemoveArmor(string gearId)
+        {
+            Ped player = Game.Player.Character;
+
+            if (gearId == GearList.ARMOR_JUGGERNAUT)
+            {
+                RemoveJuggernaut(player);
+                GTA.UI.Screen.ShowSubtitle("~y~Juggernaut Armor~w~ removed.", 3000);
+                Log("RemoveArmor: juggernaut removed");
+            }
+            else
+            {
+                player.Armor = 0;
+                string displayName = GearList.DisplayNames.ContainsKey(gearId)
+                    ? GearList.DisplayNames[gearId] : gearId;
+                GTA.UI.Screen.ShowSubtitle($"~y~{displayName}~w~ removed.", 3000);
+                Log($"RemoveArmor: {gearId} removed (armor set to 0)");
+            }
+        }
+
+        // ------------------------------------------------------------------ //
         //  Juggernaut Armor                                                   //
         // ------------------------------------------------------------------ //
 
