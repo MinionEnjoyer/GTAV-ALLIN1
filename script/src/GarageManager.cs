@@ -202,13 +202,13 @@ namespace ALLIN1
                 // Create entrance blip
                 _entranceBlip = World.CreateBlip(ENTRANCE_POS);
                 _entranceBlip.Sprite = BlipSprite.Garage;
-                _entranceBlip.Color = BlipColor.Green;
+                _entranceBlip.Color = BlipColor.White;
                 _entranceBlip.Name = "ALLIN1 Garage (Vehicle)";
                 _entranceBlip.IsShortRange = true;
 
                 _pedEntranceBlip = World.CreateBlip(PED_EXIT_DEST);
                 _pedEntranceBlip.Sprite = BlipSprite.Garage;
-                _pedEntranceBlip.Color = BlipColor.Green;
+                _pedEntranceBlip.Color = BlipColor.White;
                 _pedEntranceBlip.Name = "ALLIN1 Garage (Pedestrian)";
                 _pedEntranceBlip.IsShortRange = true;
 
