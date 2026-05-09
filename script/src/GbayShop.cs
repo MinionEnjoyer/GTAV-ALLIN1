@@ -526,7 +526,10 @@ namespace ALLIN1
         // ------------------------------------------------------------------ //
 
         private const string BALLISTIC_CLIPSET = "ANIM_GROUP_MOVE_BALLISTIC";
-        private const int JUGGERNAUT_MAX_HEALTH = 500;
+        private const int JUGGERNAUT_MAX_HEALTH = 800;
+        private static int _lastKnownHealth;
+        private static int _savedPropDrawable;
+        private static int _savedPropTexture;
 
         private void ApplyJuggernaut(Ped player)
         {
@@ -541,15 +544,21 @@ namespace ALLIN1
                     Hash.GET_PED_TEXTURE_VARIATION, player, i);
             }
 
-            // Apply Paleto Score ballistic outfit per character
-            PedHash ch = GetCurrentCharacter();
-            ApplyBallisticOutfit(player, ch);
+            // Save helmet/hat prop
+            _savedPropDrawable = Function.Call<int>(
+                Hash.GET_PED_PROP_INDEX, player, 0);
+            _savedPropTexture = Function.Call<int>(
+                Hash.GET_PED_PROP_TEXTURE_INDEX, player, 0);
 
-            // Health + armor boost
+            // Apply Paleto Score ballistic outfit
+            ApplyBallisticOutfit(player);
+
+            // Health + armor boost (5-10x effective HP from damage reduction)
             _savedMaxHealth = player.MaxHealth;
             player.MaxHealth = JUGGERNAUT_MAX_HEALTH;
             player.Health = JUGGERNAUT_MAX_HEALTH;
             player.Armor = 100;
+            _lastKnownHealth = JUGGERNAUT_MAX_HEALTH;
 
             // Disable headshot bonus damage
             player.CanSufferCriticalHits = false;
@@ -584,6 +593,13 @@ namespace ALLIN1
                 }
             }
 
+            // Restore helmet/hat prop
+            if (_savedPropDrawable >= 0)
+                Function.Call(Hash.SET_PED_PROP_INDEX, player, 0,
+                    _savedPropDrawable, _savedPropTexture, true);
+            else
+                Function.Call(Hash.CLEAR_PED_PROP, player, 0);
+
             // Restore health
             player.MaxHealth = _savedMaxHealth > 0 ? _savedMaxHealth : 200;
             if (player.Health > player.MaxHealth)
@@ -598,54 +614,22 @@ namespace ALLIN1
             JuggernautActive = false;
         }
 
-        private static void ApplyBallisticOutfit(Ped player, PedHash ch)
+        private static void ApplyBallisticOutfit(Ped player)
         {
-            // Component slots:
-            // 0=Head, 1=Beard/Mask, 2=Hair, 3=Torso, 4=Legs,
-            // 5=Hands, 6=Shoes, 7=Neck/Scarf, 8=Shirt/Accessory,
-            // 9=Body Armor, 10=Decals, 11=Aux/Torso2
-
-            // From decompiled Paleto Score scripts (finale_heist2b.c)
-            // Values are per-character outfit-system drawable IDs.
-            if (ch == PedHash.Michael)
-            {
-                // func_263 in finale_heist2b.c — Michael's ballistic outfit
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 3, 2, 0, 0);   // torso
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 4, 2, 0, 0);   // legs
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 6, 0, 0, 0);   // shoes
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 8, 0, 0, 0);   // undershirt
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 9, 0, 0, 0);   // body armor
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 10, 47, 0, 0);  // decals (ballistic)
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 11, 1, 0, 0);  // aux
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 5, 11, 0, 0);  // hands/gloves
-            }
-            else if (ch == PedHash.Franklin)
-            {
-                // func_261 in finale_heist2b.c — Franklin's ballistic outfit
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 3, 180, 0, 0);  // torso
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 4, 57, 0, 0);   // legs
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 6, 35, 0, 0);   // shoes
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 8, 26, 0, 0);   // undershirt
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 9, 0, 0, 0);    // body armor
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 10, 50, 0, 0);  // decals (ballistic)
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 11, 41, 0, 0);  // aux
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 5, 5, 0, 0);    // hands/gloves
-            }
-            else if (ch == PedHash.Trevor)
-            {
-                // func_485 in finale_heist2b.c — Trevor's ballistic outfit
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 8, 15, 0, 0);   // undershirt
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 9, 0, 0, 0);    // body armor
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 5, 0, 0, 0);    // hands
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 6, 16, 0, 0);   // shoes
-            }
-
-            // Add helmet prop (prop slot 0 = hat/helmet)
-            Function.Call(Hash.SET_PED_PROP_INDEX, player, 0, 0, 0, false);
+            // Paleto Score juggernaut suit drawable IDs from extracted assets:
+            //   uppr_020_u.ydd  -> Component 11 (Torso/Upper), drawable 20
+            //   lowr_012_u.ydd  -> Component 4  (Legs/Lower),  drawable 12
+            //   p_head_018.ydd  -> Prop 0       (Helmet),      drawable 18
+            //
+            // These are the same across story-mode protagonists.
+            Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 11, 20, 0, 0);  // torso armor
+            Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 4, 12, 0, 0);   // leg armor
+            Function.Call(Hash.SET_PED_PROP_INDEX, player, 0, 18, 0, true);         // ballistic helmet
         }
 
         /// <summary>
-        /// Called every tick to check if juggernaut should be removed (on death).
+        /// Called every tick to apply damage reduction and check death.
+        /// Simulates ~80% bullet damage reduction (5x effective HP).
         /// </summary>
         private void JuggernautTick()
         {
@@ -659,6 +643,21 @@ namespace ALLIN1
                 _savedTextures = null;
                 return;
             }
+
+            // Damage reduction: heal back 80% of damage taken each tick
+            int currentHealth = player.Health;
+            if (currentHealth < _lastKnownHealth && currentHealth > 0)
+            {
+                int damageTaken = _lastKnownHealth - currentHealth;
+                int healBack = (int)(damageTaken * 0.80f);
+                if (healBack > 0)
+                {
+                    int newHealth = Math.Min(currentHealth + healBack, player.MaxHealth);
+                    player.Health = newHealth;
+                    currentHealth = newHealth;
+                }
+            }
+            _lastKnownHealth = currentHealth;
         }
 
         // ------------------------------------------------------------------ //
