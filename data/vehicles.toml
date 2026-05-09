@@ -528,6 +528,7 @@ name = "Bravado Buffalo STX"
 class = "muscle"
 manufacturer = "Bravado"
 traffic = ["veh_mid", "veh_poor"]
+weaponized = true
 
 [[vehicles]]
 model = "dominator7"
@@ -626,6 +627,7 @@ name = "Vapid Imperator"
 class = "muscle"
 manufacturer = "Vapid"
 traffic = ["veh_mid", "veh_poor"]
+weaponized = true
 
 [[vehicles]]
 model = "impaler"
@@ -675,6 +677,7 @@ name = "Declasse Weaponized Tampa"
 class = "muscle"
 manufacturer = "Declasse"
 traffic = ["veh_mid", "veh_poor"]
+weaponized = true
 
 [[vehicles]]
 model = "ruiner2"
@@ -682,6 +685,7 @@ name = "Imponte Ruiner 2000"
 class = "muscle"
 manufacturer = "Imponte"
 traffic = ["veh_mid", "veh_poor"]
+weaponized = true
 
 [[vehicles]]
 model = "sabregt2"
@@ -1614,6 +1618,7 @@ name = "Dewbauchee Champion"
 class = "super"
 manufacturer = "Dewbauchee"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "tigon"
@@ -1940,6 +1945,7 @@ name = "Mammoth Patriot Mil-Spec"
 class = "offroad"
 manufacturer = "Mammoth"
 traffic = ["veh_countryside_onroad"]
+weaponized = true
 
 [[vehicles]]
 model = "verus"
@@ -2003,6 +2009,7 @@ name = "Declasse Brutus"
 class = "offroad"
 manufacturer = "Declasse"
 traffic = ["veh_countryside_onroad"]
+weaponized = true
 
 [[vehicles]]
 model = "monster3"
@@ -2017,6 +2024,7 @@ name = "Benefactor Bruiser"
 class = "offroad"
 manufacturer = "Benefactor"
 traffic = ["veh_countryside_onroad"]
+weaponized = true
 
 [[vehicles]]
 model = "freecrawler"
@@ -2031,6 +2039,7 @@ name = "HVY Menacer"
 class = "offroad"
 manufacturer = "HVY"
 traffic = ["veh_countryside_onroad"]
+weaponized = true
 
 [[vehicles]]
 model = "caracara"
@@ -2059,6 +2068,7 @@ name = "HVY Nightshark"
 class = "offroad"
 manufacturer = "HVY"
 traffic = ["veh_countryside_onroad"]
+weaponized = true
 
 [[vehicles]]
 model = "technical3"
@@ -2066,6 +2076,7 @@ name = "Karin Technical Custom"
 class = "offroad"
 manufacturer = "Karin"
 traffic = ["veh_countryside_onroad"]
+weaponized = true
 
 [[vehicles]]
 model = "dune3"
@@ -2080,6 +2091,7 @@ name = "Nagasaki Street Blazer"
 class = "offroad"
 manufacturer = "Nagasaki"
 traffic = ["veh_countryside_onroad"]
+weaponized = true
 
 [[vehicles]]
 model = "blazer4"
@@ -2122,6 +2134,7 @@ name = "Karin Technical"
 class = "offroad"
 manufacturer = "Karin"
 traffic = ["veh_countryside_onroad"]
+weaponized = true
 
 [[vehicles]]
 model = "insurgent"
@@ -2129,6 +2142,7 @@ name = "HVY Insurgent"
 class = "offroad"
 manufacturer = "HVY"
 traffic = ["veh_countryside_onroad"]
+weaponized = true
 
 [[vehicles]]
 model = "guardian"
@@ -2438,6 +2452,7 @@ name = "Nagasaki Weaponized Dinghy"
 class = "boats"
 manufacturer = "Nagasaki"
 traffic = ["veh_boats"]
+weaponized = true
 
 [[vehicles]]
 model = "patrolboat"
@@ -2505,6 +2520,7 @@ name = "Western Annihilator Stealth"
 class = "helicopters"
 manufacturer = "Western"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "akula"
@@ -2512,6 +2528,7 @@ name = "Akula"
 class = "helicopters"
 manufacturer = "Buckingham"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "hunter"
@@ -2519,6 +2536,7 @@ name = "FH-1 Hunter"
 class = "helicopters"
 manufacturer = "Buckingham"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "valkyrie"
@@ -2526,6 +2544,7 @@ name = "Buckingham Valkyrie"
 class = "helicopters"
 manufacturer = "Buckingham"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "savage"
@@ -2533,6 +2552,7 @@ name = "Savage"
 class = "helicopters"
 manufacturer = "Buckingham"
 traffic = ["veh_rich"]
+weaponized = true
 
 # =============================================================================
 # PLANES (20 vehicles)
@@ -2572,6 +2592,7 @@ name = "RO-86 Alkonost"
 class = "planes"
 manufacturer = "Buckingham"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "strikeforce"
@@ -2579,6 +2600,7 @@ name = "B-11 Strikeforce"
 class = "planes"
 manufacturer = "Buckingham"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "avenger"
@@ -2586,6 +2608,7 @@ name = "Mammoth Avenger"
 class = "planes"
 manufacturer = "Mammoth"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "volatol"
@@ -2593,6 +2616,7 @@ name = "Volatol"
 class = "planes"
 manufacturer = "Buckingham"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "nokota"
@@ -2600,6 +2624,7 @@ name = "P-45 Nokota"
 class = "planes"
 manufacturer = "Buckingham"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "seabreeze"
@@ -2607,6 +2632,7 @@ name = "Western Seabreeze"
 class = "planes"
 manufacturer = "Western"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "pyro"
@@ -2614,6 +2640,7 @@ name = "Buckingham Pyro"
 class = "planes"
 manufacturer = "Buckingham"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "mogul"
@@ -2621,6 +2648,7 @@ name = "Mammoth Mogul"
 class = "planes"
 manufacturer = "Mammoth"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "howard"
@@ -2635,6 +2663,7 @@ name = "RM-10 Bombushka"
 class = "planes"
 manufacturer = "Buckingham"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "molotok"
@@ -2642,6 +2671,7 @@ name = "V-65 Molotok"
 class = "planes"
 manufacturer = "Buckingham"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "tula"
@@ -2649,6 +2679,7 @@ name = "Mammoth Tula"
 class = "planes"
 manufacturer = "Mammoth"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "rogue"
@@ -2656,6 +2687,7 @@ name = "Western Rogue"
 class = "planes"
 manufacturer = "Western"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "starling"
@@ -2663,6 +2695,7 @@ name = "LF-22 Starling"
 class = "planes"
 manufacturer = "Buckingham"
 traffic = ["veh_rich"]
+weaponized = true
 
 [[vehicles]]
 model = "alphaz1"
@@ -2688,6 +2721,7 @@ name = "Vetir"
 class = "military"
 manufacturer = "HVY"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "scarab"
@@ -2695,6 +2729,7 @@ name = "HVY Scarab"
 class = "military"
 manufacturer = "HVY"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "terbyte"
@@ -2702,6 +2737,7 @@ name = "Benefactor Terrorbyte"
 class = "military"
 manufacturer = "Benefactor"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "thruster"
@@ -2709,6 +2745,7 @@ name = "Mammoth Thruster"
 class = "military"
 manufacturer = "Mammoth"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "khanjali"
@@ -2716,6 +2753,7 @@ name = "TM-02 Khanjali"
 class = "military"
 manufacturer = "HVY"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "chernobog"
@@ -2723,6 +2761,7 @@ name = "Chernobog"
 class = "military"
 manufacturer = "HVY"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "barrage"
@@ -2730,6 +2769,7 @@ name = "HVY Barrage"
 class = "military"
 manufacturer = "HVY"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "halftrack"
@@ -2737,6 +2777,7 @@ name = "Bravado Half-track"
 class = "military"
 manufacturer = "Bravado"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "apc"
@@ -2744,6 +2785,7 @@ name = "HVY APC"
 class = "military"
 manufacturer = "HVY"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "oppressor"
@@ -2751,6 +2793,7 @@ name = "Pegassi Oppressor"
 class = "military"
 manufacturer = "Pegassi"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "oppressor2"
@@ -2758,6 +2801,7 @@ name = "Pegassi Oppressor Mk II"
 class = "military"
 manufacturer = "Pegassi"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "squaddie"
@@ -2779,6 +2823,7 @@ name = "HVY Insurgent Pick-Up Custom"
 class = "military"
 manufacturer = "HVY"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "raiju"
@@ -2786,6 +2831,7 @@ name = "Mammoth F-160 Raiju"
 class = "military"
 manufacturer = "Mammoth"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "streamer216"
@@ -2793,6 +2839,7 @@ name = "Mammoth Streamer216"
 class = "military"
 manufacturer = "Mammoth"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "conada2"
@@ -2800,6 +2847,7 @@ name = "Buckingham Weaponized Conada"
 class = "military"
 manufacturer = "Buckingham"
 traffic = []
+weaponized = true
 
 # =============================================================================
 # INDUSTRIAL (10 vehicles)
@@ -2811,6 +2859,7 @@ name = "MTL Pounder Custom"
 class = "industrial"
 manufacturer = "MTL"
 traffic = ["veh_freeway"]
+weaponized = true
 
 [[vehicles]]
 model = "mule4"
@@ -2818,6 +2867,7 @@ name = "Maibatsu Mule Custom"
 class = "industrial"
 manufacturer = "Maibatsu"
 traffic = ["veh_freeway"]
+weaponized = true
 
 [[vehicles]]
 model = "phantom3"
@@ -2945,6 +2995,7 @@ name = "Vapid Speedo Custom"
 class = "vans"
 manufacturer = "Vapid"
 traffic = ["veh_poor", "veh_freeway"]
+weaponized = true
 
 [[vehicles]]
 model = "youga2"
@@ -3129,6 +3180,7 @@ name = "Declasse Scramjet"
 class = "special"
 manufacturer = "Declasse"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "vigilante"
@@ -3136,6 +3188,7 @@ name = "Grotti Vigilante"
 class = "special"
 manufacturer = "Grotti"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "voltic2"
@@ -3164,6 +3217,7 @@ name = "Imponte Deluxo"
 class = "special"
 manufacturer = "Imponte"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "stromberg"
@@ -3171,6 +3225,7 @@ name = "Ocelot Stromberg"
 class = "special"
 manufacturer = "Ocelot"
 traffic = []
+weaponized = true
 
 [[vehicles]]
 model = "rrocket"

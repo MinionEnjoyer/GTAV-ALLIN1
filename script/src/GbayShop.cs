@@ -379,6 +379,38 @@ namespace ALLIN1
             Log($"GiveGear: {gearId}, price=${price}");
         }
 
+        // ------------------------------------------------------------------ //
+        //  Vehicle Sell (called by GbayBrowser garage tab)                     //
+        // ------------------------------------------------------------------ //
+
+        /// <summary>Get the sell price for a vehicle (60% of purchase price).</summary>
+        internal int GetSellPrice(string model)
+        {
+            if (_freeMode) return 0;
+            int buyPrice = VehicleList.Prices.ContainsKey(model)
+                ? VehicleList.Prices[model] : 0;
+            return (int)(buyPrice * 0.6);
+        }
+
+        internal void ExecuteSellVehicle(string model, int listIndex)
+        {
+            int sellPrice = GetSellPrice(model);
+
+            GarageManager.RemoveVehicle(listIndex);
+
+            if (!_freeMode && sellPrice > 0)
+                Game.Player.Money += sellPrice;
+
+            string displayName = VehicleList.DisplayNames.ContainsKey(model)
+                ? VehicleList.DisplayNames[model] : model;
+            string msg = _freeMode || sellPrice <= 0
+                ? $"~y~{displayName}~w~ removed from garage."
+                : $"~g~{displayName}~w~ sold for ~g~${sellPrice:N0}";
+            GTA.UI.Screen.ShowSubtitle(msg, 3000);
+
+            Log($"SellVehicle: {model}, sellPrice=${sellPrice}");
+        }
+
         /// <summary>
         /// Get the ammo refill cost for an owned weapon. Returns -1 if not
         /// applicable (melee/misc), 0 if fully stocked, otherwise the cost.

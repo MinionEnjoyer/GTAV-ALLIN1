@@ -96,6 +96,18 @@ def generate(db: VehicleDatabase, prices: dict[str, int]) -> str:
         w("        };")
         w("")
 
+    # --- Weaponized array (cross-class, sorted by model) ---
+    weaponized = sorted(
+        [v for v in db.all_vehicles if v.weaponized],
+        key=lambda v: v.model,
+    )
+    if weaponized:
+        w("        internal static readonly string[] Weaponized = {")
+        for v in weaponized:
+            w(f'            "{v.model}",')
+        w("        };")
+        w("")
+
     # Deduplicate by model name — vehicles can appear in multiple classes
     # but dictionary keys must be unique.
     seen: set[str] = set()

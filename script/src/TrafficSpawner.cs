@@ -71,12 +71,6 @@ namespace ALLIN1
         private static readonly string LOG_PATH = Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory, "ALLIN1.log");
 
-        /// <summary>Set to true to suppress all spawning/replacement (used by capture tool).</summary>
-        public static bool Suppress;
-
-        /// <summary>Show spawn debug notifications in-game (set via spawner_debug config).</summary>
-        public static bool ShowSpawnMessages;
-
         // --- State ---
         private readonly List<Vehicle> _spawned = new List<Vehicle>();
         private readonly List<string> _validModels = new List<string>();
@@ -88,6 +82,9 @@ namespace ALLIN1
         private int _lastDrivenTime;
         private int _lastScanTime;
         private bool _initialized;
+
+        // Toggled via config: shows per-spawn debug notifications
+        internal static bool ShowSpawnMessages;
 
         public TrafficSpawner()
         {
@@ -126,7 +123,7 @@ namespace ALLIN1
                 return;
             }
 
-            if (_validModels.Count == 0 || Suppress)
+            if (_validModels.Count == 0)
                 return;
 
             Cleanup();

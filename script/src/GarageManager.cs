@@ -58,9 +58,19 @@ namespace ALLIN1
             new Vector3(240.65f, -1004.86f, -99.66f);
         private const float INTERIOR_SPAWN_HEADING = -165f;
 
-        // Exit zone inside the garage (near the garage door)
+        // Vehicle exit zone inside the garage (near the garage door)
         private static readonly Vector3 INTERIOR_EXIT =
             new Vector3(228.5f, -1004.5f, -99.66f);
+
+        // Pedestrian-only exit inside the garage
+        private static readonly Vector3 PED_EXIT =
+            new Vector3(240.7f, -1004.8f, -99f);
+        private const float PED_EXIT_HEADING = 82.8f;
+
+        // Where the pedestrian exit teleports to on the main map
+        private static readonly Vector3 PED_EXIT_DEST =
+            new Vector3(-774f, 310.2f, 85.7f);
+        private const float PED_EXIT_DEST_HEADING = 354.5f;
 
         // 10 vehicle parking positions (from SPGR data -- two rows of 5)
         internal static readonly ParkingSlot[] Slots =
@@ -233,23 +243,49 @@ namespace ALLIN1
             }
             else
             {
-                // Draw exit marker inside garage
-                World.DrawMarker(
-                    GTA.MarkerType.VerticalCylinder,
-                    INTERIOR_EXIT - new Vector3(0f, 0f, 1f),
-                    Vector3.Zero, Vector3.Zero,
-                    new Vector3(2f, 2f, 1.5f),
-                    System.Drawing.Color.FromArgb(128, 200, 200, 0));
+                bool inVehicle = player.IsInVehicle();
 
-                // Check exit proximity
-                float dist = player.Position.DistanceTo(INTERIOR_EXIT);
-                if (dist < EXIT_RADIUS)
+                // Vehicle exit marker (yellow) — only when in a vehicle
+                if (inVehicle)
                 {
-                    GTA.UI.Screen.ShowHelpTextThisFrame("Press ~INPUT_CONTEXT~ to leave the garage.");
+                    World.DrawMarker(
+                        GTA.MarkerType.VerticalCylinder,
+                        INTERIOR_EXIT - new Vector3(0f, 0f, 1f),
+                        Vector3.Zero, Vector3.Zero,
+                        new Vector3(2f, 2f, 1.5f),
+                        System.Drawing.Color.FromArgb(128, 200, 200, 0));
 
-                    if (Game.IsControlJustPressed(GTA.Control.Context))
+                    float dist = player.Position.DistanceTo(INTERIOR_EXIT);
+                    if (dist < EXIT_RADIUS)
                     {
-                        LeaveGarage();
+                        GTA.UI.Screen.ShowHelpTextThisFrame("Press ~INPUT_CONTEXT~ to drive out of the garage.");
+
+                        if (Game.IsControlJustPressed(GTA.Control.Context))
+                        {
+                            LeaveGarage();
+                        }
+                    }
+                }
+
+                // Pedestrian exit marker (green) — only when on foot
+                if (!inVehicle)
+                {
+                    World.DrawMarker(
+                        GTA.MarkerType.VerticalCylinder,
+                        PED_EXIT - new Vector3(0f, 0f, 1f),
+                        Vector3.Zero, Vector3.Zero,
+                        new Vector3(1.5f, 1.5f, 1.2f),
+                        System.Drawing.Color.FromArgb(128, 0, 200, 0));
+
+                    float pedDist = player.Position.DistanceTo(PED_EXIT);
+                    if (pedDist < EXIT_RADIUS)
+                    {
+                        GTA.UI.Screen.ShowHelpTextThisFrame("Press ~INPUT_CONTEXT~ to leave the garage.");
+
+                        if (Game.IsControlJustPressed(GTA.Control.Context))
+                        {
+                            LeaveGarage(usePedExit: true);
+                        }
                     }
                 }
             }
@@ -462,12 +498,30 @@ namespace ALLIN1
             Log($"EnterGarage: character={key}, vehicles spawned");
         }
 
-        private static void LeaveGarage()
+        private static void LeaveGarage(bool usePedExit = false)
         {
             Ped player = Game.Player.Character;
-            player.IsPositionFrozen = true;
+            Vehicle playerVehicle = null;
 
-            // Delete all spawned vehicles
+            // Check if player is in one of the garage vehicles
+            if (player.IsInVehicle())
+            {
+                Vehicle current = player.CurrentVehicle;
+                if (current != null && current.Exists())
+                {
+                    for (int i = 0; i < SLOT_COUNT; i++)
+                    {
+                        if (_handles[i] != null && _handles[i] == current)
+                        {
+                            playerVehicle = current;
+                            _handles[i] = null; // detach from garage — don't delete
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Delete all OTHER spawned vehicles
             for (int i = 0; i < SLOT_COUNT; i++)
             {
                 Vehicle veh = _handles[i];
@@ -479,17 +533,37 @@ namespace ALLIN1
                 _handles[i] = null;
             }
 
-            // Teleport back to entrance
-            Function.Call(Hash.SET_ENTITY_COORDS, player,
-                _returnPos.X, _returnPos.Y, _returnPos.Z,
-                false, false, false, true);
-            Function.Call(Hash.SET_ENTITY_HEADING, player, _returnHeading);
+            if (playerVehicle != null)
+            {
+                // Teleport vehicle (with player inside) to entrance
+                playerVehicle.IsPositionFrozen = false;
+                playerVehicle.IsPersistent = true;
+                Function.Call(Hash.SET_ENTITY_COORDS, playerVehicle,
+                    ENTRANCE_POS.X, ENTRANCE_POS.Y, ENTRANCE_POS.Z,
+                    false, false, false, true);
+                Function.Call(Hash.SET_ENTITY_HEADING, playerVehicle, _returnHeading);
+                playerVehicle.IsEngineRunning = true;
 
-            player.IsPositionFrozen = false;
+                Log("LeaveGarage: drove out in vehicle");
+            }
+            else
+            {
+                // Teleport player on foot
+                Vector3 dest = usePedExit ? PED_EXIT_DEST : _returnPos;
+                float heading = usePedExit ? PED_EXIT_DEST_HEADING : _returnHeading;
+
+                player.IsPositionFrozen = true;
+                Function.Call(Hash.SET_ENTITY_COORDS, player,
+                    dest.X, dest.Y, dest.Z,
+                    false, false, false, true);
+                Function.Call(Hash.SET_ENTITY_HEADING, player, heading);
+                player.IsPositionFrozen = false;
+
+                Log($"LeaveGarage: returned on foot (pedExit={usePedExit})");
+            }
+
             _isPlayerInGarage = false;
             _exitCooldownFrames = 60; // ~1 second cooldown
-
-            Log("LeaveGarage: returned to entrance");
         }
 
         // ------------------------------------------------------------------ //

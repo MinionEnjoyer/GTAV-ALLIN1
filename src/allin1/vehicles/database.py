@@ -22,6 +22,7 @@ class Vehicle:
     vehicle_class: str
     manufacturer: str
     traffic: list[str] = field(default_factory=list)
+    weaponized: bool = False
 
     @classmethod
     def from_dict(cls, d: dict) -> Vehicle:
@@ -31,6 +32,7 @@ class Vehicle:
             vehicle_class=d["class"],
             manufacturer=d["manufacturer"],
             traffic=d.get("traffic", []),
+            weaponized=d.get("weaponized", False),
         )
 
 

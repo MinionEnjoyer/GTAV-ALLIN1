@@ -271,6 +271,46 @@ namespace ALLIN1
             return Function.Call<float>(Hash.END_TEXT_COMMAND_GET_SCREEN_WIDTH_OF_DISPLAY_TEXT, true);
         }
 
+        /// <summary>
+        /// Draw text that wraps to a second line if it exceeds maxWidth.
+        /// Returns the number of lines drawn (1 or 2).
+        /// </summary>
+        internal static int DrawTextWrapped(string text, float x, float y,
+            float scale, Color c, float maxWidth, int font = FONT_CHALET,
+            float lineSpacing = 0.018f)
+        {
+            if (GetTextWidth(text, scale, font) <= maxWidth)
+            {
+                DrawText(text, x, y, scale, c, font);
+                return 1;
+            }
+
+            // Split into words and build lines
+            string[] words = text.Split(' ');
+            string line1 = "";
+            int wordIdx = 0;
+
+            for (; wordIdx < words.Length; wordIdx++)
+            {
+                string test = line1.Length == 0 ? words[wordIdx] : line1 + " " + words[wordIdx];
+                if (GetTextWidth(test, scale, font) > maxWidth && line1.Length > 0)
+                    break;
+                line1 = test;
+            }
+
+            string line2 = wordIdx < words.Length
+                ? string.Join(" ", words, wordIdx, words.Length - wordIdx)
+                : "";
+
+            DrawText(line1, x, y, scale, c, font);
+            if (line2.Length > 0)
+            {
+                DrawText(line2, x, y + lineSpacing, scale, c, font);
+                return 2;
+            }
+            return 1;
+        }
+
         // ------------------------------------------------------------------ //
         //  Composite Elements                                                 //
         // ------------------------------------------------------------------ //
