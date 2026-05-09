@@ -577,8 +577,8 @@ namespace ALLIN1
 
 
             // Choose spawn point based on which entrance was used
-            Vector3 spawnPos = pedEntrance ? PED_EXIT : INTERIOR_SPAWN;
-            float spawnHeading = pedEntrance ? PED_EXIT_HEADING : INTERIOR_SPAWN_HEADING;
+            Vector3 spawnPos = pedEntrance ? PED_EXIT : VEHICLE_EXIT_INTERIOR;
+            float spawnHeading = pedEntrance ? PED_EXIT_HEADING : VEHICLE_EXIT_INTERIOR_HEADING;
 
             // Freeze player, teleport into garage
             player.IsPositionFrozen = true;
