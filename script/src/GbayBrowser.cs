@@ -21,6 +21,7 @@ namespace ALLIN1
         DeliveryConfirm,
         GarageView,
         WeaponBrowser,
+        GearBrowser,
     }
 
     internal struct VehicleCard
@@ -34,6 +35,15 @@ namespace ALLIN1
     internal struct WeaponCard
     {
         internal string WeaponName;
+        internal string DisplayName;
+        internal string Category;
+        internal int Price;
+        internal bool Owned;
+    }
+
+    internal struct GearCard
+    {
+        internal string GearId;
         internal string DisplayName;
         internal string Category;
         internal int Price;
@@ -158,6 +168,13 @@ namespace ALLIN1
             new WeaponCategory("Miscellaneous",   WeaponList.Misc),
         };
 
+        private static readonly WeaponCategory[] GEAR_CATEGORIES =
+        {
+            new WeaponCategory("All",        GearList.All),
+            new WeaponCategory("Protection", GearList.Protection),
+            new WeaponCategory("Equipment",  GearList.Equipment),
+        };
+
         // ------------------------------------------------------------------ //
         //  State                                                              //
         // ------------------------------------------------------------------ //
@@ -197,6 +214,16 @@ namespace ALLIN1
         private int _weaponTabScrollOffset;
         private int _weaponHoverTab = -1;
         private readonly List<WeaponCard> _weaponFiltered = new List<WeaponCard>();
+
+        // Gear browser
+        private int _gearCategoryIndex;
+        private int _gearPage;
+        private int _gearTotalPages;
+        private int _gearSelectedCard;
+        private int _gearHoverCard = -1;
+        private int _gearTabScrollOffset;
+        private int _gearHoverTab = -1;
+        private readonly List<GearCard> _gearFiltered = new List<GearCard>();
 
         // Weapon ammo confirm
         private bool _ammoConfirmPending;
@@ -303,7 +330,7 @@ namespace ALLIN1
                     break;
                 case BrowserState.DeliveryConfirm:
                     if (_previewVehicle != null)
-                        UpdatePreviewCamera(); // keep camera orbiting behind modal
+                        UpdatePreviewCamera();
                     else
                         DrawBrowser(new FrameInput());
                     DrawDeliveryModal(input);
@@ -314,27 +341,12 @@ namespace ALLIN1
                 case BrowserState.WeaponBrowser:
                     DrawWeaponBrowser(input);
                     break;
+                case BrowserState.GearBrowser:
+                    DrawGearBrowser(input);
+                    break;
             }
 
             GbayRenderer.DrawCursor();
-
-            // DEBUG: show texture dict loading status
-            if (_state == BrowserState.VehicleBrowser)
-            {
-                int loaded = 0;
-                string firstDict = null;
-                foreach (string d in _activeDicts)
-                {
-                    if (firstDict == null) firstDict = d;
-                    if (GbayRenderer.IsDictLoaded(d)) loaded++;
-                }
-                bool logoLoaded = GbayRenderer.IsDictLoaded("allin1_logo");
-                bool logoReq = GbayRenderer.IsDictRequested("allin1_logo");
-                bool firstReq = firstDict != null && GbayRenderer.IsDictRequested(firstDict);
-                GTA.UI.Screen.ShowSubtitle(
-                    $"~y~D:{loaded}/{_activeDicts.Count} logo:r={logoReq},l={logoLoaded} 1st={firstDict ?? "?"}:r={firstReq} PD={VehicleList.PreviewDict.Count}",
-                    100);
-            }
         }
 
         // ------------------------------------------------------------------ //
@@ -353,9 +365,9 @@ namespace ALLIN1
             GbayRenderer.DrawLogo(BROWSER_CX, 0.36f, 0.12f);
 
             // Buttons
-            string[] labels = { "Vehicles", "Weapons", "My Garage" };
-            bool[] enabled = { true, true, true };
-            float startY = 0.42f;
+            string[] labels = { "Vehicles", "Weapons", "Gear", "My Garage" };
+            bool[] enabled = { true, true, true, true };
+            float startY = 0.39f;
 
             _topMenuHover = -1;
 
@@ -433,7 +445,16 @@ namespace ALLIN1
                     _weaponTabScrollOffset = 0;
                     RebuildWeaponFilteredList();
                 }
-                else if (activateIdx == 2) // My Garage
+                else if (activateIdx == 2) // Gear
+                {
+                    _state = BrowserState.GearBrowser;
+                    _gearCategoryIndex = 0;
+                    _gearPage = 0;
+                    _gearSelectedCard = 0;
+                    _gearTabScrollOffset = 0;
+                    RebuildGearFilteredList();
+                }
+                else if (activateIdx == 3) // My Garage
                 {
                     _state = BrowserState.GarageView;
                     _garageVehicleIdx = 0;
@@ -868,7 +889,7 @@ namespace ALLIN1
             _previewAngle = 0f;
             _previewZoom = 1.0f;
 
-            // Spawn vehicle first (this waits for the model to load)
+            // Spawn vehicle first — CreateVehicle waits for model to load
             _previewVehicle = VehicleHelper.CreateVehicle(
                 _previewModel, PREVIEW_POS, 0f);
 
@@ -879,7 +900,7 @@ namespace ALLIN1
                 return;
             }
 
-            // Now that the model is loaded, get dimensions for camera framing
+            // Now that model is loaded, get dimensions for camera framing
             int hash = _previewVehicle.Model.Hash;
 
             OutputArgument minArg = new OutputArgument();
@@ -1639,6 +1660,369 @@ namespace ALLIN1
         {
             int startIdx = _weaponPage * PAGE_SIZE;
             return Math.Min(PAGE_SIZE, _weaponFiltered.Count - startIdx);
+        }
+
+        // ------------------------------------------------------------------ //
+        //  Gear Browser                                                       //
+        // ------------------------------------------------------------------ //
+
+        private void DrawGearBrowser(FrameInput input)
+        {
+            float aspect = GbayRenderer.GetAspectRatio();
+            float cardW = CARD_H / aspect;
+
+            float bgCY = (BROWSER_TOP + BROWSER_BOTTOM) / 2f;
+            float bgH = BROWSER_BOTTOM - BROWSER_TOP;
+            GbayRenderer.DrawRect(BROWSER_CX, bgCY, BROWSER_W, bgH,
+                GbayRenderer.BodyBg);
+
+            DrawGearHeader();
+            DrawGearCategoryTabs(input, aspect);
+            DrawGearGrid(input, cardW);
+            DrawGearFooter();
+            HandleGearBrowserInput(input);
+        }
+
+        private void DrawGearHeader()
+        {
+            GbayRenderer.DrawRect(BROWSER_CX, HEADER_CY, BROWSER_W, HEADER_H,
+                GbayRenderer.HeaderBg);
+
+            GbayRenderer.DrawLogo(BROWSER_LEFT + 0.035f, HEADER_CY, HEADER_H * 0.85f);
+
+            GbayRenderer.DrawText("GEAR", BROWSER_LEFT + 0.07f, HEADER_Y + 0.018f,
+                0.38f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
+
+            string money = $"${Game.Player.Money:N0}";
+            GbayRenderer.DrawText(money, BROWSER_RIGHT - 0.01f, HEADER_Y + 0.018f,
+                0.38f, GbayRenderer.HeaderText, GbayRenderer.FONT_CHALET,
+                false, false, true);
+        }
+
+        private void DrawGearCategoryTabs(FrameInput input, float aspect)
+        {
+            GbayRenderer.DrawRect(BROWSER_CX, TAB_CY, BROWSER_W, TAB_H,
+                GbayRenderer.TabBg);
+
+            int visibleCount = Math.Min(MAX_VISIBLE_TABS, GEAR_CATEGORIES.Length - _gearTabScrollOffset);
+            float tabAreaW = BROWSER_W - 0.04f;
+            float singleTabW = tabAreaW / MAX_VISIBLE_TABS;
+            float tabStartX = BROWSER_LEFT + 0.02f;
+
+            _gearHoverTab = -1;
+
+            for (int i = 0; i < visibleCount; i++)
+            {
+                int catIdx = _gearTabScrollOffset + i;
+                float tabCX = tabStartX + singleTabW * i + singleTabW / 2f;
+                bool isActive = catIdx == _gearCategoryIndex;
+                bool isHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
+                    tabCX, TAB_CY, singleTabW - 0.004f, TAB_H);
+
+                if (isHover)
+                    _gearHoverTab = catIdx;
+
+                if (isHover && !isActive)
+                    GbayRenderer.DrawRect(tabCX, TAB_CY, singleTabW - 0.004f,
+                        TAB_H, GbayRenderer.TabHover);
+
+                if (isActive)
+                    GbayRenderer.DrawRect(tabCX, TAB_Y + TAB_H - 0.004f,
+                        singleTabW - 0.01f, 0.004f, GbayRenderer.TabIndicator);
+
+                Color textColor = isActive ? GbayRenderer.TabActive : GbayRenderer.TabInactive;
+                string label = GEAR_CATEGORIES[catIdx].Label;
+                GbayRenderer.DrawText(label, tabCX, TAB_Y + 0.01f,
+                    0.32f, textColor, GbayRenderer.FONT_CONDENSED, true);
+            }
+
+            if (_gearTabScrollOffset > 0)
+            {
+                GbayRenderer.DrawText("<", BROWSER_LEFT + 0.008f, TAB_Y + 0.008f,
+                    0.35f, GbayRenderer.TabActive, GbayRenderer.FONT_CHALET);
+            }
+            if (_gearTabScrollOffset + MAX_VISIBLE_TABS < GEAR_CATEGORIES.Length)
+            {
+                GbayRenderer.DrawText(">", BROWSER_RIGHT - 0.018f, TAB_Y + 0.008f,
+                    0.35f, GbayRenderer.TabActive, GbayRenderer.FONT_CHALET);
+            }
+        }
+
+        private void DrawGearGrid(FrameInput input, float cardW)
+        {
+            float gridW = GRID_COLS * cardW + (GRID_COLS - 1) * CARD_GAP_X;
+            float gridStartX = BROWSER_CX - gridW / 2f;
+            float gridStartY = GRID_TOP + 0.01f;
+
+            int startIdx = _gearPage * PAGE_SIZE;
+            int count = Math.Min(PAGE_SIZE, _gearFiltered.Count - startIdx);
+
+            _gearHoverCard = -1;
+
+            for (int i = 0; i < count; i++)
+            {
+                int col = i % GRID_COLS;
+                int row = i / GRID_COLS;
+                float cardLeft = gridStartX + col * (cardW + CARD_GAP_X);
+                float cardTop = gridStartY + row * (CARD_H + CARD_GAP_Y);
+                float cardCX = cardLeft + cardW / 2f;
+                float cardCY = cardTop + CARD_H / 2f;
+
+                bool isSelected = i == _gearSelectedCard;
+                bool isHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
+                    cardCX, cardCY, cardW, CARD_H);
+
+                if (isHover)
+                    _gearHoverCard = i;
+
+                GearCard card = _gearFiltered[startIdx + i];
+                DrawGearCard(card, cardLeft, cardTop, cardW, isSelected, isHover);
+            }
+
+            if (count == 0)
+            {
+                GbayRenderer.DrawText("No gear in this category",
+                    BROWSER_CX, 0.45f, 0.4f, GbayRenderer.TextDim,
+                    GbayRenderer.FONT_CHALET, true);
+            }
+        }
+
+        private void DrawGearCard(GearCard card, float left, float top,
+                                   float cardW, bool selected, bool hovered)
+        {
+            float cx = left + cardW / 2f;
+            float cy = top + CARD_H / 2f;
+
+            Color bgColor = selected ? GbayRenderer.CardSelected
+                          : hovered ? GbayRenderer.CardHover
+                          : GbayRenderer.CardBg;
+            Color borderColor = selected ? GbayRenderer.CardBorderSel
+                              : GbayRenderer.CardBorder;
+
+            GbayRenderer.DrawBorderedRect(cx, cy, cardW, CARD_H,
+                bgColor, borderColor, 0.002f);
+
+            float topAreaH = CARD_H * 0.55f;
+            float topAreaCY = top + topAreaH / 2f;
+
+            Color topColor = GetGearCategoryColor(card.Category, hovered || selected);
+            GbayRenderer.DrawRect(cx, topAreaCY, cardW - 0.004f, topAreaH - 0.004f,
+                topColor);
+
+            GbayRenderer.DrawText(card.Category, cx, top + topAreaH * 0.35f,
+                0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
+
+            float textTop = top + topAreaH + 0.005f;
+            float textLeft = left + 0.008f;
+
+            GbayRenderer.DrawText(card.DisplayName, textLeft, textTop + 0.005f,
+                0.33f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+
+            if (card.Owned)
+            {
+                string statusText = card.GearId == GearList.ARMOR_ID ? "EQUIPPED" : "OWNED";
+                GbayRenderer.DrawText(statusText, textLeft, textTop + 0.038f,
+                    0.30f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CHALET);
+            }
+            else
+            {
+                string priceText = card.Price <= 0 ? "FREE" : $"${card.Price:N0}";
+                Color priceColor = card.Price <= 0
+                    ? GbayRenderer.TextPriceFree : GbayRenderer.TextPrice;
+                GbayRenderer.DrawText(priceText, textLeft, textTop + 0.038f,
+                    0.30f, priceColor, GbayRenderer.FONT_CHALET);
+            }
+        }
+
+        private void DrawGearFooter()
+        {
+            GbayRenderer.DrawRect(BROWSER_CX, FOOTER_CY, BROWSER_W, FOOTER_H,
+                GbayRenderer.FooterBg);
+
+            string pageText = $"Page {_gearPage + 1}/{Math.Max(1, _gearTotalPages)}";
+            GbayRenderer.DrawText(pageText, BROWSER_LEFT + 0.02f, FOOTER_Y + 0.012f,
+                0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+
+            string hints = "[Q/E] Page   [Z/X] Category   [Enter] Buy   [Esc] Back";
+            GbayRenderer.DrawText(hints, BROWSER_RIGHT - 0.01f, FOOTER_Y + 0.012f,
+                0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED,
+                false, false, true);
+        }
+
+        private void HandleGearBrowserInput(FrameInput input)
+        {
+            if (input.Back || input.MouseRightClick)
+            {
+                GbayRenderer.PlayBack();
+                _state = BrowserState.TopMenu;
+                return;
+            }
+
+            if (input.MouseClick && _gearHoverTab >= 0 && _gearHoverTab != _gearCategoryIndex)
+            {
+                _gearCategoryIndex = _gearHoverTab;
+                _gearPage = 0;
+                _gearSelectedCard = 0;
+                RebuildGearFilteredList();
+                GbayRenderer.PlayNav();
+                return;
+            }
+
+            if (input.CategoryPrev && _gearCategoryIndex > 0)
+            {
+                _gearCategoryIndex--;
+                _gearPage = 0;
+                _gearSelectedCard = 0;
+                EnsureGearTabVisible(_gearCategoryIndex);
+                RebuildGearFilteredList();
+                GbayRenderer.PlayNav();
+            }
+            else if (input.CategoryNext && _gearCategoryIndex < GEAR_CATEGORIES.Length - 1)
+            {
+                _gearCategoryIndex++;
+                _gearPage = 0;
+                _gearSelectedCard = 0;
+                EnsureGearTabVisible(_gearCategoryIndex);
+                RebuildGearFilteredList();
+                GbayRenderer.PlayNav();
+            }
+
+            if (input.PageLeft && _gearPage > 0)
+            {
+                _gearPage--;
+                _gearSelectedCard = Math.Min(_gearSelectedCard, GetGearPageCount() - 1);
+                GbayRenderer.PlayNav();
+            }
+            else if (input.PageRight && _gearPage < _gearTotalPages - 1)
+            {
+                _gearPage++;
+                _gearSelectedCard = Math.Min(_gearSelectedCard, GetGearPageCount() - 1);
+                GbayRenderer.PlayNav();
+            }
+
+            if (input.DirX != 0 || input.DirY != 0)
+            {
+                int col = _gearSelectedCard % GRID_COLS;
+                int row = _gearSelectedCard / GRID_COLS;
+                int maxIdx = GetGearPageCount() - 1;
+
+                if (input.DirX != 0)
+                    col = Math.Max(0, Math.Min(col + input.DirX, GRID_COLS - 1));
+                if (input.DirY != 0)
+                    row = Math.Max(0, Math.Min(row + input.DirY, GRID_ROWS - 1));
+
+                int newIdx = Math.Min(row * GRID_COLS + col, maxIdx);
+                if (newIdx != _gearSelectedCard)
+                {
+                    _gearSelectedCard = newIdx;
+                    GbayRenderer.PlayNav();
+                }
+            }
+
+            if (_gearHoverCard >= 0 && _gearHoverCard != _gearSelectedCard)
+                _gearSelectedCard = _gearHoverCard;
+
+            bool accepted = input.Accept || (input.MouseClick && _gearHoverCard >= 0);
+            if (accepted && _gearFiltered.Count > 0)
+            {
+                int idx = _gearPage * PAGE_SIZE + _gearSelectedCard;
+                if (idx < _gearFiltered.Count)
+                {
+                    GearCard card = _gearFiltered[idx];
+
+                    if (card.Owned && card.GearId != GearList.ARMOR_ID)
+                    {
+                        GbayRenderer.PlayError();
+                        GTA.UI.Screen.ShowSubtitle("~y~Already owned.", 3000);
+                    }
+                    else
+                    {
+                        GbayRenderer.PlaySelect();
+                        _shop.ExecuteGiveGear(card.GearId, card.Price);
+                        RebuildGearFilteredList();
+                    }
+                }
+            }
+        }
+
+        private void RebuildGearFilteredList()
+        {
+            _gearFiltered.Clear();
+
+            Ped player = Game.Player.Character;
+            string[] items = GEAR_CATEGORIES[_gearCategoryIndex].Weapons;
+
+            foreach (string gearId in items)
+            {
+                string displayName = GearList.DisplayNames.ContainsKey(gearId)
+                    ? GearList.DisplayNames[gearId] : gearId;
+
+                int price = 0;
+                if (GearList.Prices.ContainsKey(gearId))
+                    price = GearList.Prices[gearId];
+
+                string category = GearList.CategoryNames.ContainsKey(gearId)
+                    ? GearList.CategoryNames[gearId] : "";
+
+                bool owned;
+                if (gearId == GearList.ARMOR_ID)
+                {
+                    int armor = Function.Call<int>(
+                        (Hash)0x9483AF821C9B9B31, player);  // GET_PED_ARMOUR
+                    owned = armor > 0;
+                }
+                else
+                {
+                    Hash itemHash = (Hash)Game.GenerateHash(gearId);
+                    owned = Function.Call<bool>(
+                        (Hash)0x8DECB02F88F428BC, player, itemHash, false);  // HAS_PED_GOT_WEAPON
+                }
+
+                _gearFiltered.Add(new GearCard
+                {
+                    GearId = gearId,
+                    DisplayName = displayName,
+                    Category = category,
+                    Price = _shop.FreeMode ? 0 : price,
+                    Owned = owned,
+                });
+            }
+
+            _gearTotalPages = Math.Max(1, (_gearFiltered.Count + PAGE_SIZE - 1) / PAGE_SIZE);
+        }
+
+        private static Color GetGearCategoryColor(string category, bool bright)
+        {
+            int r, g, b;
+            switch (category)
+            {
+                case "Protection": r = 100; g = 150; b = 200; break;
+                case "Equipment":  r = 180; g = 170; b = 130; break;
+                default:           r = 160; g = 170; b = 165; break;
+            }
+
+            if (bright)
+            {
+                r = Math.Min(255, r + 20);
+                g = Math.Min(255, g + 20);
+                b = Math.Min(255, b + 20);
+            }
+
+            return Color.FromArgb(255, r, g, b);
+        }
+
+        private void EnsureGearTabVisible(int categoryIndex)
+        {
+            if (categoryIndex < _gearTabScrollOffset)
+                _gearTabScrollOffset = categoryIndex;
+            else if (categoryIndex >= _gearTabScrollOffset + MAX_VISIBLE_TABS)
+                _gearTabScrollOffset = categoryIndex - MAX_VISIBLE_TABS + 1;
+        }
+
+        private int GetGearPageCount()
+        {
+            int startIdx = _gearPage * PAGE_SIZE;
+            return Math.Min(PAGE_SIZE, _gearFiltered.Count - startIdx);
         }
 
         // ------------------------------------------------------------------ //

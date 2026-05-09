@@ -26,6 +26,7 @@ namespace ALLIN1
 
     internal static class GbayInput
     {
+
         /// <summary>
         /// Poll all inputs for this frame. Call once per tick.
         /// </summary>
@@ -33,19 +34,16 @@ namespace ALLIN1
         {
             var input = new FrameInput();
 
-            // Mouse position (works even when controls are disabled)
             input.MouseX = Function.Call<float>(
                 Hash.GET_DISABLED_CONTROL_NORMAL, 0, (int)Control.CursorX);
             input.MouseY = Function.Call<float>(
                 Hash.GET_DISABLED_CONTROL_NORMAL, 0, (int)Control.CursorY);
 
-            // Mouse clicks
             input.MouseClick = Function.Call<bool>(
                 Hash.IS_DISABLED_CONTROL_JUST_PRESSED, 0, (int)Control.CursorAccept);
             input.MouseRightClick = Function.Call<bool>(
                 Hash.IS_DISABLED_CONTROL_JUST_PRESSED, 0, (int)Control.CursorCancel);
 
-            // Keyboard: directional
             if (Game.IsControlJustPressed(Control.FrontendUp))
                 input.DirY = -1;
             else if (Game.IsControlJustPressed(Control.FrontendDown))
@@ -56,19 +54,16 @@ namespace ALLIN1
             else if (Game.IsControlJustPressed(Control.FrontendRight))
                 input.DirX = 1;
 
-            // Accept / Back
             if (Game.IsControlJustPressed(Control.FrontendAccept))
                 input.Accept = true;
             if (Game.IsControlJustPressed(Control.FrontendCancel))
                 input.Back = true;
 
-            // Page navigation: Q / E
             if (Game.IsControlJustPressed(Control.FrontendLb))
                 input.PageLeft = true;
             if (Game.IsControlJustPressed(Control.FrontendRb))
                 input.PageRight = true;
 
-            // Category navigation: Z / X
             if (Game.IsControlJustPressed(Control.FrontendLt))
                 input.CategoryPrev = true;
             if (Game.IsControlJustPressed(Control.FrontendRt))
