@@ -664,24 +664,25 @@ namespace ALLIN1
                 }
             }
 
-            // Text area below the placeholder
-            float textTop = top + topAreaH + 0.005f;
-            float textLeft = left + 0.008f;
+            // Text area below the preview image
+            float textTop = top + topAreaH + 0.004f;
+            float textLeft = left + 0.010f;
+            float textRight = left + cardW - 0.010f;
 
-            // Manufacturer
-            GbayRenderer.DrawText(card.Manufacturer, textLeft, textTop,
-                0.26f, GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED);
+            // Manufacturer (small, uppercase feel)
+            GbayRenderer.DrawText(card.Manufacturer, textLeft, textTop + 0.006f,
+                0.25f, GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED);
 
-            // Vehicle name
-            GbayRenderer.DrawText(card.DisplayName, textLeft, textTop + 0.028f,
-                0.33f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+            // Vehicle name (prominent)
+            GbayRenderer.DrawText(card.DisplayName, textLeft, textTop + 0.030f,
+                0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
 
-            // Price
+            // Price (right-aligned, bottom of text area)
             string priceText = card.Price <= 0 ? "FREE" : $"${card.Price:N0}";
             Color priceColor = card.Price <= 0
                 ? GbayRenderer.TextPriceFree : GbayRenderer.TextPrice;
-            GbayRenderer.DrawText(priceText, textLeft, textTop + 0.058f,
-                0.30f, priceColor, GbayRenderer.FONT_CHALET);
+            GbayRenderer.DrawText(priceText, textRight, textTop + 0.062f,
+                0.30f, priceColor, GbayRenderer.FONT_CHALET, false, false, true);
         }
 
         private void DrawFooter()
@@ -1344,56 +1345,58 @@ namespace ALLIN1
                 0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
 
             // Text area below
-            float textTop = top + topAreaH + 0.005f;
-            float textLeft = left + 0.008f;
+            float textTop = top + topAreaH + 0.004f;
+            float textLeft = left + 0.010f;
+            float textRight = left + cardW - 0.010f;
 
-            // Weapon name
-            GbayRenderer.DrawText(card.DisplayName, textLeft, textTop + 0.005f,
-                0.33f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+            // Weapon name (prominent)
+            GbayRenderer.DrawText(card.DisplayName, textLeft, textTop + 0.010f,
+                0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
 
             // Price, OWNED status, or ammo info
             if (card.Owned)
             {
-                // Check if this card has a pending ammo confirm
                 bool isPendingConfirm = _ammoConfirmPending &&
                     card.WeaponName == _ammoConfirmWeapon;
 
                 if (isPendingConfirm)
                 {
-                    // Highlight border for pending confirm
                     GbayRenderer.DrawBorderedRect(cx, cy, cardW, CARD_H,
                         bgColor, Color.FromArgb(255, 255, 200, 50), 0.003f);
 
                     string confirmText = _ammoConfirmCost > 0
                         ? $"REFILL {_ammoConfirmRounds} rnds - ${_ammoConfirmCost:N0}"
                         : $"REFILL {_ammoConfirmRounds} rnds - FREE";
-                    GbayRenderer.DrawText(confirmText, textLeft, textTop + 0.038f,
+                    GbayRenderer.DrawText(confirmText, textLeft, textTop + 0.042f,
                         0.24f, Color.FromArgb(255, 255, 200, 50), GbayRenderer.FONT_CONDENSED);
                 }
                 else
                 {
-                    // Show ammo status
                     int rounds;
                     int cost = _shop.GetAmmoRefillInfo(card.WeaponName, out rounds);
 
                     if (cost == -1)
                     {
-                        // Melee / no-ammo
-                        GbayRenderer.DrawText("OWNED", textLeft, textTop + 0.038f,
-                            0.30f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CHALET);
+                        GbayRenderer.DrawText("OWNED", textRight, textTop + 0.042f,
+                            0.28f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CHALET,
+                            false, false, true);
                     }
                     else if (cost == 0 && rounds == 0)
                     {
-                        GbayRenderer.DrawText("FULLY STOCKED", textLeft, textTop + 0.038f,
-                            0.26f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CONDENSED);
+                        GbayRenderer.DrawText("FULLY STOCKED", textRight, textTop + 0.042f,
+                            0.24f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CONDENSED,
+                            false, false, true);
                     }
                     else
                     {
                         string ammoText = cost > 0
-                            ? $"OWNED - Refill ${cost:N0}"
-                            : $"OWNED - Refill {rounds} rnds";
-                        GbayRenderer.DrawText(ammoText, textLeft, textTop + 0.038f,
-                            0.24f, Color.FromArgb(255, 200, 180, 80), GbayRenderer.FONT_CONDENSED);
+                            ? $"Refill ${cost:N0}"
+                            : $"Refill {rounds} rnds";
+                        GbayRenderer.DrawText("OWNED", textLeft, textTop + 0.042f,
+                            0.26f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CONDENSED);
+                        GbayRenderer.DrawText(ammoText, textRight, textTop + 0.042f,
+                            0.24f, Color.FromArgb(255, 200, 180, 80), GbayRenderer.FONT_CONDENSED,
+                            false, false, true);
                     }
                 }
             }
@@ -1402,8 +1405,8 @@ namespace ALLIN1
                 string priceText = card.Price <= 0 ? "FREE" : $"${card.Price:N0}";
                 Color priceColor = card.Price <= 0
                     ? GbayRenderer.TextPriceFree : GbayRenderer.TextPrice;
-                GbayRenderer.DrawText(priceText, textLeft, textTop + 0.038f,
-                    0.30f, priceColor, GbayRenderer.FONT_CHALET);
+                GbayRenderer.DrawText(priceText, textRight, textTop + 0.042f,
+                    0.30f, priceColor, GbayRenderer.FONT_CHALET, false, false, true);
             }
         }
 
@@ -1817,25 +1820,29 @@ namespace ALLIN1
             GbayRenderer.DrawText(card.Category, cx, top + topAreaH * 0.35f,
                 0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
 
-            float textTop = top + topAreaH + 0.005f;
-            float textLeft = left + 0.008f;
+            float textTop = top + topAreaH + 0.004f;
+            float textLeft = left + 0.010f;
+            float textRight = left + cardW - 0.010f;
 
-            GbayRenderer.DrawText(card.DisplayName, textLeft, textTop + 0.005f,
-                0.33f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+            // Item name (prominent)
+            GbayRenderer.DrawText(card.DisplayName, textLeft, textTop + 0.010f,
+                0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
 
+            // Status or price (right-aligned)
             if (card.Owned)
             {
                 string statusText = card.GearId == GearList.ARMOR_ID ? "EQUIPPED" : "OWNED";
-                GbayRenderer.DrawText(statusText, textLeft, textTop + 0.038f,
-                    0.30f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CHALET);
+                GbayRenderer.DrawText(statusText, textRight, textTop + 0.042f,
+                    0.28f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CHALET,
+                    false, false, true);
             }
             else
             {
                 string priceText = card.Price <= 0 ? "FREE" : $"${card.Price:N0}";
                 Color priceColor = card.Price <= 0
                     ? GbayRenderer.TextPriceFree : GbayRenderer.TextPrice;
-                GbayRenderer.DrawText(priceText, textLeft, textTop + 0.038f,
-                    0.30f, priceColor, GbayRenderer.FONT_CHALET);
+                GbayRenderer.DrawText(priceText, textRight, textTop + 0.042f,
+                    0.30f, priceColor, GbayRenderer.FONT_CHALET, false, false, true);
             }
         }
 
