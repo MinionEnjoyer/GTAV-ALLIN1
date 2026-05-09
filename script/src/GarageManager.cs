@@ -1,8 +1,9 @@
-// GarageManager.cs -- Safehouse garage storage and vehicle delivery.
+// GarageManager.cs -- Independent garage at the 10-car underground interior.
 //
-// Tracks stored vehicles in a JSON file and spawns them at parking slots
-// at each character's real safehouse garages. Garage positions are from
-// GTA V's internal garage zone data (DurtyFree/gta-v-data-dumps).
+// Each character (Michael, Franklin, Trevor) has 10 personal vehicle slots
+// in a shared garage interior that exists permanently underground. Vehicles
+// are spawned when the player enters the garage and despawned on exit.
+// Entry/exit is via a marker near Eclipse Towers on Eclipse Boulevard.
 
 using System;
 using System.Collections.Generic;
@@ -32,16 +33,6 @@ namespace ALLIN1
             }
         }
 
-        internal class Safehouse
-        {
-            internal string Id;
-            internal string Name;
-            internal PedHash Character;
-            internal string GarageName; // native name for IS_VEHICLE_IN_GARAGE_AREA
-            internal uint GarageHash;   // hash for IS_PLAYER_ENTIRELY_INSIDE_GARAGE
-            internal ParkingSlot[] Slots;
-        }
-
         internal class StoredVehicle
         {
             internal string Model;
@@ -51,117 +42,47 @@ namespace ALLIN1
         }
 
         // ------------------------------------------------------------------ //
-        //  Safehouse definitions                                              //
+        //  Constants                                                          //
         // ------------------------------------------------------------------ //
 
-        // Real GTA V safehouse garage zones. Coordinates from game data
-        // (garages.json). Parking slot offsets are estimates -- use
-        // garage_debug = true to tune in-game.
-        internal static readonly Safehouse[] Safehouses =
+        private const int SLOT_COUNT = 10;
+        private const float ENTER_RADIUS = 2.5f;
+        private const float EXIT_RADIUS = 2.5f;
+
+        // Entrance marker on the street near Eclipse Towers
+        private static readonly Vector3 ENTRANCE_POS =
+            new Vector3(-773.4f, 341.8f, 85.7f);
+
+        // Player spawn point inside the garage interior
+        private static readonly Vector3 INTERIOR_SPAWN =
+            new Vector3(240.65f, -1004.86f, -99.66f);
+        private const float INTERIOR_SPAWN_HEADING = -165f;
+
+        // Exit zone inside the garage (near the garage door)
+        private static readonly Vector3 INTERIOR_EXIT =
+            new Vector3(228.5f, -1004.5f, -99.66f);
+
+        // 10 vehicle parking positions (from SPGR data -- two rows of 5)
+        internal static readonly ParkingSlot[] Slots =
         {
-            // --- Franklin ---------------------------------------------------
-            new Safehouse
-            {
-                Id = "franklin_aunt",
-                Name = "Forum Drive Garage",
-                Character = PedHash.Franklin,
-                GarageName = "Franklin - Aunt",
-                GarageHash = 4019785634,
-                Slots = new[]
-                {
-                    // Enclosed garage at Aunt's house on Forum Drive
-                    new ParkingSlot(-22.0f, -1432.0f, 28.83f, 180f),
-                    new ParkingSlot(-25.5f, -1432.0f, 28.83f, 180f),
-                },
-            },
-            new Safehouse
-            {
-                Id = "franklin_hills",
-                Name = "Vinewood Hills Garage",
-                Character = PedHash.Franklin,
-                GarageName = "Franklin - Hills",
-                GarageHash = 2393745202,
-                Slots = new[]
-                {
-                    // Open driveway at 3671 Whispymound Drive
-                    new ParkingSlot(18.0f, 545.0f, 175.5f, 340f),
-                    new ParkingSlot(21.0f, 544.0f, 175.5f, 340f),
-                    new ParkingSlot(24.0f, 543.0f, 175.5f, 340f),
-                    new ParkingSlot(27.0f, 542.0f, 175.5f, 340f),
-                },
-            },
-
-            // --- Michael ----------------------------------------------------
-            new Safehouse
-            {
-                Id = "michael_beverly",
-                Name = "Rockford Hills Garage",
-                Character = PedHash.Michael,
-                GarageName = "Michael - Beverly Hills",
-                GarageHash = 360562957,
-                Slots = new[]
-                {
-                    // Enclosed two-car garage at De Santa residence
-                    new ParkingSlot(-811.0f, 187.0f, 72.5f, 0f),
-                    new ParkingSlot(-814.5f, 187.0f, 72.5f, 0f),
-                },
-            },
-
-            // --- Trevor -----------------------------------------------------
-            new Safehouse
-            {
-                Id = "trevor_countryside",
-                Name = "Sandy Shores Garage",
-                Character = PedHash.Trevor,
-                GarageName = "Trevor - Countryside",
-                GarageHash = 2175093583,
-                Slots = new[]
-                {
-                    // Open area beside Trevor's trailer
-                    new ParkingSlot(1968.0f, 3818.0f, 32.3f, 30f),
-                    new ParkingSlot(1971.5f, 3816.0f, 32.3f, 30f),
-                    new ParkingSlot(1975.0f, 3814.0f, 32.3f, 30f),
-                    new ParkingSlot(1978.5f, 3812.0f, 32.3f, 30f),
-                },
-            },
-            new Safehouse
-            {
-                Id = "trevor_city",
-                Name = "Vespucci Garage",
-                Character = PedHash.Trevor,
-                GarageName = "Trevor - City",
-                GarageHash = 3774828611,
-                Slots = new[]
-                {
-                    // Open parking at Floyd's apartment, Vespucci
-                    new ParkingSlot(-1146.0f, -1539.0f, 4.4f, 35f),
-                    new ParkingSlot(-1143.0f, -1541.0f, 4.4f, 35f),
-                },
-            },
-            new Safehouse
-            {
-                Id = "trevor_stripclub",
-                Name = "Stripclub Garage",
-                Character = PedHash.Trevor,
-                GarageName = "Trevor - Stripclub",
-                GarageHash = 1066626361,
-                Slots = new[]
-                {
-                    // Open parking at Vanilla Unicorn
-                    new ParkingSlot(139.0f, -1292.0f, 29.3f, 120f),
-                    new ParkingSlot(139.0f, -1288.5f, 29.3f, 120f),
-                },
-            },
+            // Left row (facing heading -105)
+            new ParkingSlot(224.57f, -1002.75f, -99.0f, -105f),
+            new ParkingSlot(224.36f, -998.87f,  -99.0f, -105f),
+            new ParkingSlot(223.61f, -993.94f,  -99.0f, -105f),
+            new ParkingSlot(223.65f, -989.04f,  -99.0f, -105f),
+            new ParkingSlot(224.18f, -983.51f,  -99.0f, -105f),
+            // Right row (facing heading 134)
+            new ParkingSlot(234.44f, -1000.90f, -99.0f, 134f),
+            new ParkingSlot(233.68f, -995.90f,  -99.0f, 134f),
+            new ParkingSlot(233.00f, -991.15f,  -99.0f, 134f),
+            new ParkingSlot(232.94f, -985.76f,  -99.0f, 134f),
+            new ParkingSlot(232.39f, -981.39f,  -99.0f, 134f),
         };
 
-        // Migration map: old safehouse IDs -> new IDs (for save file compat)
-        private static readonly Dictionary<string, string> MIGRATION_MAP =
-            new Dictionary<string, string>
-            {
-                { "grove_street", "franklin_aunt" },
-                { "vinewood_garage", "michael_beverly" },
-                { "pillbox_hill", "trevor_countryside" },
-            };
+        // Character keys for save file
+        private const string KEY_MICHAEL  = "michael";
+        private const string KEY_FRANKLIN = "franklin";
+        private const string KEY_TREVOR   = "trevor";
 
         // ------------------------------------------------------------------ //
         //  State                                                              //
@@ -170,21 +91,32 @@ namespace ALLIN1
         private static readonly string SCRIPTS_DIR =
             AppDomain.CurrentDomain.BaseDirectory;
         private static readonly string SAVE_PATH =
+            Path.Combine(SCRIPTS_DIR, "ALLIN1_garage.json");
+        private static readonly string OLD_SAVE_PATH =
             Path.Combine(SCRIPTS_DIR, "ALLIN1_garages.json");
         private static readonly string LOG_PATH =
             Path.Combine(SCRIPTS_DIR, "ALLIN1_gbay.log");
 
-        // safehouse id -> list of stored vehicles
+        // Per-character stored vehicle lists
         private static readonly Dictionary<string, List<StoredVehicle>> _stored =
-            new Dictionary<string, List<StoredVehicle>>();
+            new Dictionary<string, List<StoredVehicle>>
+            {
+                { KEY_MICHAEL,  new List<StoredVehicle>() },
+                { KEY_FRANKLIN, new List<StoredVehicle>() },
+                { KEY_TREVOR,   new List<StoredVehicle>() },
+            };
 
-        // safehouse id -> vehicle handles per slot (null = empty)
-        private static readonly Dictionary<string, Vehicle[]> _handles =
-            new Dictionary<string, Vehicle[]>();
+        // Active vehicle handles (only populated while player is inside garage)
+        private static readonly Vehicle[] _handles = new Vehicle[SLOT_COUNT];
 
-        // model hash -> model name (reverse lookup, built at init)
-        private static readonly Dictionary<int, string> _modelByHash =
-            new Dictionary<int, string>();
+        // Player state
+        private static bool _isPlayerInGarage;
+        private static Vector3 _returnPos;  // where to teleport back on exit
+        private static float _returnHeading;
+        private static Blip _entranceBlip;
+
+        // Cooldown to avoid re-entering immediately after exiting
+        private static int _exitCooldownFrames;
 
         private static bool _debug;
         private static bool _enableLogging = true;
@@ -232,27 +164,24 @@ namespace ALLIN1
             if (_initialized)
                 return;
 
-            foreach (var sh in Safehouses)
-            {
-                if (!_stored.ContainsKey(sh.Id))
-                    _stored[sh.Id] = new List<StoredVehicle>();
-                if (!_handles.ContainsKey(sh.Id))
-                    _handles[sh.Id] = new Vehicle[sh.Slots.Length];
-            }
-
             try
             {
-                BuildModelLookup();
-
+                MigrateOldSaveFile();
                 Load();
-                int totalStored = 0;
-                foreach (var list in _stored.Values)
-                    totalStored += list.Count;
-                Log($"Loaded {totalStored} stored vehicles from {SAVE_PATH}");
 
-                RespawnAll();
-                ScanForExistingVehicles();
-                Log("RespawnAll + scan complete");
+                int total = 0;
+                foreach (var list in _stored.Values)
+                    total += list.Count;
+                Log($"Loaded {total} stored vehicles from {SAVE_PATH}");
+
+                // Create entrance blip
+                _entranceBlip = World.CreateBlip(ENTRANCE_POS);
+                _entranceBlip.Sprite = BlipSprite.Garage;
+                _entranceBlip.Color = BlipColor.Green;
+                _entranceBlip.Name = "ALLIN1 Garage";
+                _entranceBlip.IsShortRange = true;
+
+                Log("GarageManager initialized (Eclipse Towers 10-car interior)");
             }
             catch (Exception ex)
             {
@@ -262,94 +191,116 @@ namespace ALLIN1
             _initialized = true;
         }
 
-        internal static Safehouse[] GetSafehouses(PedHash character)
+        internal static bool IsPlayerInGarage => _isPlayerInGarage;
+
+        /// <summary>
+        /// Called every frame from GbayShop.OnTick. Handles entrance/exit
+        /// marker drawing and proximity detection.
+        /// </summary>
+        internal static void OnTick()
         {
-            var result = new List<Safehouse>();
-            foreach (var sh in Safehouses)
+            if (!_initialized)
+                return;
+
+            if (_exitCooldownFrames > 0)
             {
-                if (sh.Character == character)
-                    result.Add(sh);
+                _exitCooldownFrames--;
+                return;
             }
-            return result.ToArray();
+
+            Ped player = Game.Player.Character;
+            if (player == null || player.IsDead)
+                return;
+
+            if (!_isPlayerInGarage)
+            {
+                // Draw entrance marker
+                World.DrawMarker(
+                    GTA.MarkerType.VerticalCylinder,
+                    ENTRANCE_POS - new Vector3(0f, 0f, 1f),
+                    Vector3.Zero, Vector3.Zero,
+                    new Vector3(2f, 2f, 1.5f),
+                    System.Drawing.Color.FromArgb(128, 0, 200, 0));
+
+                // Check proximity
+                float dist = player.Position.DistanceTo(ENTRANCE_POS);
+                if (dist < ENTER_RADIUS)
+                {
+                    GTA.UI.Screen.ShowHelpTextThisFrame("Press ~INPUT_CONTEXT~ to enter your garage.");
+
+                    if (Game.IsControlJustPressed(GTA.Control.Context))
+                    {
+                        EnterGarage();
+                    }
+                }
+            }
+            else
+            {
+                // Draw exit marker inside garage
+                World.DrawMarker(
+                    GTA.MarkerType.VerticalCylinder,
+                    INTERIOR_EXIT - new Vector3(0f, 0f, 1f),
+                    Vector3.Zero, Vector3.Zero,
+                    new Vector3(2f, 2f, 1.5f),
+                    System.Drawing.Color.FromArgb(128, 200, 200, 0));
+
+                // Check exit proximity
+                float dist = player.Position.DistanceTo(INTERIOR_EXIT);
+                if (dist < EXIT_RADIUS)
+                {
+                    GTA.UI.Screen.ShowHelpTextThisFrame("Press ~INPUT_CONTEXT~ to leave the garage.");
+
+                    if (Game.IsControlJustPressed(GTA.Control.Context))
+                    {
+                        LeaveGarage();
+                    }
+                }
+            }
         }
 
-        internal static int GetUsedSlots(string safehouseId)
+        internal static int GetUsedSlots()
         {
-            if (_stored.TryGetValue(safehouseId, out var list))
+            string key = CharacterKey();
+            if (_stored.TryGetValue(key, out var list))
                 return list.Count;
             return 0;
         }
 
-        internal static int GetCapacity(string safehouseId)
+        internal static int GetCapacity()
         {
-            Safehouse sh = FindSafehouse(safehouseId);
-            if (sh == null) return 0;
-            return sh.Slots.Length;
+            return SLOT_COUNT;
         }
 
-        internal static List<StoredVehicle> GetStoredVehicles(string safehouseId)
+        internal static List<StoredVehicle> GetStoredVehicles()
         {
-            if (_stored.TryGetValue(safehouseId, out var list))
+            string key = CharacterKey();
+            if (_stored.TryGetValue(key, out var list))
                 return list;
             return new List<StoredVehicle>();
         }
 
         /// <summary>
-        /// Deliver a vehicle to a safehouse. Returns true if successful,
-        /// false if no room.
+        /// Deliver a vehicle to the current character's garage.
         /// </summary>
-        internal static bool DeliverVehicle(string safehouseId, string model,
-                                            int color1, int color2)
+        internal static bool DeliverVehicle(string model, int color1, int color2)
         {
-            Safehouse sh = FindSafehouse(safehouseId);
-            if (sh == null)
+            string key = CharacterKey();
+            if (!_stored.TryGetValue(key, out var list))
+                return false;
+
+            if (list.Count >= SLOT_COUNT)
             {
-                Log($"DeliverVehicle: unknown safehouse '{safehouseId}'");
+                Log($"DeliverVehicle: garage full ({list.Count}/{SLOT_COUNT})");
                 return false;
             }
 
-            if (!_stored.TryGetValue(safehouseId, out var list))
-                return false;
-
-            if (list.Count >= sh.Slots.Length)
-            {
-                Log($"DeliverVehicle: {safehouseId} full ({list.Count}/{sh.Slots.Length})");
-                return false;
-            }
-
-            // Find first empty slot
-            int slotIndex = FindEmptySlot(safehouseId, sh);
+            int slotIndex = FindEmptySlot(list);
             if (slotIndex < 0)
             {
-                Log($"DeliverVehicle: no empty slot at {safehouseId}");
+                Log($"DeliverVehicle: no empty slot");
                 return false;
             }
 
-            // Spawn the vehicle
-            ParkingSlot slot = sh.Slots[slotIndex];
-            Vehicle veh = null;
-            try
-            {
-                veh = VehicleHelper.CreateVehicle(
-                    model, slot.Position, slot.Heading, color1, color2);
-            }
-            catch (Exception ex)
-            {
-                LogException("DeliverVehicle.CreateVehicle", ex);
-                return false;
-            }
-
-            if (veh == null)
-            {
-                Log($"DeliverVehicle: CreateVehicle returned null for {model}");
-                return false;
-            }
-
-            veh.IsPersistent = true;
-            veh.IsEngineRunning = false;
-            Function.Call((Hash)0x428BACCDF5E26EAD, veh, true); // SET_VEHICLE_CAN_SAVE_IN_GARAGE
-
-            // Track it
             var stored = new StoredVehicle
             {
                 Model = model,
@@ -358,20 +309,40 @@ namespace ALLIN1
                 Color2 = color2,
             };
             list.Add(stored);
-            _handles[safehouseId][slotIndex] = veh;
 
-            Log($"DeliverVehicle: {model} -> {safehouseId} slot {slotIndex}");
+            // If player is currently inside the garage, spawn it immediately
+            if (_isPlayerInGarage)
+            {
+                try
+                {
+                    ParkingSlot slot = Slots[slotIndex];
+                    Vehicle veh = VehicleHelper.CreateVehicle(
+                        model, slot.Position, slot.Heading, color1, color2);
+                    if (veh != null)
+                    {
+                        veh.IsPersistent = true;
+                        veh.IsEngineRunning = false;
+                        _handles[slotIndex] = veh;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogException("DeliverVehicle.SpawnInGarage", ex);
+                }
+            }
+
+            Log($"DeliverVehicle: {model} -> slot {slotIndex}");
             Save();
             return true;
         }
 
         /// <summary>
         /// Remove a stored vehicle by its index in the stored list.
-        /// Deletes the entity and frees the slot.
         /// </summary>
-        internal static void RemoveVehicle(string safehouseId, int listIndex)
+        internal static void RemoveVehicle(int listIndex)
         {
-            if (!_stored.TryGetValue(safehouseId, out var list))
+            string key = CharacterKey();
+            if (!_stored.TryGetValue(key, out var list))
                 return;
             if (listIndex < 0 || listIndex >= list.Count)
                 return;
@@ -379,201 +350,170 @@ namespace ALLIN1
             StoredVehicle sv = list[listIndex];
             int slotIndex = sv.Slot;
 
-            // Delete the entity if it exists
-            if (_handles.TryGetValue(safehouseId, out var handles)
-                && slotIndex >= 0 && slotIndex < handles.Length)
+            // Delete the entity if it's spawned
+            if (slotIndex >= 0 && slotIndex < SLOT_COUNT)
             {
-                Vehicle veh = handles[slotIndex];
+                Vehicle veh = _handles[slotIndex];
                 if (veh != null && veh.Exists())
                 {
                     veh.IsPersistent = true;
                     veh.Delete();
                 }
-                handles[slotIndex] = null;
+                _handles[slotIndex] = null;
             }
 
-            Log($"RemoveVehicle: {sv.Model} from {safehouseId} slot {slotIndex}");
+            Log($"RemoveVehicle: {sv.Model} from slot {slotIndex}");
             list.RemoveAt(listIndex);
             Save();
         }
 
-        internal static bool IsDebug()
-        {
-            return _debug;
-        }
-
         /// <summary>
-        /// Draw debug markers at all parking slots. Call from OnTick when
-        /// garage_debug is enabled.
+        /// Draw debug markers at all parking slots and entrance/exit points.
         /// </summary>
         internal static void DrawDebugMarkers()
         {
-            foreach (var sh in Safehouses)
+            // Entrance
+            World.DrawMarker(
+                GTA.MarkerType.UpsideDownCone,
+                ENTRANCE_POS + new Vector3(0f, 0f, 2f),
+                Vector3.Zero, Vector3.Zero,
+                new Vector3(0.5f, 0.5f, 0.5f),
+                System.Drawing.Color.FromArgb(128, 0, 255, 0));
+
+            // Interior spawn + exit
+            World.DrawMarker(
+                GTA.MarkerType.UpsideDownCone,
+                INTERIOR_SPAWN + new Vector3(0f, 0f, 2f),
+                Vector3.Zero, Vector3.Zero,
+                new Vector3(0.5f, 0.5f, 0.5f),
+                System.Drawing.Color.FromArgb(128, 0, 0, 255));
+
+            World.DrawMarker(
+                GTA.MarkerType.UpsideDownCone,
+                INTERIOR_EXIT + new Vector3(0f, 0f, 2f),
+                Vector3.Zero, Vector3.Zero,
+                new Vector3(0.5f, 0.5f, 0.5f),
+                System.Drawing.Color.FromArgb(128, 255, 255, 0));
+
+            // Parking slots
+            for (int i = 0; i < SLOT_COUNT; i++)
             {
-                for (int i = 0; i < sh.Slots.Length; i++)
-                {
-                    Vector3 pos = sh.Slots[i].Position;
-                    World.DrawMarker(
-                        GTA.MarkerType.UpsideDownCone,
-                        pos + new Vector3(0f, 0f, 2f),
-                        Vector3.Zero, Vector3.Zero,
-                        new Vector3(0.5f, 0.5f, 0.5f),
-                        System.Drawing.Color.FromArgb(128, 0, 255, 0));
-                }
+                Vector3 pos = Slots[i].Position;
+                World.DrawMarker(
+                    GTA.MarkerType.UpsideDownCone,
+                    pos + new Vector3(0f, 0f, 2f),
+                    Vector3.Zero, Vector3.Zero,
+                    new Vector3(0.5f, 0.5f, 0.5f),
+                    System.Drawing.Color.FromArgb(128, 255, 128, 0));
             }
         }
 
         // ------------------------------------------------------------------ //
-        //  Internals                                                          //
+        //  Garage Enter / Leave                                               //
         // ------------------------------------------------------------------ //
 
-        /// <summary>
-        /// Build a hash -> model name lookup from VehicleList.All so we can
-        /// identify vehicles found parked at garage slots.
-        /// </summary>
-        private static void BuildModelLookup()
+        private static void EnterGarage()
         {
-            _modelByHash.Clear();
-            foreach (string name in VehicleList.All)
+            Ped player = Game.Player.Character;
+            _returnPos = player.Position;
+            _returnHeading = player.Heading;
+
+            // Freeze player, teleport into garage
+            player.IsPositionFrozen = true;
+            Function.Call(Hash.SET_ENTITY_COORDS, player,
+                INTERIOR_SPAWN.X, INTERIOR_SPAWN.Y, INTERIOR_SPAWN.Z,
+                false, false, false, true);
+            Function.Call(Hash.SET_ENTITY_HEADING, player, INTERIOR_SPAWN_HEADING);
+
+            // Spawn the current character's vehicles
+            string key = CharacterKey();
+            if (_stored.TryGetValue(key, out var list))
             {
-                int hash = new Model(name).Hash;
-                if (!_modelByHash.ContainsKey(hash))
-                    _modelByHash[hash] = name;
-            }
-            Log($"BuildModelLookup: {_modelByHash.Count} models indexed");
-        }
-
-        /// <summary>
-        /// Scan each empty parking slot for vehicles that are already there
-        /// (e.g. vanilla game vehicles or leftovers from a previous session)
-        /// and register them so they show up in the garage UI.
-        /// </summary>
-        private static void ScanForExistingVehicles()
-        {
-            bool changed = false;
-
-            foreach (var sh in Safehouses)
-            {
-                if (!_stored.TryGetValue(sh.Id, out var list))
-                    continue;
-                if (!_handles.TryGetValue(sh.Id, out var handles))
-                    continue;
-
-                // Build set of already-occupied slots
-                var occupied = new HashSet<int>();
                 foreach (var sv in list)
-                    occupied.Add(sv.Slot);
-
-                for (int i = 0; i < sh.Slots.Length; i++)
                 {
-                    if (occupied.Contains(i))
+                    if (sv.Slot < 0 || sv.Slot >= SLOT_COUNT)
                         continue;
 
-                    ParkingSlot slot = sh.Slots[i];
-                    Vehicle[] nearby = null;
+                    ParkingSlot slot = Slots[sv.Slot];
                     try
                     {
-                        nearby = World.GetNearbyVehicles(slot.Position, 5f);
+                        Vehicle veh = VehicleHelper.CreateVehicle(
+                            sv.Model, slot.Position, slot.Heading,
+                            sv.Color1, sv.Color2);
+                        if (veh != null)
+                        {
+                            veh.IsPersistent = true;
+                            veh.IsEngineRunning = false;
+                            veh.IsPositionFrozen = true;
+                            _handles[sv.Slot] = veh;
+                        }
+                        else
+                        {
+                            Log($"EnterGarage: failed to spawn {sv.Model} at slot {sv.Slot}");
+                        }
                     }
                     catch (Exception ex)
                     {
-                        LogException("ScanForExisting.GetNearby", ex);
-                        continue;
+                        LogException($"EnterGarage.Spawn({sv.Model})", ex);
                     }
-
-                    if (nearby == null || nearby.Length == 0)
-                        continue;
-
-                    // Pick the closest vehicle
-                    Vehicle best = null;
-                    float bestDist = float.MaxValue;
-                    foreach (var v in nearby)
-                    {
-                        if (v == null || !v.Exists())
-                            continue;
-                        float d = v.Position.DistanceTo(slot.Position);
-                        if (d < bestDist)
-                        {
-                            bestDist = d;
-                            best = v;
-                        }
-                    }
-
-                    if (best == null)
-                        continue;
-
-                    // Look up model name from hash
-                    int hash = best.Model.Hash;
-                    string modelName;
-                    if (!_modelByHash.TryGetValue(hash, out modelName))
-                    {
-                        // Unknown model -- use the GXT label as fallback
-                        modelName = Function.Call<string>(
-                            (Hash)0xB215AAC32D25D019, hash); // GET_DISPLAY_NAME_FROM_VEHICLE_MODEL
-                        if (string.IsNullOrEmpty(modelName))
-                            modelName = $"0x{hash:X8}";
-                    }
-
-                    // Get current colours
-                    int c1 = 0, c2 = 0;
-                    try
-                    {
-                        OutputArgument oc1 = new OutputArgument();
-                        OutputArgument oc2 = new OutputArgument();
-                        Function.Call((Hash)0xA19435F193E081AC, best, oc1, oc2); // GET_VEHICLE_COLOURS
-                        c1 = oc1.GetResult<int>();
-                        c2 = oc2.GetResult<int>();
-                    }
-                    catch { }
-
-                    var stored = new StoredVehicle
-                    {
-                        Model = modelName,
-                        Slot = i,
-                        Color1 = c1,
-                        Color2 = c2,
-                    };
-                    list.Add(stored);
-                    handles[i] = best;
-                    best.IsPersistent = true;
-                    Function.Call((Hash)0x428BACCDF5E26EAD, best, true); // SET_VEHICLE_CAN_SAVE_IN_GARAGE
-                    occupied.Add(i);
-                    changed = true;
-
-                    Log($"ScanForExisting: found {modelName} at {sh.Id} slot {i} (dist={bestDist:F1}m)");
                 }
             }
 
-            if (changed)
-            {
-                Save();
-                int totalStored = 0;
-                foreach (var list in _stored.Values)
-                    totalStored += list.Count;
-                Log($"ScanForExisting: saved, total={totalStored}");
-            }
+            player.IsPositionFrozen = false;
+            _isPlayerInGarage = true;
+
+            Log($"EnterGarage: character={key}, vehicles spawned");
         }
 
-        private static Safehouse FindSafehouse(string id)
+        private static void LeaveGarage()
         {
-            foreach (var sh in Safehouses)
+            Ped player = Game.Player.Character;
+            player.IsPositionFrozen = true;
+
+            // Delete all spawned vehicles
+            for (int i = 0; i < SLOT_COUNT; i++)
             {
-                if (sh.Id == id)
-                    return sh;
+                Vehicle veh = _handles[i];
+                if (veh != null && veh.Exists())
+                {
+                    veh.IsPersistent = true;
+                    veh.Delete();
+                }
+                _handles[i] = null;
             }
-            return null;
+
+            // Teleport back to entrance
+            Function.Call(Hash.SET_ENTITY_COORDS, player,
+                _returnPos.X, _returnPos.Y, _returnPos.Z,
+                false, false, false, true);
+            Function.Call(Hash.SET_ENTITY_HEADING, player, _returnHeading);
+
+            player.IsPositionFrozen = false;
+            _isPlayerInGarage = false;
+            _exitCooldownFrames = 60; // ~1 second cooldown
+
+            Log("LeaveGarage: returned to entrance");
         }
 
-        private static int FindEmptySlot(string safehouseId, Safehouse sh)
-        {
-            if (!_stored.TryGetValue(safehouseId, out var list))
-                return -1;
+        // ------------------------------------------------------------------ //
+        //  Helpers                                                            //
+        // ------------------------------------------------------------------ //
 
+        private static string CharacterKey()
+        {
+            PedHash ch = GbayShop.GetCurrentCharacter();
+            if (ch == PedHash.Franklin) return KEY_FRANKLIN;
+            if (ch == PedHash.Trevor) return KEY_TREVOR;
+            return KEY_MICHAEL;
+        }
+
+        private static int FindEmptySlot(List<StoredVehicle> list)
+        {
             var occupied = new HashSet<int>();
             foreach (var sv in list)
                 occupied.Add(sv.Slot);
 
-            for (int i = 0; i < sh.Slots.Length; i++)
+            for (int i = 0; i < SLOT_COUNT; i++)
             {
                 if (!occupied.Contains(i))
                     return i;
@@ -581,75 +521,152 @@ namespace ALLIN1
             return -1;
         }
 
-        private static void RespawnAll()
+        // ------------------------------------------------------------------ //
+        //  Migration from old save format                                     //
+        // ------------------------------------------------------------------ //
+
+        private static void MigrateOldSaveFile()
         {
-            foreach (var sh in Safehouses)
+            if (!File.Exists(OLD_SAVE_PATH))
+                return;
+            if (File.Exists(SAVE_PATH))
+                return; // new file already exists, skip migration
+
+            Log("Migrating old ALLIN1_garages.json to new format...");
+
+            try
             {
-                if (!_stored.TryGetValue(sh.Id, out var list))
-                    continue;
+                string json = File.ReadAllText(OLD_SAVE_PATH);
 
-                if (!_handles.TryGetValue(sh.Id, out var handles))
-                    continue;
-
-                foreach (var sv in list)
+                // Map old safehouse IDs to character keys
+                var oldToChar = new Dictionary<string, string>
                 {
-                    if (sv.Slot < 0 || sv.Slot >= sh.Slots.Length)
-                        continue;
+                    { "franklin_aunt", KEY_FRANKLIN },
+                    { "franklin_hills", KEY_FRANKLIN },
+                    { "grove_street", KEY_FRANKLIN },
+                    { "michael_beverly", KEY_MICHAEL },
+                    { "vinewood_garage", KEY_MICHAEL },
+                    { "trevor_countryside", KEY_TREVOR },
+                    { "trevor_city", KEY_TREVOR },
+                    { "trevor_stripclub", KEY_TREVOR },
+                    { "pillbox_hill", KEY_TREVOR },
+                };
 
-                    // Skip if already spawned (script reload)
-                    if (handles[sv.Slot] != null && handles[sv.Slot].Exists())
-                    {
-                        Log($"RespawnAll: {sv.Model} at {sh.Id} slot {sv.Slot} already exists, skipping");
-                        continue;
-                    }
+                // Parse old format and merge into new per-character lists
+                var migrated = new Dictionary<string, List<StoredVehicle>>
+                {
+                    { KEY_MICHAEL, new List<StoredVehicle>() },
+                    { KEY_FRANKLIN, new List<StoredVehicle>() },
+                    { KEY_TREVOR, new List<StoredVehicle>() },
+                };
 
-                    // Skip if another vehicle is already parked there
-                    ParkingSlot slot = sh.Slots[sv.Slot];
-                    try
+                // Use the same parser (reusing ParseOldJson)
+                ParseOldJson(json, oldToChar, migrated);
+
+                // Copy migrated data into _stored
+                foreach (var kvp in migrated)
+                    _stored[kvp.Key] = kvp.Value;
+
+                Save();
+
+                // Rename old file as backup
+                string backupPath = OLD_SAVE_PATH + ".bak";
+                if (File.Exists(backupPath))
+                    File.Delete(backupPath);
+                File.Move(OLD_SAVE_PATH, backupPath);
+
+                int total = 0;
+                foreach (var list in migrated.Values)
+                    total += list.Count;
+                Log($"Migration complete: {total} vehicles imported, old file backed up");
+            }
+            catch (Exception ex)
+            {
+                LogException("MigrateOldSaveFile", ex);
+            }
+        }
+
+        private static void ParseOldJson(
+            string json,
+            Dictionary<string, string> oldToChar,
+            Dictionary<string, List<StoredVehicle>> migrated)
+        {
+            // Minimal parser — same structure as old format:
+            // { "safehouse_id": [ { "model": "x", "slot": N, "color1": N, "color2": N }, ... ], ... }
+            string currentKey = null;
+
+            int i = 0;
+            while (i < json.Length)
+            {
+                char c = json[i];
+
+                if (c == '"')
+                {
+                    int end = json.IndexOf('"', i + 1);
+                    if (end < 0) break;
+                    string str = json.Substring(i + 1, end - i - 1);
+                    i = end + 1;
+
+                    if (currentKey == null)
                     {
-                        Vehicle[] nearby = World.GetNearbyVehicles(slot.Position, 3f);
-                        if (nearby != null && nearby.Length > 0)
+                        int peek = SkipWhitespace(json, i);
+                        if (peek < json.Length && json[peek] == ':')
                         {
-                            // Claim the existing vehicle as ours
-                            handles[sv.Slot] = nearby[0];
-                            Log($"RespawnAll: claimed existing vehicle at {sh.Id} slot {sv.Slot}");
-                            continue;
+                            currentKey = str;
+                            i = peek + 1;
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        LogException("RespawnAll.GetNearbyVehicles", ex);
-                    }
-
-                    try
-                    {
-                        Vehicle veh = VehicleHelper.CreateVehicle(
-                            sv.Model, slot.Position, slot.Heading,
-                            sv.Color1, sv.Color2);
-
-                        if (veh != null)
-                        {
-                            veh.IsPersistent = true;
-                            veh.IsEngineRunning = false;
-                            Function.Call((Hash)0x428BACCDF5E26EAD, veh, true); // SET_VEHICLE_CAN_SAVE_IN_GARAGE
-                            handles[sv.Slot] = veh;
-                            Log($"RespawnAll: spawned {sv.Model} at {sh.Id} slot {sv.Slot}");
-                        }
-                        else
-                        {
-                            Log($"RespawnAll: failed to spawn {sv.Model} at {sh.Id} slot {sv.Slot}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogException($"RespawnAll.CreateVehicle({sv.Model})", ex);
-                    }
+                    continue;
                 }
+
+                if (c == '[' && currentKey != null)
+                {
+                    i++;
+                    var vehicles = ParseVehicleArray(json, ref i);
+
+                    // Map to character
+                    if (oldToChar.TryGetValue(currentKey, out string charKey)
+                        && migrated.ContainsKey(charKey))
+                    {
+                        var charList = migrated[charKey];
+                        foreach (var sv in vehicles)
+                        {
+                            if (charList.Count >= SLOT_COUNT)
+                                break;
+
+                            // Reassign slot index to avoid conflicts
+                            var occupied = new HashSet<int>();
+                            foreach (var existing in charList)
+                                occupied.Add(existing.Slot);
+
+                            int newSlot = -1;
+                            for (int s = 0; s < SLOT_COUNT; s++)
+                            {
+                                if (!occupied.Contains(s))
+                                {
+                                    newSlot = s;
+                                    break;
+                                }
+                            }
+
+                            if (newSlot >= 0)
+                            {
+                                sv.Slot = newSlot;
+                                charList.Add(sv);
+                            }
+                        }
+                    }
+
+                    currentKey = null;
+                    continue;
+                }
+
+                i++;
             }
         }
 
         // ------------------------------------------------------------------ //
-        //  JSON persistence (hand-rolled -- tiny data, no library needed)     //
+        //  JSON persistence                                                   //
         // ------------------------------------------------------------------ //
 
         private static void Load()
@@ -661,79 +678,10 @@ namespace ALLIN1
             {
                 string json = File.ReadAllText(SAVE_PATH);
                 ParseJson(json);
-                ValidateSlots();
             }
             catch (Exception ex)
             {
                 LogException("Load", ex);
-            }
-        }
-
-        /// <summary>
-        /// After loading (and possibly migrating), ensure stored vehicles
-        /// have valid slot indices for their garage. Old garages may have
-        /// had more slots than the new definition.
-        /// </summary>
-        private static void ValidateSlots()
-        {
-            bool needsSave = false;
-
-            foreach (var sh in Safehouses)
-            {
-                if (!_stored.TryGetValue(sh.Id, out var list))
-                    continue;
-
-                int capacity = sh.Slots.Length;
-                var kept = new List<StoredVehicle>();
-                var usedSlots = new HashSet<int>();
-
-                foreach (var sv in list)
-                {
-                    if (sv.Slot >= 0 && sv.Slot < capacity && !usedSlots.Contains(sv.Slot))
-                    {
-                        kept.Add(sv);
-                        usedSlots.Add(sv.Slot);
-                    }
-                    else
-                    {
-                        // Try to reassign to an available slot
-                        int newSlot = -1;
-                        for (int s = 0; s < capacity; s++)
-                        {
-                            if (!usedSlots.Contains(s))
-                            {
-                                newSlot = s;
-                                break;
-                            }
-                        }
-
-                        if (newSlot >= 0)
-                        {
-                            sv.Slot = newSlot;
-                            kept.Add(sv);
-                            usedSlots.Add(newSlot);
-                            Log($"ValidateSlots: reassigned {sv.Model} to slot {newSlot} at {sh.Id}");
-                            needsSave = true;
-                        }
-                        else
-                        {
-                            Log($"ValidateSlots: dropped {sv.Model} from {sh.Id} (no room, capacity={capacity})");
-                            needsSave = true;
-                        }
-                    }
-                }
-
-                if (kept.Count != list.Count)
-                {
-                    _stored[sh.Id] = kept;
-                    needsSave = true;
-                }
-            }
-
-            if (needsSave)
-            {
-                Log("ValidateSlots: re-saving after migration/fixup");
-                Save();
             }
         }
 
@@ -759,16 +707,13 @@ namespace ALLIN1
             var sb = new StringBuilder();
             sb.AppendLine("{");
 
-            bool firstSafehouse = true;
-            foreach (var sh in Safehouses)
+            string[] keys = { KEY_MICHAEL, KEY_FRANKLIN, KEY_TREVOR };
+            for (int k = 0; k < keys.Length; k++)
             {
-                if (!firstSafehouse)
-                    sb.AppendLine(",");
-                firstSafehouse = false;
+                string key = keys[k];
+                sb.Append($"  \"{key}\": [");
 
-                sb.Append($"  \"{sh.Id}\": [");
-
-                if (_stored.TryGetValue(sh.Id, out var list) && list.Count > 0)
+                if (_stored.TryGetValue(key, out var list) && list.Count > 0)
                 {
                     sb.AppendLine();
                     for (int i = 0; i < list.Count; i++)
@@ -786,17 +731,19 @@ namespace ALLIN1
                 {
                     sb.Append("]");
                 }
+
+                if (k < keys.Length - 1)
+                    sb.AppendLine(",");
+                else
+                    sb.AppendLine();
             }
 
-            sb.AppendLine();
             sb.AppendLine("}");
             return sb.ToString();
         }
 
         private static void ParseJson(string json)
         {
-            // Minimal parser for our known flat structure.
-            // Expects: { "safehouse_id": [ { "model": "x", "slot": N, "color1": N, "color2": N }, ... ], ... }
             string currentKey = null;
 
             int i = 0;
@@ -811,10 +758,8 @@ namespace ALLIN1
                     string str = json.Substring(i + 1, end - i - 1);
                     i = end + 1;
 
-                    // Determine context: is this a top-level key or a value key?
                     if (currentKey == null)
                     {
-                        // Check if next non-whitespace is ':'
                         int peek = SkipWhitespace(json, i);
                         if (peek < json.Length && json[peek] == ':')
                         {
@@ -827,20 +772,11 @@ namespace ALLIN1
 
                 if (c == '[' && currentKey != null)
                 {
-                    // Parse array of objects for this safehouse
                     i++;
                     var vehicles = ParseVehicleArray(json, ref i);
 
-                    // Migrate old safehouse IDs to new ones
-                    string resolvedKey = currentKey;
-                    if (MIGRATION_MAP.TryGetValue(currentKey, out string newKey))
-                    {
-                        Log($"Load: migrating '{currentKey}' -> '{newKey}'");
-                        resolvedKey = newKey;
-                    }
-
-                    if (_stored.ContainsKey(resolvedKey))
-                        _stored[resolvedKey] = vehicles;
+                    if (_stored.ContainsKey(currentKey))
+                        _stored[currentKey] = vehicles;
 
                     currentKey = null;
                     continue;
@@ -903,7 +839,6 @@ namespace ALLIN1
                     string key = json.Substring(i + 1, end - i - 1);
                     i = end + 1;
 
-                    // Skip to ':'
                     i = SkipWhitespace(json, i);
                     if (i < json.Length && json[i] == ':')
                         i++;
@@ -911,7 +846,6 @@ namespace ALLIN1
 
                     if (key == "model")
                     {
-                        // Read string value
                         if (i < json.Length && json[i] == '"')
                         {
                             int vEnd = json.IndexOf('"', i + 1);
@@ -924,7 +858,6 @@ namespace ALLIN1
                     }
                     else
                     {
-                        // Read integer value
                         int numStart = i;
                         while (i < json.Length && (char.IsDigit(json[i]) || json[i] == '-'))
                             i++;

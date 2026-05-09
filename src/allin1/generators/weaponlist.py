@@ -34,6 +34,20 @@ CATEGORY_NAMES: dict[str, tuple[str, str]] = {
     "misc":        ("Misc",        "Miscellaneous"),
 }
 
+# Ammo cost per round by category (matches Ammu-Nation style pricing).
+AMMO_COST_PER_ROUND: dict[str, int] = {
+    "pistols":     2,
+    "smgs":        2,
+    "shotguns":    5,
+    "rifles":      3,
+    "machineguns": 3,
+    "snipers":     10,
+    "heavy":       100,
+    "throwables":  50,
+    "melee":       0,
+    "misc":        0,
+}
+
 
 def generate(weapons_path: Path, prices: dict[str, int]) -> str:
     """Return the full WeaponList.cs source as a string."""
@@ -104,6 +118,15 @@ def generate(weapons_path: Path, prices: dict[str, int]) -> str:
     for w in weapons:
         _, display_label = CATEGORY_NAMES.get(w["category"], (w["category"], w["category"]))
         a(f'            {{ "{w["name"]}", "{display_label}" }},')
+    a("        };")
+    a("")
+
+    # --- AmmoCostPerRound dictionary (weapon name -> cost per round) ---
+    a("        internal static readonly Dictionary<string, int> AmmoCostPerRound = new Dictionary<string, int>")
+    a("        {")
+    for w in weapons:
+        cost = AMMO_COST_PER_ROUND.get(w["category"], 0)
+        a(f'            {{ "{w["name"]}", {cost} }},')
     a("        };")
 
     a("    }")

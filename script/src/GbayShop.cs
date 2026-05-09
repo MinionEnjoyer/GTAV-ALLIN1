@@ -203,17 +203,16 @@ namespace ALLIN1
             }
         }
 
-        internal void ExecuteDeliverToSafehouse(string model, int price,
-                                                 string safehouseId, string safehouseName)
+        internal void ExecuteDeliverToGarage(string model, int price)
         {
-            int used = GarageManager.GetUsedSlots(safehouseId);
-            int cap = GarageManager.GetCapacity(safehouseId);
+            int used = GarageManager.GetUsedSlots();
+            int cap = GarageManager.GetCapacity();
 
             if (used >= cap)
             {
-                Log($"DeliverToSafehouse: {safehouseName} full ({used}/{cap})");
+                Log($"DeliverToGarage: full ({used}/{cap})");
                 GTA.UI.Screen.ShowSubtitle(
-                    $"~r~No room at {safehouseName}.~w~ ({used}/{cap} slots used)", 3000);
+                    $"~r~Garage full.~w~ ({used}/{cap} slots used)", 3000);
                 return;
             }
 
@@ -223,12 +222,11 @@ namespace ALLIN1
 
             try
             {
-                bool success = GarageManager.DeliverVehicle(safehouseId, model, c1, c2);
+                bool success = GarageManager.DeliverVehicle(model, c1, c2);
                 if (!success)
                 {
-                    Log($"DeliverToSafehouse: failed for {model} -> {safehouseId}");
-                    GTA.UI.Screen.ShowSubtitle(
-                        $"~r~Delivery to {safehouseName} failed.", 3000);
+                    Log($"DeliverToGarage: failed for {model}");
+                    GTA.UI.Screen.ShowSubtitle("~r~Delivery to garage failed.", 3000);
                     return;
                 }
 
@@ -238,17 +236,16 @@ namespace ALLIN1
                 string name = VehicleList.DisplayNames.ContainsKey(model)
                     ? VehicleList.DisplayNames[model] : model;
                 string msg = _freeMode || price <= 0
-                    ? $"~g~{name}~w~ delivered to ~b~{safehouseName}"
-                    : $"~g~{name}~w~ delivered to ~b~{safehouseName}~w~ for ~g~${price:N0}";
+                    ? $"~g~{name}~w~ delivered to garage!"
+                    : $"~g~{name}~w~ delivered to garage for ~g~${price:N0}";
                 GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
-                Log($"DeliverToSafehouse: {model} -> {safehouseId}, price=${price}");
+                Log($"DeliverToGarage: {model}, price=${price}");
             }
             catch (Exception ex)
             {
-                LogException("DeliverToSafehouse", ex);
-                GTA.UI.Screen.ShowSubtitle(
-                    $"~r~Delivery to {safehouseName} failed.", 3000);
+                LogException("DeliverToGarage", ex);
+                GTA.UI.Screen.ShowSubtitle("~r~Delivery to garage failed.", 3000);
             }
         }
 
@@ -260,22 +257,6 @@ namespace ALLIN1
         {
             Ped player = Game.Player.Character;
             Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
-
-            // Check if already owned
-            bool hasWeapon = Function.Call<bool>(
-                (Hash)0x8DECB02F88F428BC, player, weaponHash, false);  // HAS_PED_GOT_WEAPON
-
-            if (hasWeapon)
-            {
-                // Give max ammo instead
-                Function.Call((Hash)0x14E56BC5B5DB6A19,
-                    player, weaponHash, 9999, false);  // SET_PED_AMMO
-                string name = WeaponList.DisplayNames.ContainsKey(weaponName)
-                    ? WeaponList.DisplayNames[weaponName] : weaponName;
-                GTA.UI.Screen.ShowSubtitle($"~g~{name}~w~ ammo refilled!", 3000);
-                Log($"GiveWeapon: {weaponName} already owned, refilled ammo");
-                return;
-            }
 
             // Check funds
             if (!_freeMode && price > 0 && Game.Player.Money < price)
@@ -299,6 +280,102 @@ namespace ALLIN1
             GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
             Log($"GiveWeapon: {weaponName}, price=${price}");
+        }
+
+        /// <summary>
+        /// Refill ammo for an owned weapon. Returns the cost charged,
+        /// or -1 if already fully stocked, or -2 if insufficient funds.
+        /// </summary>
+        internal int ExecuteRefillAmmo(string weaponName)
+        {
+            Ped player = Game.Player.Character;
+            Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
+
+            // Get current and max ammo
+            int currentAmmo = Function.Call<int>(
+                (Hash)0x015A522136D7F951, player, weaponHash);  // GET_AMMO_IN_PED_WEAPON
+
+            OutputArgument maxAmmoOut = new OutputArgument();
+            Function.Call<bool>(
+                (Hash)0xDC16122C7A20C933, player, weaponHash, maxAmmoOut);  // GET_MAX_AMMO
+            int maxAmmo = maxAmmoOut.GetResult<int>();
+
+            if (maxAmmo <= 0)
+            {
+                // Melee or no-ammo weapon
+                GTA.UI.Screen.ShowSubtitle("~y~Already owned.", 3000);
+                return -1;
+            }
+
+            int needed = maxAmmo - currentAmmo;
+            if (needed <= 0)
+            {
+                GTA.UI.Screen.ShowSubtitle("~g~Already fully stocked!", 3000);
+                return -1;
+            }
+
+            // Calculate cost
+            int costPerRound = WeaponList.AmmoCostPerRound.ContainsKey(weaponName)
+                ? WeaponList.AmmoCostPerRound[weaponName] : 2;
+            int totalCost = needed * costPerRound;
+
+            if (_freeMode)
+                totalCost = 0;
+
+            if (!_freeMode && totalCost > 0 && Game.Player.Money < totalCost)
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~Insufficient funds for ammo.", 3000);
+                return -2;
+            }
+
+            // Refill
+            Function.Call((Hash)0x14E56BC5B5DB6A19,
+                player, weaponHash, maxAmmo, false);  // SET_PED_AMMO
+
+            if (!_freeMode && totalCost > 0)
+                Game.Player.Money -= totalCost;
+
+            string displayName = WeaponList.DisplayNames.ContainsKey(weaponName)
+                ? WeaponList.DisplayNames[weaponName] : weaponName;
+            string msg = totalCost > 0
+                ? $"~g~{displayName}~w~ ammo refilled ({needed} rounds) for ~g~${totalCost:N0}"
+                : $"~g~{displayName}~w~ ammo refilled ({needed} rounds)!";
+            GTA.UI.Screen.ShowSubtitle(msg, 3000);
+
+            Log($"RefillAmmo: {weaponName}, {needed} rounds, cost=${totalCost}");
+            return totalCost;
+        }
+
+        /// <summary>
+        /// Get the ammo refill cost for an owned weapon. Returns -1 if not
+        /// applicable (melee/misc), 0 if fully stocked, otherwise the cost.
+        /// Also outputs the round count needed.
+        /// </summary>
+        internal int GetAmmoRefillInfo(string weaponName, out int roundsNeeded)
+        {
+            roundsNeeded = 0;
+            Ped player = Game.Player.Character;
+            Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
+
+            int currentAmmo = Function.Call<int>(
+                (Hash)0x015A522136D7F951, player, weaponHash);  // GET_AMMO_IN_PED_WEAPON
+
+            OutputArgument maxAmmoOut = new OutputArgument();
+            Function.Call<bool>(
+                (Hash)0xDC16122C7A20C933, player, weaponHash, maxAmmoOut);  // GET_MAX_AMMO
+            int maxAmmo = maxAmmoOut.GetResult<int>();
+
+            if (maxAmmo <= 0)
+                return -1;  // melee/no-ammo
+
+            roundsNeeded = maxAmmo - currentAmmo;
+            if (roundsNeeded <= 0)
+                return 0;  // fully stocked
+
+            int costPerRound = WeaponList.AmmoCostPerRound.ContainsKey(weaponName)
+                ? WeaponList.AmmoCostPerRound[weaponName] : 2;
+
+            return _freeMode ? 0 : roundsNeeded * costPerRound;
         }
 
         // ------------------------------------------------------------------ //
@@ -327,6 +404,9 @@ namespace ALLIN1
         {
             try
             {
+                if (_initialized)
+                    GarageManager.OnTick();
+
                 if (_browser != null)
                     _browser.Draw();
 

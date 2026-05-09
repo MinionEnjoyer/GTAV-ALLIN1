@@ -183,15 +183,10 @@ namespace ALLIN1
         // Delivery confirm
         private string _pendingModel;
         private int _pendingPrice;
-        private int _deliveryIndex;
-        private int _deliveryHover = -1;
-        private readonly List<DeliveryOption> _deliveryOptions = new List<DeliveryOption>();
 
         // Garage view
-        private int _garageSafehouseIdx;
         private int _garageVehicleIdx;
         private int _garageHoverIdx = -1;
-        private GarageManager.Safehouse[] _garageSafehouses;
 
         // Weapon browser
         private int _weaponCategoryIndex;
@@ -202,6 +197,13 @@ namespace ALLIN1
         private int _weaponTabScrollOffset;
         private int _weaponHoverTab = -1;
         private readonly List<WeaponCard> _weaponFiltered = new List<WeaponCard>();
+
+        // Weapon ammo confirm
+        private bool _ammoConfirmPending;
+        private string _ammoConfirmWeapon;
+        private int _ammoConfirmCost;
+        private int _ammoConfirmRounds;
+        private int _ammoConfirmCardIdx;
 
         // Vehicle preview (3D showroom)
         private Vehicle _previewVehicle;
@@ -220,14 +222,6 @@ namespace ALLIN1
         private const float ZOOM_SPEED = 0.1f;
         private const float ZOOM_MIN = 0.5f;
         private const float ZOOM_MAX = 2.0f;
-
-        private struct DeliveryOption
-        {
-            internal string Label;
-            internal string Info;
-            internal string SafehouseId;
-            internal bool IsFull;
-        }
 
         // ------------------------------------------------------------------ //
         //  Constructor                                                        //
@@ -359,7 +353,7 @@ namespace ALLIN1
             GbayRenderer.DrawLogo(BROWSER_CX, 0.36f, 0.12f);
 
             // Buttons
-            string[] labels = { "Vehicles", "Weapons", "My Garages" };
+            string[] labels = { "Vehicles", "Weapons", "My Garage" };
             bool[] enabled = { true, true, true };
             float startY = 0.42f;
 
@@ -439,13 +433,10 @@ namespace ALLIN1
                     _weaponTabScrollOffset = 0;
                     RebuildWeaponFilteredList();
                 }
-                else if (activateIdx == 2) // My Garages
+                else if (activateIdx == 2) // My Garage
                 {
                     _state = BrowserState.GarageView;
-                    _garageSafehouseIdx = 0;
                     _garageVehicleIdx = 0;
-                    _garageSafehouses = GarageManager.GetSafehouses(
-                        GbayShop.GetCurrentCharacter());
                 }
             }
 
@@ -795,26 +786,6 @@ namespace ALLIN1
 
             _pendingModel = model;
             _pendingPrice = price;
-            _deliveryIndex = 0;
-            _deliveryHover = -1;
-
-            // Build delivery options (garage-only)
-            _deliveryOptions.Clear();
-
-            PedHash character = GbayShop.GetCurrentCharacter();
-            var safehouses = GarageManager.GetSafehouses(character);
-            foreach (var sh in safehouses)
-            {
-                int used = GarageManager.GetUsedSlots(sh.Id);
-                int cap = GarageManager.GetCapacity(sh.Id);
-                _deliveryOptions.Add(new DeliveryOption
-                {
-                    Label = sh.Name,
-                    Info = $"{used}/{cap}",
-                    SafehouseId = sh.Id,
-                    IsFull = used >= cap,
-                });
-            }
 
             GbayRenderer.PlaySelect();
             _state = BrowserState.DeliveryConfirm;
@@ -826,8 +797,7 @@ namespace ALLIN1
             GbayRenderer.DrawRect(0.5f, 0.5f, 1f, 1f, GbayRenderer.ModalScrim);
 
             // Modal panel
-            float itemCount = _deliveryOptions.Count;
-            float modalH = 0.12f + itemCount * MODAL_ITEM_H + 0.04f;
+            float modalH = 0.22f;
             float modalTop = 0.5f - modalH / 2f;
 
             GbayRenderer.DrawBorderedRect(BROWSER_CX, 0.5f, MODAL_W, modalH,
@@ -845,94 +815,38 @@ namespace ALLIN1
             GbayRenderer.DrawText(priceText, BROWSER_CX, modalTop + 0.05f,
                 0.30f, GbayRenderer.TextPrice, GbayRenderer.FONT_CHALET, true);
 
-            // Options
-            float optStartY = modalTop + 0.09f;
-            float optLeft = BROWSER_CX - MODAL_W / 2f + 0.02f;
-            float optRight = BROWSER_CX + MODAL_W / 2f - 0.02f;
+            // Garage info
+            int used = GarageManager.GetUsedSlots();
+            int cap = GarageManager.GetCapacity();
+            bool isFull = used >= cap;
+            string garageInfo = $"Eclipse Towers Garage ({used}/{cap})";
+            Color garageColor = isFull ? GbayRenderer.TextDim : GbayRenderer.TextDark;
+            GbayRenderer.DrawText(garageInfo, BROWSER_CX, modalTop + 0.09f,
+                0.32f, garageColor, GbayRenderer.FONT_CHALET, true);
 
-            _deliveryHover = -1;
-
-            for (int i = 0; i < _deliveryOptions.Count; i++)
+            if (isFull)
             {
-                var opt = _deliveryOptions[i];
-                float optY = optStartY + i * MODAL_ITEM_H;
-                float optCY = optY + MODAL_ITEM_H / 2f;
-                bool isSel = i == _deliveryIndex;
-                bool isHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
-                    BROWSER_CX, optCY, MODAL_W - 0.04f, MODAL_ITEM_H);
-
-                if (isHover && !opt.IsFull)
-                    _deliveryHover = i;
-
-                // Background highlight
-                if ((isSel || isHover) && !opt.IsFull)
-                {
-                    GbayRenderer.DrawRect(BROWSER_CX, optCY, MODAL_W - 0.04f,
-                        MODAL_ITEM_H, GbayRenderer.CardHover);
-                }
-
-                // Label
-                Color labelColor = opt.IsFull ? GbayRenderer.TextDim : GbayRenderer.TextDark;
-                GbayRenderer.DrawText(opt.Label, optLeft, optY + 0.008f,
-                    0.30f, labelColor, GbayRenderer.FONT_CHALET);
-
-                // Info (right side)
-                Color infoColor = opt.IsFull ? GbayRenderer.TextDim : GbayRenderer.TextMfg;
-                GbayRenderer.DrawText(opt.Info, optRight, optY + 0.008f,
-                    0.28f, infoColor, GbayRenderer.FONT_CONDENSED, false, false, true);
+                GbayRenderer.DrawText("Garage is full!", BROWSER_CX, modalTop + 0.125f,
+                    0.28f, Color.FromArgb(255, 200, 80, 80), GbayRenderer.FONT_CONDENSED, true);
             }
 
             // Footer hint
-            float hintY = optStartY + _deliveryOptions.Count * MODAL_ITEM_H + 0.01f;
             GbayRenderer.DrawText("[Enter] Confirm   [Esc] Cancel",
-                BROWSER_CX, hintY, 0.24f, GbayRenderer.TextDim,
+                BROWSER_CX, modalTop + 0.17f, 0.24f, GbayRenderer.TextDim,
                 GbayRenderer.FONT_CONDENSED, true);
 
-            // Input
-            if (input.DirY != 0)
-            {
-                int next = _deliveryIndex + input.DirY;
-                // Skip full safehouses
-                while (next >= 0 && next < _deliveryOptions.Count
-                       && _deliveryOptions[next].IsFull)
-                    next += input.DirY;
-
-                if (next >= 0 && next < _deliveryOptions.Count)
-                {
-                    _deliveryIndex = next;
-                    GbayRenderer.PlayNav();
-                }
-            }
-
-            // Mouse hover
-            if (_deliveryHover >= 0)
-                _deliveryIndex = _deliveryHover;
-
             // Accept
-            bool accepted = input.Accept ||
-                            (input.MouseClick && _deliveryHover >= 0);
-            if (accepted && _deliveryIndex >= 0 && _deliveryIndex < _deliveryOptions.Count)
+            if ((input.Accept || input.MouseClick) && !isFull)
             {
-                var selected = _deliveryOptions[_deliveryIndex];
-                if (!selected.IsFull)
-                {
-                    GbayRenderer.PlaySelect();
-                    _shop.ExecuteDeliverToSafehouse(
-                        _pendingModel, _pendingPrice,
-                        selected.SafehouseId, selected.Label);
-                    ClosePreview();
-                    _state = BrowserState.VehicleBrowser;
-                }
-                else
-                {
-                    GbayRenderer.PlayError();
-                }
+                GbayRenderer.PlaySelect();
+                _shop.ExecuteDeliverToGarage(_pendingModel, _pendingPrice);
+                ClosePreview();
+                _state = BrowserState.VehicleBrowser;
             }
 
             if (input.Back || input.MouseRightClick)
             {
                 GbayRenderer.PlayBack();
-                // Return to preview if we came from there, otherwise browser
                 _state = _previewVehicle != null
                     ? BrowserState.VehiclePreview
                     : BrowserState.VehicleBrowser;
@@ -1119,86 +1033,21 @@ namespace ALLIN1
             GbayRenderer.DrawRect(BROWSER_CX, HEADER_CY, BROWSER_W, HEADER_H,
                 GbayRenderer.HeaderBg);
             GbayRenderer.DrawLogo(BROWSER_LEFT + 0.035f, HEADER_CY, HEADER_H * 0.85f);
-            GbayRenderer.DrawText("MY GARAGES", BROWSER_LEFT + 0.07f, HEADER_Y + 0.018f,
+            GbayRenderer.DrawText("MY GARAGE", BROWSER_LEFT + 0.07f, HEADER_Y + 0.018f,
                 0.38f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
 
-            // "Mark on Map" button (right side of header)
-            float gpsBtnW = 0.12f;
-            float gpsBtnH = 0.04f;
-            float gpsBtnX = BROWSER_RIGHT - 0.08f;
-            float gpsBtnY = HEADER_CY;
-            bool gpsHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
-                gpsBtnX, gpsBtnY, gpsBtnW, gpsBtnH);
-            Color gpsBg = gpsHover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen;
-            GbayRenderer.DrawRect(gpsBtnX, gpsBtnY, gpsBtnW, gpsBtnH, gpsBg);
-            GbayRenderer.DrawText("Mark on Map", gpsBtnX, gpsBtnY - 0.012f,
-                0.28f, GbayRenderer.TextWhite, GbayRenderer.FONT_CONDENSED, true);
+            // Capacity info (right side of header)
+            int used = GarageManager.GetUsedSlots();
+            int cap = GarageManager.GetCapacity();
+            string capText = $"Eclipse Towers ({used}/{cap})";
+            GbayRenderer.DrawText(capText, BROWSER_RIGHT - 0.01f, HEADER_Y + 0.018f,
+                0.32f, GbayRenderer.HeaderText, GbayRenderer.FONT_CHALET,
+                false, false, true);
 
-            if (gpsHover && input.MouseClick && _garageSafehouses != null
-                && _garageSafehouses.Length > 0)
-            {
-                var sh = _garageSafehouses[_garageSafehouseIdx];
-                var pos = sh.Slots[0].Position;
-                Function.Call((Hash)0xFE43368D2AA4F2FC, pos.X, pos.Y);
-                GbayRenderer.PlaySelect();
-                GTA.UI.Screen.ShowSubtitle(
-                    $"~g~GPS set to ~w~{sh.Name}", 3000);
-            }
+            // Vehicle list
+            var vehicles = GarageManager.GetStoredVehicles();
 
-            if (_garageSafehouses == null || _garageSafehouses.Length == 0)
-            {
-                GbayRenderer.DrawText("No safehouses available",
-                    BROWSER_CX, 0.4f, 0.4f, GbayRenderer.TextDim,
-                    GbayRenderer.FONT_CHALET, true);
-
-                if (input.Back || input.MouseRightClick)
-                {
-                    GbayRenderer.PlayBack();
-                    _state = BrowserState.TopMenu;
-                }
-                return;
-            }
-
-            // Safehouse tabs (horizontal)
-            float tabStartX = BROWSER_LEFT + 0.02f;
-            float tabW = 0.20f;
-            float tabTop = TAB_Y;
-
-            GbayRenderer.DrawRect(BROWSER_CX, TAB_CY, BROWSER_W, TAB_H,
-                GbayRenderer.TabBg);
-
-            for (int i = 0; i < _garageSafehouses.Length; i++)
-            {
-                var sh = _garageSafehouses[i];
-                float tCX = tabStartX + i * (tabW + 0.01f) + tabW / 2f;
-                bool isActive = i == _garageSafehouseIdx;
-                bool isHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
-                    tCX, TAB_CY, tabW, TAB_H);
-
-                if (isHover && input.MouseClick && i != _garageSafehouseIdx)
-                {
-                    _garageSafehouseIdx = i;
-                    _garageVehicleIdx = 0;
-                    GbayRenderer.PlayNav();
-                }
-
-                if (isActive)
-                    GbayRenderer.DrawRect(tCX, TAB_Y + TAB_H - 0.004f,
-                        tabW - 0.01f, 0.004f, GbayRenderer.TabIndicator);
-
-                int used = GarageManager.GetUsedSlots(sh.Id);
-                int cap = GarageManager.GetCapacity(sh.Id);
-                string label = $"{sh.Name} ({used}/{cap})";
-                Color tc = isActive ? GbayRenderer.TabActive : GbayRenderer.TabInactive;
-                GbayRenderer.DrawText(label, tCX, tabTop + 0.008f,
-                    0.25f, tc, GbayRenderer.FONT_CONDENSED, true);
-            }
-
-            // Vehicle list for selected safehouse
-            var safehouse = _garageSafehouses[_garageSafehouseIdx];
-            var vehicles = GarageManager.GetStoredVehicles(safehouse.Id);
-
-            float listTop = GRID_TOP + 0.02f;
+            float listTop = TAB_Y + 0.02f;
             float itemH = 0.055f;
 
             _garageHoverIdx = -1;
@@ -1206,8 +1055,11 @@ namespace ALLIN1
             if (vehicles.Count == 0)
             {
                 GbayRenderer.DrawText("No vehicles stored",
-                    BROWSER_CX, listTop + 0.05f, 0.35f, GbayRenderer.TextDim,
+                    BROWSER_CX, listTop + 0.10f, 0.35f, GbayRenderer.TextDim,
                     GbayRenderer.FONT_CHALET, true);
+                GbayRenderer.DrawText("Purchase vehicles from the Vehicles tab to store them here.",
+                    BROWSER_CX, listTop + 0.15f, 0.26f, GbayRenderer.TextDim,
+                    GbayRenderer.FONT_CONDENSED, true);
             }
             else
             {
@@ -1230,7 +1082,12 @@ namespace ALLIN1
                     string name = VehicleList.DisplayNames.ContainsKey(sv.Model)
                         ? VehicleList.DisplayNames[sv.Model] : sv.Model;
 
-                    GbayRenderer.DrawText(name, BROWSER_LEFT + 0.06f, itemY + 0.012f,
+                    // Slot number
+                    GbayRenderer.DrawText($"#{sv.Slot + 1}", BROWSER_LEFT + 0.06f, itemY + 0.012f,
+                        0.28f, GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED);
+
+                    // Vehicle name
+                    GbayRenderer.DrawText(name, BROWSER_LEFT + 0.10f, itemY + 0.012f,
                         0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
 
                     // Remove button
@@ -1248,18 +1105,17 @@ namespace ALLIN1
 
                     if (removeHover && input.MouseClick)
                     {
-                        GarageManager.RemoveVehicle(safehouse.Id, i);
+                        GarageManager.RemoveVehicle(i);
                         GbayRenderer.PlaySelect();
                         GTA.UI.Screen.ShowSubtitle(
-                            $"~y~{name}~w~ removed from ~b~{safehouse.Name}", 3000);
-                        // Reset index since list shifted
+                            $"~y~{name}~w~ removed from garage.", 3000);
                         _garageVehicleIdx = Math.Max(0, _garageVehicleIdx - 1);
-                        return; // skip rest of frame, list changed
+                        return;
                     }
                 }
             }
 
-            // Keyboard navigation for garage
+            // Keyboard navigation
             if (input.DirY != 0 && vehicles.Count > 0)
             {
                 int next = _garageVehicleIdx + input.DirY;
@@ -1273,31 +1129,17 @@ namespace ALLIN1
             if (_garageHoverIdx >= 0)
                 _garageVehicleIdx = _garageHoverIdx;
 
-            // Keyboard remove (Enter on selected)
+            // Keyboard remove
             if (input.Accept && vehicles.Count > 0 && _garageVehicleIdx < vehicles.Count)
             {
                 var sv = vehicles[_garageVehicleIdx];
                 string name = VehicleList.DisplayNames.ContainsKey(sv.Model)
                     ? VehicleList.DisplayNames[sv.Model] : sv.Model;
-                GarageManager.RemoveVehicle(safehouse.Id, _garageVehicleIdx);
+                GarageManager.RemoveVehicle(_garageVehicleIdx);
                 GbayRenderer.PlaySelect();
                 GTA.UI.Screen.ShowSubtitle(
-                    $"~y~{name}~w~ removed from ~b~{safehouse.Name}", 3000);
+                    $"~y~{name}~w~ removed from garage.", 3000);
                 _garageVehicleIdx = Math.Max(0, _garageVehicleIdx - 1);
-            }
-
-            // Safehouse tab switching (Z/X)
-            if (input.CategoryPrev && _garageSafehouseIdx > 0)
-            {
-                _garageSafehouseIdx--;
-                _garageVehicleIdx = 0;
-                GbayRenderer.PlayNav();
-            }
-            else if (input.CategoryNext && _garageSafehouseIdx < _garageSafehouses.Length - 1)
-            {
-                _garageSafehouseIdx++;
-                _garageVehicleIdx = 0;
-                GbayRenderer.PlayNav();
             }
 
             // Back
@@ -1310,7 +1152,7 @@ namespace ALLIN1
             // Footer
             GbayRenderer.DrawRect(BROWSER_CX, FOOTER_CY, BROWSER_W, FOOTER_H,
                 GbayRenderer.FooterBg);
-            GbayRenderer.DrawText("[Z/X] Safehouse   [Enter] Remove   [Esc] Back",
+            GbayRenderer.DrawText("[Enter] Remove   [Esc] Back",
                 BROWSER_CX, FOOTER_Y + 0.012f, 0.24f, GbayRenderer.TextDim,
                 GbayRenderer.FONT_CONDENSED, true);
         }
@@ -1485,11 +1327,51 @@ namespace ALLIN1
             GbayRenderer.DrawText(card.DisplayName, textLeft, textTop + 0.005f,
                 0.33f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
 
-            // Price or OWNED
+            // Price, OWNED status, or ammo info
             if (card.Owned)
             {
-                GbayRenderer.DrawText("OWNED", textLeft, textTop + 0.038f,
-                    0.30f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CHALET);
+                // Check if this card has a pending ammo confirm
+                bool isPendingConfirm = _ammoConfirmPending &&
+                    card.WeaponName == _ammoConfirmWeapon;
+
+                if (isPendingConfirm)
+                {
+                    // Highlight border for pending confirm
+                    GbayRenderer.DrawBorderedRect(cx, cy, cardW, CARD_H,
+                        bgColor, Color.FromArgb(255, 255, 200, 50), 0.003f);
+
+                    string confirmText = _ammoConfirmCost > 0
+                        ? $"REFILL {_ammoConfirmRounds} rnds - ${_ammoConfirmCost:N0}"
+                        : $"REFILL {_ammoConfirmRounds} rnds - FREE";
+                    GbayRenderer.DrawText(confirmText, textLeft, textTop + 0.038f,
+                        0.24f, Color.FromArgb(255, 255, 200, 50), GbayRenderer.FONT_CONDENSED);
+                }
+                else
+                {
+                    // Show ammo status
+                    int rounds;
+                    int cost = _shop.GetAmmoRefillInfo(card.WeaponName, out rounds);
+
+                    if (cost == -1)
+                    {
+                        // Melee / no-ammo
+                        GbayRenderer.DrawText("OWNED", textLeft, textTop + 0.038f,
+                            0.30f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CHALET);
+                    }
+                    else if (cost == 0 && rounds == 0)
+                    {
+                        GbayRenderer.DrawText("FULLY STOCKED", textLeft, textTop + 0.038f,
+                            0.26f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CONDENSED);
+                    }
+                    else
+                    {
+                        string ammoText = cost > 0
+                            ? $"OWNED - Refill ${cost:N0}"
+                            : $"OWNED - Refill {rounds} rnds";
+                        GbayRenderer.DrawText(ammoText, textLeft, textTop + 0.038f,
+                            0.24f, Color.FromArgb(255, 200, 180, 80), GbayRenderer.FONT_CONDENSED);
+                    }
+                }
             }
             else
             {
@@ -1504,20 +1386,59 @@ namespace ALLIN1
         private void DrawWeaponFooter()
         {
             GbayRenderer.DrawRect(BROWSER_CX, FOOTER_CY, BROWSER_W, FOOTER_H,
-                GbayRenderer.FooterBg);
+                _ammoConfirmPending
+                    ? Color.FromArgb(230, 60, 50, 20)
+                    : GbayRenderer.FooterBg);
 
-            string pageText = $"Page {_weaponPage + 1}/{Math.Max(1, _weaponTotalPages)}";
-            GbayRenderer.DrawText(pageText, BROWSER_LEFT + 0.02f, FOOTER_Y + 0.012f,
-                0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+            if (_ammoConfirmPending)
+            {
+                string displayName = WeaponList.DisplayNames.ContainsKey(_ammoConfirmWeapon)
+                    ? WeaponList.DisplayNames[_ammoConfirmWeapon] : _ammoConfirmWeapon;
+                string costText = _ammoConfirmCost > 0
+                    ? $"${_ammoConfirmCost:N0}" : "FREE";
+                string prompt = $"[Enter] Confirm Ammo Refill: {displayName} ({_ammoConfirmRounds} rounds) for {costText}   [Esc] Cancel";
+                GbayRenderer.DrawText(prompt, BROWSER_CX, FOOTER_Y + 0.012f,
+                    0.26f, Color.FromArgb(255, 255, 220, 100), GbayRenderer.FONT_CONDENSED, true);
+            }
+            else
+            {
+                string pageText = $"Page {_weaponPage + 1}/{Math.Max(1, _weaponTotalPages)}";
+                GbayRenderer.DrawText(pageText, BROWSER_LEFT + 0.02f, FOOTER_Y + 0.012f,
+                    0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
 
-            string hints = "[Q/E] Page   [Z/X] Category   [Enter] Buy   [Esc] Back";
-            GbayRenderer.DrawText(hints, BROWSER_RIGHT - 0.01f, FOOTER_Y + 0.012f,
-                0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED,
-                false, false, true);
+                string hints = "[Q/E] Page   [Z/X] Category   [Enter] Buy   [Esc] Back";
+                GbayRenderer.DrawText(hints, BROWSER_RIGHT - 0.01f, FOOTER_Y + 0.012f,
+                    0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED,
+                    false, false, true);
+            }
         }
 
         private void HandleWeaponBrowserInput(FrameInput input)
         {
+            // Handle pending ammo confirm first
+            if (_ammoConfirmPending)
+            {
+                if (input.Accept || (input.MouseClick && _weaponHoverCard >= 0
+                    && _weaponPage * PAGE_SIZE + _weaponHoverCard == _ammoConfirmCardIdx))
+                {
+                    GbayRenderer.PlaySelect();
+                    _shop.ExecuteRefillAmmo(_ammoConfirmWeapon);
+                    _ammoConfirmPending = false;
+                    RebuildWeaponFilteredList();
+                    return;
+                }
+
+                if (input.Back || input.MouseRightClick)
+                {
+                    GbayRenderer.PlayBack();
+                    _ammoConfirmPending = false;
+                    return;
+                }
+
+                // While confirm is pending, block other inputs
+                return;
+            }
+
             if (input.Back || input.MouseRightClick)
             {
                 GbayRenderer.PlayBack();
@@ -1594,7 +1515,7 @@ namespace ALLIN1
             if (_weaponHoverCard >= 0 && _weaponHoverCard != _weaponSelectedCard)
                 _weaponSelectedCard = _weaponHoverCard;
 
-            // Purchase weapon
+            // Select weapon (purchase or ammo refill)
             bool accepted = input.Accept || (input.MouseClick && _weaponHoverCard >= 0);
             if (accepted && _weaponFiltered.Count > 0)
             {
@@ -1602,10 +1523,43 @@ namespace ALLIN1
                 if (idx < _weaponFiltered.Count)
                 {
                     WeaponCard card = _weaponFiltered[idx];
-                    GbayRenderer.PlaySelect();
-                    _shop.ExecuteGiveWeapon(card.WeaponName, card.Price);
-                    // Refresh owned status
-                    RebuildWeaponFilteredList();
+
+                    if (card.Owned)
+                    {
+                        // Owned weapon — prompt for ammo refill
+                        int rounds;
+                        int cost = _shop.GetAmmoRefillInfo(card.WeaponName, out rounds);
+
+                        if (cost == -1)
+                        {
+                            // Melee / no-ammo weapon
+                            GbayRenderer.PlayError();
+                            GTA.UI.Screen.ShowSubtitle("~y~Already owned.", 3000);
+                        }
+                        else if (cost == 0 && rounds == 0)
+                        {
+                            // Fully stocked
+                            GbayRenderer.PlayError();
+                            GTA.UI.Screen.ShowSubtitle("~g~Already fully stocked!", 3000);
+                        }
+                        else
+                        {
+                            // Show ammo confirm
+                            GbayRenderer.PlaySelect();
+                            _ammoConfirmPending = true;
+                            _ammoConfirmWeapon = card.WeaponName;
+                            _ammoConfirmCost = cost;
+                            _ammoConfirmRounds = rounds;
+                            _ammoConfirmCardIdx = idx;
+                        }
+                    }
+                    else
+                    {
+                        // Not owned — purchase weapon
+                        GbayRenderer.PlaySelect();
+                        _shop.ExecuteGiveWeapon(card.WeaponName, card.Price);
+                        RebuildWeaponFilteredList();
+                    }
                 }
             }
         }
