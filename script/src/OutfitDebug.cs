@@ -58,11 +58,9 @@ namespace ALLIN1
             "Hat/Helmet",
             "Glasses",
             "Ears",
-            "Watch",
-            "Bracelet",
         };
 
-        private static readonly int[] PROP_SLOTS = { 0, 1, 2, 6, 7 };
+        private static readonly int[] PROP_SLOTS = { 0, 1, 2 };
 
         // UI layout
         private const float PANEL_X = 0.02f;       // left edge
