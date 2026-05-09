@@ -33,6 +33,12 @@ namespace ALLIN1
         internal static bool NightVisionOwned;
         private static bool _nightVisionActive;
 
+        // Juggernaut armor state
+        internal static bool JuggernautActive;
+        private static int _savedMaxHealth;
+        private static int[] _savedComponents; // 12 components: drawable per slot
+        private static int[] _savedTextures;   // 12 components: texture per slot
+
         // --- Browser UI ---
         private GbayBrowser _browser;
 
@@ -399,8 +405,24 @@ namespace ALLIN1
                 return;
             }
 
-            if (GearList.IsArmor(gearId))
+            if (gearId == GearList.ARMOR_JUGGERNAUT)
             {
+                ApplyJuggernaut(player);
+                if (!_freeMode && price > 0)
+                    Game.Player.Money -= price;
+                GTA.UI.Screen.ShowSubtitle(
+                    _freeMode || price <= 0
+                        ? "~g~Juggernaut Armor~w~ equipped! Heavy movement active."
+                        : $"~g~Juggernaut Armor~w~ purchased for ~g~${price:N0}~w~. Heavy movement active.",
+                    4000);
+                Log($"GiveGear: {gearId}, price=${price}");
+                return;
+            }
+            else if (GearList.IsArmor(gearId))
+            {
+                // Remove juggernaut if equipping a lower armor tier
+                if (JuggernautActive)
+                    RemoveJuggernaut(player);
                 player.Armor = GearList.ArmorValues[gearId];
             }
             else if (gearId == "WEAPON_NIGHTVISION")
@@ -500,6 +522,146 @@ namespace ALLIN1
         }
 
         // ------------------------------------------------------------------ //
+        //  Juggernaut Armor                                                   //
+        // ------------------------------------------------------------------ //
+
+        private const string BALLISTIC_CLIPSET = "ANIM_GROUP_MOVE_BALLISTIC";
+        private const int JUGGERNAUT_MAX_HEALTH = 500;
+
+        private void ApplyJuggernaut(Ped player)
+        {
+            // Save current outfit so we can restore later
+            _savedComponents = new int[12];
+            _savedTextures = new int[12];
+            for (int i = 0; i < 12; i++)
+            {
+                _savedComponents[i] = Function.Call<int>(
+                    Hash.GET_PED_DRAWABLE_VARIATION, player, i);
+                _savedTextures[i] = Function.Call<int>(
+                    Hash.GET_PED_TEXTURE_VARIATION, player, i);
+            }
+
+            // Apply Paleto Score ballistic outfit per character
+            PedHash ch = GetCurrentCharacter();
+            ApplyBallisticOutfit(player, ch);
+
+            // Health + armor boost
+            _savedMaxHealth = player.MaxHealth;
+            player.MaxHealth = JUGGERNAUT_MAX_HEALTH;
+            player.Health = JUGGERNAUT_MAX_HEALTH;
+            player.Armor = 100;
+
+            // Disable headshot bonus damage
+            player.CanSufferCriticalHits = false;
+
+            // Heavy movement clipset
+            Function.Call(Hash.REQUEST_ANIM_SET, BALLISTIC_CLIPSET);
+            int timeout = 1000;
+            while (!Function.Call<bool>(Hash.HAS_ANIM_SET_LOADED, BALLISTIC_CLIPSET)
+                   && timeout > 0)
+            {
+                Script.Wait(0);
+                timeout -= 16;
+            }
+            Function.Call(Hash.SET_PED_MOVEMENT_CLIPSET, player,
+                BALLISTIC_CLIPSET, 0.25f);
+
+            JuggernautActive = true;
+            Log("Juggernaut armor applied");
+        }
+
+        internal static void RemoveJuggernaut(Ped player)
+        {
+            if (!JuggernautActive) return;
+
+            // Restore outfit
+            if (_savedComponents != null && _savedTextures != null)
+            {
+                for (int i = 0; i < 12; i++)
+                {
+                    Function.Call(Hash.SET_PED_COMPONENT_VARIATION,
+                        player, i, _savedComponents[i], _savedTextures[i], 0);
+                }
+            }
+
+            // Restore health
+            player.MaxHealth = _savedMaxHealth > 0 ? _savedMaxHealth : 200;
+            if (player.Health > player.MaxHealth)
+                player.Health = player.MaxHealth;
+
+            // Re-enable critical hits
+            player.CanSufferCriticalHits = true;
+
+            // Reset movement clipset
+            Function.Call(Hash.RESET_PED_MOVEMENT_CLIPSET, player, 0.25f);
+
+            JuggernautActive = false;
+        }
+
+        private static void ApplyBallisticOutfit(Ped player, PedHash ch)
+        {
+            // Component slots:
+            // 0=Head, 1=Beard/Mask, 2=Hair, 3=Torso, 4=Legs,
+            // 5=Hands, 6=Shoes, 7=Neck/Scarf, 8=Shirt/Accessory,
+            // 9=Body Armor, 10=Decals, 11=Aux/Torso2
+
+            // From decompiled Paleto Score scripts (finale_heist2b.c)
+            // Values are per-character outfit-system drawable IDs.
+            if (ch == PedHash.Michael)
+            {
+                // func_263 in finale_heist2b.c — Michael's ballistic outfit
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 3, 2, 0, 0);   // torso
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 4, 2, 0, 0);   // legs
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 6, 0, 0, 0);   // shoes
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 8, 0, 0, 0);   // undershirt
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 9, 0, 0, 0);   // body armor
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 10, 47, 0, 0);  // decals (ballistic)
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 11, 1, 0, 0);  // aux
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 5, 11, 0, 0);  // hands/gloves
+            }
+            else if (ch == PedHash.Franklin)
+            {
+                // func_261 in finale_heist2b.c — Franklin's ballistic outfit
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 3, 180, 0, 0);  // torso
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 4, 57, 0, 0);   // legs
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 6, 35, 0, 0);   // shoes
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 8, 26, 0, 0);   // undershirt
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 9, 0, 0, 0);    // body armor
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 10, 50, 0, 0);  // decals (ballistic)
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 11, 41, 0, 0);  // aux
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 5, 5, 0, 0);    // hands/gloves
+            }
+            else if (ch == PedHash.Trevor)
+            {
+                // func_485 in finale_heist2b.c — Trevor's ballistic outfit
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 8, 15, 0, 0);   // undershirt
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 9, 0, 0, 0);    // body armor
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 5, 0, 0, 0);    // hands
+                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 6, 16, 0, 0);   // shoes
+            }
+
+            // Add helmet prop (prop slot 0 = hat/helmet)
+            Function.Call(Hash.SET_PED_PROP_INDEX, player, 0, 0, 0, false);
+        }
+
+        /// <summary>
+        /// Called every tick to check if juggernaut should be removed (on death).
+        /// </summary>
+        private void JuggernautTick()
+        {
+            if (!JuggernautActive) return;
+
+            Ped player = Game.Player.Character;
+            if (player == null || player.IsDead)
+            {
+                JuggernautActive = false;
+                _savedComponents = null;
+                _savedTextures = null;
+                return;
+            }
+        }
+
+        // ------------------------------------------------------------------ //
         //  Helpers                                                            //
         // ------------------------------------------------------------------ //
 
@@ -533,6 +695,8 @@ namespace ALLIN1
 
                 if (_garageDebug && _initialized)
                     GarageManager.DrawDebugMarkers();
+
+                JuggernautTick();
             }
             catch (Exception ex)
             {

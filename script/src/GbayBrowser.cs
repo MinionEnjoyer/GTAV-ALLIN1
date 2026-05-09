@@ -1950,6 +1950,11 @@ namespace ALLIN1
                         GbayRenderer.PlayError();
                         GTA.UI.Screen.ShowSubtitle("~y~Already owned.", 3000);
                     }
+                    else if (card.GearId == GearList.ARMOR_JUGGERNAUT && GbayShop.JuggernautActive)
+                    {
+                        GbayRenderer.PlayError();
+                        GTA.UI.Screen.ShowSubtitle("~y~Juggernaut armor already equipped.", 3000);
+                    }
                     else
                     {
                         GbayRenderer.PlaySelect();
@@ -1989,6 +1994,10 @@ namespace ALLIN1
                 else if (gearId == "WEAPON_NIGHTVISION")
                 {
                     owned = GbayShop.NightVisionOwned;
+                }
+                else if (gearId == GearList.ARMOR_JUGGERNAUT)
+                {
+                    owned = GbayShop.JuggernautActive;
                 }
                 else
                 {

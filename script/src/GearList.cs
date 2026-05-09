@@ -15,6 +15,7 @@ namespace ALLIN1
         internal const string ARMOR_STANDARD    = "ARMOR_STANDARD";
         internal const string ARMOR_HEAVY       = "ARMOR_HEAVY";
         internal const string ARMOR_SUPER_HEAVY = "ARMOR_SUPER_HEAVY";
+        internal const string ARMOR_JUGGERNAUT  = "ARMOR_JUGGERNAUT";
 
         // ------------------------------------------------------------------ //
         //  Armor Helpers                                                      //
@@ -29,6 +30,7 @@ namespace ALLIN1
             { ARMOR_STANDARD,    60 },
             { ARMOR_HEAVY,       80 },
             { ARMOR_SUPER_HEAVY, 100 },
+            { ARMOR_JUGGERNAUT,  100 },
         };
 
         /// <summary>True if this gear ID is any armor tier.</summary>
@@ -45,6 +47,7 @@ namespace ALLIN1
             ARMOR_STANDARD,
             ARMOR_HEAVY,
             ARMOR_SUPER_HEAVY,
+            ARMOR_JUGGERNAUT,
             "GADGET_PARACHUTE",
             "WEAPON_SMOKEGRENADE",
             "WEAPON_FIREEXTINGUISHER",
@@ -60,6 +63,7 @@ namespace ALLIN1
             ARMOR_STANDARD,
             ARMOR_HEAVY,
             ARMOR_SUPER_HEAVY,
+            ARMOR_JUGGERNAUT,
         };
 
         internal static readonly string[] Equipment =
@@ -84,6 +88,7 @@ namespace ALLIN1
             { ARMOR_STANDARD,              "Standard Armor" },
             { ARMOR_HEAVY,                 "Heavy Armor" },
             { ARMOR_SUPER_HEAVY,           "Super Heavy Armor" },
+            { ARMOR_JUGGERNAUT,            "Juggernaut Armor" },
             { "GADGET_PARACHUTE",          "Parachute" },
             { "WEAPON_SMOKEGRENADE",       "Tear Gas" },
             { "WEAPON_FIREEXTINGUISHER",   "Fire Extinguisher" },
@@ -104,6 +109,7 @@ namespace ALLIN1
             { ARMOR_STANDARD,              1500 },
             { ARMOR_HEAVY,                 2000 },
             { ARMOR_SUPER_HEAVY,           2500 },
+            { ARMOR_JUGGERNAUT,            50000 },
             { "GADGET_PARACHUTE",          300 },
             { "WEAPON_SMOKEGRENADE",       150 },
             { "WEAPON_FIREEXTINGUISHER",   100 },
@@ -124,6 +130,7 @@ namespace ALLIN1
             { ARMOR_STANDARD,              "Protection" },
             { ARMOR_HEAVY,                 "Protection" },
             { ARMOR_SUPER_HEAVY,           "Protection" },
+            { ARMOR_JUGGERNAUT,            "Protection" },
             { "GADGET_PARACHUTE",          "Equipment" },
             { "WEAPON_SMOKEGRENADE",       "Equipment" },
             { "WEAPON_FIREEXTINGUISHER",   "Equipment" },

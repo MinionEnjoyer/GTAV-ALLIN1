@@ -75,10 +75,10 @@ namespace ALLIN1
             new Vector3(240.65f, -1004.86f, -99.66f);
         private const float INTERIOR_SPAWN_HEADING = -165f;
 
-        // Vehicle exit zone inside the garage
+        // Vehicle exit zone inside the garage (near parking slots, pairs with ENTRANCE_POS)
         private static readonly Vector3 VEHICLE_EXIT_INTERIOR =
-            new Vector3(-227.9f, -1005.2f, -99f);
-        private const float VEHICLE_EXIT_INTERIOR_HEADING = 357.4f;
+            new Vector3(228.2f, -1004.3f, -99f);
+        private const float VEHICLE_EXIT_INTERIOR_HEADING = 352.3f;
 
         // Pedestrian-only exit inside the garage
         private static readonly Vector3 PED_EXIT =
