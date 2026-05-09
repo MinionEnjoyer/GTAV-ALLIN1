@@ -66,29 +66,50 @@ namespace ALLIN1
         private const float ENTER_RADIUS = 2.5f;
         private const float EXIT_RADIUS = 4.0f;
 
-        // Entrance marker on the street near Eclipse Towers
-        private static readonly Vector3 ENTRANCE_POS =
-            new Vector3(-796f, 303f, 85.2f);
+        // Per-character outside entrance/exit positions
+        private struct GarageEntrance
+        {
+            internal Vector3 VehiclePos;    // vehicle entrance/exit on the map
+            internal float VehicleHeading;
+            internal Vector3 PedPos;        // pedestrian entrance/exit on the map
+            internal float PedHeading;
+        }
 
-        // Player spawn point inside the garage interior
+        private static readonly Dictionary<string, GarageEntrance> ENTRANCES =
+            new Dictionary<string, GarageEntrance>
+            {
+                { KEY_MICHAEL, new GarageEntrance {
+                    VehiclePos   = new Vector3(-815f, 187f, 72.5f),
+                    VehicleHeading = 0f,
+                    PedPos       = new Vector3(-808f, 185f, 72.5f),
+                    PedHeading   = 0f,
+                }},
+                { KEY_FRANKLIN, new GarageEntrance {
+                    VehiclePos   = new Vector3(0f, 528f, 174.6f),
+                    VehicleHeading = 0f,
+                    PedPos       = new Vector3(7f, 536f, 176f),
+                    PedHeading   = 0f,
+                }},
+                { KEY_TREVOR, new GarageEntrance {
+                    VehiclePos   = new Vector3(1970f, 3815f, 32.4f),
+                    VehicleHeading = 30f,
+                    PedPos       = new Vector3(1976f, 3820f, 32.4f),
+                    PedHeading   = 30f,
+                }},
+            };
+
+        // Interior positions (shared — same underground garage for all)
         private static readonly Vector3 INTERIOR_SPAWN =
             new Vector3(240.65f, -1004.86f, -99.66f);
         private const float INTERIOR_SPAWN_HEADING = -165f;
 
-        // Vehicle exit zone inside the garage (near parking slots, pairs with ENTRANCE_POS)
         private static readonly Vector3 VEHICLE_EXIT_INTERIOR =
             new Vector3(228.2f, -1004.3f, -99f);
         private const float VEHICLE_EXIT_INTERIOR_HEADING = 352.3f;
 
-        // Pedestrian-only exit inside the garage
         private static readonly Vector3 PED_EXIT =
             new Vector3(240.7f, -1004.8f, -99f);
         private const float PED_EXIT_HEADING = 82.8f;
-
-        // Where the pedestrian exit teleports to on the main map
-        private static readonly Vector3 PED_EXIT_DEST =
-            new Vector3(-774f, 310.2f, 85.7f);
-        private const float PED_EXIT_DEST_HEADING = 354.5f;
 
         // 10 vehicle parking positions (from SPGR data -- two rows of 5)
         internal static readonly ParkingSlot[] Slots =
@@ -137,7 +158,7 @@ namespace ALLIN1
 
         // Player state
         private static bool _isPlayerInGarage;
-        private static float _returnHeading;
+
         private static Blip _entranceBlip;
         private static Blip _pedEntranceBlip;
 
@@ -200,15 +221,16 @@ namespace ALLIN1
                 Log($"Loaded {total} stored vehicles from {SAVE_PATH}");
 
                 // Create entrance blip
-                _entranceBlip = World.CreateBlip(ENTRANCE_POS);
+                GarageEntrance initEnt = CurrentEntrance();
+                _entranceBlip = World.CreateBlip(initEnt.VehiclePos);
                 _entranceBlip.Sprite = BlipSprite.Garage;
-                _entranceBlip.Color = BlipColor.White;
+                _entranceBlip.Color = CharacterBlipColor();
                 _entranceBlip.Name = "ALLIN1 Garage (Vehicle)";
                 _entranceBlip.IsShortRange = true;
 
-                _pedEntranceBlip = World.CreateBlip(PED_EXIT_DEST);
+                _pedEntranceBlip = World.CreateBlip(initEnt.PedPos);
                 _pedEntranceBlip.Sprite = BlipSprite.Garage;
-                _pedEntranceBlip.Color = BlipColor.White;
+                _pedEntranceBlip.Color = CharacterBlipColor();
                 _pedEntranceBlip.Name = "ALLIN1 Garage (Pedestrian)";
                 _pedEntranceBlip.IsShortRange = true;
 
@@ -243,28 +265,35 @@ namespace ALLIN1
             if (player == null || player.IsDead)
                 return;
 
-            // Update blip colors to match current character
+            // Update blip colors and positions to match current character
+            GarageEntrance ent = CurrentEntrance();
             BlipColor charColor = CharacterBlipColor();
             if (_entranceBlip != null && _entranceBlip.Exists())
+            {
                 _entranceBlip.Color = charColor;
+                _entranceBlip.Position = ent.VehiclePos;
+            }
             if (_pedEntranceBlip != null && _pedEntranceBlip.Exists())
+            {
                 _pedEntranceBlip.Color = charColor;
+                _pedEntranceBlip.Position = ent.PedPos;
+            }
 
             if (!_isPlayerInGarage)
             {
                 bool inVehicle = player.IsInVehicle();
 
-                // ---- Vehicle entrance (ENTRANCE_POS) — only when in a vehicle ----
+                // ---- Vehicle entrance — only when in a vehicle ----
                 if (inVehicle)
                 {
                     World.DrawMarker(
                         GTA.MarkerType.VerticalCylinder,
-                        ENTRANCE_POS - new Vector3(0f, 0f, 1f),
+                        ent.VehiclePos - new Vector3(0f, 0f, 1f),
                         Vector3.Zero, Vector3.Zero,
                         new Vector3(2f, 2f, 1.5f),
                         System.Drawing.Color.FromArgb(128, 0, 200, 0));
 
-                    float vehDist = player.Position.DistanceTo(ENTRANCE_POS);
+                    float vehDist = player.Position.DistanceTo(ent.VehiclePos);
                     if (vehDist < ENTER_RADIUS)
                     {
                         Vehicle veh = player.CurrentVehicle;
@@ -283,17 +312,17 @@ namespace ALLIN1
                     }
                 }
 
-                // ---- Pedestrian entrance (PED_EXIT_DEST) — only when on foot ----
+                // ---- Pedestrian entrance — only when on foot ----
                 if (!inVehicle)
                 {
                     World.DrawMarker(
                         GTA.MarkerType.VerticalCylinder,
-                        PED_EXIT_DEST - new Vector3(0f, 0f, 1f),
+                        ent.PedPos - new Vector3(0f, 0f, 1f),
                         Vector3.Zero, Vector3.Zero,
                         new Vector3(1.5f, 1.5f, 1.2f),
                         System.Drawing.Color.FromArgb(128, 0, 200, 0));
 
-                    float pedDist = player.Position.DistanceTo(PED_EXIT_DEST);
+                    float pedDist = player.Position.DistanceTo(ent.PedPos);
                     if (pedDist < ENTER_RADIUS)
                     {
                         GTA.UI.Screen.ShowHelpTextThisFrame(
@@ -468,10 +497,11 @@ namespace ALLIN1
         /// </summary>
         internal static void DrawDebugMarkers()
         {
-            // Entrance
+            // Entrance (current character)
+            GarageEntrance dbgEnt = CurrentEntrance();
             World.DrawMarker(
                 GTA.MarkerType.UpsideDownCone,
-                ENTRANCE_POS + new Vector3(0f, 0f, 2f),
+                dbgEnt.VehiclePos + new Vector3(0f, 0f, 2f),
                 Vector3.Zero, Vector3.Zero,
                 new Vector3(0.5f, 0.5f, 0.5f),
                 System.Drawing.Color.FromArgb(128, 0, 255, 0));
@@ -577,7 +607,7 @@ namespace ALLIN1
                 }
             }
 
-            _returnHeading = player.Heading;
+
 
             // Choose spawn point based on which entrance was used
             Vector3 spawnPos = pedEntrance ? PED_EXIT : INTERIOR_SPAWN;
@@ -691,13 +721,14 @@ namespace ALLIN1
                     }
                 }
 
-                // Teleport vehicle (with player inside) to entrance
+                // Teleport vehicle (with player inside) to character's vehicle entrance
+                GarageEntrance ent = CurrentEntrance();
                 playerVehicle.IsPositionFrozen = false;
                 playerVehicle.IsPersistent = true;
                 Function.Call(Hash.SET_ENTITY_COORDS, playerVehicle,
-                    ENTRANCE_POS.X, ENTRANCE_POS.Y, ENTRANCE_POS.Z,
+                    ent.VehiclePos.X, ent.VehiclePos.Y, ent.VehiclePos.Z,
                     false, false, false, true);
-                Function.Call(Hash.SET_ENTITY_HEADING, playerVehicle, _returnHeading);
+                Function.Call(Hash.SET_ENTITY_HEADING, playerVehicle, ent.VehicleHeading);
                 playerVehicle.IsEngineRunning = true;
                 Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, playerVehicle);
 
@@ -706,9 +737,10 @@ namespace ALLIN1
             }
             else
             {
-                // Teleport player on foot — always to PED_EXIT_DEST
-                Vector3 dest = PED_EXIT_DEST;
-                float heading = PED_EXIT_DEST_HEADING;
+                // Teleport player on foot to character's ped entrance
+                GarageEntrance ent = CurrentEntrance();
+                Vector3 dest = ent.PedPos;
+                float heading = ent.PedHeading;
 
                 player.IsPositionFrozen = true;
                 Function.Call(Hash.SET_ENTITY_COORDS, player,
@@ -717,7 +749,7 @@ namespace ALLIN1
                 Function.Call(Hash.SET_ENTITY_HEADING, player, heading);
                 player.IsPositionFrozen = false;
 
-                Log("LeaveGarage: returned on foot to PED_EXIT_DEST");
+                Log($"LeaveGarage: returned on foot to {CharacterKey()} ped entrance");
             }
 
             _isPlayerInGarage = false;
@@ -791,6 +823,11 @@ namespace ALLIN1
                 veh.IsPositionFrozen = true;
                 veh.IsEngineRunning = false;
             }
+        }
+
+        private static GarageEntrance CurrentEntrance()
+        {
+            return ENTRANCES[CharacterKey()];
         }
 
         private static BlipColor CharacterBlipColor()
