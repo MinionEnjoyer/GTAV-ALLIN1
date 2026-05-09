@@ -409,6 +409,7 @@ namespace ALLIN1
                     {
                         veh.IsPersistent = true;
                         veh.IsEngineRunning = false;
+                        Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, veh);
                         veh.IsPositionFrozen = true;
                         _handles[slotIndex] = veh;
                     }
@@ -602,6 +603,7 @@ namespace ALLIN1
                             ApplyVehicleState(veh, sv);
                             veh.IsPersistent = true;
                             veh.IsEngineRunning = false;
+                            Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, veh);
                             veh.IsPositionFrozen = true;
                             _handles[sv.Slot] = veh;
                         }
