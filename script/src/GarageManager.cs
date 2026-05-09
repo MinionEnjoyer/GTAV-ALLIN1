@@ -293,11 +293,31 @@ namespace ALLIN1
                 float pedDist = player.Position.DistanceTo(PED_EXIT_DEST);
                 if (pedDist < ENTER_RADIUS)
                 {
-                    GTA.UI.Screen.ShowHelpTextThisFrame("Press ~INPUT_CONTEXT~ to enter your garage.");
-
-                    if (Game.IsControlJustPressed(GTA.Control.Context))
+                    // Block personal vehicles at ped entrance too
+                    if (player.IsInVehicle())
                     {
-                        EnterGarage(pedEntrance: true);
+                        Vehicle pedVeh = player.CurrentVehicle;
+                        if (pedVeh != null && pedVeh.Exists() && IsPersonalVehicle(pedVeh))
+                        {
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                "You cannot store your personal vehicle in the garage.");
+                        }
+                        else
+                        {
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                "Press ~INPUT_CONTEXT~ to enter your garage.");
+                            if (Game.IsControlJustPressed(GTA.Control.Context))
+                                EnterGarage(pedEntrance: true);
+                        }
+                    }
+                    else
+                    {
+                        GTA.UI.Screen.ShowHelpTextThisFrame("Press ~INPUT_CONTEXT~ to enter your garage.");
+
+                        if (Game.IsControlJustPressed(GTA.Control.Context))
+                        {
+                            EnterGarage(pedEntrance: true);
+                        }
                     }
                 }
             }
@@ -521,6 +541,31 @@ namespace ALLIN1
         private static void EnterGarage(bool pedEntrance = false)
         {
             Ped player = Game.Player.Character;
+
+            // If player is in a vehicle, pull them out and delete it.
+            // Personal vehicles should have been blocked before reaching here,
+            // but double-check just in case.
+            if (player.IsInVehicle())
+            {
+                Vehicle rideIn = player.CurrentVehicle;
+                if (rideIn != null && rideIn.Exists())
+                {
+                    if (IsPersonalVehicle(rideIn))
+                    {
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~r~You cannot bring your personal vehicle into the garage.", 3000);
+                        return;
+                    }
+
+                    // Pull player out, then delete the outside vehicle
+                    Function.Call(Hash.TASK_LEAVE_VEHICLE, player, rideIn, 16); // 16 = instant
+                    Script.Wait(0);
+                    rideIn.IsPersistent = true;
+                    rideIn.Delete();
+                    Log("EnterGarage: deleted player's ride-in vehicle");
+                }
+            }
+
             _returnPos = player.Position;
             _returnHeading = player.Heading;
 
@@ -583,6 +628,7 @@ namespace ALLIN1
 
             Ped player = Game.Player.Character;
             Vehicle playerVehicle = null;
+            int playerSlotIndex = -1;
 
             // Check if player is in one of the garage vehicles
             if (player.IsInVehicle())
@@ -595,6 +641,7 @@ namespace ALLIN1
                         if (_handles[i] != null && _handles[i] == current)
                         {
                             playerVehicle = current;
+                            playerSlotIndex = i;
                             _handles[i] = null; // detach from garage — don't delete
                             break;
                         }
@@ -616,6 +663,23 @@ namespace ALLIN1
 
             if (playerVehicle != null)
             {
+                // IMPORTANT: Remove the driven-out vehicle from the stored list
+                // so it doesn't get duped on next entry. The player is taking
+                // it out of the garage.
+                string key = CharacterKey();
+                if (_stored.TryGetValue(key, out var list))
+                {
+                    for (int i = list.Count - 1; i >= 0; i--)
+                    {
+                        if (list[i].Slot == playerSlotIndex)
+                        {
+                            Log($"LeaveGarage: removing {list[i].Model} from slot {playerSlotIndex} (driven out)");
+                            list.RemoveAt(i);
+                            break;
+                        }
+                    }
+                }
+
                 // Teleport vehicle (with player inside) to entrance
                 playerVehicle.IsPositionFrozen = false;
                 playerVehicle.IsPersistent = true;
@@ -624,7 +688,9 @@ namespace ALLIN1
                     false, false, false, true);
                 Function.Call(Hash.SET_ENTITY_HEADING, playerVehicle, _returnHeading);
                 playerVehicle.IsEngineRunning = true;
+                Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, playerVehicle);
 
+                Save();
                 Log("LeaveGarage: drove out in vehicle");
             }
             else
@@ -653,14 +719,37 @@ namespace ALLIN1
 
         /// <summary>
         /// Check if a vehicle is the character's assigned personal vehicle
-        /// (e.g., Michael's Tailgater, Franklin's Buffalo, Trevor's Bodhi).
-        /// The game marks these with a "Player_Vehicle" decorator.
+        /// (e.g., Michael's Tailgater, Franklin's Buffalo/Bagger, Trevor's Bodhi).
+        /// Uses multiple detection methods since Enhanced may differ from legacy.
         /// </summary>
         private static bool IsPersonalVehicle(Vehicle veh)
         {
-            return Function.Call<bool>(
-                (Hash)0x05661B80A8C9165F, // DECOR_EXIST_ON
-                veh, "Player_Vehicle");
+            // Method 1: Decorator check (how decompiled scripts detect it)
+            try
+            {
+                bool hasDecorator = Function.Call<bool>(
+                    (Hash)0x05661B80A8C9165F, // DECOR_EXIST_ON
+                    veh, "Player_Vehicle");
+                if (hasDecorator)
+                    return true;
+            }
+            catch { }
+
+            // Method 2: Check if vehicle has an attached blip with the
+            // personal vehicle sprite (blip exists + is special car sprite).
+            // The game assigns a unique blip to story-mode personal vehicles.
+            Blip vehBlip = veh.AttachedBlip;
+            if (vehBlip != null && vehBlip.Exists())
+            {
+                // Personal vehicles have a blip. Regular random cars don't.
+                // Check that it's not one of OUR garage blips.
+                BlipSprite sprite = vehBlip.Sprite;
+                if (sprite == BlipSprite.PersonalVehicleCar ||
+                    sprite == BlipSprite.PersonalVehicleBike)
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>
