@@ -191,39 +191,53 @@ namespace ALLIN1
         {
             if (!_active) return;
 
-            Ped player = Game.Player.Character;
-            if (player == null || player.IsDead)
+            try
             {
+                Ped player = Game.Player.Character;
+                if (player == null || player.IsDead)
+                {
+                    Close();
+                    return;
+                }
+
+                // Clamp selected slot to valid range for current mode
+                int maxSlots = _propMode ? PROP_SLOTS.Length : 12;
+                if (_selectedSlot >= maxSlots)
+                    _selectedSlot = 0;
+
+                // Keep player frozen at showroom
+                player.IsPositionFrozen = true;
+
+                // Auto-orbit camera
+                _orbitAngle += Game.LastFrameTime * ORBIT_SPEED;
+                if (_camera != null)
+                {
+                    _camera.Position = GetOrbitPos();
+                    _camera.PointAt(player);
+                }
+
+                // Enable mouse cursor
+                Function.Call((Hash)0xAAE7CE1D63167423); // _SET_MOUSE_CURSOR_ACTIVE_THIS_FRAME
+                Function.Call((Hash)0x8DB8CFFD58B62552, 1); // _SET_MOUSE_CURSOR_SPRITE
+
+                // Disable player control each frame
+                Game.Player.CanControlCharacter = false;
+                Function.Call(Hash.DISABLE_ALL_CONTROL_ACTIONS, 0);
+
+                // Get mouse position
+                float mx = Function.Call<float>(Hash.GET_DISABLED_CONTROL_NORMAL, 0, 239);
+                float my = Function.Call<float>(Hash.GET_DISABLED_CONTROL_NORMAL, 0, 240);
+                bool clicked = Function.Call<bool>(Hash.IS_DISABLED_CONTROL_JUST_PRESSED, 0, 237);
+
+                // Draw panel
+                DrawPanel(player, mx, my, clicked);
+            }
+            catch (Exception ex)
+            {
+                // Prevent script death — log and close gracefully
+                GTA.UI.Screen.ShowSubtitle($"~r~Outfit editor error: {ex.Message}", 5000);
                 Close();
-                return;
             }
-
-            // Keep player frozen at showroom
-            player.IsPositionFrozen = true;
-
-            // Auto-orbit camera
-            _orbitAngle += Game.LastFrameTime * ORBIT_SPEED;
-            if (_camera != null)
-            {
-                _camera.Position = GetOrbitPos();
-                _camera.PointAt(player);
-            }
-
-            // Enable mouse cursor
-            Function.Call((Hash)0xAAE7CE1D63167423); // _SET_MOUSE_CURSOR_ACTIVE_THIS_FRAME
-            Function.Call((Hash)0x8DB8CFFD58B62552, 1); // _SET_MOUSE_CURSOR_SPRITE
-
-            // Disable player control each frame
-            Game.Player.CanControlCharacter = false;
-            Function.Call(Hash.DISABLE_ALL_CONTROL_ACTIONS, 0);
-
-            // Get mouse position
-            float mx = Function.Call<float>(Hash.GET_DISABLED_CONTROL_NORMAL, 0, 239);
-            float my = Function.Call<float>(Hash.GET_DISABLED_CONTROL_NORMAL, 0, 240);
-            bool clicked = Function.Call<bool>(Hash.IS_DISABLED_CONTROL_JUST_PRESSED, 0, 237);
-
-            // Draw panel
-            DrawPanel(player, mx, my, clicked);
         }
 
         // ------------------------------------------------------------------ //

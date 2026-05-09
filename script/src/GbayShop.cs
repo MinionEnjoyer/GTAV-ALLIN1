@@ -705,8 +705,8 @@ namespace ALLIN1
                 // Franklin — partially captured via outfit editor.
                 // Body armor confirmed, other slots use Michael's pattern with validation.
                 SafeSetComponent(player, 3,  5, 1); // torso (placeholder)
-                SafeSetComponent(player, 4,  5, 1); // legs (placeholder)
-                SafeSetComponent(player, 5,  1, 1); // hands (placeholder)
+                SafeSetComponent(player, 4,  4, 0); // legs — confirmed D4/T0
+                SafeSetComponent(player, 5,  4, 0); // hands — confirmed D4/T0
                 SafeSetComponent(player, 6,  1, 1); // shoes (placeholder)
                 SafeSetComponent(player, 8,  5, 2); // shirt/accessory (placeholder)
                 SafeSetComponent(player, 9,  3, 0); // body armor — confirmed D3/T0
