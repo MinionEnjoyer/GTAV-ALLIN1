@@ -1,0 +1,908 @@
+[22:48:07] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[22:48:07] [Garage] Loaded 0 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[22:48:07] [Garage] RespawnAll complete
+[22:48:07] GarageManager initialized
+[02:34:49] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[02:34:49] [Garage] Loaded 0 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[02:34:49] [Garage] RespawnAll complete
+[02:34:49] GarageManager initialized
+[03:14:53] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[03:14:53] [Garage] Loaded 0 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[03:14:53] [Garage] RespawnAll complete
+[03:14:53] GarageManager initialized
+[03:39:05] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[03:39:05] [Garage] Loaded 0 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[03:39:05] [Garage] RespawnAll complete
+[03:39:05] GarageManager initialized
+[03:53:25] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[03:53:25] [Garage] Loaded 0 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[03:53:25] [Garage] RespawnAll complete
+[03:53:25] GarageManager initialized
+[04:05:50] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[04:05:50] [Garage] Loaded 0 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[04:05:50] [Garage] RespawnAll complete
+[04:05:50] GarageManager initialized
+[11:59:38] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[11:59:38] [Garage] Loaded 0 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[11:59:38] [Garage] RespawnAll complete
+[11:59:38] GarageManager initialized
+[13:00:42] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[13:00:42] [Garage] Loaded 0 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[13:00:42] [Garage] RespawnAll complete
+[13:00:42] GarageManager initialized
+[13:06:41] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[13:06:41] [Garage] Loaded 0 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[13:06:41] [Garage] RespawnAll complete
+[13:06:41] GarageManager initialized
+[13:15:05] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[13:15:05] [Garage] Loaded 0 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[13:15:05] [Garage] RespawnAll complete
+[13:15:05] GarageManager initialized
+[13:40:03] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[13:40:03] [Garage] Loaded 0 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[13:40:03] [Garage] RespawnAll complete
+[13:40:03] GarageManager initialized
+[13:40:52] [Garage] DeliverVehicle: oppressor2 -> grove_street slot 0
+[13:40:52] DeliverToSafehouse: oppressor2 -> grove_street, price=$1322000
+[14:23:23] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[14:23:23] [Garage] Loaded 1 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[14:23:23] [Garage] RespawnAll: spawned oppressor2 at grove_street slot 0
+[14:23:23] [Garage] RespawnAll complete
+[14:23:23] GarageManager initialized
+[14:45:34] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[14:45:34] [Garage] Loaded 1 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[14:45:35] [Garage] RespawnAll: spawned oppressor2 at grove_street slot 0
+[14:45:35] [Garage] RespawnAll complete
+[14:45:35] GarageManager initialized
+[14:57:59] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[14:57:59] [Garage] Loaded 1 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[14:57:59] [Garage] RespawnAll: spawned oppressor2 at grove_street slot 0
+[14:57:59] [Garage] RespawnAll complete
+[14:57:59] GarageManager initialized
+[16:59:36] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[16:59:36] [Garage] Loaded 1 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[16:59:36] [Garage] RespawnAll: spawned oppressor2 at grove_street slot 0
+[16:59:36] [Garage] RespawnAll complete
+[16:59:36] GarageManager initialized
+[17:48:34] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[17:48:34] [Garage] Loaded 1 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[17:48:35] [Garage] RespawnAll: spawned oppressor2 at grove_street slot 0
+[17:48:35] [Garage] RespawnAll complete
+[17:48:35] GarageManager initialized
+[20:18:46] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[20:18:46] [Garage] Loaded 1 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[20:18:46] [Garage] RespawnAll: spawned oppressor2 at grove_street slot 0
+[20:18:46] [Garage] RespawnAll complete
+[20:18:46] GarageManager initialized
+[20:37:09] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[20:37:09] [Garage] BuildModelLookup: 442 models indexed
+[20:37:09] [Garage] Load: migrating 'grove_street' -> 'franklin_aunt'
+[20:37:09] [Garage] Load: migrating 'vinewood_garage' -> 'michael_beverly'
+[20:37:09] [Garage] Load: migrating 'pillbox_hill' -> 'trevor_countryside'
+[20:37:09] [Garage] Loaded 1 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[20:37:09] [Garage] RespawnAll: spawned oppressor2 at franklin_aunt slot 0
+[20:37:09] [Garage] ScanForExisting: found oppressor2 at franklin_aunt slot 1 (dist=3.5m)
+[20:37:09] [Garage] ScanForExisting: found italirsx at franklin_hills slot 1 (dist=2.5m)
+[20:37:09] [Garage] ScanForExisting: found italirsx at franklin_hills slot 2 (dist=1.2m)
+[20:37:09] [Garage] ScanForExisting: found italirsx at franklin_hills slot 3 (dist=4.1m)
+[20:37:09] [Garage] ScanForExisting: saved, total=5
+[20:37:09] [Garage] RespawnAll + scan complete
+[20:37:09] GarageManager initialized
+[20:37:17] GiveWeapon: WEAPON_PISTOL50 already owned, refilled ammo
+[20:37:24] GiveWeapon: WEAPON_HEAVYPISTOL, price=$3750
+[20:37:53] GiveWeapon: WEAPON_COMBATMG_MK2, price=$119000
+[20:39:03] GiveWeapon: WEAPON_RAYMINIGUN, price=$499000
+[20:43:50] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[20:43:50] [Garage] BuildModelLookup: 442 models indexed
+[20:43:50] [Garage] Loaded 5 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garages.json
+[20:43:50] [Garage] RespawnAll: spawned oppressor2 at franklin_aunt slot 0
+[20:43:50] [Garage] RespawnAll: spawned oppressor2 at franklin_aunt slot 1
+[20:43:50] [Garage] RespawnAll: claimed existing vehicle at franklin_hills slot 1
+[20:43:50] [Garage] RespawnAll: claimed existing vehicle at franklin_hills slot 2
+[20:43:50] [Garage] RespawnAll: spawned italirsx at franklin_hills slot 3
+[20:43:50] [Garage] RespawnAll + scan complete
+[20:43:50] GarageManager initialized
+[20:44:25] GiveWeapon: WEAPON_COMPACTLAUNCHER, price=$45900
+[22:48:13] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[22:48:13] [Garage] Migrating old ALLIN1_garages.json to new format...
+[22:48:13] [Garage] Migration complete: 5 vehicles imported, old file backed up
+[22:48:13] [Garage] Loaded 5 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garage.json
+[22:48:13] [Garage] GarageManager initialized (Eclipse Towers 10-car interior)
+[22:48:13] GarageManager initialized
+[23:17:43] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[23:17:43] [Garage] Loaded 5 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garage.json
+[23:17:43] [Garage] GarageManager initialized (Eclipse Towers 10-car interior)
+[23:17:43] GarageManager initialized
+[00:15:06] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[00:15:06] [Garage] Loaded 5 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garage.json
+[00:15:06] [Garage] GarageManager initialized (Eclipse Towers 10-car interior)
+[00:15:06] GarageManager initialized
+[00:54:24] Key pressed: F9, initialized=False
+[00:54:24] Calling Initialize()
+[00:54:24] Initialize() starting
+[00:54:24] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[00:54:24] [Garage] Loaded 5 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garage.json
+[00:54:24] [Garage] GarageManager initialized (Eclipse Towers 10-car interior)
+[00:54:24] GarageManager initialized
+[00:54:24] Creating GbayBrowser
+[00:54:24] GbayBrowser created
+[00:54:24] Initialize() complete
+[00:54:24] Initialize() complete, browser=ok
+[00:54:24] Calling _browser.Toggle()
+[00:54:24.965] [Browser] Toggle() called, current state=Closed
+[00:54:24.966] [Browser] Opening: setting state=TopMenu
+[00:54:24.966] [Browser] Calling EnsureTextures
+[00:54:24.967] [Renderer] EnsureTextures called, already=False
+[00:54:24.967] [Renderer] EnsureTextures: commonmenu requested
+[00:54:24.967] [Browser] Calling RequestDict(allin1_logo)
+[00:54:24.967] [Renderer] RequestDict: requesting 'allin1_logo'
+[00:54:24.968] [Browser] Toggle open complete
+[00:54:24] Toggle() returned
+[00:54:24.976] [Browser] DrawTopMenu enter
+[00:54:24.976] [Browser] DrawTopMenu: drawing logo
+[00:54:24.977] [Browser] DrawTopMenu: drawing buttons
+[00:54:24.983] [Browser] DrawTopMenu enter
+[00:54:24.983] [Browser] DrawTopMenu: drawing logo
+[00:54:24.983] [Browser] DrawTopMenu: drawing buttons
+[00:54:24.991] [Browser] DrawTopMenu enter
+[00:54:24.991] [Browser] DrawTopMenu: drawing logo
+[00:54:24.991] [Browser] DrawTopMenu: drawing buttons
+[00:54:24.999] [Browser] DrawTopMenu enter
+[00:54:24.999] [Browser] DrawTopMenu: drawing logo
+[00:54:24.999] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.007] [Browser] DrawTopMenu enter
+[00:54:25.008] [Browser] DrawTopMenu: drawing logo
+[00:54:25.008] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.016] [Browser] DrawTopMenu enter
+[00:54:25.016] [Browser] DrawTopMenu: drawing logo
+[00:54:25.016] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.025] [Browser] DrawTopMenu enter
+[00:54:25.025] [Browser] DrawTopMenu: drawing logo
+[00:54:25.025] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.033] [Browser] DrawTopMenu enter
+[00:54:25.033] [Browser] DrawTopMenu: drawing logo
+[00:54:25.033] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.041] [Browser] DrawTopMenu enter
+[00:54:25.041] [Browser] DrawTopMenu: drawing logo
+[00:54:25.041] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.049] [Browser] DrawTopMenu enter
+[00:54:25.049] [Browser] DrawTopMenu: drawing logo
+[00:54:25.049] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.058] [Browser] DrawTopMenu enter
+[00:54:25.058] [Browser] DrawTopMenu: drawing logo
+[00:54:25.058] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.399] [Browser] DrawTopMenu enter
+[00:54:25.399] [Browser] DrawTopMenu: drawing logo
+[00:54:25.399] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.406] [Browser] DrawTopMenu enter
+[00:54:25.406] [Browser] DrawTopMenu: drawing logo
+[00:54:25.406] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.413] [Browser] DrawTopMenu enter
+[00:54:25.413] [Browser] DrawTopMenu: drawing logo
+[00:54:25.413] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.422] [Browser] DrawTopMenu enter
+[00:54:25.423] [Browser] DrawTopMenu: drawing logo
+[00:54:25.423] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.430] [Browser] DrawTopMenu enter
+[00:54:25.430] [Browser] DrawTopMenu: drawing logo
+[00:54:25.430] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.438] [Browser] DrawTopMenu enter
+[00:54:25.439] [Browser] DrawTopMenu: drawing logo
+[00:54:25.439] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.446] [Browser] DrawTopMenu enter
+[00:54:25.446] [Browser] DrawTopMenu: drawing logo
+[00:54:25.447] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.455] [Browser] DrawTopMenu enter
+[00:54:25.456] [Browser] DrawTopMenu: drawing logo
+[00:54:25.456] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.463] [Browser] DrawTopMenu enter
+[00:54:25.463] [Browser] DrawTopMenu: drawing logo
+[00:54:25.463] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.472] [Browser] DrawTopMenu enter
+[00:54:25.472] [Browser] DrawTopMenu: drawing logo
+[00:54:25.472] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.479] [Browser] DrawTopMenu enter
+[00:54:25.479] [Browser] DrawTopMenu: drawing logo
+[00:54:25.480] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.488] [Browser] DrawTopMenu enter
+[00:54:25.488] [Browser] DrawTopMenu: drawing logo
+[00:54:25.488] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.496] [Browser] DrawTopMenu enter
+[00:54:25.496] [Browser] DrawTopMenu: drawing logo
+[00:54:25.497] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.506] [Browser] DrawTopMenu enter
+[00:54:25.506] [Browser] DrawTopMenu: drawing logo
+[00:54:25.506] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.513] [Browser] DrawTopMenu enter
+[00:54:25.513] [Browser] DrawTopMenu: drawing logo
+[00:54:25.513] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.522] [Browser] DrawTopMenu enter
+[00:54:25.522] [Browser] DrawTopMenu: drawing logo
+[00:54:25.522] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.530] [Browser] DrawTopMenu enter
+[00:54:25.530] [Browser] DrawTopMenu: drawing logo
+[00:54:25.530] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.541] [Browser] DrawTopMenu enter
+[00:54:25.541] [Browser] DrawTopMenu: drawing logo
+[00:54:25.541] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.549] [Browser] DrawTopMenu enter
+[00:54:25.549] [Browser] DrawTopMenu: drawing logo
+[00:54:25.549] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.558] [Browser] DrawTopMenu enter
+[00:54:25.558] [Browser] DrawTopMenu: drawing logo
+[00:54:25.558] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.566] [Browser] DrawTopMenu enter
+[00:54:25.566] [Browser] DrawTopMenu: drawing logo
+[00:54:25.566] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.574] [Browser] DrawTopMenu enter
+[00:54:25.574] [Browser] DrawTopMenu: drawing logo
+[00:54:25.574] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.582] [Browser] DrawTopMenu enter
+[00:54:25.583] [Browser] DrawTopMenu: drawing logo
+[00:54:25.583] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.591] [Browser] DrawTopMenu enter
+[00:54:25.591] [Browser] DrawTopMenu: drawing logo
+[00:54:25.591] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.599] [Browser] DrawTopMenu enter
+[00:54:25.599] [Browser] DrawTopMenu: drawing logo
+[00:54:25.599] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.607] [Browser] DrawTopMenu enter
+[00:54:25.607] [Browser] DrawTopMenu: drawing logo
+[00:54:25.608] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.616] [Browser] DrawTopMenu enter
+[00:54:25.616] [Browser] DrawTopMenu: drawing logo
+[00:54:25.616] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.625] [Browser] DrawTopMenu enter
+[00:54:25.625] [Browser] DrawTopMenu: drawing logo
+[00:54:25.625] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.633] [Browser] DrawTopMenu enter
+[00:54:25.633] [Browser] DrawTopMenu: drawing logo
+[00:54:25.633] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.641] [Browser] DrawTopMenu enter
+[00:54:25.641] [Browser] DrawTopMenu: drawing logo
+[00:54:25.642] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.650] [Browser] DrawTopMenu enter
+[00:54:25.650] [Browser] DrawTopMenu: drawing logo
+[00:54:25.650] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.658] [Browser] DrawTopMenu enter
+[00:54:25.658] [Browser] DrawTopMenu: drawing logo
+[00:54:25.658] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.666] [Browser] DrawTopMenu enter
+[00:54:25.666] [Browser] DrawTopMenu: drawing logo
+[00:54:25.666] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.675] [Browser] DrawTopMenu enter
+[00:54:25.675] [Browser] DrawTopMenu: drawing logo
+[00:54:25.675] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.683] [Browser] DrawTopMenu enter
+[00:54:25.683] [Browser] DrawTopMenu: drawing logo
+[00:54:25.683] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.691] [Browser] DrawTopMenu enter
+[00:54:25.691] [Browser] DrawTopMenu: drawing logo
+[00:54:25.692] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.700] [Browser] DrawTopMenu enter
+[00:54:25.700] [Browser] DrawTopMenu: drawing logo
+[00:54:25.700] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.708] [Browser] DrawTopMenu enter
+[00:54:25.708] [Browser] DrawTopMenu: drawing logo
+[00:54:25.708] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.716] [Browser] DrawTopMenu enter
+[00:54:25.716] [Browser] DrawTopMenu: drawing logo
+[00:54:25.716] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.725] [Browser] DrawTopMenu enter
+[00:54:25.725] [Browser] DrawTopMenu: drawing logo
+[00:54:25.725] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.733] [Browser] DrawTopMenu enter
+[00:54:25.733] [Browser] DrawTopMenu: drawing logo
+[00:54:25.734] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.741] [Browser] DrawTopMenu enter
+[00:54:25.741] [Browser] DrawTopMenu: drawing logo
+[00:54:25.742] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.750] [Browser] DrawTopMenu enter
+[00:54:25.750] [Browser] DrawTopMenu: drawing logo
+[00:54:25.750] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.758] [Browser] DrawTopMenu enter
+[00:54:25.758] [Browser] DrawTopMenu: drawing logo
+[00:54:25.758] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.766] [Browser] DrawTopMenu enter
+[00:54:25.767] [Browser] DrawTopMenu: drawing logo
+[00:54:25.767] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.775] [Browser] DrawTopMenu enter
+[00:54:25.775] [Browser] DrawTopMenu: drawing logo
+[00:54:25.776] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.783] [Browser] DrawTopMenu enter
+[00:54:25.783] [Browser] DrawTopMenu: drawing logo
+[00:54:25.783] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.791] [Browser] DrawTopMenu enter
+[00:54:25.791] [Browser] DrawTopMenu: drawing logo
+[00:54:25.791] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.800] [Browser] DrawTopMenu enter
+[00:54:25.800] [Browser] DrawTopMenu: drawing logo
+[00:54:25.800] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.808] [Browser] DrawTopMenu enter
+[00:54:25.808] [Browser] DrawTopMenu: drawing logo
+[00:54:25.808] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.817] [Browser] DrawTopMenu enter
+[00:54:25.817] [Browser] DrawTopMenu: drawing logo
+[00:54:25.817] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.825] [Browser] DrawTopMenu enter
+[00:54:25.825] [Browser] DrawTopMenu: drawing logo
+[00:54:25.825] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.833] [Browser] DrawTopMenu enter
+[00:54:25.833] [Browser] DrawTopMenu: drawing logo
+[00:54:25.833] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.841] [Browser] DrawTopMenu enter
+[00:54:25.842] [Browser] DrawTopMenu: drawing logo
+[00:54:25.842] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.850] [Browser] DrawTopMenu enter
+[00:54:25.850] [Browser] DrawTopMenu: drawing logo
+[00:54:25.850] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.858] [Browser] DrawTopMenu enter
+[00:54:25.858] [Browser] DrawTopMenu: drawing logo
+[00:54:25.858] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.866] [Browser] DrawTopMenu enter
+[00:54:25.866] [Browser] DrawTopMenu: drawing logo
+[00:54:25.866] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.875] [Browser] DrawTopMenu enter
+[00:54:25.875] [Browser] DrawTopMenu: drawing logo
+[00:54:25.875] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.883] [Browser] DrawTopMenu enter
+[00:54:25.883] [Browser] DrawTopMenu: drawing logo
+[00:54:25.883] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.891] [Browser] DrawTopMenu enter
+[00:54:25.891] [Browser] DrawTopMenu: drawing logo
+[00:54:25.891] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.899] [Browser] DrawTopMenu enter
+[00:54:25.899] [Browser] DrawTopMenu: drawing logo
+[00:54:25.900] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.908] [Browser] DrawTopMenu enter
+[00:54:25.908] [Browser] DrawTopMenu: drawing logo
+[00:54:25.908] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.916] [Browser] DrawTopMenu enter
+[00:54:25.916] [Browser] DrawTopMenu: drawing logo
+[00:54:25.917] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.925] [Browser] DrawTopMenu enter
+[00:54:25.925] [Browser] DrawTopMenu: drawing logo
+[00:54:25.925] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.933] [Browser] DrawTopMenu enter
+[00:54:25.933] [Browser] DrawTopMenu: drawing logo
+[00:54:25.933] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.941] [Browser] DrawTopMenu enter
+[00:54:25.941] [Browser] DrawTopMenu: drawing logo
+[00:54:25.941] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.949] [Browser] DrawTopMenu enter
+[00:54:25.949] [Browser] DrawTopMenu: drawing logo
+[00:54:25.949] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.958] [Browser] DrawTopMenu enter
+[00:54:25.958] [Browser] DrawTopMenu: drawing logo
+[00:54:25.958] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.966] [Browser] DrawTopMenu enter
+[00:54:25.968] [Browser] DrawTopMenu: drawing logo
+[00:54:25.968] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.976] [Browser] DrawTopMenu enter
+[00:54:25.976] [Browser] DrawTopMenu: drawing logo
+[00:54:25.976] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.984] [Browser] DrawTopMenu enter
+[00:54:25.984] [Browser] DrawTopMenu: drawing logo
+[00:54:25.984] [Browser] DrawTopMenu: drawing buttons
+[00:54:25.992] [Browser] DrawTopMenu enter
+[00:54:25.992] [Browser] DrawTopMenu: drawing logo
+[00:54:25.992] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.001] [Browser] DrawTopMenu enter
+[00:54:26.001] [Browser] DrawTopMenu: drawing logo
+[00:54:26.001] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.009] [Browser] DrawTopMenu enter
+[00:54:26.009] [Browser] DrawTopMenu: drawing logo
+[00:54:26.009] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.017] [Browser] DrawTopMenu enter
+[00:54:26.017] [Browser] DrawTopMenu: drawing logo
+[00:54:26.018] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.026] [Browser] DrawTopMenu enter
+[00:54:26.026] [Browser] DrawTopMenu: drawing logo
+[00:54:26.026] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.034] [Browser] DrawTopMenu enter
+[00:54:26.034] [Browser] DrawTopMenu: drawing logo
+[00:54:26.034] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.042] [Browser] DrawTopMenu enter
+[00:54:26.042] [Browser] DrawTopMenu: drawing logo
+[00:54:26.042] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.050] [Browser] DrawTopMenu enter
+[00:54:26.050] [Browser] DrawTopMenu: drawing logo
+[00:54:26.050] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.059] [Browser] DrawTopMenu enter
+[00:54:26.059] [Browser] DrawTopMenu: drawing logo
+[00:54:26.059] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.067] [Browser] DrawTopMenu enter
+[00:54:26.067] [Browser] DrawTopMenu: drawing logo
+[00:54:26.067] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.076] [Browser] DrawTopMenu enter
+[00:54:26.076] [Browser] DrawTopMenu: drawing logo
+[00:54:26.076] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.084] [Browser] DrawTopMenu enter
+[00:54:26.084] [Browser] DrawTopMenu: drawing logo
+[00:54:26.084] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.092] [Browser] DrawTopMenu enter
+[00:54:26.092] [Browser] DrawTopMenu: drawing logo
+[00:54:26.092] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.101] [Browser] DrawTopMenu enter
+[00:54:26.101] [Browser] DrawTopMenu: drawing logo
+[00:54:26.101] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.109] [Browser] DrawTopMenu enter
+[00:54:26.110] [Browser] DrawTopMenu: drawing logo
+[00:54:26.110] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.117] [Browser] DrawTopMenu enter
+[00:54:26.117] [Browser] DrawTopMenu: drawing logo
+[00:54:26.117] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.126] [Browser] DrawTopMenu enter
+[00:54:26.126] [Browser] DrawTopMenu: drawing logo
+[00:54:26.126] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.133] [Browser] DrawTopMenu enter
+[00:54:26.134] [Browser] DrawTopMenu: drawing logo
+[00:54:26.134] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.142] [Browser] DrawTopMenu enter
+[00:54:26.142] [Browser] DrawTopMenu: drawing logo
+[00:54:26.143] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.150] [Browser] DrawTopMenu enter
+[00:54:26.150] [Browser] DrawTopMenu: drawing logo
+[00:54:26.151] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.159] [Browser] DrawTopMenu enter
+[00:54:26.159] [Browser] DrawTopMenu: drawing logo
+[00:54:26.159] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.167] [Browser] DrawTopMenu enter
+[00:54:26.167] [Browser] DrawTopMenu: drawing logo
+[00:54:26.167] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.175] [Browser] DrawTopMenu enter
+[00:54:26.176] [Browser] DrawTopMenu: drawing logo
+[00:54:26.176] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.184] [Browser] DrawTopMenu enter
+[00:54:26.184] [Browser] DrawTopMenu: drawing logo
+[00:54:26.184] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.192] [Browser] DrawTopMenu enter
+[00:54:26.192] [Browser] DrawTopMenu: drawing logo
+[00:54:26.193] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.201] [Browser] DrawTopMenu enter
+[00:54:26.201] [Browser] DrawTopMenu: drawing logo
+[00:54:26.201] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.209] [Browser] DrawTopMenu enter
+[00:54:26.209] [Browser] DrawTopMenu: drawing logo
+[00:54:26.209] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.217] [Browser] DrawTopMenu enter
+[00:54:26.217] [Browser] DrawTopMenu: drawing logo
+[00:54:26.217] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.226] [Browser] DrawTopMenu enter
+[00:54:26.226] [Browser] DrawTopMenu: drawing logo
+[00:54:26.226] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.234] [Browser] DrawTopMenu enter
+[00:54:26.234] [Browser] DrawTopMenu: drawing logo
+[00:54:26.234] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.243] [Browser] DrawTopMenu enter
+[00:54:26.243] [Browser] DrawTopMenu: drawing logo
+[00:54:26.243] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.251] [Browser] DrawTopMenu enter
+[00:54:26.252] [Browser] DrawTopMenu: drawing logo
+[00:54:26.252] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.259] [Browser] DrawTopMenu enter
+[00:54:26.259] [Browser] DrawTopMenu: drawing logo
+[00:54:26.259] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.267] [Browser] DrawTopMenu enter
+[00:54:26.268] [Browser] DrawTopMenu: drawing logo
+[00:54:26.268] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.276] [Browser] DrawTopMenu enter
+[00:54:26.276] [Browser] DrawTopMenu: drawing logo
+[00:54:26.277] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.284] [Browser] DrawTopMenu enter
+[00:54:26.284] [Browser] DrawTopMenu: drawing logo
+[00:54:26.284] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.293] [Browser] DrawTopMenu enter
+[00:54:26.293] [Browser] DrawTopMenu: drawing logo
+[00:54:26.293] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.301] [Browser] DrawTopMenu enter
+[00:54:26.301] [Browser] DrawTopMenu: drawing logo
+[00:54:26.301] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.309] [Browser] DrawTopMenu enter
+[00:54:26.309] [Browser] DrawTopMenu: drawing logo
+[00:54:26.309] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.317] [Browser] DrawTopMenu enter
+[00:54:26.317] [Browser] DrawTopMenu: drawing logo
+[00:54:26.318] [Browser] DrawTopMenu: drawing buttons
+[00:54:26.326] [Browser] DrawTopMenu enter
+[00:54:26.326] [Browser] DrawTopMenu: drawing logo
+[00:54:26.326] [Browser] DrawTopMenu: drawing buttons
+[01:30:06.393] === GbayShop CONSTRUCTOR START ===
+[01:30:06.394] === GbayShop CONSTRUCTOR END ===
+[01:30:09] Key pressed: F9, initialized=False
+[01:30:09] Calling Initialize()
+[01:30:09] Initialize() starting
+[01:30:09] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[01:30:09] [Garage] Loaded 5 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garage.json
+[01:30:09] [Garage] GarageManager initialized (Eclipse Towers 10-car interior)
+[01:30:09] GarageManager initialized
+[01:30:09] Creating GbayBrowser
+[01:30:09] GbayBrowser created
+[01:30:09] Initialize() complete
+[01:30:09] Initialize() complete, browser=ok
+[01:30:09] Calling _browser.Toggle()
+[01:30:09.497] [Browser] Toggle() called, current state=Closed
+[01:30:09.497] [Browser] Opening: setting state=TopMenu
+[01:30:09.497] [Browser] Calling EnsureTextures
+[01:30:09.500] [Renderer] EnsureTextures called, already=False
+[01:30:09.500] [Renderer] EnsureTextures: commonmenu requested
+[01:30:09.500] [Browser] Calling RequestDict(allin1_logo)
+[01:30:09.500] [Renderer] RequestDict: requesting 'allin1_logo'
+[01:30:09.500] [Browser] Toggle open complete
+[01:30:09] Toggle() returned
+[01:30:09.509] [Browser] DrawTopMenu enter
+[01:30:09.509] [Browser] DrawTopMenu: drawing logo
+[01:30:09.510] [Browser] DrawTopMenu: drawing buttons
+[01:30:09.517] [Browser] DrawTopMenu enter
+[01:30:09.517] [Browser] DrawTopMenu: drawing logo
+[01:30:09.517] [Browser] DrawTopMenu: drawing buttons
+[01:30:09.525] [Browser] DrawTopMenu enter
+[01:30:09.525] [Browser] DrawTopMenu: drawing logo
+[01:30:09.525] [Browser] DrawTopMenu: drawing buttons
+[01:30:09.534] [Browser] DrawTopMenu enter
+[01:30:09.534] [Browser] DrawTopMenu: drawing logo
+[01:30:09.534] [Browser] DrawTopMenu: drawing buttons
+[01:30:09.559] [Browser] DrawTopMenu enter
+[01:30:09.559] [Browser] DrawTopMenu: drawing logo
+[01:30:09.559] [Browser] DrawTopMenu: drawing buttons
+[01:30:09.567] [Browser] DrawTopMenu enter
+[01:30:09.567] [Browser] DrawTopMenu: drawing logo
+[01:30:09.567] [Browser] DrawTopMenu: drawing buttons
+[01:30:09.575] [Browser] DrawTopMenu enter
+[01:30:09.575] [Browser] DrawTopMenu: drawing logo
+[01:30:09.575] [Browser] DrawTopMenu: drawing buttons
+[01:30:09.584] [Browser] DrawTopMenu enter
+[01:30:09.584] [Browser] DrawTopMenu: drawing logo
+[01:30:09.584] [Browser] DrawTopMenu: drawing buttons
+[01:30:09.592] [Browser] DrawTopMenu enter
+[01:30:09.592] [Browser] DrawTopMenu: drawing logo
+[01:30:09.592] [Browser] DrawTopMenu: drawing buttons
+[01:30:09.938] [Browser] DrawTopMenu enter
+[01:30:09.938] [Browser] DrawTopMenu: drawing logo
+[01:30:09.938] [Browser] DrawTopMenu: drawing buttons
+[01:30:09.945] [Browser] DrawTopMenu enter
+[01:30:09.946] [Browser] DrawTopMenu: drawing logo
+[01:30:09.946] [Browser] DrawTopMenu: drawing buttons
+[01:30:09.954] [Browser] DrawTopMenu enter
+[01:30:09.954] [Browser] DrawTopMenu: drawing logo
+[01:30:09.954] [Browser] DrawTopMenu: drawing buttons
+[01:30:09.962] [Browser] DrawTopMenu enter
+[01:30:09.962] [Browser] DrawTopMenu: drawing logo
+[01:30:09.962] [Browser] DrawTopMenu: drawing buttons
+[01:30:09.970] [Browser] DrawTopMenu enter
+[01:30:09.970] [Browser] DrawTopMenu: drawing logo
+[01:30:09.970] [Browser] DrawTopMenu: drawing buttons
+[01:30:09.978] [Browser] DrawTopMenu enter
+[01:30:09.979] [Browser] DrawTopMenu: drawing logo
+[01:30:09.979] [Browser] DrawTopMenu: drawing buttons
+[01:30:09.987] [Browser] DrawTopMenu enter
+[01:30:09.987] [Browser] DrawTopMenu: drawing logo
+[01:30:09.987] [Browser] DrawTopMenu: drawing buttons
+[01:30:09.995] [Browser] DrawTopMenu enter
+[01:30:09.995] [Browser] DrawTopMenu: drawing logo
+[01:30:09.995] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.004] [Browser] DrawTopMenu enter
+[01:30:10.004] [Browser] DrawTopMenu: drawing logo
+[01:30:10.004] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.011] [Browser] DrawTopMenu enter
+[01:30:10.012] [Browser] DrawTopMenu: drawing logo
+[01:30:10.012] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.021] [Browser] DrawTopMenu enter
+[01:30:10.021] [Browser] DrawTopMenu: drawing logo
+[01:30:10.021] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.028] [Browser] DrawTopMenu enter
+[01:30:10.028] [Browser] DrawTopMenu: drawing logo
+[01:30:10.028] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.036] [Browser] DrawTopMenu enter
+[01:30:10.037] [Browser] DrawTopMenu: drawing logo
+[01:30:10.037] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.045] [Browser] DrawTopMenu enter
+[01:30:10.045] [Browser] DrawTopMenu: drawing logo
+[01:30:10.045] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.054] [Browser] DrawTopMenu enter
+[01:30:10.054] [Browser] DrawTopMenu: drawing logo
+[01:30:10.054] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.062] [Browser] DrawTopMenu enter
+[01:30:10.062] [Browser] DrawTopMenu: drawing logo
+[01:30:10.062] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.071] [Browser] DrawTopMenu enter
+[01:30:10.071] [Browser] DrawTopMenu: drawing logo
+[01:30:10.071] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.079] [Browser] DrawTopMenu enter
+[01:30:10.079] [Browser] DrawTopMenu: drawing logo
+[01:30:10.079] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.087] [Browser] DrawTopMenu enter
+[01:30:10.087] [Browser] DrawTopMenu: drawing logo
+[01:30:10.087] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.095] [Browser] DrawTopMenu enter
+[01:30:10.095] [Browser] DrawTopMenu: drawing logo
+[01:30:10.095] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.103] [Browser] DrawTopMenu enter
+[01:30:10.104] [Browser] DrawTopMenu: drawing logo
+[01:30:10.104] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.112] [Browser] DrawTopMenu enter
+[01:30:10.112] [Browser] DrawTopMenu: drawing logo
+[01:30:10.112] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.121] [Browser] DrawTopMenu enter
+[01:30:10.121] [Browser] DrawTopMenu: drawing logo
+[01:30:10.122] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.128] [Browser] DrawTopMenu enter
+[01:30:10.128] [Browser] DrawTopMenu: drawing logo
+[01:30:10.129] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.136] [Browser] DrawTopMenu enter
+[01:30:10.137] [Browser] DrawTopMenu: drawing logo
+[01:30:10.137] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.145] [Browser] DrawTopMenu enter
+[01:30:10.145] [Browser] DrawTopMenu: drawing logo
+[01:30:10.145] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.153] [Browser] DrawTopMenu enter
+[01:30:10.154] [Browser] DrawTopMenu: drawing logo
+[01:30:10.154] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.161] [Browser] DrawTopMenu enter
+[01:30:10.162] [Browser] DrawTopMenu: drawing logo
+[01:30:10.162] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.170] [Browser] DrawTopMenu enter
+[01:30:10.170] [Browser] DrawTopMenu: drawing logo
+[01:30:10.170] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.178] [Browser] DrawTopMenu enter
+[01:30:10.178] [Browser] DrawTopMenu: drawing logo
+[01:30:10.178] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.186] [Browser] DrawTopMenu enter
+[01:30:10.186] [Browser] DrawTopMenu: drawing logo
+[01:30:10.187] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.195] [Browser] DrawTopMenu enter
+[01:30:10.195] [Browser] DrawTopMenu: drawing logo
+[01:30:10.195] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.204] [Browser] DrawTopMenu enter
+[01:30:10.204] [Browser] DrawTopMenu: drawing logo
+[01:30:10.204] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.211] [Browser] DrawTopMenu enter
+[01:30:10.212] [Browser] DrawTopMenu: drawing logo
+[01:30:10.212] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.220] [Browser] DrawTopMenu enter
+[01:30:10.220] [Browser] DrawTopMenu: drawing logo
+[01:30:10.220] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.228] [Browser] DrawTopMenu enter
+[01:30:10.229] [Browser] DrawTopMenu: drawing logo
+[01:30:10.229] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.236] [Browser] DrawTopMenu enter
+[01:30:10.237] [Browser] DrawTopMenu: drawing logo
+[01:30:10.237] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.245] [Browser] DrawTopMenu enter
+[01:30:10.245] [Browser] DrawTopMenu: drawing logo
+[01:30:10.245] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.254] [Browser] DrawTopMenu enter
+[01:30:10.254] [Browser] DrawTopMenu: drawing logo
+[01:30:10.254] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.262] [Browser] DrawTopMenu enter
+[01:30:10.262] [Browser] DrawTopMenu: drawing logo
+[01:30:10.262] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.270] [Browser] DrawTopMenu enter
+[01:30:10.270] [Browser] DrawTopMenu: drawing logo
+[01:30:10.270] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.278] [Browser] DrawTopMenu enter
+[01:30:10.279] [Browser] DrawTopMenu: drawing logo
+[01:30:10.279] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.287] [Browser] DrawTopMenu enter
+[01:30:10.287] [Browser] DrawTopMenu: drawing logo
+[01:30:10.287] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.296] [Browser] DrawTopMenu enter
+[01:30:10.296] [Browser] DrawTopMenu: drawing logo
+[01:30:10.296] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.304] [Browser] DrawTopMenu enter
+[01:30:10.304] [Browser] DrawTopMenu: drawing logo
+[01:30:10.304] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.312] [Browser] DrawTopMenu enter
+[01:30:10.312] [Browser] DrawTopMenu: drawing logo
+[01:30:10.312] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.320] [Browser] DrawTopMenu enter
+[01:30:10.321] [Browser] DrawTopMenu: drawing logo
+[01:30:10.321] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.328] [Browser] DrawTopMenu enter
+[01:30:10.329] [Browser] DrawTopMenu: drawing logo
+[01:30:10.329] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.337] [Browser] DrawTopMenu enter
+[01:30:10.337] [Browser] DrawTopMenu: drawing logo
+[01:30:10.338] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.345] [Browser] DrawTopMenu enter
+[01:30:10.346] [Browser] DrawTopMenu: drawing logo
+[01:30:10.346] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.354] [Browser] DrawTopMenu enter
+[01:30:10.354] [Browser] DrawTopMenu: drawing logo
+[01:30:10.354] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.361] [Browser] DrawTopMenu enter
+[01:30:10.362] [Browser] DrawTopMenu: drawing logo
+[01:30:10.362] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.370] [Browser] DrawTopMenu enter
+[01:30:10.370] [Browser] DrawTopMenu: drawing logo
+[01:30:10.370] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.378] [Browser] DrawTopMenu enter
+[01:30:10.379] [Browser] DrawTopMenu: drawing logo
+[01:30:10.379] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.387] [Browser] DrawTopMenu enter
+[01:30:10.388] [Browser] DrawTopMenu: drawing logo
+[01:30:10.388] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.395] [Browser] DrawTopMenu enter
+[01:30:10.396] [Browser] DrawTopMenu: drawing logo
+[01:30:10.396] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.404] [Browser] DrawTopMenu enter
+[01:30:10.404] [Browser] DrawTopMenu: drawing logo
+[01:30:10.404] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.412] [Browser] DrawTopMenu enter
+[01:30:10.412] [Browser] DrawTopMenu: drawing logo
+[01:30:10.412] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.420] [Browser] DrawTopMenu enter
+[01:30:10.420] [Browser] DrawTopMenu: drawing logo
+[01:30:10.420] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.428] [Browser] DrawTopMenu enter
+[01:30:10.429] [Browser] DrawTopMenu: drawing logo
+[01:30:10.429] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.438] [Browser] DrawTopMenu enter
+[01:30:10.438] [Browser] DrawTopMenu: drawing logo
+[01:30:10.438] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.445] [Browser] DrawTopMenu enter
+[01:30:10.445] [Browser] DrawTopMenu: drawing logo
+[01:30:10.445] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.454] [Browser] DrawTopMenu enter
+[01:30:10.454] [Browser] DrawTopMenu: drawing logo
+[01:30:10.454] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.462] [Browser] DrawTopMenu enter
+[01:30:10.462] [Browser] DrawTopMenu: drawing logo
+[01:30:10.462] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.470] [Browser] DrawTopMenu enter
+[01:30:10.471] [Browser] DrawTopMenu: drawing logo
+[01:30:10.471] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.478] [Browser] DrawTopMenu enter
+[01:30:10.478] [Browser] DrawTopMenu: drawing logo
+[01:30:10.479] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.487] [Browser] DrawTopMenu enter
+[01:30:10.487] [Browser] DrawTopMenu: drawing logo
+[01:30:10.487] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.495] [Browser] DrawTopMenu enter
+[01:30:10.496] [Browser] DrawTopMenu: drawing logo
+[01:30:10.496] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.504] [Browser] DrawTopMenu enter
+[01:30:10.504] [Browser] DrawTopMenu: drawing logo
+[01:30:10.504] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.512] [Browser] DrawTopMenu enter
+[01:30:10.512] [Browser] DrawTopMenu: drawing logo
+[01:30:10.512] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.521] [Browser] DrawTopMenu enter
+[01:30:10.521] [Browser] DrawTopMenu: drawing logo
+[01:30:10.521] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.528] [Browser] DrawTopMenu enter
+[01:30:10.528] [Browser] DrawTopMenu: drawing logo
+[01:30:10.529] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.537] [Browser] DrawTopMenu enter
+[01:30:10.537] [Browser] DrawTopMenu: drawing logo
+[01:30:10.537] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.545] [Browser] DrawTopMenu enter
+[01:30:10.545] [Browser] DrawTopMenu: drawing logo
+[01:30:10.545] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.554] [Browser] DrawTopMenu enter
+[01:30:10.554] [Browser] DrawTopMenu: drawing logo
+[01:30:10.554] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.562] [Browser] DrawTopMenu enter
+[01:30:10.563] [Browser] DrawTopMenu: drawing logo
+[01:30:10.563] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.571] [Browser] DrawTopMenu enter
+[01:30:10.571] [Browser] DrawTopMenu: drawing logo
+[01:30:10.571] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.579] [Browser] DrawTopMenu enter
+[01:30:10.579] [Browser] DrawTopMenu: drawing logo
+[01:30:10.579] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.587] [Browser] DrawTopMenu enter
+[01:30:10.588] [Browser] DrawTopMenu: drawing logo
+[01:30:10.588] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.595] [Browser] DrawTopMenu enter
+[01:30:10.595] [Browser] DrawTopMenu: drawing logo
+[01:30:10.596] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.604] [Browser] DrawTopMenu enter
+[01:30:10.604] [Browser] DrawTopMenu: drawing logo
+[01:30:10.604] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.612] [Browser] DrawTopMenu enter
+[01:30:10.612] [Browser] DrawTopMenu: drawing logo
+[01:30:10.612] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.620] [Browser] DrawTopMenu enter
+[01:30:10.620] [Browser] DrawTopMenu: drawing logo
+[01:30:10.620] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.628] [Browser] DrawTopMenu enter
+[01:30:10.629] [Browser] DrawTopMenu: drawing logo
+[01:30:10.629] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.637] [Browser] DrawTopMenu enter
+[01:30:10.637] [Browser] DrawTopMenu: drawing logo
+[01:30:10.637] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.645] [Browser] DrawTopMenu enter
+[01:30:10.645] [Browser] DrawTopMenu: drawing logo
+[01:30:10.645] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.654] [Browser] DrawTopMenu enter
+[01:30:10.654] [Browser] DrawTopMenu: drawing logo
+[01:30:10.654] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.662] [Browser] DrawTopMenu enter
+[01:30:10.662] [Browser] DrawTopMenu: drawing logo
+[01:30:10.662] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.671] [Browser] DrawTopMenu enter
+[01:30:10.671] [Browser] DrawTopMenu: drawing logo
+[01:30:10.671] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.679] [Browser] DrawTopMenu enter
+[01:30:10.679] [Browser] DrawTopMenu: drawing logo
+[01:30:10.679] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.687] [Browser] DrawTopMenu enter
+[01:30:10.688] [Browser] DrawTopMenu: drawing logo
+[01:30:10.688] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.695] [Browser] DrawTopMenu enter
+[01:30:10.695] [Browser] DrawTopMenu: drawing logo
+[01:30:10.695] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.704] [Browser] DrawTopMenu enter
+[01:30:10.704] [Browser] DrawTopMenu: drawing logo
+[01:30:10.704] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.712] [Browser] DrawTopMenu enter
+[01:30:10.712] [Browser] DrawTopMenu: drawing logo
+[01:30:10.712] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.720] [Browser] DrawTopMenu enter
+[01:30:10.720] [Browser] DrawTopMenu: drawing logo
+[01:30:10.720] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.728] [Browser] DrawTopMenu enter
+[01:30:10.729] [Browser] DrawTopMenu: drawing logo
+[01:30:10.729] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.737] [Browser] DrawTopMenu enter
+[01:30:10.738] [Browser] DrawTopMenu: drawing logo
+[01:30:10.738] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.745] [Browser] DrawTopMenu enter
+[01:30:10.746] [Browser] DrawTopMenu: drawing logo
+[01:30:10.746] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.754] [Browser] DrawTopMenu enter
+[01:30:10.754] [Browser] DrawTopMenu: drawing logo
+[01:30:10.754] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.762] [Browser] DrawTopMenu enter
+[01:30:10.762] [Browser] DrawTopMenu: drawing logo
+[01:30:10.762] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.771] [Browser] DrawTopMenu enter
+[01:30:10.771] [Browser] DrawTopMenu: drawing logo
+[01:30:10.771] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.778] [Browser] DrawTopMenu enter
+[01:30:10.779] [Browser] DrawTopMenu: drawing logo
+[01:30:10.779] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.787] [Browser] DrawTopMenu enter
+[01:30:10.788] [Browser] DrawTopMenu: drawing logo
+[01:30:10.788] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.795] [Browser] DrawTopMenu enter
+[01:30:10.795] [Browser] DrawTopMenu: drawing logo
+[01:30:10.795] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.804] [Browser] DrawTopMenu enter
+[01:30:10.804] [Browser] DrawTopMenu: drawing logo
+[01:30:10.804] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.811] [Browser] DrawTopMenu enter
+[01:30:10.812] [Browser] DrawTopMenu: drawing logo
+[01:30:10.812] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.820] [Browser] DrawTopMenu enter
+[01:30:10.820] [Browser] DrawTopMenu: drawing logo
+[01:30:10.820] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.828] [Browser] DrawTopMenu enter
+[01:30:10.829] [Browser] DrawTopMenu: drawing logo
+[01:30:10.829] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.838] [Browser] DrawTopMenu enter
+[01:30:10.838] [Browser] DrawTopMenu: drawing logo
+[01:30:10.838] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.845] [Browser] DrawTopMenu enter
+[01:30:10.845] [Browser] DrawTopMenu: drawing logo
+[01:30:10.846] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.854] [Browser] DrawTopMenu enter
+[01:30:10.854] [Browser] DrawTopMenu: drawing logo
+[01:30:10.854] [Browser] DrawTopMenu: drawing buttons
+[01:30:10.862] [Browser] DrawTopMenu enter
+[01:30:10.862] [Browser] DrawTopMenu: drawing logo
+[01:30:10.862] [Browser] DrawTopMenu: drawing buttons
+[03:37:23] Initialize() starting
+[03:37:23] === GBAY Initialized: key=F9 freeMode=False garageDebug=False ===
+[03:37:23] [Garage] Loaded 5 stored vehicles from D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced\scripts\ALLIN1_garage.json
+[03:37:23] [Garage] GarageManager initialized (Eclipse Towers 10-car interior)
+[03:37:23] GarageManager initialized
+[03:37:23] Creating GbayBrowser
+[03:37:23] GbayBrowser created
+[03:37:23] Initialize() complete
+[03:37:23.873] [Browser] Toggle() called, current state=Closed
+[03:37:23.873] [Browser] Opening: setting state=TopMenu
+[03:37:23.873] [Browser] Calling EnsureTextures
+[03:37:23.874] [Browser] Calling RequestDict(allin1_logo)
+[03:37:23.875] [Browser] Toggle open complete
