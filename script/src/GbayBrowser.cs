@@ -339,90 +339,55 @@ namespace ALLIN1
             if (_state == BrowserState.Closed)
                 return;
 
-            try
+            if (Game.Player.Character.IsDead || Game.IsLoading)
             {
-                if (Game.Player.Character.IsDead || Game.IsLoading)
-                {
-                    ClosePreview();
-                    ReleaseAllDicts();
-                    _state = BrowserState.Closed;
-                    return;
-                }
-            }
-            catch (Exception ex)
-            {
-                BLogEx("Draw.PlayerCheck", ex);
+                ClosePreview();
+                ReleaseAllDicts();
                 _state = BrowserState.Closed;
                 return;
             }
 
-            FrameInput input;
-            try
-            {
-                input = GbayInput.Poll();
-                GbayInput.DisableGameControls();
-            }
-            catch (Exception ex)
-            {
-                BLogEx("Draw.InputPoll", ex);
-                return;
-            }
+            var input = GbayInput.Poll();
+            GbayInput.DisableGameControls();
 
             // Preview and delivery states handle their own background
             if (_state != BrowserState.VehiclePreview &&
                 _state != BrowserState.DeliveryConfirm ||
                 _state == BrowserState.DeliveryConfirm && _previewVehicle == null)
             {
-                try { GbayRenderer.DrawScrim(); }
-                catch (Exception ex) { BLogEx("Draw.Scrim", ex); }
+                GbayRenderer.DrawScrim();
             }
 
-            try
+            switch (_state)
             {
-                switch (_state)
-                {
-                    case BrowserState.TopMenu:
-                        DrawTopMenu(input);
-                        break;
-                    case BrowserState.VehicleBrowser:
-                        DrawBrowser(input);
-                        break;
-                    case BrowserState.VehiclePreview:
-                        DrawPreview(input);
-                        break;
-                    case BrowserState.DeliveryConfirm:
-                        if (_previewVehicle != null)
-                            UpdatePreviewCamera();
-                        else
-                            DrawBrowser(new FrameInput());
-                        DrawDeliveryModal(input);
-                        break;
-                    case BrowserState.GarageView:
-                        DrawGarageView(input);
-                        break;
-                    case BrowserState.WeaponBrowser:
-                        DrawWeaponBrowser(input);
-                        break;
-                    case BrowserState.GearBrowser:
-                        DrawGearBrowser(input);
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-                BLogEx($"Draw.State({_state})", ex);
-                _state = BrowserState.Closed;
-                return;
+                case BrowserState.TopMenu:
+                    DrawTopMenu(input);
+                    break;
+                case BrowserState.VehicleBrowser:
+                    DrawBrowser(input);
+                    break;
+                case BrowserState.VehiclePreview:
+                    DrawPreview(input);
+                    break;
+                case BrowserState.DeliveryConfirm:
+                    if (_previewVehicle != null)
+                        UpdatePreviewCamera();
+                    else
+                        DrawBrowser(new FrameInput());
+                    DrawDeliveryModal(input);
+                    break;
+                case BrowserState.GarageView:
+                    DrawGarageView(input);
+                    break;
+                case BrowserState.WeaponBrowser:
+                    DrawWeaponBrowser(input);
+                    break;
+                case BrowserState.GearBrowser:
+                    DrawGearBrowser(input);
+                    break;
             }
 
-            try
-            {
-                GbayRenderer.DrawCursor();
-            }
-            catch (Exception ex)
-            {
-                BLogEx("Draw.Cursor", ex);
-            }
+            GbayRenderer.DrawCursor();
 
 
         }
@@ -433,7 +398,6 @@ namespace ALLIN1
 
         private void DrawTopMenu(FrameInput input)
         {
-            BLog("DrawTopMenu enter");
             // Background panel
             float panelW = 0.40f;
             float panelH = 0.40f;
@@ -441,10 +405,8 @@ namespace ALLIN1
                 GbayRenderer.ModalBg);
 
             // Logo
-            BLog("DrawTopMenu: drawing logo");
             GbayRenderer.DrawLogo(BROWSER_CX, 0.36f, 0.12f);
 
-            BLog("DrawTopMenu: drawing buttons");
             // Buttons
             string[] labels = { "Vehicles", "Weapons", "Gear", "My Garage" };
             bool[] enabled = { true, true, true, true };

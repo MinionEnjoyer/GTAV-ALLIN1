@@ -15,19 +15,6 @@ namespace ALLIN1
 {
     public class GbayShop : Script
     {
-        // --- Static canary: fires on type load, before constructor ---
-        static GbayShop()
-        {
-            try
-            {
-                string path = Path.Combine(
-                    AppDomain.CurrentDomain.BaseDirectory, "ALLIN1_gbay.log");
-                File.AppendAllText(path,
-                    $"[{DateTime.Now:HH:mm:ss.fff}] === STATIC CONSTRUCTOR (type load) ==={Environment.NewLine}");
-            }
-            catch { }
-        }
-
         // --- Config ---
         private static readonly string SCRIPTS_DIR =
             AppDomain.CurrentDomain.BaseDirectory;
@@ -48,23 +35,9 @@ namespace ALLIN1
 
         public GbayShop()
         {
-            try
-            {
-                File.AppendAllText(LOG_PATH,
-                    $"[{DateTime.Now:HH:mm:ss.fff}] === GbayShop CONSTRUCTOR START ==={Environment.NewLine}");
-            }
-            catch { }
-
             Tick += OnTick;
             KeyDown += OnKeyDown;
             Interval = 0;
-
-            try
-            {
-                File.AppendAllText(LOG_PATH,
-                    $"[{DateTime.Now:HH:mm:ss.fff}] === GbayShop CONSTRUCTOR END ==={Environment.NewLine}");
-            }
-            catch { }
         }
 
         // ------------------------------------------------------------------ //
@@ -512,24 +485,10 @@ namespace ALLIN1
 
             if (e.KeyCode == _openKey)
             {
-                try
-                {
-                    Log($"Key pressed: {e.KeyCode}, initialized={_initialized}");
-                    if (!_initialized)
-                    {
-                        Log("Calling Initialize()");
-                        Initialize();
-                        Log($"Initialize() complete, browser={(_browser != null ? "ok" : "null")}");
-                    }
+                if (!_initialized)
+                    Initialize();
 
-                    Log("Calling _browser.Toggle()");
-                    _browser.Toggle();
-                    Log("Toggle() returned");
-                }
-                catch (Exception ex)
-                {
-                    LogException("OnKeyDown", ex);
-                }
+                _browser.Toggle();
             }
         }
     }
