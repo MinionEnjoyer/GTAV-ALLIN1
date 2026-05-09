@@ -1835,9 +1835,14 @@ namespace ALLIN1
             // Status or price
             if (card.Owned)
             {
-                if (GearList.IsArmor(card.GearId))
+                bool canRemove = GearList.IsArmor(card.GearId)
+                    || card.GearId == "WEAPON_NIGHTVISION";
+
+                if (canRemove)
                 {
-                    GbayRenderer.DrawText("EQUIPPED", textLeft, statusY,
+                    string label = card.GearId == "WEAPON_NIGHTVISION"
+                        ? "ACTIVE" : "EQUIPPED";
+                    GbayRenderer.DrawText(label, textLeft, statusY,
                         0.24f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CONDENSED);
                     GbayRenderer.DrawText("[Enter] Remove", textRight, statusY,
                         0.22f, Color.FromArgb(255, 200, 80, 80), GbayRenderer.FONT_CONDENSED,
@@ -1955,11 +1960,16 @@ namespace ALLIN1
                 {
                     GearCard card = _gearFiltered[idx];
 
-                    if (card.Owned && GearList.IsArmor(card.GearId))
+                    bool canRemove = GearList.IsArmor(card.GearId)
+                        || card.GearId == "WEAPON_NIGHTVISION";
+
+                    if (card.Owned && canRemove)
                     {
-                        // Equipped armor -> remove it
                         GbayRenderer.PlaySelect();
-                        _shop.ExecuteRemoveArmor(card.GearId);
+                        if (card.GearId == "WEAPON_NIGHTVISION")
+                            _shop.ExecuteRemoveNightVision();
+                        else
+                            _shop.ExecuteRemoveArmor(card.GearId);
                         RebuildGearFilteredList();
                     }
                     else if (card.Owned)

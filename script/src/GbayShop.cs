@@ -546,6 +546,18 @@ namespace ALLIN1
             }
         }
 
+        internal void ExecuteRemoveNightVision()
+        {
+            NightVisionOwned = false;
+            if (_nightVisionActive)
+            {
+                _nightVisionActive = false;
+                Function.Call(Hash.SET_NIGHTVISION, false);
+            }
+            GTA.UI.Screen.ShowSubtitle("~y~Night Vision~w~ removed.", 3000);
+            Log("RemoveNightVision: removed");
+        }
+
         // ------------------------------------------------------------------ //
         //  Juggernaut Armor                                                   //
         // ------------------------------------------------------------------ //
