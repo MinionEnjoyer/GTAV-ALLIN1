@@ -39,6 +39,23 @@ namespace ALLIN1
             internal int Slot;
             internal int Color1;
             internal int Color2;
+            internal int[] Mods;          // 50 mod slots (index -> variation)
+            internal bool[] ModToggles;   // 50 toggleable mods
+            internal int WheelType;
+            internal int WindowTint;
+            internal int Livery;
+            internal string PlateText;
+            internal int PlateStyle;
+            internal int PearlescentColor;
+            internal int RimColor;
+            internal int[] NeonEnabled;   // 4 bools (left,right,front,back)
+            internal int[] NeonColor;     // R,G,B
+            internal int[] TyreSmokeColor;// R,G,B
+            internal int[] Extras;        // which extras are enabled (up to 15)
+            internal bool CustomPrimaryColor;
+            internal int[] CustomPrimary;  // R,G,B (if custom)
+            internal bool CustomSecondaryColor;
+            internal int[] CustomSecondary;// R,G,B (if custom)
         }
 
         // ------------------------------------------------------------------ //
@@ -47,7 +64,7 @@ namespace ALLIN1
 
         private const int SLOT_COUNT = 10;
         private const float ENTER_RADIUS = 2.5f;
-        private const float EXIT_RADIUS = 2.5f;
+        private const float EXIT_RADIUS = 4.0f;
 
         // Entrance marker on the street near Eclipse Towers
         private static readonly Vector3 ENTRANCE_POS =
@@ -381,6 +398,7 @@ namespace ALLIN1
                     {
                         veh.IsPersistent = true;
                         veh.IsEngineRunning = false;
+                        veh.IsPositionFrozen = true;
                         _handles[slotIndex] = veh;
                     }
                 }
@@ -505,6 +523,7 @@ namespace ALLIN1
                             sv.Color1, sv.Color2);
                         if (veh != null)
                         {
+                            ApplyVehicleState(veh, sv);
                             veh.IsPersistent = true;
                             veh.IsEngineRunning = false;
                             veh.IsPositionFrozen = true;
@@ -530,6 +549,9 @@ namespace ALLIN1
 
         private static void LeaveGarage(bool usePedExit = false)
         {
+            // Save all vehicle states before leaving
+            UpdateStoredFromLive();
+
             Ped player = Game.Player.Character;
             Vehicle playerVehicle = null;
 
@@ -676,7 +698,45 @@ namespace ALLIN1
                     for (int i = 0; i < list.Count; i++)
                     {
                         var sv = list[i];
-                        sb.Append($"    {{ \"model\": \"{sv.Model}\", \"slot\": {sv.Slot}, \"color1\": {sv.Color1}, \"color2\": {sv.Color2} }}");
+                        sb.Append("    { ");
+                        sb.Append($"\"model\": \"{sv.Model}\", ");
+                        sb.Append($"\"slot\": {sv.Slot}, ");
+                        sb.Append($"\"color1\": {sv.Color1}, ");
+                        sb.Append($"\"color2\": {sv.Color2}");
+
+                        if (sv.PlateText != null)
+                            sb.Append($", \"plate\": \"{EscapeJson(sv.PlateText)}\"");
+                        if (sv.PlateStyle != 0)
+                            sb.Append($", \"plateStyle\": {sv.PlateStyle}");
+                        if (sv.WheelType != 0)
+                            sb.Append($", \"wheelType\": {sv.WheelType}");
+                        if (sv.WindowTint != 0)
+                            sb.Append($", \"windowTint\": {sv.WindowTint}");
+                        if (sv.Livery > 0)
+                            sb.Append($", \"livery\": {sv.Livery}");
+                        if (sv.PearlescentColor != 0)
+                            sb.Append($", \"pearlescent\": {sv.PearlescentColor}");
+                        if (sv.RimColor != 0)
+                            sb.Append($", \"rimColor\": {sv.RimColor}");
+
+                        if (sv.Mods != null)
+                            sb.Append($", \"mods\": [{string.Join(",", sv.Mods)}]");
+                        if (sv.ModToggles != null)
+                            sb.Append($", \"modToggles\": [{string.Join(",", BoolArrayToInts(sv.ModToggles))}]");
+                        if (sv.NeonEnabled != null)
+                            sb.Append($", \"neonEnabled\": [{string.Join(",", sv.NeonEnabled)}]");
+                        if (sv.NeonColor != null)
+                            sb.Append($", \"neonColor\": [{string.Join(",", sv.NeonColor)}]");
+                        if (sv.TyreSmokeColor != null)
+                            sb.Append($", \"tyreSmokeColor\": [{string.Join(",", sv.TyreSmokeColor)}]");
+                        if (sv.Extras != null)
+                            sb.Append($", \"extras\": [{string.Join(",", sv.Extras)}]");
+                        if (sv.CustomPrimaryColor && sv.CustomPrimary != null)
+                            sb.Append($", \"customPrimary\": [{string.Join(",", sv.CustomPrimary)}]");
+                        if (sv.CustomSecondaryColor && sv.CustomSecondary != null)
+                            sb.Append($", \"customSecondary\": [{string.Join(",", sv.CustomSecondary)}]");
+
+                        sb.Append(" }");
                         if (i < list.Count - 1)
                             sb.AppendLine(",");
                         else
@@ -697,6 +757,21 @@ namespace ALLIN1
 
             sb.AppendLine("}");
             return sb.ToString();
+        }
+
+        private static string EscapeJson(string s)
+        {
+            if (s == null) return "";
+            return s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        }
+
+        private static int[] BoolArrayToInts(bool[] arr)
+        {
+            if (arr == null) return new int[0];
+            int[] result = new int[arr.Length];
+            for (int i = 0; i < arr.Length; i++)
+                result[i] = arr[i] ? 1 : 0;
+            return result;
         }
 
         private static void ParseJson(string json)
@@ -774,10 +849,9 @@ namespace ALLIN1
 
         private static StoredVehicle ParseVehicleObject(string json, ref int i)
         {
+            var sv = new StoredVehicle();
             string model = null;
             int slot = -1;
-            int color1 = 0;
-            int color2 = 0;
 
             while (i < json.Length)
             {
@@ -801,16 +875,40 @@ namespace ALLIN1
                         i++;
                     i = SkipWhitespace(json, i);
 
-                    if (key == "model")
+                    if (key == "model" || key == "plate")
                     {
                         if (i < json.Length && json[i] == '"')
                         {
                             int vEnd = json.IndexOf('"', i + 1);
                             if (vEnd >= 0)
                             {
-                                model = json.Substring(i + 1, vEnd - i - 1);
+                                string val = json.Substring(i + 1, vEnd - i - 1);
+                                if (key == "model") model = val;
+                                else sv.PlateText = val;
                                 i = vEnd + 1;
                             }
+                        }
+                    }
+                    else if (json[i] == '[')
+                    {
+                        // Parse int array
+                        int[] arr = ParseIntArray(json, ref i);
+                        switch (key)
+                        {
+                            case "mods": sv.Mods = arr; break;
+                            case "modToggles": sv.ModToggles = IntsToBoolArray(arr); break;
+                            case "neonEnabled": sv.NeonEnabled = arr; break;
+                            case "neonColor": sv.NeonColor = arr; break;
+                            case "tyreSmokeColor": sv.TyreSmokeColor = arr; break;
+                            case "extras": sv.Extras = arr; break;
+                            case "customPrimary":
+                                sv.CustomPrimaryColor = true;
+                                sv.CustomPrimary = arr;
+                                break;
+                            case "customSecondary":
+                                sv.CustomSecondaryColor = true;
+                                sv.CustomSecondary = arr;
+                                break;
                         }
                     }
                     else
@@ -821,9 +919,18 @@ namespace ALLIN1
                         string numStr = json.Substring(numStart, i - numStart);
                         if (int.TryParse(numStr, out int val))
                         {
-                            if (key == "slot") slot = val;
-                            else if (key == "color1") color1 = val;
-                            else if (key == "color2") color2 = val;
+                            switch (key)
+                            {
+                                case "slot": slot = val; break;
+                                case "color1": sv.Color1 = val; break;
+                                case "color2": sv.Color2 = val; break;
+                                case "wheelType": sv.WheelType = val; break;
+                                case "windowTint": sv.WindowTint = val; break;
+                                case "livery": sv.Livery = val; break;
+                                case "plateStyle": sv.PlateStyle = val; break;
+                                case "pearlescent": sv.PearlescentColor = val; break;
+                                case "rimColor": sv.RimColor = val; break;
+                            }
                         }
                     }
                     continue;
@@ -834,15 +941,46 @@ namespace ALLIN1
 
             if (model != null && slot >= 0)
             {
-                return new StoredVehicle
-                {
-                    Model = model,
-                    Slot = slot,
-                    Color1 = color1,
-                    Color2 = color2,
-                };
+                sv.Model = model;
+                sv.Slot = slot;
+                return sv;
             }
             return null;
+        }
+
+        private static int[] ParseIntArray(string json, ref int i)
+        {
+            var result = new List<int>();
+            i++; // skip '['
+
+            while (i < json.Length)
+            {
+                char c = json[i];
+                if (c == ']') { i++; break; }
+
+                if (char.IsDigit(c) || c == '-')
+                {
+                    int numStart = i;
+                    while (i < json.Length && (char.IsDigit(json[i]) || json[i] == '-'))
+                        i++;
+                    string numStr = json.Substring(numStart, i - numStart);
+                    if (int.TryParse(numStr, out int val))
+                        result.Add(val);
+                    continue;
+                }
+                i++;
+            }
+
+            return result.ToArray();
+        }
+
+        private static bool[] IntsToBoolArray(int[] arr)
+        {
+            if (arr == null) return null;
+            bool[] result = new bool[arr.Length];
+            for (int j = 0; j < arr.Length; j++)
+                result[j] = arr[j] != 0;
+            return result;
         }
 
         private static int SkipWhitespace(string s, int i)
@@ -850,6 +988,254 @@ namespace ALLIN1
             while (i < s.Length && char.IsWhiteSpace(s[i]))
                 i++;
             return i;
+        }
+
+        // ------------------------------------------------------------------ //
+        //  Vehicle State Capture / Apply                                      //
+        // ------------------------------------------------------------------ //
+
+        private const int MOD_SLOT_COUNT = 50;
+        private const int EXTRA_COUNT = 15;
+
+        /// <summary>
+        /// Capture full vehicle customization state for persistence.
+        /// </summary>
+        internal static StoredVehicle CaptureVehicleState(Vehicle veh, string model, int slotIndex)
+        {
+            var sv = new StoredVehicle { Model = model, Slot = slotIndex };
+
+            try
+            {
+                // Colors
+                {
+                    OutputArgument outC1 = new OutputArgument();
+                    OutputArgument outC2 = new OutputArgument();
+                    Function.Call(Hash.GET_VEHICLE_COLOURS, veh, outC1, outC2);
+                    sv.Color1 = outC1.GetResult<int>();
+                    sv.Color2 = outC2.GetResult<int>();
+                }
+
+                // Pearlescent + rim color
+                {
+                    OutputArgument outP = new OutputArgument();
+                    OutputArgument outR = new OutputArgument();
+                    Function.Call(Hash.GET_VEHICLE_EXTRA_COLOURS, veh, outP, outR);
+                    sv.PearlescentColor = outP.GetResult<int>();
+                    sv.RimColor = outR.GetResult<int>();
+                }
+
+                // Custom primary/secondary colors
+                if (Function.Call<bool>(Hash.GET_IS_VEHICLE_PRIMARY_COLOUR_CUSTOM, veh))
+                {
+                    sv.CustomPrimaryColor = true;
+                    OutputArgument r = new OutputArgument(), g = new OutputArgument(), b = new OutputArgument();
+                    Function.Call(Hash.GET_VEHICLE_CUSTOM_PRIMARY_COLOUR, veh, r, g, b);
+                    sv.CustomPrimary = new int[] { r.GetResult<int>(), g.GetResult<int>(), b.GetResult<int>() };
+                }
+
+                if (Function.Call<bool>(Hash.GET_IS_VEHICLE_SECONDARY_COLOUR_CUSTOM, veh))
+                {
+                    sv.CustomSecondaryColor = true;
+                    OutputArgument r = new OutputArgument(), g = new OutputArgument(), b = new OutputArgument();
+                    Function.Call(Hash.GET_VEHICLE_CUSTOM_SECONDARY_COLOUR, veh, r, g, b);
+                    sv.CustomSecondary = new int[] { r.GetResult<int>(), g.GetResult<int>(), b.GetResult<int>() };
+                }
+
+                // Plate
+                sv.PlateText = Function.Call<string>(Hash.GET_VEHICLE_NUMBER_PLATE_TEXT, veh);
+                sv.PlateStyle = Function.Call<int>(Hash.GET_VEHICLE_NUMBER_PLATE_TEXT_INDEX, veh);
+
+                // Mods
+                Function.Call(Hash.SET_VEHICLE_MOD_KIT, veh, 0);
+                sv.WheelType = Function.Call<int>(Hash.GET_VEHICLE_WHEEL_TYPE, veh);
+                sv.WindowTint = Function.Call<int>(Hash.GET_VEHICLE_WINDOW_TINT, veh);
+                sv.Livery = Function.Call<int>(Hash.GET_VEHICLE_LIVERY, veh);
+
+                sv.Mods = new int[MOD_SLOT_COUNT];
+                sv.ModToggles = new bool[MOD_SLOT_COUNT];
+                for (int m = 0; m < MOD_SLOT_COUNT; m++)
+                {
+                    sv.Mods[m] = Function.Call<int>(Hash.GET_VEHICLE_MOD, veh, m);
+                    sv.ModToggles[m] = Function.Call<bool>(Hash.IS_TOGGLE_MOD_ON, veh, m);
+                }
+
+                // Neon lights
+                sv.NeonEnabled = new int[4];
+                for (int n = 0; n < 4; n++)
+                    sv.NeonEnabled[n] = Function.Call<bool>(Hash.GET_VEHICLE_NEON_ENABLED, veh, n) ? 1 : 0;
+
+                {
+                    OutputArgument r = new OutputArgument(), g = new OutputArgument(), b = new OutputArgument();
+                    Function.Call(Hash.GET_VEHICLE_NEON_COLOUR, veh, r, g, b);
+                    sv.NeonColor = new int[] { r.GetResult<int>(), g.GetResult<int>(), b.GetResult<int>() };
+                }
+
+                // Tyre smoke
+                {
+                    OutputArgument r = new OutputArgument(), g = new OutputArgument(), b = new OutputArgument();
+                    Function.Call(Hash.GET_VEHICLE_TYRE_SMOKE_COLOR, veh, r, g, b);
+                    sv.TyreSmokeColor = new int[] { r.GetResult<int>(), g.GetResult<int>(), b.GetResult<int>() };
+                }
+
+                // Extras
+                var extras = new List<int>();
+                for (int e = 0; e < EXTRA_COUNT; e++)
+                {
+                    if (Function.Call<bool>(Hash.DOES_EXTRA_EXIST, veh, e))
+                    {
+                        if (Function.Call<bool>(Hash.IS_VEHICLE_EXTRA_TURNED_ON, veh, e))
+                            extras.Add(e);
+                    }
+                }
+                if (extras.Count > 0)
+                    sv.Extras = extras.ToArray();
+            }
+            catch (Exception ex)
+            {
+                LogException("CaptureVehicleState", ex);
+            }
+
+            return sv;
+        }
+
+        /// <summary>
+        /// Apply saved customization state to a spawned vehicle.
+        /// </summary>
+        private static void ApplyVehicleState(Vehicle veh, StoredVehicle sv)
+        {
+            try
+            {
+                // Colors
+                Function.Call(Hash.SET_VEHICLE_COLOURS, veh, sv.Color1, sv.Color2);
+
+                // Custom colors
+                if (sv.CustomPrimaryColor && sv.CustomPrimary != null && sv.CustomPrimary.Length >= 3)
+                    Function.Call(Hash.SET_VEHICLE_CUSTOM_PRIMARY_COLOUR, veh,
+                        sv.CustomPrimary[0], sv.CustomPrimary[1], sv.CustomPrimary[2]);
+
+                if (sv.CustomSecondaryColor && sv.CustomSecondary != null && sv.CustomSecondary.Length >= 3)
+                    Function.Call(Hash.SET_VEHICLE_CUSTOM_SECONDARY_COLOUR, veh,
+                        sv.CustomSecondary[0], sv.CustomSecondary[1], sv.CustomSecondary[2]);
+
+                // Pearlescent + rim
+                if (sv.PearlescentColor != 0 || sv.RimColor != 0)
+                    Function.Call(Hash.SET_VEHICLE_EXTRA_COLOURS, veh, sv.PearlescentColor, sv.RimColor);
+
+                // Plate
+                if (sv.PlateText != null)
+                    Function.Call(Hash.SET_VEHICLE_NUMBER_PLATE_TEXT, veh, sv.PlateText);
+                if (sv.PlateStyle != 0)
+                    Function.Call(Hash.SET_VEHICLE_NUMBER_PLATE_TEXT_INDEX, veh, sv.PlateStyle);
+
+                // Mod kit must be set before applying mods
+                Function.Call(Hash.SET_VEHICLE_MOD_KIT, veh, 0);
+
+                // Wheel type
+                if (sv.WheelType != 0)
+                    Function.Call(Hash.SET_VEHICLE_WHEEL_TYPE, veh, sv.WheelType);
+
+                // Mods
+                if (sv.Mods != null)
+                {
+                    for (int m = 0; m < sv.Mods.Length && m < MOD_SLOT_COUNT; m++)
+                    {
+                        if (sv.Mods[m] >= 0)
+                            Function.Call(Hash.SET_VEHICLE_MOD, veh, m, sv.Mods[m], false);
+                    }
+                }
+
+                // Toggle mods
+                if (sv.ModToggles != null)
+                {
+                    for (int m = 0; m < sv.ModToggles.Length && m < MOD_SLOT_COUNT; m++)
+                    {
+                        if (sv.ModToggles[m])
+                            Function.Call(Hash.TOGGLE_VEHICLE_MOD, veh, m, true);
+                    }
+                }
+
+                // Window tint
+                if (sv.WindowTint != 0)
+                    Function.Call(Hash.SET_VEHICLE_WINDOW_TINT, veh, sv.WindowTint);
+
+                // Livery
+                if (sv.Livery > 0)
+                    Function.Call(Hash.SET_VEHICLE_LIVERY, veh, sv.Livery);
+
+                // Neon lights
+                if (sv.NeonEnabled != null)
+                {
+                    for (int n = 0; n < sv.NeonEnabled.Length && n < 4; n++)
+                        Function.Call(Hash.SET_VEHICLE_NEON_ENABLED, veh, n, sv.NeonEnabled[n] != 0);
+                }
+                if (sv.NeonColor != null && sv.NeonColor.Length >= 3)
+                    Function.Call(Hash.SET_VEHICLE_NEON_COLOUR, veh, sv.NeonColor[0], sv.NeonColor[1], sv.NeonColor[2]);
+
+                // Tyre smoke
+                if (sv.TyreSmokeColor != null && sv.TyreSmokeColor.Length >= 3)
+                    Function.Call(Hash.SET_VEHICLE_TYRE_SMOKE_COLOR, veh,
+                        sv.TyreSmokeColor[0], sv.TyreSmokeColor[1], sv.TyreSmokeColor[2]);
+
+                // Extras
+                if (sv.Extras != null)
+                {
+                    // Turn off all extras first, then enable saved ones
+                    for (int e = 0; e < EXTRA_COUNT; e++)
+                    {
+                        if (Function.Call<bool>(Hash.DOES_EXTRA_EXIST, veh, e))
+                            Function.Call(Hash.SET_VEHICLE_EXTRA, veh, e, true); // true = OFF in GTA
+                    }
+                    foreach (int e in sv.Extras)
+                        Function.Call(Hash.SET_VEHICLE_EXTRA, veh, e, false); // false = ON in GTA
+                }
+            }
+            catch (Exception ex)
+            {
+                LogException("ApplyVehicleState", ex);
+            }
+        }
+
+        /// <summary>
+        /// Update a stored vehicle's state from its live entity.
+        /// Called when leaving the garage to persist any changes.
+        /// </summary>
+        internal static void UpdateStoredFromLive()
+        {
+            if (!_isPlayerInGarage) return;
+
+            string key = CharacterKey();
+            if (!_stored.TryGetValue(key, out var list)) return;
+
+            foreach (var sv in list)
+            {
+                if (sv.Slot < 0 || sv.Slot >= SLOT_COUNT) continue;
+                Vehicle veh = _handles[sv.Slot];
+                if (veh == null || !veh.Exists()) continue;
+
+                // Re-capture state from the live vehicle
+                var updated = CaptureVehicleState(veh, sv.Model, sv.Slot);
+                sv.Color1 = updated.Color1;
+                sv.Color2 = updated.Color2;
+                sv.Mods = updated.Mods;
+                sv.ModToggles = updated.ModToggles;
+                sv.WheelType = updated.WheelType;
+                sv.WindowTint = updated.WindowTint;
+                sv.Livery = updated.Livery;
+                sv.PlateText = updated.PlateText;
+                sv.PlateStyle = updated.PlateStyle;
+                sv.PearlescentColor = updated.PearlescentColor;
+                sv.RimColor = updated.RimColor;
+                sv.NeonEnabled = updated.NeonEnabled;
+                sv.NeonColor = updated.NeonColor;
+                sv.TyreSmokeColor = updated.TyreSmokeColor;
+                sv.Extras = updated.Extras;
+                sv.CustomPrimaryColor = updated.CustomPrimaryColor;
+                sv.CustomPrimary = updated.CustomPrimary;
+                sv.CustomSecondaryColor = updated.CustomSecondaryColor;
+                sv.CustomSecondary = updated.CustomSecondary;
+            }
+
+            Save();
         }
     }
 }
