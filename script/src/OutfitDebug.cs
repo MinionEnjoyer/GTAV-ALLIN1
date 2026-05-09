@@ -10,6 +10,7 @@
 
 using System;
 using System.Drawing;
+using System.IO;
 using System.Windows.Forms;
 using GTA;
 using GTA.Math;
@@ -85,11 +86,29 @@ namespace ALLIN1
         private static readonly Color TabActive = Color.FromArgb(255, 60, 180, 100);
         private static readonly Color TabInactive = Color.FromArgb(180, 40, 40, 50);
 
+        private static readonly string LOG_PATH = Path.Combine(
+            AppDomain.CurrentDomain.BaseDirectory, "ALLIN1_outfit_debug.log");
+
         public OutfitDebug()
         {
             Tick += OnTick;
             KeyDown += OnKeyDown;
             Interval = 0;
+        }
+
+        private static void Log(string msg)
+        {
+            try
+            {
+                File.AppendAllText(LOG_PATH,
+                    $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\n");
+            }
+            catch { }
+        }
+
+        private static void LogException(string context, Exception ex)
+        {
+            Log($"EXCEPTION in {context}: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
         }
 
         // ------------------------------------------------------------------ //
@@ -232,8 +251,10 @@ namespace ALLIN1
             }
             catch (Exception ex)
             {
-                // Prevent script death — log and close gracefully
-                GTA.UI.Screen.ShowSubtitle($"~r~Outfit editor error: {ex.Message}", 5000);
+                LogException("OnTick", ex);
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~r~Outfit error: {ex.GetType().Name} in {ex.TargetSite?.Name}\n~w~See ALLIN1_outfit_debug.log",
+                    8000);
                 Close();
             }
         }
@@ -336,8 +357,9 @@ namespace ALLIN1
                             : 0;
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
+                    LogException($"DrawPanel.SlotRead(mode={(_propMode?"prop":"comp")}, i={i}, slot={slot})", ex);
                     drawable = 0; texture = 0; maxDrawable = 0; maxTexture = 0;
                 }
 
@@ -420,8 +442,9 @@ namespace ALLIN1
                         : 0;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                LogException($"DrawControlButtons.Read(mode={(_propMode?"prop":"comp")}, slot={slot})", ex);
                 drawable = 0; texture = 0; maxDrawable = 0; maxTexture = 0;
             }
 
@@ -541,7 +564,7 @@ namespace ALLIN1
                     Function.Call(Hash.SET_PED_COMPONENT_VARIATION, ped, slot, next, 0, 0);
                 }
             }
-            catch { }
+            catch (Exception ex) { LogException($"CycleDrawable(mode={(_propMode?"prop":"comp")}, slot={slot}, dir={dir})", ex); }
         }
 
         private void CycleTexture(Ped player, int slot, int dir)
@@ -577,7 +600,7 @@ namespace ALLIN1
                 Function.Call(Hash.SET_PED_COMPONENT_VARIATION, ped, slot, drawable, nextTex, 0);
             }
             }
-            catch { }
+            catch (Exception ex) { LogException($"CycleTexture(mode={(_propMode?"prop":"comp")}, slot={slot}, dir={dir})", ex); }
         }
 
         // ------------------------------------------------------------------ //
