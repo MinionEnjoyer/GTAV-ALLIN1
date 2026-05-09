@@ -334,62 +334,82 @@ namespace ALLIN1
         //  Main Draw (called every frame from GbayShop.OnTick)                //
         // ------------------------------------------------------------------ //
 
+        // Frame counter for throttled logging (once per second)
+        private int _drawFrameCount;
+        private DateTime _lastLogTime = DateTime.MinValue;
+
         internal void Draw()
         {
             if (_state == BrowserState.Closed)
                 return;
 
-            if (Game.Player.Character.IsDead || Game.IsLoading)
+            _drawFrameCount++;
+
+            try
             {
-                ClosePreview();
-                ReleaseAllDicts();
+                if (Game.Player.Character.IsDead || Game.IsLoading)
+                {
+                    ClosePreview();
+                    ReleaseAllDicts();
+                    _state = BrowserState.Closed;
+                    return;
+                }
+
+                var input = GbayInput.Poll();
+                GbayInput.DisableGameControls();
+
+                // Log once per second to track progress without I/O spam
+                var now = DateTime.Now;
+                if ((now - _lastLogTime).TotalSeconds >= 1.0)
+                {
+                    BLog($"Draw alive: state={_state} frame={_drawFrameCount}");
+                    _lastLogTime = now;
+                }
+
+                // Preview and delivery states handle their own background
+                if (_state != BrowserState.VehiclePreview &&
+                    _state != BrowserState.DeliveryConfirm ||
+                    _state == BrowserState.DeliveryConfirm && _previewVehicle == null)
+                {
+                    GbayRenderer.DrawScrim();
+                }
+
+                switch (_state)
+                {
+                    case BrowserState.TopMenu:
+                        DrawTopMenu(input);
+                        break;
+                    case BrowserState.VehicleBrowser:
+                        DrawBrowser(input);
+                        break;
+                    case BrowserState.VehiclePreview:
+                        DrawPreview(input);
+                        break;
+                    case BrowserState.DeliveryConfirm:
+                        if (_previewVehicle != null)
+                            UpdatePreviewCamera();
+                        else
+                            DrawBrowser(new FrameInput());
+                        DrawDeliveryModal(input);
+                        break;
+                    case BrowserState.GarageView:
+                        DrawGarageView(input);
+                        break;
+                    case BrowserState.WeaponBrowser:
+                        DrawWeaponBrowser(input);
+                        break;
+                    case BrowserState.GearBrowser:
+                        DrawGearBrowser(input);
+                        break;
+                }
+
+                GbayRenderer.DrawCursor();
+            }
+            catch (Exception ex)
+            {
+                BLogEx("Draw", ex);
                 _state = BrowserState.Closed;
-                return;
             }
-
-            var input = GbayInput.Poll();
-            GbayInput.DisableGameControls();
-
-            // Preview and delivery states handle their own background
-            if (_state != BrowserState.VehiclePreview &&
-                _state != BrowserState.DeliveryConfirm ||
-                _state == BrowserState.DeliveryConfirm && _previewVehicle == null)
-            {
-                GbayRenderer.DrawScrim();
-            }
-
-            switch (_state)
-            {
-                case BrowserState.TopMenu:
-                    DrawTopMenu(input);
-                    break;
-                case BrowserState.VehicleBrowser:
-                    DrawBrowser(input);
-                    break;
-                case BrowserState.VehiclePreview:
-                    DrawPreview(input);
-                    break;
-                case BrowserState.DeliveryConfirm:
-                    if (_previewVehicle != null)
-                        UpdatePreviewCamera();
-                    else
-                        DrawBrowser(new FrameInput());
-                    DrawDeliveryModal(input);
-                    break;
-                case BrowserState.GarageView:
-                    DrawGarageView(input);
-                    break;
-                case BrowserState.WeaponBrowser:
-                    DrawWeaponBrowser(input);
-                    break;
-                case BrowserState.GearBrowser:
-                    DrawGearBrowser(input);
-                    break;
-            }
-
-            GbayRenderer.DrawCursor();
-
-
         }
 
         // ------------------------------------------------------------------ //

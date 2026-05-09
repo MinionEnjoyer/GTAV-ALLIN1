@@ -144,6 +144,8 @@ namespace ALLIN1
 
         private void Initialize()
         {
+            // Clear log on each init so we only see the current session
+            try { File.WriteAllText(LOG_PATH, ""); } catch { }
             Log("Initialize() starting");
             LoadConfig();
             Log($"=== GBAY Initialized: key={_openKey} freeMode={_freeMode} garageDebug={_garageDebug} ===");
