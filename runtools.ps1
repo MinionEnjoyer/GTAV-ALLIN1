@@ -177,7 +177,7 @@ if (Test-Path $YtdtoolDest) {
 
     # -- Step B: Build FuckDX.dll (required DXT compressor for YTDToolio) --
     # FuckDX is a single C++ file (rgbcx.h texture encoder) compiled into a DLL.
-    # Skip if already built — it's a pure library with no source changes.
+    # Skip if already built -- it is a pure library with no source changes.
     $FuckDxFinal = Join-Path $ToolsDir "FuckDX.dll"
     if (Test-Path $FuckDxFinal) {
         Write-Host "  FuckDX.dll already exists, skipping build."
@@ -248,10 +248,10 @@ Write-Host "`n[3/3] Building RpfPatcher.exe..." -ForegroundColor Cyan
 
 $RpfPatcherDir = Join-Path $ToolsDir "RpfPatcher"
 $RpfPatcherExe = Join-Path $RpfPatcherDir "RpfPatcher.exe"
-# Always rebuild RpfPatcher — it's fast and source may have changed.
+# Always rebuild RpfPatcher -- it is fast and source may have changed.
 $RpfPatcherProj = Join-Path (Join-Path (Join-Path $ScriptRoot "tools") "RpfPatcher") "RpfPatcher.csproj"
 if (-not (Test-Path $RpfPatcherProj)) {
-    Write-Host "  RpfPatcher source not found — downloading from GitHub..." -ForegroundColor Yellow
+    Write-Host "  RpfPatcher source not found -- downloading from GitHub..." -ForegroundColor Yellow
     $rpfSrcDir = Join-Path (Join-Path $ScriptRoot "tools") "RpfPatcher"
     if (-not (Test-Path $rpfSrcDir)) { New-Item -ItemType Directory -Path $rpfSrcDir | Out-Null }
     $branch = "main"
@@ -277,7 +277,7 @@ if (-not (Test-Path $CwCorePath)) {
         git submodule update --init --recursive tools/CodeWalker
         Pop-Location
     } else {
-        Write-Host "  Cloning CodeWalker (not a git repo, can't use submodule)..."
+        Write-Host "  Cloning CodeWalker (no .git folder, cannot use submodule)..."
         git clone --depth 1 "https://github.com/dexyfex/CodeWalker.git" $CwDir
         if ($LASTEXITCODE -ne 0) { throw "Failed to clone CodeWalker" }
     }
