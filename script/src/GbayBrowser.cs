@@ -1611,9 +1611,7 @@ namespace ALLIN1
                     ? WeaponList.CategoryNames[weaponName] : "";
 
                 // Check if player already owns this weapon
-                Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
-                bool owned = Function.Call<bool>(
-                    (Hash)0x8DECB02F88F428BC, player, weaponHash, false);  // HAS_PED_GOT_WEAPON
+                bool owned = player.Weapons.HasWeapon((WeaponHash)Game.GenerateHash(weaponName));
 
                 _weaponFiltered.Add(new WeaponCard
                 {
@@ -1979,15 +1977,11 @@ namespace ALLIN1
                 bool owned;
                 if (gearId == GearList.ARMOR_ID)
                 {
-                    int armor = Function.Call<int>(
-                        (Hash)0x9483AF821C9B9B31, player);  // GET_PED_ARMOUR
-                    owned = armor > 0;
+                    owned = player.Armor > 0;
                 }
                 else
                 {
-                    Hash itemHash = (Hash)Game.GenerateHash(gearId);
-                    owned = Function.Call<bool>(
-                        (Hash)0x8DECB02F88F428BC, player, itemHash, false);  // HAS_PED_GOT_WEAPON
+                    owned = player.Weapons.HasWeapon((WeaponHash)Game.GenerateHash(gearId));
                 }
 
                 _gearFiltered.Add(new GearCard

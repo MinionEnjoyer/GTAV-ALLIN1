@@ -266,8 +266,7 @@ namespace ALLIN1
             }
 
             // Give weapon with ammo
-            Function.Call((Hash)0xBF0FD6E56C964FCB,
-                player, weaponHash, 9999, false, true);  // GIVE_WEAPON_TO_PED
+            player.Weapons.Give((WeaponHash)(uint)weaponHash, 9999, false, true);
 
             if (!_freeMode && price > 0)
                 Game.Player.Money -= price;
@@ -293,16 +292,15 @@ namespace ALLIN1
 
             // Get current and max ammo
             int currentAmmo = Function.Call<int>(
-                (Hash)0x015A522136D7F951, player, weaponHash);  // GET_AMMO_IN_PED_WEAPON
+                Hash.GET_AMMO_IN_PED_WEAPON, player, weaponHash);
 
             OutputArgument maxAmmoOut = new OutputArgument();
             Function.Call<bool>(
-                (Hash)0xDC16122C7A20C933, player, weaponHash, maxAmmoOut);  // GET_MAX_AMMO
+                Hash.GET_MAX_AMMO, player, weaponHash, maxAmmoOut);
             int maxAmmo = maxAmmoOut.GetResult<int>();
 
             if (maxAmmo <= 0)
             {
-                // Melee or no-ammo weapon
                 GTA.UI.Screen.ShowSubtitle("~y~Already owned.", 3000);
                 return -1;
             }
@@ -314,7 +312,6 @@ namespace ALLIN1
                 return -1;
             }
 
-            // Calculate cost
             int costPerRound = WeaponList.AmmoCostPerRound.ContainsKey(weaponName)
                 ? WeaponList.AmmoCostPerRound[weaponName] : 2;
             int totalCost = needed * costPerRound;
@@ -328,9 +325,7 @@ namespace ALLIN1
                 return -2;
             }
 
-            // Refill
-            Function.Call((Hash)0x14E56BC5B5DB6A19,
-                player, weaponHash, maxAmmo, false);  // SET_PED_AMMO
+            Function.Call(Hash.SET_PED_AMMO, player, weaponHash, maxAmmo);
 
             if (!_freeMode && totalCost > 0)
                 Game.Player.Money -= totalCost;
@@ -363,15 +358,12 @@ namespace ALLIN1
 
             if (gearId == GearList.ARMOR_ID)
             {
-                // Set armor to 100
-                Function.Call((Hash)0xCEA04D83135264CC, player, 100);  // SET_PED_ARMOUR
+                player.Armor = 100;
             }
             else
             {
-                // Give as weapon/gadget
-                Hash itemHash = (Hash)Game.GenerateHash(gearId);
-                Function.Call((Hash)0xBF0FD6E56C964FCB,
-                    player, itemHash, 1, false, true);  // GIVE_WEAPON_TO_PED
+                WeaponHash itemHash = (WeaponHash)Game.GenerateHash(gearId);
+                player.Weapons.Give(itemHash, 1, false, true);
             }
 
             if (!_freeMode && price > 0)
@@ -399,11 +391,11 @@ namespace ALLIN1
             Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
 
             int currentAmmo = Function.Call<int>(
-                (Hash)0x015A522136D7F951, player, weaponHash);  // GET_AMMO_IN_PED_WEAPON
+                Hash.GET_AMMO_IN_PED_WEAPON, player, weaponHash);
 
             OutputArgument maxAmmoOut = new OutputArgument();
             Function.Call<bool>(
-                (Hash)0xDC16122C7A20C933, player, weaponHash, maxAmmoOut);  // GET_MAX_AMMO
+                Hash.GET_MAX_AMMO, player, weaponHash, maxAmmoOut);
             int maxAmmo = maxAmmoOut.GetResult<int>();
 
             if (maxAmmo <= 0)
