@@ -35,9 +35,23 @@ namespace ALLIN1
 
         public GbayShop()
         {
+            try
+            {
+                File.AppendAllText(LOG_PATH,
+                    $"[{DateTime.Now:HH:mm:ss.fff}] === GbayShop CONSTRUCTOR START ==={Environment.NewLine}");
+            }
+            catch { }
+
             Tick += OnTick;
             KeyDown += OnKeyDown;
             Interval = 0;
+
+            try
+            {
+                File.AppendAllText(LOG_PATH,
+                    $"[{DateTime.Now:HH:mm:ss.fff}] === GbayShop CONSTRUCTOR END ==={Environment.NewLine}");
+            }
+            catch { }
         }
 
         // ------------------------------------------------------------------ //

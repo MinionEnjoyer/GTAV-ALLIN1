@@ -424,23 +424,7 @@ namespace ALLIN1
                 BLogEx("Draw.Cursor", ex);
             }
 
-            // DEBUG: show texture dict loading status
-            if (_state == BrowserState.VehicleBrowser)
-            {
-                int loaded = 0;
-                string firstDict = null;
-                foreach (string d in _activeDicts)
-                {
-                    if (firstDict == null) firstDict = d;
-                    if (GbayRenderer.IsDictLoaded(d)) loaded++;
-                }
-                bool logoLoaded = GbayRenderer.IsDictLoaded("allin1_logo");
-                bool logoReq = GbayRenderer.IsDictRequested("allin1_logo");
-                bool firstReq = firstDict != null && GbayRenderer.IsDictRequested(firstDict);
-                GTA.UI.Screen.ShowSubtitle(
-                    $"~y~D:{loaded}/{_activeDicts.Count} logo:r={logoReq},l={logoLoaded} 1st={firstDict ?? "?"}:r={firstReq} PD={VehicleList.PreviewDict.Count}",
-                    100);
-            }
+
         }
 
         // ------------------------------------------------------------------ //
@@ -986,10 +970,20 @@ namespace ALLIN1
             _previewAngle = 0f;
             _previewZoom = 1.0f;
 
-            // Load model and get dimensions for camera framing
-            var model = new Model(_previewModel);
-            model.Request(5000);
-            int hash = model.Hash;
+            // Spawn vehicle first — CreateVehicle waits for model to load
+            _previewVehicle = VehicleHelper.CreateVehicle(
+                _previewModel, PREVIEW_POS, 0f);
+
+            if (_previewVehicle == null)
+            {
+                BLog("OpenPreview: CreateVehicle returned null");
+                GbayRenderer.PlayError();
+                GTA.UI.Screen.ShowSubtitle("~r~Failed to load vehicle model.", 3000);
+                return;
+            }
+
+            // Now that model is loaded, get dimensions for camera framing
+            int hash = _previewVehicle.Model.Hash;
 
             OutputArgument minArg = new OutputArgument();
             OutputArgument maxArg = new OutputArgument();
@@ -1004,17 +998,6 @@ namespace ALLIN1
 
             _previewRadius = extent * 1.2f;
             _previewHeight = height * 0.5f;
-
-            // Spawn vehicle at preview position
-            _previewVehicle = VehicleHelper.CreateVehicle(
-                _previewModel, PREVIEW_POS, 0f);
-
-            if (_previewVehicle == null)
-            {
-                GbayRenderer.PlayError();
-                GTA.UI.Screen.ShowSubtitle("~r~Failed to load vehicle model.", 3000);
-                return;
-            }
 
             _previewVehicle.IsPositionFrozen = true;
             _previewVehicle.IsCollisionEnabled = false;
