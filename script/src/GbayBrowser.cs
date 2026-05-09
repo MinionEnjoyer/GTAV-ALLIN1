@@ -170,9 +170,9 @@ namespace ALLIN1
 
         private static readonly WeaponCategory[] GEAR_CATEGORIES =
         {
-            new WeaponCategory("All",        GearList.All),
-            new WeaponCategory("Protection", GearList.Protection),
-            new WeaponCategory("Equipment",  GearList.Equipment),
+            new WeaponCategory("All",        new string[0]),
+            new WeaponCategory("Protection", new string[0]),
+            new WeaponCategory("Equipment",  new string[0]),
         };
 
         // ------------------------------------------------------------------ //
@@ -341,9 +341,10 @@ namespace ALLIN1
                 case BrowserState.WeaponBrowser:
                     DrawWeaponBrowser(input);
                     break;
-                case BrowserState.GearBrowser:
-                    DrawGearBrowser(input);
-                    break;
+                // DIAGNOSTIC: gear browser disabled
+                // case BrowserState.GearBrowser:
+                //     DrawGearBrowser(input);
+                //     break;
             }
 
             GbayRenderer.DrawCursor();
@@ -365,9 +366,9 @@ namespace ALLIN1
             GbayRenderer.DrawLogo(BROWSER_CX, 0.36f, 0.12f);
 
             // Buttons
-            string[] labels = { "Vehicles", "Weapons", "Gear", "My Garage" };
-            bool[] enabled = { true, true, true, true };
-            float startY = 0.39f;
+            string[] labels = { "Vehicles", "Weapons", "My Garage" };
+            bool[] enabled = { true, true, true };
+            float startY = 0.42f;
 
             _topMenuHover = -1;
 
@@ -445,16 +446,7 @@ namespace ALLIN1
                     _weaponTabScrollOffset = 0;
                     RebuildWeaponFilteredList();
                 }
-                else if (activateIdx == 2) // Gear
-                {
-                    _state = BrowserState.GearBrowser;
-                    _gearCategoryIndex = 0;
-                    _gearPage = 0;
-                    _gearSelectedCard = 0;
-                    _gearTabScrollOffset = 0;
-                    RebuildGearFilteredList();
-                }
-                else if (activateIdx == 3) // My Garage
+                else if (activateIdx == 2) // My Garage
                 {
                     _state = BrowserState.GarageView;
                     _garageVehicleIdx = 0;
