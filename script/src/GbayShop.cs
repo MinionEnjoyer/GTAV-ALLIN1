@@ -356,9 +356,9 @@ namespace ALLIN1
                 return;
             }
 
-            if (gearId == GearList.ARMOR_ID)
+            if (GearList.IsArmor(gearId))
             {
-                player.Armor = 100;
+                player.Armor = GearList.ArmorValues[gearId];
             }
             else
             {

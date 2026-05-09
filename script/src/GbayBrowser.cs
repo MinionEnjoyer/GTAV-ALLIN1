@@ -1829,7 +1829,7 @@ namespace ALLIN1
             // Status or price (right-aligned)
             if (card.Owned)
             {
-                string statusText = card.GearId == GearList.ARMOR_ID ? "EQUIPPED" : "OWNED";
+                string statusText = GearList.IsArmor(card.GearId) ? "EQUIPPED" : "OWNED";
                 GbayRenderer.DrawText(statusText, textRight, textTop + 0.042f,
                     0.28f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CHALET,
                     false, false, true);
@@ -1940,7 +1940,7 @@ namespace ALLIN1
                 {
                     GearCard card = _gearFiltered[idx];
 
-                    if (card.Owned && card.GearId != GearList.ARMOR_ID)
+                    if (card.Owned && !GearList.IsArmor(card.GearId))
                     {
                         GbayRenderer.PlayError();
                         GTA.UI.Screen.ShowSubtitle("~y~Already owned.", 3000);
@@ -1975,9 +1975,11 @@ namespace ALLIN1
                     ? GearList.CategoryNames[gearId] : "";
 
                 bool owned;
-                if (gearId == GearList.ARMOR_ID)
+                if (GearList.IsArmor(gearId))
                 {
-                    owned = player.Armor > 0;
+                    // Armor tier is "owned" if current armor >= that tier's value
+                    int tierValue = GearList.ArmorValues[gearId];
+                    owned = player.Armor >= tierValue;
                 }
                 else
                 {
