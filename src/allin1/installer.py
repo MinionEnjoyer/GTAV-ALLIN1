@@ -333,19 +333,19 @@ def _check_openrpf(gta_path: Path, enhanced: bool) -> bool:
 
 
 def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
-    """Build .ytd texture dicts from preview PNGs and inject into script_txds.rpf.
+    """Build .ytd texture dicts from preview PNGs and deploy as a DLC pack.
 
-    The .ytd files are injected directly into
-    ``mods/update/update.rpf/x64/textures/script_txds.rpf`` — the game's
-    standard location for streaming texture dictionaries that can be loaded
+    Creates a standalone DLC pack at
+    ``mods/update/x64/dlcpacks/allin1_previews/dlc.rpf`` containing the
+    .ytd files inside a nested ``textures.rpf``.  The DLC's ``content.xml``
+    registers the nested RPF as an ``RPF_FILE`` so the game's streaming
+    system indexes the texture dictionaries at boot, making them available
     via ``REQUEST_STREAMED_TEXTURE_DICT`` / ``DRAW_SPRITE``.
 
-    This is simpler and more reliable than the DLC pack approach because
-    ``script_txds.rpf`` is already indexed by the game's streaming system.
-    No separate DLC registration (dlclist.xml, content.xml, setup2.xml) is
-    needed.
+    The companion ``_patch_dlclist_rpf()`` adds the DLC to ``dlclist.xml``
+    so the game discovers it.
     """
-    from allin1.generators import ytd_builder
+    from allin1.generators import dlc_previews, ytd_builder
 
     previews_src = _SCRIPT_DIST_DIR / "previews"
     logo_src = _SCRIPT_DIST_DIR / "PHAT.png"
@@ -380,18 +380,33 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         ytd_out = tmp_path / "ytd"
+
+        # Step 1: Build .ytd files from PNGs
         ytd_files = ytd_builder.build_ytd_files(
             previews_src,
             logo_src if logo_src.exists() else None,
             ytd_out, _TOOLS_DIR, models,
         )
 
-        # Inject .ytd files directly into script_txds.rpf inside
-        # mods/update/update.rpf — the game's streaming system already
-        # knows to look there for texture dictionaries.
-        log.info("Injecting %d .ytd files into script_txds.rpf...", len(ytd_files))
+        if not ytd_files:
+            log.warning("No .ytd files were built")
+            result.warnings.append("Failed to build preview textures.")
+            return
+
+        # Step 2: Create DLC pack structure (content.xml + setup2.xml + staged .ytd files)
+        log.info("Creating DLC pack structure...")
+        dlc_root, ytd_staging = dlc_previews.create_dlc_pack(ytd_files, tmp_path)
+
+        # Step 3: Build dlc.rpf with nested textures.rpf
+        dlc_rpf_path = tmp_path / "dlc.rpf"
+        log.info("Building dlc.rpf with %d .ytd files...", len(ytd_files))
         proc = subprocess.run(
-            [str(rpf_patcher), "inject-ytd", str(gta_path), str(ytd_out)],
+            [
+                str(rpf_patcher), "build-dlc",
+                str(dlc_root),
+                str(dlc_rpf_path),
+                "--embed-rpf", str(ytd_staging), "x64/textures/textures.rpf",
+            ],
             capture_output=True, text=True, timeout=300,
         )
         if proc.stdout:
@@ -399,18 +414,48 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
                 log.info("RpfPatcher: %s", line)
         if proc.returncode != 0:
             error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
-            raise RuntimeError(f"RpfPatcher inject-ytd failed: {error_msg}")
+            raise RuntimeError(f"RpfPatcher build-dlc failed: {error_msg}")
 
-        log.info("Preview textures injected into script_txds.rpf (%d .ytd files)",
-                 len(ytd_files))
+        if not dlc_rpf_path.exists():
+            raise RuntimeError("RpfPatcher build-dlc succeeded but dlc.rpf not found")
+
+        log.info("Built dlc.rpf (%d bytes)", dlc_rpf_path.stat().st_size)
+
+        # Step 4: Deploy dlc.rpf to mods/update/x64/dlcpacks/allin1_previews/
+        dest_dir = dlc_previews.deploy_dlc_rpf(dlc_rpf_path, gta_path)
+        log.info("Preview DLC deployed to %s", dest_dir)
 
 
 def _patch_dlclist_rpf(gta_path: Path, result: InstallResult) -> None:
-    """No longer needed — textures are injected into script_txds.rpf.
+    """Add allin1_previews to dlclist.xml inside mods/update/update.rpf.
 
-    Kept as a no-op for now in case the DLC pack approach is revisited.
+    This tells the game to load our DLC pack at boot so the texture
+    dictionaries inside it are indexed and available for streaming.
     """
-    pass
+    rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
+    if not rpf_patcher.exists():
+        log.warning("RpfPatcher.exe not found — skipping dlclist patch")
+        result.warnings.append("RpfPatcher.exe missing; preview textures "
+                               "may not load without dlclist.xml entry.")
+        return
+
+    try:
+        proc = subprocess.run(
+            [str(rpf_patcher), "patch", str(gta_path)],
+            capture_output=True, text=True, timeout=120,
+        )
+        if proc.stdout:
+            for line in proc.stdout.strip().splitlines():
+                log.info("RpfPatcher: %s", line)
+        if proc.returncode == 0:
+            log.info("Patched dlclist.xml with allin1_previews entry")
+        else:
+            error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
+            log.error("Failed to patch dlclist.xml: %s", error_msg)
+            result.warnings.append(f"Failed to patch dlclist.xml: {error_msg}")
+    except Exception as exc:
+        log.error("Could not patch dlclist.xml: %s", exc)
+        result.warnings.append(f"Could not patch dlclist.xml: {exc}")
 
 
 def _unpatch_dlclist_rpf(gta_path: Path) -> None:
