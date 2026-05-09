@@ -144,9 +144,6 @@ namespace ALLIN1
 
         private void Initialize()
         {
-            // Clear log on each init so we only see the current session
-            try { File.WriteAllText(LOG_PATH, ""); } catch { }
-            Log("Initialize() starting");
             LoadConfig();
             Log($"=== GBAY Initialized: key={_openKey} freeMode={_freeMode} garageDebug={_garageDebug} ===");
 
@@ -161,11 +158,8 @@ namespace ALLIN1
                 LogException("GarageManager.Initialize", ex);
             }
 
-            Log("Creating GbayBrowser");
             _browser = new GbayBrowser(this);
-            Log("GbayBrowser created");
             _initialized = true;
-            Log("Initialize() complete");
         }
 
         // ------------------------------------------------------------------ //
@@ -453,30 +447,16 @@ namespace ALLIN1
             {
                 if (_initialized)
                     GarageManager.OnTick();
-            }
-            catch (Exception ex)
-            {
-                LogException("OnTick.GarageManager", ex);
-            }
 
-            try
-            {
                 if (_browser != null)
                     _browser.Draw();
-            }
-            catch (Exception ex)
-            {
-                LogException("OnTick.BrowserDraw", ex);
-            }
 
-            try
-            {
                 if (_garageDebug && _initialized)
                     GarageManager.DrawDebugMarkers();
             }
             catch (Exception ex)
             {
-                LogException("OnTick.DebugMarkers", ex);
+                LogException("OnTick", ex);
             }
         }
 
@@ -487,10 +467,17 @@ namespace ALLIN1
 
             if (e.KeyCode == _openKey)
             {
-                if (!_initialized)
-                    Initialize();
+                try
+                {
+                    if (!_initialized)
+                        Initialize();
 
-                _browser.Toggle();
+                    _browser.Toggle();
+                }
+                catch (Exception ex)
+                {
+                    LogException("OnKeyDown", ex);
+                }
             }
         }
     }

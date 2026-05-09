@@ -6,7 +6,6 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.IO;
 using GTA;
 using GTA.Math;
 using GTA.Native;
@@ -183,31 +182,6 @@ namespace ALLIN1
         private readonly GbayShop _shop;
         private BrowserState _state = BrowserState.Closed;
 
-        // Direct file logger — works even if _shop is null
-        private static readonly string _logPath = Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory, "ALLIN1_gbay.log");
-
-        private static void BLog(string msg)
-        {
-            try
-            {
-                File.AppendAllText(_logPath,
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [Browser] {msg}{Environment.NewLine}");
-            }
-            catch { }
-        }
-
-        private static void BLogEx(string ctx, Exception ex)
-        {
-            try
-            {
-                File.AppendAllText(_logPath,
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [Browser] EXCEPTION in {ctx}: {ex.Message}{Environment.NewLine}" +
-                    $"  {ex.StackTrace}{Environment.NewLine}");
-            }
-            catch { }
-        }
-
         // Top menu
         private int _topMenuIndex;
         private int _topMenuHover = -1;
@@ -293,33 +267,18 @@ namespace ALLIN1
 
         internal void Toggle()
         {
-            try
+            if (_state == BrowserState.Closed)
             {
-                BLog($"Toggle() called, current state={_state}");
-                if (_state == BrowserState.Closed)
-                {
-                    BLog("Opening: setting state=TopMenu");
-                    _state = BrowserState.TopMenu;
-                    _topMenuIndex = 0;
-                    BLog("Calling EnsureTextures");
-                    GbayRenderer.EnsureTextures();
-                    BLog("Calling RequestDict(allin1_logo)");
-                    GbayRenderer.RequestDict("allin1_logo");
-                    BLog("Toggle open complete");
-                }
-                else
-                {
-                    BLog("Closing: calling ClosePreview");
-                    ClosePreview();
-                    BLog("Calling ReleaseAllDicts");
-                    ReleaseAllDicts();
-                    _state = BrowserState.Closed;
-                    BLog("Toggle close complete");
-                }
+                _state = BrowserState.TopMenu;
+                _topMenuIndex = 0;
+                GbayRenderer.EnsureTextures();
+                GbayRenderer.RequestDict("allin1_logo");
             }
-            catch (Exception ex)
+            else
             {
-                BLogEx("Toggle", ex);
+                ClosePreview();
+                ReleaseAllDicts();
+                _state = BrowserState.Closed;
             }
         }
 
@@ -334,82 +293,60 @@ namespace ALLIN1
         //  Main Draw (called every frame from GbayShop.OnTick)                //
         // ------------------------------------------------------------------ //
 
-        // Frame counter for throttled logging (once per second)
-        private int _drawFrameCount;
-        private DateTime _lastLogTime = DateTime.MinValue;
-
         internal void Draw()
         {
             if (_state == BrowserState.Closed)
                 return;
 
-            _drawFrameCount++;
-
-            try
+            if (Game.Player.Character.IsDead || Game.IsLoading)
             {
-                if (Game.Player.Character.IsDead || Game.IsLoading)
-                {
-                    ClosePreview();
-                    ReleaseAllDicts();
-                    _state = BrowserState.Closed;
-                    return;
-                }
-
-                var input = GbayInput.Poll();
-                GbayInput.DisableGameControls();
-
-                // Log once per second to track progress without I/O spam
-                var now = DateTime.Now;
-                if ((now - _lastLogTime).TotalSeconds >= 1.0)
-                {
-                    BLog($"Draw alive: state={_state} frame={_drawFrameCount}");
-                    _lastLogTime = now;
-                }
-
-                // Preview and delivery states handle their own background
-                if (_state != BrowserState.VehiclePreview &&
-                    _state != BrowserState.DeliveryConfirm ||
-                    _state == BrowserState.DeliveryConfirm && _previewVehicle == null)
-                {
-                    GbayRenderer.DrawScrim();
-                }
-
-                switch (_state)
-                {
-                    case BrowserState.TopMenu:
-                        DrawTopMenu(input);
-                        break;
-                    case BrowserState.VehicleBrowser:
-                        DrawBrowser(input);
-                        break;
-                    case BrowserState.VehiclePreview:
-                        DrawPreview(input);
-                        break;
-                    case BrowserState.DeliveryConfirm:
-                        if (_previewVehicle != null)
-                            UpdatePreviewCamera();
-                        else
-                            DrawBrowser(new FrameInput());
-                        DrawDeliveryModal(input);
-                        break;
-                    case BrowserState.GarageView:
-                        DrawGarageView(input);
-                        break;
-                    case BrowserState.WeaponBrowser:
-                        DrawWeaponBrowser(input);
-                        break;
-                    case BrowserState.GearBrowser:
-                        DrawGearBrowser(input);
-                        break;
-                }
-
-                GbayRenderer.DrawCursor();
-            }
-            catch (Exception ex)
-            {
-                BLogEx("Draw", ex);
+                ClosePreview();
+                ReleaseAllDicts();
                 _state = BrowserState.Closed;
+                return;
             }
+
+            var input = GbayInput.Poll();
+            GbayInput.DisableGameControls();
+
+            // Preview and delivery states handle their own background
+            if (_state != BrowserState.VehiclePreview &&
+                _state != BrowserState.DeliveryConfirm ||
+                _state == BrowserState.DeliveryConfirm && _previewVehicle == null)
+            {
+                GbayRenderer.DrawScrim();
+            }
+
+            switch (_state)
+            {
+                case BrowserState.TopMenu:
+                    DrawTopMenu(input);
+                    break;
+                case BrowserState.VehicleBrowser:
+                    DrawBrowser(input);
+                    break;
+                case BrowserState.VehiclePreview:
+                    DrawPreview(input);
+                    break;
+                case BrowserState.DeliveryConfirm:
+                    if (_previewVehicle != null)
+                        UpdatePreviewCamera();
+                    else
+                        DrawBrowser(new FrameInput());
+                    DrawDeliveryModal(input);
+                    break;
+                case BrowserState.GarageView:
+                    DrawGarageView(input);
+                    break;
+                case BrowserState.WeaponBrowser:
+                    DrawWeaponBrowser(input);
+                    break;
+                case BrowserState.GearBrowser:
+                    DrawGearBrowser(input);
+                    break;
+            }
+
+            GbayRenderer.DrawCursor();
         }
 
         // ------------------------------------------------------------------ //
@@ -958,7 +895,6 @@ namespace ALLIN1
 
             if (_previewVehicle == null)
             {
-                BLog("OpenPreview: CreateVehicle returned null");
                 GbayRenderer.PlayError();
                 GTA.UI.Screen.ShowSubtitle("~r~Failed to load vehicle model.", 3000);
                 return;
