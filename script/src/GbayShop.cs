@@ -15,6 +15,19 @@ namespace ALLIN1
 {
     public class GbayShop : Script
     {
+        // --- Static canary: fires on type load, before constructor ---
+        static GbayShop()
+        {
+            try
+            {
+                string path = Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory, "ALLIN1_gbay.log");
+                File.AppendAllText(path,
+                    $"[{DateTime.Now:HH:mm:ss.fff}] === STATIC CONSTRUCTOR (type load) ==={Environment.NewLine}");
+            }
+            catch { }
+        }
+
         // --- Config ---
         private static readonly string SCRIPTS_DIR =
             AppDomain.CurrentDomain.BaseDirectory;
