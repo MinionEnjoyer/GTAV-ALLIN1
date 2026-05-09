@@ -144,6 +144,7 @@ namespace ALLIN1
 
         private void Initialize()
         {
+            Log("Initialize() starting");
             LoadConfig();
             Log($"=== GBAY Initialized: key={_openKey} freeMode={_freeMode} garageDebug={_garageDebug} ===");
 
@@ -158,8 +159,11 @@ namespace ALLIN1
                 LogException("GarageManager.Initialize", ex);
             }
 
+            Log("Creating GbayBrowser");
             _browser = new GbayBrowser(this);
+            Log("GbayBrowser created");
             _initialized = true;
+            Log("Initialize() complete");
         }
 
         // ------------------------------------------------------------------ //
@@ -447,16 +451,30 @@ namespace ALLIN1
             {
                 if (_initialized)
                     GarageManager.OnTick();
+            }
+            catch (Exception ex)
+            {
+                LogException("OnTick.GarageManager", ex);
+            }
 
+            try
+            {
                 if (_browser != null)
                     _browser.Draw();
+            }
+            catch (Exception ex)
+            {
+                LogException("OnTick.BrowserDraw", ex);
+            }
 
+            try
+            {
                 if (_garageDebug && _initialized)
                     GarageManager.DrawDebugMarkers();
             }
             catch (Exception ex)
             {
-                LogException("OnTick", ex);
+                LogException("OnTick.DebugMarkers", ex);
             }
         }
 
@@ -469,10 +487,17 @@ namespace ALLIN1
             {
                 try
                 {
+                    Log($"Key pressed: {e.KeyCode}, initialized={_initialized}");
                     if (!_initialized)
+                    {
+                        Log("Calling Initialize()");
                         Initialize();
+                        Log($"Initialize() complete, browser={(_browser != null ? "ok" : "null")}");
+                    }
 
+                    Log("Calling _browser.Toggle()");
                     _browser.Toggle();
+                    Log("Toggle() returned");
                 }
                 catch (Exception ex)
                 {

@@ -3,14 +3,40 @@
 // All coordinates use GTA's normalized 0.0-1.0 screen space.
 // DRAW_RECT uses center-based coordinates (x,y = center of rect).
 
+using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using GTA.Native;
 
 namespace ALLIN1
 {
     internal static class GbayRenderer
     {
+        private static readonly string _logPath = Path.Combine(
+            AppDomain.CurrentDomain.BaseDirectory, "ALLIN1_gbay.log");
+
+        private static void RLog(string msg)
+        {
+            try
+            {
+                File.AppendAllText(_logPath,
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [Renderer] {msg}{Environment.NewLine}");
+            }
+            catch { }
+        }
+
+        private static void RLogEx(string ctx, Exception ex)
+        {
+            try
+            {
+                File.AppendAllText(_logPath,
+                    $"[{DateTime.Now:HH:mm:ss.fff}] [Renderer] EXCEPTION in {ctx}: {ex.Message}{Environment.NewLine}" +
+                    $"  {ex.StackTrace}{Environment.NewLine}");
+            }
+            catch { }
+        }
+
         // ------------------------------------------------------------------ //
         //  Theme Colors                                                       //
         // ------------------------------------------------------------------ //
@@ -76,11 +102,16 @@ namespace ALLIN1
 
         internal static void EnsureTextures()
         {
-            if (_texturesRequested)
-                return;
-
-            Function.Call(Hash.REQUEST_STREAMED_TEXTURE_DICT, "commonmenu", false);
-            _texturesRequested = true;
+            try
+            {
+                RLog($"EnsureTextures called, already={_texturesRequested}");
+                if (_texturesRequested)
+                    return;
+                Function.Call(Hash.REQUEST_STREAMED_TEXTURE_DICT, "commonmenu", false);
+                _texturesRequested = true;
+                RLog("EnsureTextures: commonmenu requested");
+            }
+            catch (Exception ex) { RLogEx("EnsureTextures", ex); }
         }
 
         internal static bool TexturesLoaded()
@@ -150,10 +181,17 @@ namespace ALLIN1
         /// <summary>Request a texture dictionary for async streaming.</summary>
         internal static void RequestDict(string dict)
         {
-            if (_failedDicts.Contains(dict))
-                return;
-            if (_requestedDicts.Add(dict))
-                Function.Call(Hash.REQUEST_STREAMED_TEXTURE_DICT, dict, false);
+            try
+            {
+                if (_failedDicts.Contains(dict))
+                    return;
+                if (_requestedDicts.Add(dict))
+                {
+                    RLog($"RequestDict: requesting '{dict}'");
+                    Function.Call(Hash.REQUEST_STREAMED_TEXTURE_DICT, dict, false);
+                }
+            }
+            catch (Exception ex) { RLogEx($"RequestDict({dict})", ex); }
         }
 
         /// <summary>Check if a texture dictionary has been requested.</summary>
@@ -162,28 +200,37 @@ namespace ALLIN1
         /// <summary>Check if a streamed texture dictionary is loaded.</summary>
         internal static bool IsDictLoaded(string dict)
         {
-            if (_loadedDicts.Contains(dict))
-                return true;
-            if (_failedDicts.Contains(dict))
-                return false;
-            if (!_requestedDicts.Contains(dict))
-                return false;
-
-            if (Function.Call<bool>(Hash.HAS_STREAMED_TEXTURE_DICT_LOADED, dict))
+            try
             {
-                _loadedDicts.Add(dict);
-                return true;
-            }
+                if (_loadedDicts.Contains(dict))
+                    return true;
+                if (_failedDicts.Contains(dict))
+                    return false;
+                if (!_requestedDicts.Contains(dict))
+                    return false;
 
-            // After enough failed checks, mark all pending dicts as failed
-            _failCheckCounter++;
-            if (_failCheckCounter > FAIL_CHECK_LIMIT)
+                if (Function.Call<bool>(Hash.HAS_STREAMED_TEXTURE_DICT_LOADED, dict))
+                {
+                    _loadedDicts.Add(dict);
+                    RLog($"IsDictLoaded: '{dict}' now loaded");
+                    return true;
+                }
+
+                _failCheckCounter++;
+                if (_failCheckCounter > FAIL_CHECK_LIMIT)
+                {
+                    RLog($"IsDictLoaded: timeout, marking {_requestedDicts.Count} dicts as failed");
+                    _failedDicts.UnionWith(_requestedDicts);
+                    _requestedDicts.Clear();
+                }
+
+                return false;
+            }
+            catch (Exception ex)
             {
-                _failedDicts.UnionWith(_requestedDicts);
-                _requestedDicts.Clear();
+                RLogEx($"IsDictLoaded({dict})", ex);
+                return false;
             }
-
-            return false;
         }
 
         /// <summary>Release a texture dictionary from VRAM.</summary>
@@ -222,13 +269,17 @@ namespace ALLIN1
         /// <summary>Draw the PHAT logo from the DLC texture dict.</summary>
         internal static void DrawLogo(float x, float y, float h)
         {
-            if (!IsDictLoaded(LOGO_DICT))
+            try
             {
-                RequestDict(LOGO_DICT);
-                return;
+                if (!IsDictLoaded(LOGO_DICT))
+                {
+                    RequestDict(LOGO_DICT);
+                    return;
+                }
+                float w = h * (440f / 559f);
+                DrawSprite(LOGO_DICT, LOGO_TEX, x, y, w, h, Color.White);
             }
-            float w = h * (440f / 559f);
-            DrawSprite(LOGO_DICT, LOGO_TEX, x, y, w, h, Color.White);
+            catch (Exception ex) { RLogEx("DrawLogo", ex); }
         }
 
         /// <summary>
@@ -280,7 +331,11 @@ namespace ALLIN1
         /// </summary>
         internal static void DrawScrim()
         {
-            DrawRect(0.5f, 0.5f, 1f, 1f, Scrim);
+            try
+            {
+                DrawRect(0.5f, 0.5f, 1f, 1f, Scrim);
+            }
+            catch (Exception ex) { RLogEx("DrawScrim", ex); }
         }
 
         /// <summary>
@@ -288,8 +343,12 @@ namespace ALLIN1
         /// </summary>
         internal static void DrawCursor()
         {
-            Function.Call((Hash)0xAAE7CE1D63167423); // _SET_MOUSE_CURSOR_ACTIVE_THIS_FRAME
-            Function.Call((Hash)0x8DB8CFFD58B62552, 1); // _SET_MOUSE_CURSOR_SPRITE (normal arrow)
+            try
+            {
+                Function.Call((Hash)0xAAE7CE1D63167423); // _SET_MOUSE_CURSOR_ACTIVE_THIS_FRAME
+                Function.Call((Hash)0x8DB8CFFD58B62552, 1); // _SET_MOUSE_CURSOR_SPRITE (normal arrow)
+            }
+            catch (Exception ex) { RLogEx("DrawCursor", ex); }
         }
 
         // ------------------------------------------------------------------ //
