@@ -1,4 +1,4 @@
-// GbayBrowser.cs -- Custom-drawn browser UI for the GBAY vehicle shop.
+    // GbayBrowser.cs -- Custom-drawn browser UI for the GBAY vehicle shop.
 //
 // Renders a grid-based vehicle catalog with category tabs, pagination,
 // and keyboard + mouse navigation using GTA native drawing functions.
@@ -868,10 +868,19 @@ namespace ALLIN1
             _previewAngle = 0f;
             _previewZoom = 1.0f;
 
-            // Load model and get dimensions for camera framing
-            var model = new Model(_previewModel);
-            model.Request(5000);
-            int hash = model.Hash;
+            // Spawn vehicle first (this waits for the model to load)
+            _previewVehicle = VehicleHelper.CreateVehicle(
+                _previewModel, PREVIEW_POS, 0f);
+
+            if (_previewVehicle == null)
+            {
+                GbayRenderer.PlayError();
+                GTA.UI.Screen.ShowSubtitle("~r~Failed to load vehicle model.", 3000);
+                return;
+            }
+
+            // Now that the model is loaded, get dimensions for camera framing
+            int hash = _previewVehicle.Model.Hash;
 
             OutputArgument minArg = new OutputArgument();
             OutputArgument maxArg = new OutputArgument();
@@ -886,17 +895,6 @@ namespace ALLIN1
 
             _previewRadius = extent * 1.2f;
             _previewHeight = height * 0.5f;
-
-            // Spawn vehicle at preview position
-            _previewVehicle = VehicleHelper.CreateVehicle(
-                _previewModel, PREVIEW_POS, 0f);
-
-            if (_previewVehicle == null)
-            {
-                GbayRenderer.PlayError();
-                GTA.UI.Screen.ShowSubtitle("~r~Failed to load vehicle model.", 3000);
-                return;
-            }
 
             _previewVehicle.IsPositionFrozen = true;
             _previewVehicle.IsCollisionEnabled = false;
