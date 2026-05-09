@@ -394,6 +394,21 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
             result.warnings.append("Failed to build preview textures.")
             return
 
+        # Step 1b: Convert .ytd files to Enhanced (gen9) format if needed
+        if result.is_enhanced:
+            log.info("Enhanced edition detected — converting .ytd files to gen9 format...")
+            proc = subprocess.run(
+                [str(rpf_patcher), "convert-gen9", str(ytd_out)],
+                capture_output=True, text=True, timeout=300,
+            )
+            if proc.stdout:
+                for line in proc.stdout.strip().splitlines():
+                    log.info("RpfPatcher: %s", line)
+            if proc.returncode != 0:
+                error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
+                raise RuntimeError(f"RpfPatcher convert-gen9 failed: {error_msg}")
+            log.info("Gen9 conversion complete.")
+
         # Step 2: Create DLC pack structure (content.xml + setup2.xml + staged .ytd files)
         log.info("Creating DLC pack structure...")
         dlc_root, ytd_staging = dlc_previews.create_dlc_pack(ytd_files, tmp_path)

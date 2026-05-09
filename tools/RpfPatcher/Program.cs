@@ -2,18 +2,20 @@
 // Uses CodeWalker.Core to read/write RPF7 archives.
 //
 // Commands:
-//   RpfPatcher.exe inject-ytd <gta_path> <ytd_folder>    — inject .ytd files into script_txds.rpf
-//   RpfPatcher.exe remove-ytd <gta_path> <prefix>        — remove ALLIN1 .ytd files from script_txds.rpf
-//   RpfPatcher.exe patch      <gta_path>                 — add allin1_previews to dlclist.xml
-//   RpfPatcher.exe unpatch    <gta_path>                 — remove allin1_previews from dlclist.xml
-//   RpfPatcher.exe build-dlc  <loose_folder> <output_rpf> [--embed-rpf <src_folder> <dest_path>]
-//   RpfPatcher.exe inspect    <gta_path> <rpf_path>      — dump RPF structure + XML contents
+//   RpfPatcher.exe inject-ytd   <gta_path> <ytd_folder>  — inject .ytd files into script_txds.rpf
+//   RpfPatcher.exe remove-ytd   <gta_path> <prefix>      — remove ALLIN1 .ytd files from script_txds.rpf
+//   RpfPatcher.exe patch        <gta_path>                — add allin1_previews to dlclist.xml
+//   RpfPatcher.exe unpatch      <gta_path>                — remove allin1_previews from dlclist.xml
+//   RpfPatcher.exe build-dlc    <loose_folder> <output_rpf> [--embed-rpf <src_folder> <dest_path>]
+//   RpfPatcher.exe convert-gen9 <ytd_folder>              — convert .ytd files from Legacy to Enhanced format
+//   RpfPatcher.exe inspect      <gta_path> <rpf_path>    — dump RPF structure + XML contents
 
 using System;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Xml.Linq;
+using CodeWalker.Core.Utils;
 using CodeWalker.GameFiles;
 
 namespace RpfPatcher
@@ -28,12 +30,13 @@ namespace RpfPatcher
             {
                 Console.Error.WriteLine(
                     "Usage:\n" +
-                    "  RpfPatcher.exe inject-ytd <gta_path> <ytd_folder>\n" +
-                    "  RpfPatcher.exe remove-ytd <gta_path> <prefix>\n" +
-                    "  RpfPatcher.exe patch      <gta_path>\n" +
-                    "  RpfPatcher.exe unpatch    <gta_path>\n" +
-                    "  RpfPatcher.exe build-dlc  <loose_folder> <output_rpf> [--embed-rpf <src> <dest>]\n" +
-                    "  RpfPatcher.exe inspect    <gta_path> <rpf_path>");
+                    "  RpfPatcher.exe inject-ytd   <gta_path> <ytd_folder>\n" +
+                    "  RpfPatcher.exe remove-ytd   <gta_path> <prefix>\n" +
+                    "  RpfPatcher.exe patch        <gta_path>\n" +
+                    "  RpfPatcher.exe unpatch      <gta_path>\n" +
+                    "  RpfPatcher.exe build-dlc    <loose_folder> <output_rpf> [--embed-rpf <src> <dest>]\n" +
+                    "  RpfPatcher.exe convert-gen9 <ytd_folder>\n" +
+                    "  RpfPatcher.exe inspect      <gta_path> <rpf_path>");
                 return 1;
             }
 
@@ -45,6 +48,8 @@ namespace RpfPatcher
                 return RemoveYtd(args);
             if (command == "build-dlc")
                 return BuildDlc(args);
+            if (command == "convert-gen9")
+                return ConvertGen9(args);
             if (command == "inspect")
                 return InspectRpf(args);
             if (command == "patch" || command == "unpatch")
@@ -474,6 +479,86 @@ namespace RpfPatcher
             }
 
             return count;
+        }
+
+        // ================================================================
+        //  convert-gen9: Convert .ytd files from Legacy to Enhanced format
+        //
+        //  GTA V Enhanced (gen9) uses different resource file versions.
+        //  YTD files built by YTDToolio are in Legacy format (version 13).
+        //  Enhanced requires version 5.  This command loads each .ytd and
+        //  re-saves it via CodeWalker with RpfManager.IsGen9 = true,
+        //  producing Enhanced-compatible files.
+        // ================================================================
+
+        static int ConvertGen9(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe convert-gen9 <ytd_folder>\n" +
+                    "  Converts all .ytd files in the folder from Legacy to Enhanced format.");
+                return 1;
+            }
+
+            string ytdFolder = args[1];
+
+            if (!Directory.Exists(ytdFolder))
+            {
+                Console.Error.WriteLine($"ERROR: Folder not found: {ytdFolder}");
+                return 4;
+            }
+
+            string[] ytdFiles = Directory.GetFiles(ytdFolder, "*.ytd");
+            if (ytdFiles.Length == 0)
+            {
+                Console.Error.WriteLine("ERROR: No .ytd files found in folder.");
+                return 4;
+            }
+
+            try
+            {
+                // Enable gen9 mode so Save() produces Enhanced-format files
+                var prevGen9 = RpfManager.IsGen9;
+                RpfManager.IsGen9 = true;
+
+                int converted = 0;
+                int skipped = 0;
+
+                foreach (string ytdPath in ytdFiles)
+                {
+                    string fileName = Path.GetFileName(ytdPath);
+                    byte[] data = File.ReadAllBytes(ytdPath);
+
+                    byte[] result = Gen9Converter.TryConvert(
+                        data, ".ytd",
+                        msg => Console.WriteLine($"  {msg}"),
+                        fileName, false, out bool wasConverted);
+
+                    if (wasConverted && result != null)
+                    {
+                        File.WriteAllBytes(ytdPath, result);
+                        Console.WriteLine($"  + {fileName} converted ({data.Length:N0} -> {result.Length:N0} bytes)");
+                        converted++;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"  ~ {fileName} already gen9, skipped");
+                        skipped++;
+                    }
+                }
+
+                RpfManager.IsGen9 = prevGen9;
+
+                Console.WriteLine($"Converted {converted} .ytd files to gen9 format ({skipped} already up to date).");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                Console.Error.WriteLine(ex.StackTrace);
+                return 99;
+            }
         }
 
         // ================================================================
