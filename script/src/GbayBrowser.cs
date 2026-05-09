@@ -1784,6 +1784,7 @@ namespace ALLIN1
                 if (isHover)
                     _gearHoverCard = i;
 
+                if (startIdx + i >= _gearFiltered.Count) break;
                 GearCard card = _gearFiltered[startIdx + i];
                 DrawGearCard(card, cardLeft, cardTop, cardW, isSelected, isHover);
             }
@@ -1920,13 +1921,13 @@ namespace ALLIN1
             if (input.PageLeft && _gearPage > 0)
             {
                 _gearPage--;
-                _gearSelectedCard = Math.Min(_gearSelectedCard, GetGearPageCount() - 1);
+                _gearSelectedCard = Math.Min(_gearSelectedCard, Math.Max(0, GetGearPageCount() - 1));
                 GbayRenderer.PlayNav();
             }
             else if (input.PageRight && _gearPage < _gearTotalPages - 1)
             {
                 _gearPage++;
-                _gearSelectedCard = Math.Min(_gearSelectedCard, GetGearPageCount() - 1);
+                _gearSelectedCard = Math.Min(_gearSelectedCard, Math.Max(0, GetGearPageCount() - 1));
                 GbayRenderer.PlayNav();
             }
 
@@ -1934,7 +1935,7 @@ namespace ALLIN1
             {
                 int col = _gearSelectedCard % GRID_COLS;
                 int row = _gearSelectedCard / GRID_COLS;
-                int maxIdx = GetGearPageCount() - 1;
+                int maxIdx = Math.Max(0, GetGearPageCount() - 1);
 
                 if (input.DirX != 0)
                     col = Math.Max(0, Math.Min(col + input.DirX, GRID_COLS - 1));
@@ -1956,7 +1957,7 @@ namespace ALLIN1
             if (accepted && _gearFiltered.Count > 0)
             {
                 int idx = _gearPage * PAGE_SIZE + _gearSelectedCard;
-                if (idx < _gearFiltered.Count)
+                if (idx >= 0 && idx < _gearFiltered.Count)
                 {
                     GearCard card = _gearFiltered[idx];
 
@@ -1992,6 +1993,8 @@ namespace ALLIN1
             _gearFiltered.Clear();
 
             Ped player = Game.Player.Character;
+            if (_gearCategoryIndex < 0 || _gearCategoryIndex >= GEAR_CATEGORIES.Length)
+                return;
             string[] items = GEAR_CATEGORIES[_gearCategoryIndex].Weapons;
 
             foreach (string gearId in items)
@@ -2070,7 +2073,7 @@ namespace ALLIN1
         private int GetGearPageCount()
         {
             int startIdx = _gearPage * PAGE_SIZE;
-            return Math.Min(PAGE_SIZE, _gearFiltered.Count - startIdx);
+            return Math.Max(0, Math.Min(PAGE_SIZE, _gearFiltered.Count - startIdx));
         }
 
         // ------------------------------------------------------------------ //
