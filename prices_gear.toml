@@ -1,0 +1,19 @@
+# GTA V ALLIN1 - Gear & Equipment Prices
+# Edit these to customize what gear costs in single player.
+# Set gbay_free_mode = true in config.toml to make ALL purchases free
+# regardless of this file.
+
+[protection]
+ARMOR_SUPER_LIGHT = 500
+ARMOR_LIGHT = 1000
+ARMOR_STANDARD = 1500
+ARMOR_HEAVY = 2000
+ARMOR_SUPER_HEAVY = 2500
+
+[equipment]
+GADGET_PARACHUTE = 300
+WEAPON_SMOKEGRENADE = 150
+WEAPON_FIREEXTINGUISHER = 100
+WEAPON_PETROLCAN = 100
+WEAPON_HAZARDCAN = 250
+WEAPON_NIGHTVISION = 5000

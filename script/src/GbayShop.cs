@@ -19,6 +19,7 @@ namespace ALLIN1
         private static readonly string SCRIPTS_DIR =
             AppDomain.CurrentDomain.BaseDirectory;
         private static readonly string CONFIG_PATH = Path.Combine(SCRIPTS_DIR, "ALLIN1.toml");
+        private static readonly string GEAR_PRICES_PATH = Path.Combine(SCRIPTS_DIR, "prices_gear.toml");
         private static readonly string LOG_PATH = Path.Combine(SCRIPTS_DIR, "ALLIN1_gbay.log");
 
         private Keys _openKey = Keys.F9;
@@ -138,6 +139,42 @@ namespace ALLIN1
             }
         }
 
+        private void LoadGearPrices()
+        {
+            if (!File.Exists(GEAR_PRICES_PATH))
+                return;
+
+            try
+            {
+                int count = 0;
+                foreach (string rawLine in File.ReadAllLines(GEAR_PRICES_PATH))
+                {
+                    string line = rawLine.Trim();
+                    if (line.Length == 0 || line.StartsWith("#") ||
+                        (line.StartsWith("[") && line.EndsWith("]")))
+                        continue;
+
+                    int eq = line.IndexOf('=');
+                    if (eq < 0) continue;
+
+                    string key = line.Substring(0, eq).Trim();
+                    string val = line.Substring(eq + 1).Trim();
+
+                    if (int.TryParse(val, out int price))
+                    {
+                        GearList.Prices[key] = price;
+                        count++;
+                    }
+                }
+
+                Log($"LoadGearPrices: loaded {count} prices from {GEAR_PRICES_PATH}");
+            }
+            catch (Exception ex)
+            {
+                LogException("LoadGearPrices", ex);
+            }
+        }
+
         // ------------------------------------------------------------------ //
         //  Initialization                                                     //
         // ------------------------------------------------------------------ //
@@ -145,6 +182,7 @@ namespace ALLIN1
         private void Initialize()
         {
             LoadConfig();
+            LoadGearPrices();
             Log($"=== GBAY Initialized: key={_openKey} freeMode={_freeMode} garageDebug={_garageDebug} ===");
 
             try

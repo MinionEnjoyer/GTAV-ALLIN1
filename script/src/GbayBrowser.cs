@@ -1832,21 +1832,20 @@ namespace ALLIN1
 
             float statusY = textTop + (nameLines > 1 ? 0.057f : 0.042f);
 
-            // Status or price (right-aligned)
+            // Status or price
             if (card.Owned)
             {
                 string statusText = GearList.IsArmor(card.GearId) ? "EQUIPPED" : "OWNED";
-                GbayRenderer.DrawText(statusText, textRight, statusY,
-                    0.28f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CHALET,
-                    false, false, true);
+                GbayRenderer.DrawText(statusText, textLeft, statusY,
+                    0.28f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CHALET);
             }
             else
             {
                 string priceText = card.Price <= 0 ? "FREE" : $"${card.Price:N0}";
                 Color priceColor = card.Price <= 0
                     ? GbayRenderer.TextPriceFree : GbayRenderer.TextPrice;
-                GbayRenderer.DrawText(priceText, textRight, statusY,
-                    0.30f, priceColor, GbayRenderer.FONT_CHALET, false, false, true);
+                GbayRenderer.DrawText(priceText, textLeft, statusY,
+                    0.30f, priceColor, GbayRenderer.FONT_CHALET);
             }
         }
 
