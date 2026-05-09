@@ -702,16 +702,16 @@ namespace ALLIN1
             }
             else
             {
-                // Franklin — not yet captured, use the debug overlay (F10) to find.
-                // Applying same structure as Michael/Trevor with validation.
-                SafeSetComponent(player, 3,  5, 1); // torso
-                SafeSetComponent(player, 4,  5, 1); // legs
-                SafeSetComponent(player, 5,  1, 1); // hands
-                SafeSetComponent(player, 6,  1, 1); // shoes
-                SafeSetComponent(player, 8,  5, 2); // shirt/accessory
-                SafeSetComponent(player, 9,  1, 2); // body armor
-                SafeSetComponent(player, 11, 0, 1); // aux/torso2
-                SafeSetProp(player, 0, 26, 1);      // helmet
+                // Franklin — partially captured via outfit editor.
+                // Body armor confirmed, other slots use Michael's pattern with validation.
+                SafeSetComponent(player, 3,  5, 1); // torso (placeholder)
+                SafeSetComponent(player, 4,  5, 1); // legs (placeholder)
+                SafeSetComponent(player, 5,  1, 1); // hands (placeholder)
+                SafeSetComponent(player, 6,  1, 1); // shoes (placeholder)
+                SafeSetComponent(player, 8,  5, 2); // shirt/accessory (placeholder)
+                SafeSetComponent(player, 9,  3, 0); // body armor — confirmed D3/T0
+                SafeSetComponent(player, 11, 0, 1); // aux/torso2 (placeholder)
+                SafeSetProp(player, 0, 26, 1);      // helmet (placeholder)
             }
         }
 

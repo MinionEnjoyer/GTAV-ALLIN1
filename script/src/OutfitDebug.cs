@@ -296,25 +296,36 @@ namespace ALLIN1
                 bool isSelected = i == _selectedSlot;
 
                 int drawable, texture, maxDrawable, maxTexture;
-                if (_propMode)
+                try
                 {
-                    drawable = Function.Call<int>(Hash.GET_PED_PROP_INDEX, player, slot);
-                    texture = Function.Call<int>(Hash.GET_PED_PROP_TEXTURE_INDEX, player, slot);
-                    maxDrawable = Function.Call<int>(
-                        Hash.GET_NUMBER_OF_PED_PROP_DRAWABLE_VARIATIONS, player, slot);
-                    maxTexture = drawable >= 0
-                        ? Function.Call<int>(
-                            Hash.GET_NUMBER_OF_PED_PROP_TEXTURE_VARIATIONS, player, slot, drawable)
-                        : 0;
+                    if (_propMode)
+                    {
+                        drawable = Function.Call<int>(Hash.GET_PED_PROP_INDEX, player, slot);
+                        texture = drawable >= 0
+                            ? Function.Call<int>(Hash.GET_PED_PROP_TEXTURE_INDEX, player, slot)
+                            : 0;
+                        maxDrawable = Function.Call<int>(
+                            Hash.GET_NUMBER_OF_PED_PROP_DRAWABLE_VARIATIONS, player, slot);
+                        maxTexture = drawable >= 0 && maxDrawable > 0
+                            ? Function.Call<int>(
+                                Hash.GET_NUMBER_OF_PED_PROP_TEXTURE_VARIATIONS, player, slot, drawable)
+                            : 0;
+                    }
+                    else
+                    {
+                        drawable = Function.Call<int>(Hash.GET_PED_DRAWABLE_VARIATION, player, slot);
+                        texture = Function.Call<int>(Hash.GET_PED_TEXTURE_VARIATION, player, slot);
+                        maxDrawable = Function.Call<int>(
+                            Hash.GET_NUMBER_OF_PED_DRAWABLE_VARIATIONS, player, slot);
+                        maxTexture = maxDrawable > 0
+                            ? Function.Call<int>(
+                                Hash.GET_NUMBER_OF_PED_TEXTURE_VARIATIONS, player, slot, drawable)
+                            : 0;
+                    }
                 }
-                else
+                catch
                 {
-                    drawable = Function.Call<int>(Hash.GET_PED_DRAWABLE_VARIATION, player, slot);
-                    texture = Function.Call<int>(Hash.GET_PED_TEXTURE_VARIATION, player, slot);
-                    maxDrawable = Function.Call<int>(
-                        Hash.GET_NUMBER_OF_PED_DRAWABLE_VARIATIONS, player, slot);
-                    maxTexture = Function.Call<int>(
-                        Hash.GET_NUMBER_OF_PED_TEXTURE_VARIATIONS, player, slot, drawable);
+                    drawable = 0; texture = 0; maxDrawable = 0; maxTexture = 0;
                 }
 
                 float rowCX = panelCX;
@@ -363,28 +374,41 @@ namespace ALLIN1
         private void DrawControlButtons(Ped player, float mx, float my, bool clicked, float y)
         {
             int slotIdx = _selectedSlot;
+            if (_propMode && slotIdx >= PROP_SLOTS.Length)
+                slotIdx = 0;
             int slot = _propMode ? PROP_SLOTS[slotIdx] : slotIdx;
 
             int drawable, texture, maxDrawable, maxTexture;
-            if (_propMode)
+            try
             {
-                drawable = Function.Call<int>(Hash.GET_PED_PROP_INDEX, player, slot);
-                texture = Function.Call<int>(Hash.GET_PED_PROP_TEXTURE_INDEX, player, slot);
-                maxDrawable = Function.Call<int>(
-                    Hash.GET_NUMBER_OF_PED_PROP_DRAWABLE_VARIATIONS, player, slot);
-                maxTexture = drawable >= 0
-                    ? Function.Call<int>(
-                        Hash.GET_NUMBER_OF_PED_PROP_TEXTURE_VARIATIONS, player, slot, drawable)
-                    : 0;
+                if (_propMode)
+                {
+                    drawable = Function.Call<int>(Hash.GET_PED_PROP_INDEX, player, slot);
+                    texture = drawable >= 0
+                        ? Function.Call<int>(Hash.GET_PED_PROP_TEXTURE_INDEX, player, slot)
+                        : 0;
+                    maxDrawable = Function.Call<int>(
+                        Hash.GET_NUMBER_OF_PED_PROP_DRAWABLE_VARIATIONS, player, slot);
+                    maxTexture = drawable >= 0 && maxDrawable > 0
+                        ? Function.Call<int>(
+                            Hash.GET_NUMBER_OF_PED_PROP_TEXTURE_VARIATIONS, player, slot, drawable)
+                        : 0;
+                }
+                else
+                {
+                    drawable = Function.Call<int>(Hash.GET_PED_DRAWABLE_VARIATION, player, slot);
+                    texture = Function.Call<int>(Hash.GET_PED_TEXTURE_VARIATION, player, slot);
+                    maxDrawable = Function.Call<int>(
+                        Hash.GET_NUMBER_OF_PED_DRAWABLE_VARIATIONS, player, slot);
+                    maxTexture = maxDrawable > 0
+                        ? Function.Call<int>(
+                            Hash.GET_NUMBER_OF_PED_TEXTURE_VARIATIONS, player, slot, drawable)
+                        : 0;
+                }
             }
-            else
+            catch
             {
-                drawable = Function.Call<int>(Hash.GET_PED_DRAWABLE_VARIATION, player, slot);
-                texture = Function.Call<int>(Hash.GET_PED_TEXTURE_VARIATION, player, slot);
-                maxDrawable = Function.Call<int>(
-                    Hash.GET_NUMBER_OF_PED_DRAWABLE_VARIATIONS, player, slot);
-                maxTexture = Function.Call<int>(
-                    Hash.GET_NUMBER_OF_PED_TEXTURE_VARIATIONS, player, slot, drawable);
+                drawable = 0; texture = 0; maxDrawable = 0; maxTexture = 0;
             }
 
             float rowY = y;
@@ -472,36 +496,43 @@ namespace ALLIN1
 
         private void CycleDrawable(Ped player, int slot, int dir)
         {
-            if (_propMode)
+            try
             {
-                int current = Function.Call<int>(Hash.GET_PED_PROP_INDEX, player, slot);
-                int max = Function.Call<int>(
-                    Hash.GET_NUMBER_OF_PED_PROP_DRAWABLE_VARIATIONS, player, slot);
+                if (_propMode)
+                {
+                    int current = Function.Call<int>(Hash.GET_PED_PROP_INDEX, player, slot);
+                    int max = Function.Call<int>(
+                        Hash.GET_NUMBER_OF_PED_PROP_DRAWABLE_VARIATIONS, player, slot);
+                    if (max <= 0) return;
 
-                int next = current + dir;
-                if (next < -1) next = max - 1;
-                if (next >= max) next = -1;
+                    int next = current + dir;
+                    if (next < -1) next = max - 1;
+                    if (next >= max) next = -1;
 
-                if (next < 0)
-                    Function.Call(Hash.CLEAR_PED_PROP, player, slot);
+                    if (next < 0)
+                        Function.Call(Hash.CLEAR_PED_PROP, player, slot);
+                    else
+                        Function.Call(Hash.SET_PED_PROP_INDEX, player, slot, next, 0, true);
+                }
                 else
-                    Function.Call(Hash.SET_PED_PROP_INDEX, player, slot, next, 0, true);
-            }
-            else
-            {
-                int current = Function.Call<int>(
-                    Hash.GET_PED_DRAWABLE_VARIATION, player, slot);
-                int max = Function.Call<int>(
-                    Hash.GET_NUMBER_OF_PED_DRAWABLE_VARIATIONS, player, slot);
-                if (max <= 0) return;
+                {
+                    int current = Function.Call<int>(
+                        Hash.GET_PED_DRAWABLE_VARIATION, player, slot);
+                    int max = Function.Call<int>(
+                        Hash.GET_NUMBER_OF_PED_DRAWABLE_VARIATIONS, player, slot);
+                    if (max <= 0) return;
 
-                int next = (current + dir + max) % max;
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, slot, next, 0, 0);
+                    int next = (current + dir + max) % max;
+                    Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, slot, next, 0, 0);
+                }
             }
+            catch { }
         }
 
         private void CycleTexture(Ped player, int slot, int dir)
         {
+            try
+            {
             if (_propMode)
             {
                 int drawable = Function.Call<int>(Hash.GET_PED_PROP_INDEX, player, slot);
@@ -529,6 +560,8 @@ namespace ALLIN1
                 int nextTex = (currentTex + dir + maxTex) % maxTex;
                 Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, slot, drawable, nextTex, 0);
             }
+            }
+            catch { }
         }
 
         // ------------------------------------------------------------------ //
