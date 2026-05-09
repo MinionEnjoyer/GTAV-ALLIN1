@@ -1,10 +1,10 @@
 // OutfitDebug.cs -- Debug overlay that displays all ped component/prop IDs.
 //
-// F10        = Toggle overlay on/off
-// Up/Down    = Select component/prop slot
-// Left/Right = Cycle drawable ID on selected slot
-// [ / ]      = Cycle texture ID on selected slot
-// F11        = Toggle between component mode and prop mode
+// F10            = Toggle overlay on/off
+// Numpad 8/2     = Select component/prop slot (up/down)
+// Numpad 4/6     = Cycle drawable ID on selected slot
+// Numpad 7/9     = Cycle texture ID on selected slot
+// F11            = Toggle between component mode and prop mode
 
 using System;
 using System.Windows.Forms;
@@ -76,17 +76,17 @@ namespace ALLIN1
                 _selectedSlot = 0;
             }
 
-            // Up/Down = select slot
+            // Numpad 8/2 = select slot (up/down)
             int maxSlots = _propMode ? PROP_SLOTS.Length : 12;
-            if (e.KeyCode == Keys.Up)
+            if (e.KeyCode == Keys.NumPad8)
                 _selectedSlot = (_selectedSlot - 1 + maxSlots) % maxSlots;
-            if (e.KeyCode == Keys.Down)
+            if (e.KeyCode == Keys.NumPad2)
                 _selectedSlot = (_selectedSlot + 1) % maxSlots;
 
-            // Left/Right = cycle drawable
-            if (e.KeyCode == Keys.Left || e.KeyCode == Keys.Right)
+            // Numpad 4/6 = cycle drawable
+            if (e.KeyCode == Keys.NumPad4 || e.KeyCode == Keys.NumPad6)
             {
-                int dir = e.KeyCode == Keys.Right ? 1 : -1;
+                int dir = e.KeyCode == Keys.NumPad6 ? 1 : -1;
 
                 if (_propMode)
                 {
@@ -118,10 +118,10 @@ namespace ALLIN1
                 }
             }
 
-            // [ / ] = cycle texture
-            if (e.KeyCode == Keys.OemOpenBrackets || e.KeyCode == Keys.OemCloseBrackets)
+            // Numpad 7/9 = cycle texture
+            if (e.KeyCode == Keys.NumPad7 || e.KeyCode == Keys.NumPad9)
             {
-                int dir = e.KeyCode == Keys.OemCloseBrackets ? 1 : -1;
+                int dir = e.KeyCode == Keys.NumPad9 ? 1 : -1;
 
                 if (_propMode)
                 {
@@ -183,7 +183,7 @@ namespace ALLIN1
             else if (player.Model == new Model(PedHash.Trevor)) charName = "Trevor";
             DrawDebugText($"Character: {charName} (0x{modelHash:X8})", x, y, scale, font);
             y += lineH;
-            DrawDebugText("Up/Down=slot  Left/Right=drawable  [/]=texture", x, y, scale, font);
+            DrawDebugText("Num8/2=slot  Num4/6=drawable  Num7/9=texture", x, y, scale, font);
             y += lineH * 1.5f;
 
             if (!_propMode)
@@ -201,7 +201,7 @@ namespace ALLIN1
                     int maxTexture = Function.Call<int>(
                         Hash.GET_NUMBER_OF_PED_TEXTURE_VARIATIONS, player, i, drawable);
 
-                    bool selected = !_propMode && i == _selectedSlot;
+                    bool selected = i == _selectedSlot;
                     string marker = selected ? ">> " : "   ";
                     string line = $"{marker}{COMP_NAMES[i]}: D={drawable}/{maxDrawable}  T={texture}/{maxTexture}";
 
@@ -230,7 +230,7 @@ namespace ALLIN1
                             Hash.GET_NUMBER_OF_PED_PROP_TEXTURE_VARIATIONS, player, slot, drawable)
                         : 0;
 
-                    bool selected = _propMode && p == _selectedSlot;
+                    bool selected = p == _selectedSlot;
                     string marker = selected ? ">> " : "   ";
                     string status = drawable < 0 ? "NONE" : $"D={drawable}/{maxDrawable}  T={texture}/{maxTexture}";
                     string line = $"{marker}{PROP_NAMES[p]}: {status}";

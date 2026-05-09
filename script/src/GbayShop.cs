@@ -38,6 +38,7 @@ namespace ALLIN1
         private static int _savedMaxHealth;
         private static int[] _savedComponents; // 12 components: drawable per slot
         private static int[] _savedTextures;   // 12 components: texture per slot
+        private static PedHash _lastCharacter; // track character switches
 
         // --- Browser UI ---
         private GbayBrowser _browser;
@@ -635,57 +636,119 @@ namespace ALLIN1
             //
             // The suit is built from multiple component slots + helmet prop.
             // Each character has different drawable IDs.
+            // Uses SafeSetComponent to validate drawable/texture are in range
+            // before applying (mission context may have different ranges than free-roam).
 
             if (ch == PedHash.Michael)
             {
                 // Michael — captured during Paleto Score (Enhanced)
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 3,  5, 1, 0); // torso
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 4,  5, 1, 0); // legs
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 5,  1, 1, 0); // hands
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 6,  1, 1, 0); // shoes
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 8,  5, 2, 0); // shirt/accessory
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 9,  1, 2, 0); // body armor
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 11, 0, 1, 0); // aux/torso2
-                Function.Call(Hash.SET_PED_PROP_INDEX, player, 0, 26, 1, true);       // helmet
-                Function.Call(Hash.SET_PED_PROP_INDEX, player, 2,  0, 1, true);       // ears
+                SafeSetComponent(player, 3,  5, 1); // torso
+                SafeSetComponent(player, 4,  5, 1); // legs
+                SafeSetComponent(player, 5,  1, 1); // hands
+                SafeSetComponent(player, 6,  1, 1); // shoes
+                SafeSetComponent(player, 8,  5, 2); // shirt/accessory
+                SafeSetComponent(player, 9,  1, 2); // body armor
+                SafeSetComponent(player, 11, 0, 1); // aux/torso2
+                SafeSetProp(player, 0, 26, 1);      // helmet
+                SafeSetProp(player, 2,  0, 1);      // ears
             }
             else if (ch == PedHash.Trevor)
             {
                 // Trevor — captured during Paleto Score (Enhanced)
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 3,  2, 1, 0); // torso
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 4,  2, 1, 0); // legs
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 5,  1, 1, 0); // hands
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 6,  1, 1, 0); // shoes
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 8,  2, 1, 0); // shirt/accessory
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 9,  1, 4, 0); // body armor
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 11, 0, 0, 0); // aux/torso2
-                Function.Call(Hash.SET_PED_PROP_INDEX, player, 0, 24, 1, true);       // helmet
+                SafeSetComponent(player, 3,  2, 1); // torso
+                SafeSetComponent(player, 4,  2, 1); // legs
+                SafeSetComponent(player, 5,  1, 1); // hands
+                SafeSetComponent(player, 6,  1, 1); // shoes
+                SafeSetComponent(player, 8,  2, 1); // shirt/accessory
+                SafeSetComponent(player, 9,  1, 4); // body armor
+                SafeSetComponent(player, 11, 0, 0); // aux/torso2
+                SafeSetProp(player, 0, 24, 1);      // helmet
             }
             else
             {
-                // Franklin — not yet captured, use Michael's pattern as base.
-                // TODO: capture actual Franklin IDs during Paleto Score replay.
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 3,  5, 1, 0); // torso
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 4,  5, 1, 0); // legs
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 5,  1, 1, 0); // hands
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 6,  1, 1, 0); // shoes
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 8,  5, 2, 0); // shirt/accessory
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 9,  1, 2, 0); // body armor
-                Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, 11, 0, 1, 0); // aux/torso2
-                Function.Call(Hash.SET_PED_PROP_INDEX, player, 0, 26, 1, true);       // helmet
+                // Franklin — not yet captured, use the debug overlay (F10) to find.
+                // Applying same structure as Michael/Trevor with validation.
+                SafeSetComponent(player, 3,  5, 1); // torso
+                SafeSetComponent(player, 4,  5, 1); // legs
+                SafeSetComponent(player, 5,  1, 1); // hands
+                SafeSetComponent(player, 6,  1, 1); // shoes
+                SafeSetComponent(player, 8,  5, 2); // shirt/accessory
+                SafeSetComponent(player, 9,  1, 2); // body armor
+                SafeSetComponent(player, 11, 0, 1); // aux/torso2
+                SafeSetProp(player, 0, 26, 1);      // helmet
             }
         }
 
         /// <summary>
-        /// Called every tick to apply damage reduction and check death.
-        /// Simulates ~80% bullet damage reduction (5x effective HP).
+        /// Set a component variation only if the drawable and texture are valid.
+        /// Falls back to texture 0 if the requested texture is out of range.
+        /// Skips entirely if the drawable is out of range.
+        /// </summary>
+        private static void SafeSetComponent(Ped player, int slot, int drawable, int texture)
+        {
+            int maxDrawable = Function.Call<int>(
+                Hash.GET_NUMBER_OF_PED_DRAWABLE_VARIATIONS, player, slot);
+            if (drawable >= maxDrawable)
+                return; // drawable doesn't exist for this ped in free-roam
+
+            int maxTexture = Function.Call<int>(
+                Hash.GET_NUMBER_OF_PED_TEXTURE_VARIATIONS, player, slot, drawable);
+            if (texture >= maxTexture)
+                texture = 0; // fall back to texture 0
+
+            Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, slot, drawable, texture, 0);
+        }
+
+        /// <summary>
+        /// Set a prop only if the drawable and texture are valid.
+        /// </summary>
+        private static void SafeSetProp(Ped player, int slot, int drawable, int texture)
+        {
+            int maxDrawable = Function.Call<int>(
+                Hash.GET_NUMBER_OF_PED_PROP_DRAWABLE_VARIATIONS, player, slot);
+            if (drawable >= maxDrawable)
+                return;
+
+            int maxTexture = Function.Call<int>(
+                Hash.GET_NUMBER_OF_PED_PROP_TEXTURE_VARIATIONS, player, slot, drawable);
+            if (texture >= maxTexture)
+                texture = 0;
+
+            Function.Call(Hash.SET_PED_PROP_INDEX, player, slot, drawable, texture, true);
+        }
+
+        /// <summary>
+        /// Called every tick to apply damage reduction, check death, and
+        /// detect character switches (which invalidate the juggernaut state).
         /// </summary>
         private void JuggernautTick()
         {
+            Ped player = Game.Player.Character;
+            if (player == null)
+                return;
+
+            // Detect character switch — reset juggernaut state
+            PedHash currentChar = GetCurrentCharacter();
+            if (currentChar != _lastCharacter)
+            {
+                if (JuggernautActive)
+                {
+                    // Character changed while juggernaut was active — just clear the flag.
+                    // The old character's outfit is already gone, and the new character
+                    // shouldn't inherit the juggernaut state.
+                    JuggernautActive = false;
+                    _savedComponents = null;
+                    _savedTextures = null;
+                    player.CanSufferCriticalHits = true;
+                    Function.Call(Hash.RESET_PED_MOVEMENT_CLIPSET, player, 0.25f);
+                    Log("Juggernaut cleared: character switch detected");
+                }
+                _lastCharacter = currentChar;
+            }
+
             if (!JuggernautActive) return;
 
-            Ped player = Game.Player.Character;
-            if (player == null || player.IsDead)
+            if (player.IsDead)
             {
                 JuggernautActive = false;
                 _savedComponents = null;
