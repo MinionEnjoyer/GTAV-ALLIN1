@@ -130,7 +130,8 @@ def uninstall(config: Config) -> list[Path]:
     scripts_dir = gta_path / SCRIPTS_DIR
     for fname in (DLL_FILENAME, LEMONUI_FILENAME, "ALLIN1.toml",
                    "ALLIN1.log", "ALLIN1_spawner.log", "ALLIN1_gbay.log",
-                   "ALLIN1_garages.json", "ALLIN1.ini"):
+                   "ALLIN1_garage.json", "ALLIN1_garages.json",
+                   "ALLIN1_garages.json.bak", "ALLIN1.ini"):
         fpath = scripts_dir / fname
         if fpath.exists():
             fpath.unlink()

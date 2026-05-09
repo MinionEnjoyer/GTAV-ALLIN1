@@ -92,8 +92,6 @@ namespace ALLIN1
             AppDomain.CurrentDomain.BaseDirectory;
         private static readonly string SAVE_PATH =
             Path.Combine(SCRIPTS_DIR, "ALLIN1_garage.json");
-        private static readonly string OLD_SAVE_PATH =
-            Path.Combine(SCRIPTS_DIR, "ALLIN1_garages.json");
         private static readonly string LOG_PATH =
             Path.Combine(SCRIPTS_DIR, "ALLIN1_gbay.log");
 
@@ -166,7 +164,6 @@ namespace ALLIN1
 
             try
             {
-                MigrateOldSaveFile();
                 Load();
 
                 int total = 0;
@@ -519,150 +516,6 @@ namespace ALLIN1
                     return i;
             }
             return -1;
-        }
-
-        // ------------------------------------------------------------------ //
-        //  Migration from old save format                                     //
-        // ------------------------------------------------------------------ //
-
-        private static void MigrateOldSaveFile()
-        {
-            if (!File.Exists(OLD_SAVE_PATH))
-                return;
-            if (File.Exists(SAVE_PATH))
-                return; // new file already exists, skip migration
-
-            Log("Migrating old ALLIN1_garages.json to new format...");
-
-            try
-            {
-                string json = File.ReadAllText(OLD_SAVE_PATH);
-
-                // Map old safehouse IDs to character keys
-                var oldToChar = new Dictionary<string, string>
-                {
-                    { "franklin_aunt", KEY_FRANKLIN },
-                    { "franklin_hills", KEY_FRANKLIN },
-                    { "grove_street", KEY_FRANKLIN },
-                    { "michael_beverly", KEY_MICHAEL },
-                    { "vinewood_garage", KEY_MICHAEL },
-                    { "trevor_countryside", KEY_TREVOR },
-                    { "trevor_city", KEY_TREVOR },
-                    { "trevor_stripclub", KEY_TREVOR },
-                    { "pillbox_hill", KEY_TREVOR },
-                };
-
-                // Parse old format and merge into new per-character lists
-                var migrated = new Dictionary<string, List<StoredVehicle>>
-                {
-                    { KEY_MICHAEL, new List<StoredVehicle>() },
-                    { KEY_FRANKLIN, new List<StoredVehicle>() },
-                    { KEY_TREVOR, new List<StoredVehicle>() },
-                };
-
-                // Use the same parser (reusing ParseOldJson)
-                ParseOldJson(json, oldToChar, migrated);
-
-                // Copy migrated data into _stored
-                foreach (var kvp in migrated)
-                    _stored[kvp.Key] = kvp.Value;
-
-                Save();
-
-                // Rename old file as backup
-                string backupPath = OLD_SAVE_PATH + ".bak";
-                if (File.Exists(backupPath))
-                    File.Delete(backupPath);
-                File.Move(OLD_SAVE_PATH, backupPath);
-
-                int total = 0;
-                foreach (var list in migrated.Values)
-                    total += list.Count;
-                Log($"Migration complete: {total} vehicles imported, old file backed up");
-            }
-            catch (Exception ex)
-            {
-                LogException("MigrateOldSaveFile", ex);
-            }
-        }
-
-        private static void ParseOldJson(
-            string json,
-            Dictionary<string, string> oldToChar,
-            Dictionary<string, List<StoredVehicle>> migrated)
-        {
-            // Minimal parser — same structure as old format:
-            // { "safehouse_id": [ { "model": "x", "slot": N, "color1": N, "color2": N }, ... ], ... }
-            string currentKey = null;
-
-            int i = 0;
-            while (i < json.Length)
-            {
-                char c = json[i];
-
-                if (c == '"')
-                {
-                    int end = json.IndexOf('"', i + 1);
-                    if (end < 0) break;
-                    string str = json.Substring(i + 1, end - i - 1);
-                    i = end + 1;
-
-                    if (currentKey == null)
-                    {
-                        int peek = SkipWhitespace(json, i);
-                        if (peek < json.Length && json[peek] == ':')
-                        {
-                            currentKey = str;
-                            i = peek + 1;
-                        }
-                    }
-                    continue;
-                }
-
-                if (c == '[' && currentKey != null)
-                {
-                    i++;
-                    var vehicles = ParseVehicleArray(json, ref i);
-
-                    // Map to character
-                    if (oldToChar.TryGetValue(currentKey, out string charKey)
-                        && migrated.ContainsKey(charKey))
-                    {
-                        var charList = migrated[charKey];
-                        foreach (var sv in vehicles)
-                        {
-                            if (charList.Count >= SLOT_COUNT)
-                                break;
-
-                            // Reassign slot index to avoid conflicts
-                            var occupied = new HashSet<int>();
-                            foreach (var existing in charList)
-                                occupied.Add(existing.Slot);
-
-                            int newSlot = -1;
-                            for (int s = 0; s < SLOT_COUNT; s++)
-                            {
-                                if (!occupied.Contains(s))
-                                {
-                                    newSlot = s;
-                                    break;
-                                }
-                            }
-
-                            if (newSlot >= 0)
-                            {
-                                sv.Slot = newSlot;
-                                charList.Add(sv);
-                            }
-                        }
-                    }
-
-                    currentKey = null;
-                    continue;
-                }
-
-                i++;
-            }
         }
 
         // ------------------------------------------------------------------ //
