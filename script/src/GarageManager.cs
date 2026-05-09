@@ -137,7 +137,6 @@ namespace ALLIN1
 
         // Player state
         private static bool _isPlayerInGarage;
-        private static Vector3 _returnPos;  // where to teleport back on exit
         private static float _returnHeading;
         private static Blip _entranceBlip;
         private static Blip _pedEntranceBlip;
@@ -246,18 +245,20 @@ namespace ALLIN1
 
             if (!_isPlayerInGarage)
             {
-                // Vehicle entrance marker (green)
-                World.DrawMarker(
-                    GTA.MarkerType.VerticalCylinder,
-                    ENTRANCE_POS - new Vector3(0f, 0f, 1f),
-                    Vector3.Zero, Vector3.Zero,
-                    new Vector3(2f, 2f, 1.5f),
-                    System.Drawing.Color.FromArgb(128, 0, 200, 0));
+                bool inVehicle = player.IsInVehicle();
 
-                float vehDist = player.Position.DistanceTo(ENTRANCE_POS);
-                if (vehDist < ENTER_RADIUS)
+                // ---- Vehicle entrance (ENTRANCE_POS) — only when in a vehicle ----
+                if (inVehicle)
                 {
-                    if (player.IsInVehicle())
+                    World.DrawMarker(
+                        GTA.MarkerType.VerticalCylinder,
+                        ENTRANCE_POS - new Vector3(0f, 0f, 1f),
+                        Vector3.Zero, Vector3.Zero,
+                        new Vector3(2f, 2f, 1.5f),
+                        System.Drawing.Color.FromArgb(128, 0, 200, 0));
+
+                    float vehDist = player.Position.DistanceTo(ENTRANCE_POS);
+                    if (vehDist < ENTER_RADIUS)
                     {
                         Vehicle veh = player.CurrentVehicle;
                         if (veh != null && veh.Exists() && IsPersonalVehicle(veh))
@@ -273,51 +274,25 @@ namespace ALLIN1
                                 EnterGarage(pedEntrance: false);
                         }
                     }
-                    else
+                }
+
+                // ---- Pedestrian entrance (PED_EXIT_DEST) — only when on foot ----
+                if (!inVehicle)
+                {
+                    World.DrawMarker(
+                        GTA.MarkerType.VerticalCylinder,
+                        PED_EXIT_DEST - new Vector3(0f, 0f, 1f),
+                        Vector3.Zero, Vector3.Zero,
+                        new Vector3(1.5f, 1.5f, 1.2f),
+                        System.Drawing.Color.FromArgb(128, 0, 200, 0));
+
+                    float pedDist = player.Position.DistanceTo(PED_EXIT_DEST);
+                    if (pedDist < ENTER_RADIUS)
                     {
                         GTA.UI.Screen.ShowHelpTextThisFrame(
                             "Press ~INPUT_CONTEXT~ to enter your garage.");
                         if (Game.IsControlJustPressed(GTA.Control.Context))
-                            EnterGarage(pedEntrance: false);
-                    }
-                }
-
-                // Pedestrian entrance marker (green)
-                World.DrawMarker(
-                    GTA.MarkerType.VerticalCylinder,
-                    PED_EXIT_DEST - new Vector3(0f, 0f, 1f),
-                    Vector3.Zero, Vector3.Zero,
-                    new Vector3(1.5f, 1.5f, 1.2f),
-                    System.Drawing.Color.FromArgb(128, 0, 200, 0));
-
-                float pedDist = player.Position.DistanceTo(PED_EXIT_DEST);
-                if (pedDist < ENTER_RADIUS)
-                {
-                    // Block personal vehicles at ped entrance too
-                    if (player.IsInVehicle())
-                    {
-                        Vehicle pedVeh = player.CurrentVehicle;
-                        if (pedVeh != null && pedVeh.Exists() && IsPersonalVehicle(pedVeh))
-                        {
-                            GTA.UI.Screen.ShowHelpTextThisFrame(
-                                "You cannot store your personal vehicle in the garage.");
-                        }
-                        else
-                        {
-                            GTA.UI.Screen.ShowHelpTextThisFrame(
-                                "Press ~INPUT_CONTEXT~ to enter your garage.");
-                            if (Game.IsControlJustPressed(GTA.Control.Context))
-                                EnterGarage(pedEntrance: true);
-                        }
-                    }
-                    else
-                    {
-                        GTA.UI.Screen.ShowHelpTextThisFrame("Press ~INPUT_CONTEXT~ to enter your garage.");
-
-                        if (Game.IsControlJustPressed(GTA.Control.Context))
-                        {
                             EnterGarage(pedEntrance: true);
-                        }
                     }
                 }
             }
@@ -328,19 +303,27 @@ namespace ALLIN1
                 // Keep all parked vehicles frozen with engines off
                 EnforceGarageVehicleState(player);
 
-                // When in a vehicle, show help text for the exit menu (E key)
+                // ---- Vehicle exit (VEHICLE_EXIT_INTERIOR) — only when in a vehicle ----
                 if (inVehicle)
                 {
-                    GTA.UI.Screen.ShowHelpTextThisFrame(
-                        "Press ~INPUT_CONTEXT~ to leave the garage with your vehicle.");
+                    World.DrawMarker(
+                        GTA.MarkerType.VerticalCylinder,
+                        VEHICLE_EXIT_INTERIOR - new Vector3(0f, 0f, 1f),
+                        Vector3.Zero, Vector3.Zero,
+                        new Vector3(2f, 2f, 1.5f),
+                        System.Drawing.Color.FromArgb(128, 0, 200, 0));
 
-                    if (Game.IsControlJustPressed(GTA.Control.Context))
+                    float vehExitDist = player.Position.DistanceTo(VEHICLE_EXIT_INTERIOR);
+                    if (vehExitDist < EXIT_RADIUS)
                     {
-                        LeaveGarage();
+                        GTA.UI.Screen.ShowHelpTextThisFrame(
+                            "Press ~INPUT_CONTEXT~ to leave the garage with your vehicle.");
+                        if (Game.IsControlJustPressed(GTA.Control.Context))
+                            LeaveGarage();
                     }
                 }
 
-                // Pedestrian exit marker (green) — only when on foot
+                // ---- Pedestrian exit (PED_EXIT) — only when on foot ----
                 if (!inVehicle)
                 {
                     World.DrawMarker(
@@ -353,31 +336,10 @@ namespace ALLIN1
                     float pedExitDist = player.Position.DistanceTo(PED_EXIT);
                     if (pedExitDist < EXIT_RADIUS)
                     {
-                        GTA.UI.Screen.ShowHelpTextThisFrame("Press ~INPUT_CONTEXT~ to leave the garage.");
-
+                        GTA.UI.Screen.ShowHelpTextThisFrame(
+                            "Press ~INPUT_CONTEXT~ to leave the garage.");
                         if (Game.IsControlJustPressed(GTA.Control.Context))
-                        {
-                            LeaveGarage(usePedExit: true);
-                        }
-                    }
-
-                    // Also allow exit from the vehicle entrance point on foot
-                    World.DrawMarker(
-                        GTA.MarkerType.VerticalCylinder,
-                        VEHICLE_EXIT_INTERIOR - new Vector3(0f, 0f, 1f),
-                        Vector3.Zero, Vector3.Zero,
-                        new Vector3(1.5f, 1.5f, 1.2f),
-                        System.Drawing.Color.FromArgb(128, 0, 200, 0));
-
-                    float vehExitDist = player.Position.DistanceTo(VEHICLE_EXIT_INTERIOR);
-                    if (vehExitDist < EXIT_RADIUS)
-                    {
-                        GTA.UI.Screen.ShowHelpTextThisFrame("Press ~INPUT_CONTEXT~ to leave the garage.");
-
-                        if (Game.IsControlJustPressed(GTA.Control.Context))
-                        {
                             LeaveGarage();
-                        }
                     }
                 }
             }
@@ -607,7 +569,6 @@ namespace ALLIN1
                 }
             }
 
-            _returnPos = player.Position;
             _returnHeading = player.Heading;
 
             // Choose spawn point based on which entrance was used
@@ -662,7 +623,7 @@ namespace ALLIN1
             Log($"EnterGarage: character={key}, vehicles spawned");
         }
 
-        private static void LeaveGarage(bool usePedExit = false)
+        private static void LeaveGarage()
         {
             // Save all vehicle states before leaving
             UpdateStoredFromLive();
@@ -736,9 +697,9 @@ namespace ALLIN1
             }
             else
             {
-                // Teleport player on foot
-                Vector3 dest = usePedExit ? PED_EXIT_DEST : _returnPos;
-                float heading = usePedExit ? PED_EXIT_DEST_HEADING : _returnHeading;
+                // Teleport player on foot — always to PED_EXIT_DEST
+                Vector3 dest = PED_EXIT_DEST;
+                float heading = PED_EXIT_DEST_HEADING;
 
                 player.IsPositionFrozen = true;
                 Function.Call(Hash.SET_ENTITY_COORDS, player,
@@ -747,7 +708,7 @@ namespace ALLIN1
                 Function.Call(Hash.SET_ENTITY_HEADING, player, heading);
                 player.IsPositionFrozen = false;
 
-                Log($"LeaveGarage: returned on foot (pedExit={usePedExit})");
+                Log("LeaveGarage: returned on foot to PED_EXIT_DEST");
             }
 
             _isPlayerInGarage = false;
