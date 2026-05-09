@@ -23,8 +23,8 @@ namespace ALLIN1
         // ------------------------------------------------------------------ //
 
         private const int HOLD_THRESHOLD_MS = 300;
-        private const float NEARBY_RADIUS = 6f;
-        private const float MAX_DIST_WHILE_SELECTING = 10f;
+        private const float NEARBY_RADIUS = 3.5f;
+        private const float MAX_DIST_WHILE_SELECTING = 5f;
         private const int EXECUTE_TIMEOUT_MS = 5000;
 
         // F key is Control.Enter on foot (23) and Control.VehicleExit in vehicle (75).
@@ -344,14 +344,23 @@ namespace ALLIN1
 
             if (!_playerInVehicle)
             {
-                // Outside vehicle — animated entry into specific seat
+                // Outside vehicle — only allow entry if very close to the vehicle
+                float dist = player.Position.DistanceTo(_targetVeh.Position);
+                if (dist > NEARBY_RADIUS)
+                {
+                    GbayRenderer.PlayError();
+                    Reset();
+                    return;
+                }
+
+                // Animated entry into specific seat
                 Function.Call(Hash.TASK_ENTER_VEHICLE,
                     player.Handle, _targetVeh.Handle, 5000, _targetSeatIdx, 2f, 1, 0);
             }
             else
             {
                 // Inside vehicle — shuffle for adjacent front seats,
-                // otherwise exit then re-enter the target seat (animated)
+                // otherwise warp directly to avoid teleportation appearance
                 int currentSeat = GetPlayerSeatIndex(player);
                 bool adjacentFront = (currentSeat == -1 && seat.Index == 0)
                                   || (currentSeat == 0 && seat.Index == -1);
@@ -362,11 +371,9 @@ namespace ALLIN1
                 }
                 else
                 {
-                    // Exit then re-enter: leave vehicle, then queue entry
-                    // into the target seat with animated approach
-                    Function.Call(Hash.TASK_LEAVE_VEHICLE, player.Handle,
-                        _targetVeh.Handle, 0);
-                    _reenterAfterExit = true;
+                    // Warp player directly into the target seat (no exit animation)
+                    Function.Call(Hash.SET_PED_INTO_VEHICLE,
+                        player.Handle, _targetVeh.Handle, _targetSeatIdx);
                 }
             }
 

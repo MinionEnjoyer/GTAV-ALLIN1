@@ -542,9 +542,9 @@ namespace ALLIN1
         {
             Ped player = Game.Player.Character;
 
-            // If player is in a vehicle, pull them out and delete it.
-            // Personal vehicles should have been blocked before reaching here,
-            // but double-check just in case.
+            // If player is in a vehicle, store it in the garage (if space),
+            // then pull them out and delete the outside instance.
+            // Personal vehicles are blocked — they can't be stored.
             if (player.IsInVehicle())
             {
                 Vehicle rideIn = player.CurrentVehicle;
@@ -557,12 +557,53 @@ namespace ALLIN1
                         return;
                     }
 
+                    // Try to store the vehicle in the garage
+                    string charKey = CharacterKey();
+                    if (!_stored.TryGetValue(charKey, out var storedList))
+                    {
+                        storedList = new List<StoredVehicle>();
+                        _stored[charKey] = storedList;
+                    }
+
+                    if (storedList.Count >= SLOT_COUNT)
+                    {
+                        GTA.UI.Screen.ShowSubtitle(
+                            $"~r~Garage full.~w~ ({storedList.Count}/{SLOT_COUNT} slots used)", 3000);
+                        return;
+                    }
+
+                    int slotIndex = FindEmptySlot(storedList);
+                    if (slotIndex < 0)
+                    {
+                        GTA.UI.Screen.ShowSubtitle("~r~Garage full. No empty slots.", 3000);
+                        return;
+                    }
+
+                    // Get model name from the vehicle
+                    string modelName = Function.Call<string>(
+                        Hash.GET_DISPLAY_NAME_FROM_VEHICLE_MODEL,
+                        (uint)rideIn.Model.Hash);
+                    if (!string.IsNullOrEmpty(modelName))
+                        modelName = modelName.ToLowerInvariant();
+                    else
+                        modelName = rideIn.Model.Hash.ToString();
+
+                    // Capture full vehicle state (colors, mods, etc.)
+                    StoredVehicle sv = CaptureVehicleState(rideIn, modelName, slotIndex);
+                    storedList.Add(sv);
+                    Save();
+
+                    string displayName = VehicleList.DisplayNames.ContainsKey(modelName)
+                        ? VehicleList.DisplayNames[modelName] : modelName;
+                    GTA.UI.Screen.ShowSubtitle(
+                        $"~g~{displayName}~w~ stored in garage. (Slot {slotIndex + 1})", 3000);
+                    Log($"EnterGarage: stored drive-in vehicle {modelName} -> slot {slotIndex}");
+
                     // Pull player out, then delete the outside vehicle
                     Function.Call(Hash.TASK_LEAVE_VEHICLE, player, rideIn, 16); // 16 = instant
                     Script.Wait(0);
                     rideIn.IsPersistent = true;
                     rideIn.Delete();
-                    Log("EnterGarage: deleted player's ride-in vehicle");
                 }
             }
 
