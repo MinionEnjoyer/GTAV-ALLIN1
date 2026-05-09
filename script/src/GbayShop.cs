@@ -23,10 +23,15 @@ namespace ALLIN1
         private static readonly string LOG_PATH = Path.Combine(SCRIPTS_DIR, "ALLIN1_gbay.log");
 
         private Keys _openKey = Keys.F9;
+        private Keys _nightVisionKey = Keys.N;
         private bool _freeMode;
         private bool _garageDebug;
         private bool _enableLogging = true;
         private bool _initialized;
+
+        // Night vision state
+        internal static bool NightVisionOwned;
+        private static bool _nightVisionActive;
 
         // --- Browser UI ---
         private GbayBrowser _browser;
@@ -398,6 +403,19 @@ namespace ALLIN1
             {
                 player.Armor = GearList.ArmorValues[gearId];
             }
+            else if (gearId == "WEAPON_NIGHTVISION")
+            {
+                NightVisionOwned = true;
+                GTA.UI.Screen.ShowSubtitle(
+                    _freeMode || price <= 0
+                        ? "~g~Night Vision~w~ acquired! Press ~y~N~w~ to toggle."
+                        : $"~g~Night Vision~w~ purchased for ~g~${price:N0}~w~. Press ~y~N~w~ to toggle.",
+                    4000);
+                if (!_freeMode && price > 0)
+                    Game.Player.Money -= price;
+                Log($"GiveGear: {gearId}, price=${price}");
+                return;
+            }
             else
             {
                 WeaponHash itemHash = (WeaponHash)Game.GenerateHash(gearId);
@@ -540,6 +558,11 @@ namespace ALLIN1
                 {
                     LogException("OnKeyDown", ex);
                 }
+            }
+            else if (e.KeyCode == _nightVisionKey && NightVisionOwned)
+            {
+                _nightVisionActive = !_nightVisionActive;
+                Function.Call(Hash.SET_NIGHTVISION, _nightVisionActive);
             }
         }
     }

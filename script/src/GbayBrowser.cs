@@ -1986,6 +1986,10 @@ namespace ALLIN1
                     int tierValue = GearList.ArmorValues[gearId];
                     owned = player.Armor >= tierValue;
                 }
+                else if (gearId == "WEAPON_NIGHTVISION")
+                {
+                    owned = GbayShop.NightVisionOwned;
+                }
                 else
                 {
                     owned = player.Weapons.HasWeapon((WeaponHash)Game.GenerateHash(gearId));
