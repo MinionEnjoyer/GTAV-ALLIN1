@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <Compile Remove="tools\**" />
+    <Compile Include="tools\CoordinateDisplay.cs" />
   </ItemGroup>
 
   <ItemGroup>
