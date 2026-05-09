@@ -88,7 +88,6 @@ namespace ALLIN1
         // Executing state
         private int _executeStart;
         private int _targetSeatIdx;
-        private bool _reenterAfterExit;
 
         // ------------------------------------------------------------------ //
         //  Constructor                                                        //
@@ -350,8 +349,7 @@ namespace ALLIN1
             }
             else
             {
-                // Inside vehicle — shuffle for adjacent front seats,
-                // otherwise exit then re-enter the target seat (animated)
+                // Inside vehicle — check if we can shuffle or need to warp
                 int currentSeat = GetPlayerSeatIndex(player);
                 bool adjacentFront = (currentSeat == -1 && seat.Index == 0)
                                   || (currentSeat == 0 && seat.Index == -1);
@@ -362,11 +360,7 @@ namespace ALLIN1
                 }
                 else
                 {
-                    // Exit then re-enter: leave vehicle, then queue entry
-                    // into the target seat with animated approach
-                    Function.Call(Hash.TASK_LEAVE_VEHICLE, player.Handle,
-                        _targetVeh.Handle, 0);
-                    _reenterAfterExit = true;
+                    player.Task.WarpIntoVehicle(_targetVeh, (VehicleSeat)_targetSeatIdx);
                 }
             }
 
@@ -386,26 +380,17 @@ namespace ALLIN1
                 return;
             }
 
-            // Check if vehicle became invalid
-            if (_targetVeh == null || !_targetVeh.Exists())
+            // Check if player reached the target seat
+            if (player.IsInVehicle()
+                && player.CurrentVehicle == _targetVeh
+                && GetPlayerSeatIndex(player) == _targetSeatIdx)
             {
                 Reset();
                 return;
             }
 
-            // If waiting to re-enter after exiting, queue entry once on foot
-            if (_reenterAfterExit && !player.IsInVehicle())
-            {
-                _reenterAfterExit = false;
-                Function.Call(Hash.TASK_ENTER_VEHICLE,
-                    player.Handle, _targetVeh.Handle, 5000, _targetSeatIdx, 2f, 1, 0);
-                return;
-            }
-
-            // Check if player reached the target seat
-            if (player.IsInVehicle()
-                && player.CurrentVehicle == _targetVeh
-                && GetPlayerSeatIndex(player) == _targetSeatIdx)
+            // Check if vehicle became invalid
+            if (_targetVeh == null || !_targetVeh.Exists())
             {
                 Reset();
                 return;
@@ -466,21 +451,17 @@ namespace ALLIN1
                     default: label = $"Extra {idx - 2}"; break;
                 }
 
-                // Grid layout: 2 columns matching vehicle sides
-                // Col 0 = left (driver side), Col 1 = right (passenger side)
-                // Row 0: Driver (-1), Passenger (0)
-                // Row 1: Left Rear (1), Right Rear (2)
-                // Row 2+: extras paired — odd idx left, even idx right
+                // Grid layout: 2 columns
+                // Row 0: Driver (col 0), Passenger (col 1)
+                // Row 1: Left Rear (col 0), Right Rear (col 1)
+                // Row 2+: extras paired left/right
                 int row, col;
-                if (idx == -1)      { row = 0; col = 0; } // Driver = left
-                else if (idx == 0)  { row = 0; col = 1; } // Passenger = right
-                else if (idx == 1)  { row = 1; col = 0; } // Left Rear = left
-                else if (idx == 2)  { row = 1; col = 1; } // Right Rear = right
+                if (idx == -1)      { row = 0; col = 0; }
+                else if (idx == 0)  { row = 0; col = 1; }
                 else
                 {
-                    // Extra seats: 3,4→row 2  5,6→row 3 ...
-                    row = (idx - 1) / 2 + 1;
-                    col = (idx % 2 == 1) ? 0 : 1; // odd idx = left, even = right
+                    row = (idx + 1) / 2;  // 1,2→1  3,4→2  5,6→3 ...
+                    col = (idx + 1) % 2 == 0 ? 1 : 0;
                 }
 
                 _seats.Add(new SeatInfo
@@ -609,7 +590,6 @@ namespace ALLIN1
             _executeStart = 0;
             _targetSeatIdx = 0;
             _playerInVehicle = false;
-            _reenterAfterExit = false;
         }
 
         private void LogError(string context, Exception ex)
