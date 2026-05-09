@@ -251,31 +251,42 @@ $RpfPatcherExe = Join-Path $RpfPatcherDir "RpfPatcher.exe"
 # Always rebuild RpfPatcher — it's fast and source may have changed.
 $RpfPatcherProj = Join-Path (Join-Path (Join-Path $ScriptRoot "tools") "RpfPatcher") "RpfPatcher.csproj"
 if (-not (Test-Path $RpfPatcherProj)) {
-    Write-Host "  [SKIP] RpfPatcher source not found — only needed for DLC texture pipeline." -ForegroundColor Yellow
-    Write-Host "         Re-download the repo ZIP or run 'git pull' to get it." -ForegroundColor Yellow
-} else {
-    # Ensure CodeWalker source is available
-    $CwDir = Join-Path (Join-Path $ScriptRoot "tools") "CodeWalker"
-    $CwCorePath = Join-Path (Join-Path $CwDir "CodeWalker.Core") "CodeWalker.Core.csproj"
-    if (-not (Test-Path $CwCorePath)) {
-        $GitDir = Join-Path $ScriptRoot ".git"
-        if (Test-Path $GitDir) {
-            Write-Host "  Initializing CodeWalker submodule..."
-            Push-Location $ScriptRoot
-            git submodule update --init --recursive tools/CodeWalker
-            Pop-Location
-        } else {
-            Write-Host "  Cloning CodeWalker (not a git repo, can't use submodule)..."
-            git clone --depth 1 "https://github.com/dexyfex/CodeWalker.git" $CwDir
-            if ($LASTEXITCODE -ne 0) { throw "Failed to clone CodeWalker" }
-        }
+    Write-Host "  RpfPatcher source not found — downloading from GitHub..." -ForegroundColor Yellow
+    $rpfSrcDir = Join-Path (Join-Path $ScriptRoot "tools") "RpfPatcher"
+    if (-not (Test-Path $rpfSrcDir)) { New-Item -ItemType Directory -Path $rpfSrcDir | Out-Null }
+    $branch = "main"
+    $baseUrl = "https://raw.githubusercontent.com/MinionEnjoyer/GTAV-ALLIN1/$branch/tools/RpfPatcher"
+    foreach ($f in @("RpfPatcher.csproj", "Program.cs")) {
+        $dest = Join-Path $rpfSrcDir $f
+        Write-Host "  Downloading $f..."
+        Invoke-WebRequest -Uri "$baseUrl/$f" -OutFile $dest -UseBasicParsing
     }
-
-    Write-Host "  Publishing RpfPatcher (self-contained win-x64)..."
-    dotnet publish $RpfPatcherProj -c Release -r win-x64 --self-contained true -o $RpfPatcherDir --nologo
-    if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for RpfPatcher" }
-    Write-Host "  Saved to $RpfPatcherDir" -ForegroundColor Green
+    if (-not (Test-Path $RpfPatcherProj)) {
+        throw "Failed to download RpfPatcher source files"
+    }
 }
+
+# Ensure CodeWalker source is available
+$CwDir = Join-Path (Join-Path $ScriptRoot "tools") "CodeWalker"
+$CwCorePath = Join-Path (Join-Path $CwDir "CodeWalker.Core") "CodeWalker.Core.csproj"
+if (-not (Test-Path $CwCorePath)) {
+    $GitDir = Join-Path $ScriptRoot ".git"
+    if (Test-Path $GitDir) {
+        Write-Host "  Initializing CodeWalker submodule..."
+        Push-Location $ScriptRoot
+        git submodule update --init --recursive tools/CodeWalker
+        Pop-Location
+    } else {
+        Write-Host "  Cloning CodeWalker (not a git repo, can't use submodule)..."
+        git clone --depth 1 "https://github.com/dexyfex/CodeWalker.git" $CwDir
+        if ($LASTEXITCODE -ne 0) { throw "Failed to clone CodeWalker" }
+    }
+}
+
+Write-Host "  Publishing RpfPatcher (self-contained win-x64)..."
+dotnet publish $RpfPatcherProj -c Release -r win-x64 --self-contained true -o $RpfPatcherDir --nologo
+if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for RpfPatcher" }
+Write-Host "  Saved to $RpfPatcherDir" -ForegroundColor Green
 
 # ---------------------------------------------------------------------
 #  Cleanup
