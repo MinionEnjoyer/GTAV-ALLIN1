@@ -604,6 +604,7 @@ namespace ALLIN1
                 if (isHover)
                     _hoverCard = i;
 
+                if (startIdx + i >= _filtered.Count) break;
                 VehicleCard card = _filtered[startIdx + i];
                 DrawCard(card, cardLeft, cardTop, cardW, isSelected, isHover, i);
             }
@@ -749,14 +750,14 @@ namespace ALLIN1
             if (input.PageLeft && _currentPage > 0)
             {
                 _currentPage--;
-                _selectedCard = Math.Min(_selectedCard, GetPageCount() - 1);
+                _selectedCard = Math.Min(_selectedCard, Math.Max(0, GetPageCount() - 1));
                 UpdateActiveDicts();
                 GbayRenderer.PlayNav();
             }
             else if (input.PageRight && _currentPage < _totalPages - 1)
             {
                 _currentPage++;
-                _selectedCard = Math.Min(_selectedCard, GetPageCount() - 1);
+                _selectedCard = Math.Min(_selectedCard, Math.Max(0, GetPageCount() - 1));
                 UpdateActiveDicts();
                 GbayRenderer.PlayNav();
             }
@@ -766,7 +767,7 @@ namespace ALLIN1
             {
                 int col = _selectedCard % GRID_COLS;
                 int row = _selectedCard / GRID_COLS;
-                int maxIdx = GetPageCount() - 1;
+                int maxIdx = Math.Max(0, GetPageCount() - 1);
 
                 if (input.DirX != 0)
                     col = Math.Max(0, Math.Min(col + input.DirX, GRID_COLS - 1));
@@ -790,7 +791,7 @@ namespace ALLIN1
             if (accepted && _filtered.Count > 0)
             {
                 int idx = _currentPage * PAGE_SIZE + _selectedCard;
-                if (idx < _filtered.Count)
+                if (idx >= 0 && idx < _filtered.Count)
                 {
                     VehicleCard card = _filtered[idx];
                     OpenPreview(card);
@@ -2126,6 +2127,8 @@ namespace ALLIN1
         {
             _filtered.Clear();
 
+            if (_activeCategoryIndex < 0 || _activeCategoryIndex >= CATEGORIES.Length)
+                return;
             string[] models = CATEGORIES[_activeCategoryIndex].Models;
             foreach (string model in models)
             {
@@ -2208,7 +2211,7 @@ namespace ALLIN1
         private int GetPageCount()
         {
             int startIdx = _currentPage * PAGE_SIZE;
-            return Math.Min(PAGE_SIZE, _filtered.Count - startIdx);
+            return Math.Max(0, Math.Min(PAGE_SIZE, _filtered.Count - startIdx));
         }
     }
 }
