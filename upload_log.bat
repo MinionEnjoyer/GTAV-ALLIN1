@@ -7,14 +7,14 @@ REM  this file after a crash to upload the log.
 REM ================================================================
 
 REM --- Path to your GTA V root folder (where GTA5.exe lives) ---
-set "GTA_PATH=C:\Program Files\Rockstar Games\Grand Theft Auto V"
+set "GTA_PATH=D:\Programs\Steam\steamapps\common\Grand Theft Auto V Enhanced"
 
 REM --- Path to your local clone of this repo ---
 set "REPO_PATH=%~dp0"
 
 REM ================================================================
 
-set "LOG_SRC=%GTA_PATH%\ALLIN1_gbay.log"
+set "LOG_SRC=%GTA_PATH%\scripts\ALLIN1_gbay.log"
 set "SHVDN_SRC=%GTA_PATH%\ScriptHookVDotNet3.log"
 set "LOG_DEST=%REPO_PATH%logs\ALLIN1_gbay.log"
 set "SHVDN_DEST=%REPO_PATH%logs\ScriptHookVDotNet3.log"
