@@ -243,6 +243,13 @@ namespace ALLIN1
             if (player == null || player.IsDead)
                 return;
 
+            // Update blip colors to match current character
+            BlipColor charColor = CharacterBlipColor();
+            if (_entranceBlip != null && _entranceBlip.Exists())
+                _entranceBlip.Color = charColor;
+            if (_pedEntranceBlip != null && _pedEntranceBlip.Exists())
+                _pedEntranceBlip.Color = charColor;
+
             if (!_isPlayerInGarage)
             {
                 bool inVehicle = player.IsInVehicle();
@@ -784,6 +791,14 @@ namespace ALLIN1
                 veh.IsPositionFrozen = true;
                 veh.IsEngineRunning = false;
             }
+        }
+
+        private static BlipColor CharacterBlipColor()
+        {
+            PedHash ch = GbayShop.GetCurrentCharacter();
+            if (ch == PedHash.Franklin) return BlipColor.Green;
+            if (ch == PedHash.Trevor)   return BlipColor.Orange;
+            return BlipColor.Blue; // Michael
         }
 
         private static string CharacterKey()
