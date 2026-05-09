@@ -713,6 +713,7 @@ namespace ALLIN1
                 Function.Call(Hash.SET_ENTITY_HEADING, player, heading);
                 player.IsPositionFrozen = false;
 
+                Save();
                 Log($"LeaveGarage: returned on foot to {CharacterKey()} ped entrance");
             }
 
