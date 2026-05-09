@@ -798,6 +798,11 @@ namespace ALLIN1
         {
             try
             {
+                // Auto-initialize on first tick so garage blips/markers
+                // appear immediately without needing to press F9 first.
+                if (!_initialized && !Game.IsLoading)
+                    Initialize();
+
                 if (_initialized)
                     GarageManager.OnTick();
 
