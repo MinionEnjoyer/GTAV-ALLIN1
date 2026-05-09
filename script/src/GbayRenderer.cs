@@ -249,7 +249,10 @@ namespace ALLIN1
                 Function.Call(Hash.SET_TEXT_CENTRE, true);
 
             if (rightAlign)
+            {
                 Function.Call(Hash.SET_TEXT_RIGHT_JUSTIFY, true);
+                Function.Call(Hash.SET_TEXT_WRAP, 0f, x);
+            }
 
             if (shadow)
                 Function.Call(Hash.SET_TEXT_DROP_SHADOW);

@@ -257,11 +257,28 @@ namespace ALLIN1
                 float vehDist = player.Position.DistanceTo(ENTRANCE_POS);
                 if (vehDist < ENTER_RADIUS)
                 {
-                    GTA.UI.Screen.ShowHelpTextThisFrame("Press ~INPUT_CONTEXT~ to enter your garage.");
-
-                    if (Game.IsControlJustPressed(GTA.Control.Context))
+                    if (player.IsInVehicle())
                     {
-                        EnterGarage(pedEntrance: false);
+                        Vehicle veh = player.CurrentVehicle;
+                        if (veh != null && veh.Exists() && IsPersonalVehicle(veh))
+                        {
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                "You cannot store your personal vehicle in the garage.");
+                        }
+                        else
+                        {
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                "Press ~INPUT_CONTEXT~ to enter your garage.");
+                            if (Game.IsControlJustPressed(GTA.Control.Context))
+                                EnterGarage(pedEntrance: false);
+                        }
+                    }
+                    else
+                    {
+                        GTA.UI.Screen.ShowHelpTextThisFrame(
+                            "Press ~INPUT_CONTEXT~ to enter your garage.");
+                        if (Game.IsControlJustPressed(GTA.Control.Context))
+                            EnterGarage(pedEntrance: false);
                     }
                 }
 
@@ -288,25 +305,18 @@ namespace ALLIN1
             {
                 bool inVehicle = player.IsInVehicle();
 
-                // Vehicle exit marker (yellow) — only when in a vehicle
+                // Keep all parked vehicles frozen with engines off
+                EnforceGarageVehicleState(player);
+
+                // When in a vehicle, show help text for the exit menu (E key)
                 if (inVehicle)
                 {
-                    World.DrawMarker(
-                        GTA.MarkerType.VerticalCylinder,
-                        VEHICLE_EXIT_INTERIOR - new Vector3(0f, 0f, 1f),
-                        Vector3.Zero, Vector3.Zero,
-                        new Vector3(2f, 2f, 1.5f),
-                        System.Drawing.Color.FromArgb(128, 200, 200, 0));
+                    GTA.UI.Screen.ShowHelpTextThisFrame(
+                        "Press ~INPUT_CONTEXT~ to leave the garage with your vehicle.");
 
-                    float dist = player.Position.DistanceTo(VEHICLE_EXIT_INTERIOR);
-                    if (dist < EXIT_RADIUS)
+                    if (Game.IsControlJustPressed(GTA.Control.Context))
                     {
-                        GTA.UI.Screen.ShowHelpTextThisFrame("Press ~INPUT_CONTEXT~ to drive out of the garage.");
-
-                        if (Game.IsControlJustPressed(GTA.Control.Context))
-                        {
-                            LeaveGarage();
-                        }
+                        LeaveGarage();
                     }
                 }
 
@@ -320,14 +330,33 @@ namespace ALLIN1
                         new Vector3(1.5f, 1.5f, 1.2f),
                         System.Drawing.Color.FromArgb(128, 0, 200, 0));
 
-                    float pedDist = player.Position.DistanceTo(PED_EXIT);
-                    if (pedDist < EXIT_RADIUS)
+                    float pedExitDist = player.Position.DistanceTo(PED_EXIT);
+                    if (pedExitDist < EXIT_RADIUS)
                     {
                         GTA.UI.Screen.ShowHelpTextThisFrame("Press ~INPUT_CONTEXT~ to leave the garage.");
 
                         if (Game.IsControlJustPressed(GTA.Control.Context))
                         {
                             LeaveGarage(usePedExit: true);
+                        }
+                    }
+
+                    // Also allow exit from the vehicle entrance point on foot
+                    World.DrawMarker(
+                        GTA.MarkerType.VerticalCylinder,
+                        VEHICLE_EXIT_INTERIOR - new Vector3(0f, 0f, 1f),
+                        Vector3.Zero, Vector3.Zero,
+                        new Vector3(1.5f, 1.5f, 1.2f),
+                        System.Drawing.Color.FromArgb(128, 0, 200, 0));
+
+                    float vehExitDist = player.Position.DistanceTo(VEHICLE_EXIT_INTERIOR);
+                    if (vehExitDist < EXIT_RADIUS)
+                    {
+                        GTA.UI.Screen.ShowHelpTextThisFrame("Press ~INPUT_CONTEXT~ to leave the garage.");
+
+                        if (Game.IsControlJustPressed(GTA.Control.Context))
+                        {
+                            LeaveGarage();
                         }
                     }
                 }
@@ -621,6 +650,48 @@ namespace ALLIN1
         // ------------------------------------------------------------------ //
         //  Helpers                                                            //
         // ------------------------------------------------------------------ //
+
+        /// <summary>
+        /// Check if a vehicle is the character's assigned personal vehicle
+        /// (e.g., Michael's Tailgater, Franklin's Buffalo, Trevor's Bodhi).
+        /// The game marks these with a "Player_Vehicle" decorator.
+        /// </summary>
+        private static bool IsPersonalVehicle(Vehicle veh)
+        {
+            return Function.Call<bool>(
+                (Hash)0x05661B80A8C9165F, // DECOR_EXIST_ON
+                veh, "Player_Vehicle");
+        }
+
+        /// <summary>
+        /// Every tick while inside the garage, keep all parked vehicles
+        /// frozen with engines off. The player's current vehicle is excluded
+        /// so they can get in/out of cars but not drive them around.
+        /// </summary>
+        private static void EnforceGarageVehicleState(Ped player)
+        {
+            Vehicle playerVeh = player.IsInVehicle() ? player.CurrentVehicle : null;
+
+            for (int i = 0; i < SLOT_COUNT; i++)
+            {
+                Vehicle veh = _handles[i];
+                if (veh == null || !veh.Exists())
+                    continue;
+
+                if (playerVeh != null && veh == playerVeh)
+                {
+                    // Player is sitting in this vehicle — keep it frozen
+                    // so they can't drive around. Engine stays off.
+                    veh.IsPositionFrozen = true;
+                    veh.IsEngineRunning = false;
+                    continue;
+                }
+
+                // All other parked vehicles stay frozen and engines off
+                veh.IsPositionFrozen = true;
+                veh.IsEngineRunning = false;
+            }
+        }
 
         private static string CharacterKey()
         {
