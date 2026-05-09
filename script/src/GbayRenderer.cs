@@ -138,11 +138,11 @@ namespace ALLIN1
         private static readonly HashSet<string> _requestedDicts = new HashSet<string>();
         private static readonly HashSet<string> _loadedDicts = new HashSet<string>();
         private static readonly HashSet<string> _failedDicts = new HashSet<string>();
-        private static readonly Dictionary<string, int> _requestTime = new Dictionary<string, int>();
+        private static int _failCheckCounter;
 
-        /// Dicts that haven't loaded within this many ms are marked failed
-        /// and no longer checked each frame.
-        private const int DICT_TIMEOUT_MS = 10000;
+        /// After this many consecutive IsDictLoaded checks returning false
+        /// (across all dicts), stop polling. Roughly 10s at 60fps.
+        private const int FAIL_CHECK_LIMIT = 600;
 
         private const string LOGO_DICT = "allin1_logo";
         private const string LOGO_TEX  = "phat";
@@ -153,10 +153,7 @@ namespace ALLIN1
             if (_failedDicts.Contains(dict))
                 return;
             if (_requestedDicts.Add(dict))
-            {
                 Function.Call(Hash.REQUEST_STREAMED_TEXTURE_DICT, dict, false);
-                _requestTime[dict] = GTA.Game.GameTime;
-            }
         }
 
         /// <summary>Check if a texture dictionary has been requested.</summary>
@@ -172,21 +169,18 @@ namespace ALLIN1
             if (!_requestedDicts.Contains(dict))
                 return false;
 
-            // Check if the native reports it loaded
             if (Function.Call<bool>(Hash.HAS_STREAMED_TEXTURE_DICT_LOADED, dict))
             {
                 _loadedDicts.Add(dict);
-                _requestTime.Remove(dict);
                 return true;
             }
 
-            // If it's been too long, mark as failed and stop polling
-            if (_requestTime.TryGetValue(dict, out int reqTime)
-                && GTA.Game.GameTime - reqTime > DICT_TIMEOUT_MS)
+            // After enough failed checks, mark all pending dicts as failed
+            _failCheckCounter++;
+            if (_failCheckCounter > FAIL_CHECK_LIMIT)
             {
-                _failedDicts.Add(dict);
-                _requestedDicts.Remove(dict);
-                _requestTime.Remove(dict);
+                _failedDicts.UnionWith(_requestedDicts);
+                _requestedDicts.Clear();
             }
 
             return false;
