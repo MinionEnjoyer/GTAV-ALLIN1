@@ -47,6 +47,7 @@ namespace ALLIN1
         internal string DisplayName;
         internal string Category;
         internal int Price;
+        internal bool Owned;
     }
 
     internal class GbayBrowser
@@ -720,7 +721,7 @@ namespace ALLIN1
                 0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
 
             // Control hints
-            string hints = "[Q/E] Page   [Z/X] Category   [Enter] Buy   [Esc] Back";
+            string hints = "[Q/E] Page   [Z/X] Category   [Enter] Buy/Remove   [Esc] Back";
             GbayRenderer.DrawText(hints, BROWSER_RIGHT - 0.01f, FOOTER_Y + 0.012f,
                 0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED,
                 false, false, true);
@@ -1873,13 +1874,21 @@ namespace ALLIN1
             int nameLines = GbayRenderer.DrawTextWrapped(card.DisplayName,
                 textLeft, textTop + 0.005f, 0.33f, GbayRenderer.TextDark, nameMaxW);
 
-            // Price (push down if name wrapped to 2 lines)
+            // Price or Owned status
             float priceY = nameLines > 1 ? textTop + 0.048f : textTop + 0.038f;
-            string priceText = card.Price <= 0 ? "FREE" : $"${card.Price:N0}";
-            Color priceColor = card.Price <= 0
-                ? GbayRenderer.TextPriceFree : GbayRenderer.TextPrice;
-            GbayRenderer.DrawText(priceText, textLeft, priceY,
-                0.30f, priceColor, GbayRenderer.FONT_CHALET);
+            if (card.Owned)
+            {
+                GbayRenderer.DrawText("EQUIPPED", textLeft, priceY,
+                    0.26f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CONDENSED);
+            }
+            else
+            {
+                string priceText = card.Price <= 0 ? "FREE" : $"${card.Price:N0}";
+                Color priceColor = card.Price <= 0
+                    ? GbayRenderer.TextPriceFree : GbayRenderer.TextPrice;
+                GbayRenderer.DrawText(priceText, textLeft, priceY,
+                    0.30f, priceColor, GbayRenderer.FONT_CHALET);
+            }
         }
 
         private void DrawGearFooter()
@@ -1973,7 +1982,7 @@ namespace ALLIN1
             if (_gearHoverCard >= 0 && _gearHoverCard != _gearSelectedCard)
                 _gearSelectedCard = _gearHoverCard;
 
-            // Select gear (purchase)
+            // Select gear (purchase or remove)
             bool accepted = input.Accept || (input.MouseClick && _gearHoverCard >= 0);
             if (accepted && _gearFiltered.Count > 0)
             {
@@ -1982,7 +1991,21 @@ namespace ALLIN1
                 {
                     GearCard card = _gearFiltered[idx];
                     GbayRenderer.PlaySelect();
-                    _shop.ExecuteGiveGear(card.GearId, card.Price);
+
+                    if (card.Owned)
+                    {
+                        // Remove equipped gear
+                        if (card.GearId == "WEAPON_NIGHTVISION")
+                            _shop.ExecuteRemoveNightVision();
+                        else if (GearList.IsArmor(card.GearId))
+                            _shop.ExecuteRemoveArmor(card.GearId);
+                        RebuildGearFilteredList();
+                    }
+                    else
+                    {
+                        _shop.ExecuteGiveGear(card.GearId, card.Price);
+                        RebuildGearFilteredList();
+                    }
                 }
             }
         }
@@ -2005,12 +2028,28 @@ namespace ALLIN1
                 string category = GearList.CategoryNames.ContainsKey(gearId)
                     ? GearList.CategoryNames[gearId] : "";
 
+                // Detect if this gear is currently equipped
+                bool owned = false;
+                if (gearId == "WEAPON_NIGHTVISION")
+                    owned = GbayShop.NightVisionOwned;
+                else if (gearId == GearList.ARMOR_JUGGERNAUT)
+                    owned = GbayShop.JuggernautActive;
+                else if (GearList.IsArmor(gearId))
+                    owned = Game.Player.Character.Armor >= GearList.ArmorValues[gearId];
+                else
+                {
+                    Hash itemHash = (Hash)Game.GenerateHash(gearId);
+                    owned = Function.Call<bool>(
+                        (Hash)0x8DECB02F88F428BC, Game.Player.Character, itemHash, false);
+                }
+
                 _gearFiltered.Add(new GearCard
                 {
                     GearId = gearId,
                     DisplayName = displayName,
                     Category = category,
                     Price = _shop.FreeMode ? 0 : price,
+                    Owned = owned,
                 });
             }
 
