@@ -1,6 +1,6 @@
 # GTA V ALLIN1 — Comprehensive Documentation
 
-GTA V ALLIN1 is a mod installer that ports 444 GTA Online DLC vehicles, 100+ weapons, and gear into GTA V single-player Story Mode. It includes a traffic spawner, an in-game shop (GBAY), a personal garage system, and a vehicle seat selector.
+GTA V ALLIN1 is a mod installer that ports 442 GTA Online DLC vehicles, 100+ weapons, and gear into GTA V single-player Story Mode. It includes a traffic spawner, an in-game shop (GBAY), a personal garage system, and a vehicle seat selector.
 
 Supports both GTA V Legacy and GTA V Enhanced editions.
 
@@ -55,6 +55,7 @@ ScriptHookV and ScriptHookVDotNet must be installed into the GTA V root director
    - `ALLIN1.dll` — main script
    - `LemonUI.SHVDN3.dll` — UI framework dependency
    - `ALLIN1.toml` — configuration (copy of `config.toml`)
+   - `prices_gear.toml` — gear price overrides
 5. Builds and deploys the preview texture DLC pack to `mods/update/x64/dlcpacks/allin1_previews/`
 6. Patches `dlclist.xml` inside `mods/update/update.rpf` to register the DLC
 7. Adds `-nobattleye` to `commandline.txt`
@@ -93,11 +94,11 @@ Configuration is stored in `config.toml` (copied to `scripts/ALLIN1.toml` during
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `enable_all` | `true` | Enable all 444 DLC vehicles. When false, use catalog to pick specific ones. |
+| `enable_all` | `true` | Enable all 442 DLC vehicles. When false, use catalog to pick specific ones. |
 | `disabled_classes` | `[]` | Vehicle classes to exclude (e.g., `["helicopters", "planes", "boats"]`). |
 | `disabled_vehicles` | `[]` | Specific model names to exclude (e.g., `["adder", "t20"]`). |
 
-Available classes: `compacts`, `coupes`, `sedans`, `suvs`, `muscle`, `sports`, `sportsclassics`, `super`, `offroad`, `motorcycles`, `military`, `industrial`, `vans`, `boats`, `helicopters`, `planes`, `openwheel`, `emergency`, `service`, `cycles`.
+Available classes: `compacts`, `coupes`, `sedans`, `suvs`, `muscle`, `sports`, `sportsclassics`, `super`, `offroad`, `motorcycles`, `military`, `industrial`, `vans`, `boats`, `helicopters`, `planes`, `openwheel`, `emergency`, `service`, `cycles`, `special`, `weaponized`.
 
 ### [script]
 
@@ -112,12 +113,13 @@ Available classes: `compacts`, `coupes`, `sedans`, `suvs`, `muscle`, `sports`, `
 
 ### Price Customization
 
-Vehicle and weapon prices are defined in two separate files at the project root:
+Prices are defined in three separate files at the project root:
 
 - `prices_vehicles.toml` — grouped by vehicle class
 - `prices_weapons.toml` — grouped by weapon category
+- `prices_gear.toml` — gear item prices
 
-Edit these files and re-run the installer (or regenerate the lists via CLI) to change in-game prices.
+Edit these files and re-run the installer (or regenerate the lists via CLI) to change in-game prices. Gear prices are loaded at runtime from `scripts/prices_gear.toml` without needing regeneration.
 
 ---
 
@@ -128,27 +130,32 @@ Edit these files and re-run the installer (or regenerate the lists via CLI) to c
 Press **F9** (configurable) to open the GBAY shop menu.
 
 **Top Menu** — choose between:
-- **Vehicles** — browse and purchase 444 DLC vehicles
+- **Vehicles** — browse and purchase 442 DLC vehicles
 - **Weapons** — browse and purchase 100+ weapons
 - **Gear** — purchase body armor, parachute, and utility items
-- **My Garage** — manage stored vehicles
+- **My Garage** — manage and sell stored vehicles
 
 **Vehicle Browser:**
-- 20 category tabs (Compacts, Coupes, Sedans, etc.) with scroll arrows
-- 3x3 card grid per page with vehicle preview images, name, manufacturer, and price
+- 22 category tabs (All, Compacts, Coupes, Sedans, SUVs, Muscle, Sports Classics, Super, Off-Road, Motorcycles, Vans, Boats, Helicopters, Planes, Military, Industrial, Open Wheel, Emergency, Cycles, Service, Special, Weaponized) with scroll arrows
+- 3x3 card grid per page with vehicle preview images, manufacturer, name, and price
+- Vehicle names wrap to a second line when too long for the card width
 - Full keyboard and mouse navigation
-- Click a vehicle to open a 3D preview with orbiting camera
-- Purchase and deliver to your current location
+- Click a vehicle to open a 3D preview with orbiting camera and zoom
+- Purchase and deliver to your garage
 
 **Weapon Browser:**
-- 10 category tabs (Pistols, SMGs, Shotguns, Rifles, etc.)
-- Shows owned status and ammo refill option
+- 11 category tabs (All, Pistols, SMGs, Shotguns, Assault Rifles, Machine Guns, Sniper Rifles, Heavy Weapons, Melee, Throwables, Miscellaneous)
+- Shows owned status and ammo refill option for owned weapons
+- Ammo refill confirmation prompt with cost breakdown (rounds x per-round cost)
 - Purchase gives weapon with starter ammo
 
 **Gear Browser:**
-- Categories: All, Protection, Equipment
-- Items: Body Armor ($500), Parachute ($300), Tear Gas ($150), Fire Extinguisher ($100), Jerry Can ($100), Hazardous Jerry Can ($250), Night Vision ($5,000)
-- Armor can be re-purchased to top up; gadgets show "OWNED" once acquired
+- 3 category tabs: All, Protection, Equipment
+- **Protection** (6 items): Super Light Armor ($500), Light Armor ($1,000), Standard Armor ($1,500), Heavy Armor ($2,000), Super Heavy Armor ($2,500), Juggernaut Armor ($50,000)
+- **Equipment** (6 items): Parachute ($300), Tear Gas ($150), Fire Extinguisher ($100), Jerry Can ($100), Hazardous Jerry Can ($250), Night Vision ($5,000)
+- Juggernaut Armor applies a full ballistic suit outfit, 1000 HP, 80% damage reduction, and heavy movement animation
+- Night Vision adds a toggleable mode (press **N** to toggle once purchased)
+- Grid-based card layout matching the vehicle and weapon browsers
 
 **Navigation:**
 | Key | Action |
@@ -186,10 +193,21 @@ When `rich_areas_only_supers` is enabled, super and sports cars only appear in w
 **Access:** Walk to the marker near Eclipse Towers on Eclipse Boulevard.
 
 **Features:**
-- 10 parking slots (two rows of 5)
+- 10 parking slots (two rows of 5, heading -105° and 134°)
 - Vehicles persist across game sessions via `ALLIN1_garages.json`
 - Vehicle colors are saved and restored
-- Vehicles spawn when entering and despawn when leaving
+- Vehicles spawn at fixed Z=-99.0 coordinates when entering the garage interior
+- Uses joaat hash-based reverse lookup for reliable model name resolution
+
+**Sell Vehicles:**
+- Each garage vehicle shows its sell price (60% of purchase price)
+- Click the "Sell" button or press Enter to sell and receive the money
+- Sell price is displayed inline next to each vehicle
+
+**Detail Cars:**
+- Click the "Detail All" button in the footer or press Q to clean all garage vehicles
+- Costs $500 (configurable via free mode)
+- Removes dirt and repairs visual damage on all stored vehicles
 
 ### Seat Selector
 
@@ -200,6 +218,22 @@ Hold **F** for 300ms near a vehicle to open the seat selection UI.
 - Quick tap F still works normally for default enter/exit
 - Color indicators: blue (your seat), green (selected), gray (free), red (occupied)
 - Works with multi-seat vehicles (buses, planes, etc.)
+
+### Night Vision (N)
+
+After purchasing Night Vision from the Gear shop, press **N** to toggle night vision on/off. State resets on death or game reload.
+
+### Juggernaut Armor
+
+Purchased from the Gear shop ($50,000). When equipped:
+
+- Applies the Paleto Score ballistic suit (character-specific drawables)
+- Sets max health to 1000 and heals back 80% of damage each tick
+- Disables headshot critical hit bonus
+- Applies heavy movement animation clipset (`ANIM_GROUP_MOVE_BALLISTIC`)
+- Saves and restores the previous outfit when removed
+- Automatically removed on character switch or death
+- Can be replaced by purchasing a lower armor tier
 
 ### Coordinate Display (F11)
 
@@ -234,7 +268,7 @@ GTA_V_ALLIN1/
 ├── .github/workflows/
 │   └── build-asi.yml              # GitHub Actions CI build
 ├── data/
-│   ├── vehicles.toml              # Vehicle database (444 entries)
+│   ├── vehicles.toml              # Vehicle database (442 entries)
 │   ├── weapons.toml               # Weapon database (100+ entries)
 │   └── templates/
 │       └── popgroups_base.xml     # Population group template
@@ -249,17 +283,20 @@ GTA_V_ALLIN1/
 │   │   ├── TrafficSpawner.cs      # DLC traffic integration
 │   │   ├── SeatSelector.cs        # Hold-F seat picker
 │   │   ├── VehicleHelper.cs       # Vehicle spawn utilities
-│   │   ├── VehicleList.cs         # Auto-generated vehicle data
+│   │   ├── VehicleList.cs         # Auto-generated vehicle data (442 vehicles)
 │   │   ├── WeaponList.cs          # Auto-generated weapon data
-│   │   └── GearList.cs            # Static gear item data
+│   │   └── GearList.cs            # Static gear item data (12 items)
 │   ├── tools/
 │   │   ├── CoordinateDisplay.cs   # F11 position overlay (included in build)
-│   │   └── GbayPreviewCapture.cs  # F10 automated screenshot tool (excluded)
-│   └── dist/                      # Pre-built binaries
-│       ├── ALLIN1.dll
-│       ├── LemonUI.SHVDN3.dll
-│       ├── PHAT.png               # GBAY logo
-│       └── previews/              # 444 vehicle preview PNGs
+│   │   ├── HeightChecker.cs       # F12 garage Z-height measurement tool (included in build)
+│   │   ├── GbayPreviewCapture.cs  # F10 automated screenshot tool (excluded)
+│   │   └── OutfitDebug.cs         # Outfit component viewer (excluded, dormant)
+│   ├── dist/                      # Pre-built binaries
+│   │   ├── ALLIN1.dll
+│   │   ├── LemonUI.SHVDN3.dll
+│   │   ├── PHAT.png               # GBAY logo
+│   │   └── previews/              # 442 vehicle preview PNGs
+│   └── out/                       # Alternative build output
 ├── src/allin1/                    # Python installer package
 │   ├── cli.py                     # CLI commands (click)
 │   ├── config.py                  # TOML config parsing
@@ -284,6 +321,7 @@ GTA_V_ALLIN1/
 ├── config.example.toml            # Configuration template
 ├── prices_vehicles.toml           # Vehicle price overrides
 ├── prices_weapons.toml            # Weapon price overrides
+├── prices_gear.toml               # Gear price overrides
 ├── install.bat                    # Windows installer
 ├── uninstall.bat                  # Windows uninstaller
 ├── update.bat                     # Update script
@@ -313,8 +351,9 @@ The auto-commit uses `github-actions[bot]` and does `git pull --rebase` before p
 
 - **Target:** .NET Framework 4.8, x64
 - **Dependencies:** ScriptHookVDotNet3 (3.6.0), LemonUI.SHVDN3 (2.2.0), System.Windows.Forms
-- **Exclusions:** `tools/**` is excluded from compilation except `CoordinateDisplay.cs`
-- **Output:** `script/dist/ALLIN1.dll` (~142 KB)
+- **Exclusions:** `tools/**` is excluded from compilation by default
+- **Inclusions:** `CoordinateDisplay.cs` and `HeightChecker.cs` are explicitly re-included via `<Compile Include>` entries
+- **Output:** `script/dist/ALLIN1.dll`
 
 ### Building External Tools
 
@@ -339,8 +378,8 @@ allin1 generate-vehiclelist
 **Input:** `data/vehicles.toml` + `prices_vehicles.toml`
 
 **Output:** `script/src/VehicleList.cs` containing:
-- `string[] All` — all 444 model names
-- Per-class arrays (`Compacts[]`, `Super[]`, etc.)
+- `string[] All` — all 442 model names
+- Per-class arrays (`Compacts[]`, `Super[]`, `Weaponized[]`, etc.)
 - `Dictionary<string, string> DisplayNames` — model to display name
 - `Dictionary<string, int> Prices` — model to price
 - `Dictionary<string, string> ClassNames` — model to class
@@ -362,6 +401,7 @@ allin1 generate-weaponlist
 - `Dictionary<string, string> DisplayNames`
 - `Dictionary<string, int> Prices`
 - `Dictionary<string, string> CategoryNames`
+- `Dictionary<string, int> AmmoCostPerRound` — per-round ammo refill costs
 
 ---
 
@@ -385,7 +425,7 @@ mods/update/x64/dlcpacks/allin1_previews/dlc.rpf
 
 ### Build Pipeline
 
-1. **PNG source:** 444 preview images in `script/dist/previews/`
+1. **PNG source:** 442 preview images in `script/dist/previews/`
 2. **YTD packing:** `YTDToolio.exe` converts PNGs to `.ytd` files (DXT1 compression, 89 textures per YTD)
 3. **DLC structure:** Python generates `content.xml` and `setup2.xml`
 4. **RPF packing:** `RpfPatcher.exe build-dlc` creates outer `dlc.rpf` with nested `textures.rpf`
@@ -398,6 +438,8 @@ The C# script uses GTA native functions to load textures:
 - `REQUEST_STREAMED_TEXTURE_DICT(dictName)` — request a YTD
 - `HAS_STREAMED_TEXTURE_DICT_LOADED(dictName)` — check if ready
 - `DRAW_SPRITE(dictName, textureName, ...)` — render on screen
+
+Textures are loaded on demand per page and pre-fetched one page ahead. Unused dicts are released when scrolling away.
 
 ### RpfPatcher Commands
 
@@ -414,24 +456,54 @@ The C# script uses GTA native functions to load textures:
 
 ## Tools
 
+Development tools live in `script/tools/`. The csproj excludes all `tools/**` from compilation by default; individual tools are re-included via `<Compile Include>` entries.
+
 ### CoordinateDisplay (F11) — Included in Build
 
 Toggle with **F11** to show player position and heading on screen.
 
 Format: `X:123.4  Y:-456.7  Z:89.0  H:180.5`
 
-Located at `script/tools/CoordinateDisplay.cs`. Included in the build via `ALLIN1.csproj`.
+Located at `script/tools/CoordinateDisplay.cs`.
+
+### HeightChecker (F12) — Included in Build
+
+Automated tool that cycles through all ground-capable vehicles, spawns each at garage parking slots, waits for physics settling, and measures the resulting Z-height. Produces a TOML data file for per-vehicle height calibration.
+
+**Activation:** Press **F12** while inside the garage interior (the interior geometry must be loaded).
+
+**Process:**
+1. Hides and freezes the player
+2. For each vehicle (skipping boats, helicopters, planes, cycles):
+   - Spawns at slot 0 and slot 5 (representative of left and right rows)
+   - Waits up to 60 frames for physics settling (early exit if Z velocity < 0.01)
+   - Records: measured Z, bounding box dimensions, collision status, height above ground
+   - Deletes vehicle and advances
+3. Writes results to `scripts/ALLIN1_height_check.toml`
+4. Restores player state
+
+**Output:** TOML file with per-vehicle measurements including `model`, `display_name`, `class`, `slot`, `spawn_z`, `measured_z`, `delta_z`, `length`, `width`, `height`, `collided`, `in_air`, and `height_above_ground`. Vehicles that collided with garage geometry are flagged in a `[review]` section.
+
+**Progress display:** Green progress bar with percentage, current vehicle name, and running collision count.
+
+Located at `script/tools/HeightChecker.cs`.
 
 ### GbayPreviewCapture (F10) — Excluded from Build
 
-Automated vehicle screenshot tool. Press **F10** to cycle through all 444 vehicles, spawning each at a fixed showroom location and capturing a side-profile screenshot.
+Automated vehicle screenshot tool. Press **F10** to cycle through all 442 vehicles, spawning each at a fixed showroom location and capturing a side-profile screenshot.
 
 - Showroom position: (-736, -1455.7, 4.5) near LSIA
 - Camera: dynamic radius based on vehicle dimensions, 50° FOV
 - Output: `scripts/previews/{model}.png`
 - Progress bar shown on screen during capture
 
-Located at `script/tools/GbayPreviewCapture.cs`. Excluded from build by default. To enable, add a `<Compile Include>` entry in `ALLIN1.csproj`.
+Located at `script/tools/GbayPreviewCapture.cs`. To enable, add a `<Compile Include>` entry in `ALLIN1.csproj`.
+
+### OutfitDebug — Excluded from Build (Dormant)
+
+Ped outfit component viewer for debugging character drawable/texture slot values. Previously activated on F10. Moved to dormant storage after the Juggernaut Armor outfit values were finalized.
+
+Located at `script/tools/OutfitDebug.cs`.
 
 ---
 
@@ -439,7 +511,7 @@ Located at `script/tools/GbayPreviewCapture.cs`. Excluded from build by default.
 
 ### data/vehicles.toml
 
-444 vehicle entries with the following fields per vehicle:
+442 vehicle entries with the following fields per vehicle:
 
 ```toml
 [[vehicles]]
@@ -468,13 +540,53 @@ Categories: pistols, smgs, shotguns, rifles, machineguns, snipers, heavy, melee,
 
 ### Price Files
 
-`prices_vehicles.toml` and `prices_weapons.toml` at the project root allow customizing prices without editing the TOML databases. Grouped by class/category:
+`prices_vehicles.toml`, `prices_weapons.toml`, and `prices_gear.toml` at the project root allow customizing prices without editing the core data files.
+
+Vehicle and weapon prices are grouped by class/category:
 
 ```toml
 [super]
 adder = 1000000
 t20 = 2200000
 ```
+
+Gear prices are flat key-value pairs:
+
+```toml
+ARMOR_SUPER_LIGHT = 500
+ARMOR_LIGHT = 1000
+GADGET_PARACHUTE = 300
+WEAPON_NIGHTVISION = 5000
+```
+
+Vehicle and weapon price changes require regenerating the C# list files and rebuilding. Gear price changes take effect at runtime (loaded from `scripts/prices_gear.toml` on script init).
+
+### GearList.cs (Hand-Written)
+
+Unlike VehicleList.cs and WeaponList.cs, `GearList.cs` is hand-written since the gear catalog is small (12 items) and stable. It contains:
+- `string[] All`, `Protection[]`, `Equipment[]` — item ID arrays
+- `Dictionary<string, string> DisplayNames`
+- `Dictionary<string, int> Prices` — default prices (overridden by prices_gear.toml)
+- `Dictionary<string, string> CategoryNames`
+- `Dictionary<string, int> ArmorValues` — armor tier to armor value (0-100)
+- `bool IsArmor(string gearId)` — helper to check if an item is armor
+
+### Garage Persistence
+
+`ALLIN1_garages.json` in the scripts directory stores per-character garage data:
+
+```json
+{
+  "michael": [
+    { "model": "zentorno", "slot": 0, "color1": 12, "color2": 0 },
+    ...
+  ],
+  "franklin": [],
+  "trevor": []
+}
+```
+
+Model names are stored as spawn names (e.g., `"zentorno"` not GXT labels). A migration step runs on load to fix any legacy entries that stored GXT labels by performing a joaat hash reverse lookup against the full vehicle list.
 
 ---
 
@@ -503,14 +615,20 @@ t20 = 2200000
 ### Vehicles are free / wrong prices
 
 - Check `free_mode` and `gbay_free_mode` settings in config
-- Edit `prices_vehicles.toml` or `prices_weapons.toml` to adjust prices
-- Re-run `allin1 generate-vehiclelist` and `allin1 install` after changing prices
+- Edit `prices_vehicles.toml`, `prices_weapons.toml`, or `prices_gear.toml` to adjust prices
+- Re-run `allin1 generate-vehiclelist` and `allin1 install` after changing vehicle/weapon prices
+- Gear prices reload automatically on script init
 
 ### Garage not saving vehicles
 
 - Check that `scripts/ALLIN1_garages.json` is writable
 - Each character (Michael, Franklin, Trevor) has a separate 10-slot garage
-- Vehicles must be parked inside the garage interior to save
+- Vehicles must be purchased through GBAY and delivered to the garage
+
+### Vehicles floating in garage
+
+- The garage interior is underground at Z=-99.0. Vehicle placement uses `SET_ENTITY_COORDS` to force exact slot positions rather than `SET_VEHICLE_ON_GROUND_PROPERLY` (which is unreliable in interiors).
+- If vehicles still appear offset, run the HeightChecker tool (F12) inside the garage to measure per-vehicle Z deltas.
 
 ### Preview images not showing
 
@@ -518,6 +636,7 @@ t20 = 2200000
 - Check that `mods/update/x64/dlcpacks/allin1_previews/dlc.rpf` exists
 - For Enhanced edition, ensure OpenRPF.asi is installed
 - For Legacy edition, ensure OpenIV.asi is installed
+- Check the debug subtitle when browsing vehicles — it shows texture dict loading status
 
 ---
 
@@ -531,10 +650,11 @@ After `allin1 install`, the following files exist in the GTA V directory:
 │   ├── ALLIN1.dll                 # Main script
 │   ├── LemonUI.SHVDN3.dll        # UI dependency
 │   ├── ALLIN1.toml                # Configuration
-│   ├── ALLIN1.log                 # Runtime log
+│   ├── prices_gear.toml           # Gear price overrides
+│   ├── ALLIN1.log                 # Runtime log (if logging enabled)
 │   ├── ALLIN1_gbay.log            # GBAY shop log
-│   ├── ALLIN1_spawner.log         # Traffic spawner log
-│   └── ALLIN1_garages.json        # Garage persistence
+│   ├── ALLIN1_garages.json        # Garage persistence
+│   └── ALLIN1_height_check.toml   # HeightChecker output (if run)
 ├── mods/update/x64/dlcpacks/
 │   └── allin1_previews/
 │       └── dlc.rpf                # Preview texture DLC pack
@@ -542,3 +662,35 @@ After `allin1 install`, the following files exist in the GTA V directory:
 │   └── update.rpf                 # Patched dlclist.xml
 └── commandline.txt                # -nobattleye flag
 ```
+
+---
+
+## Architecture Notes
+
+### GbayBrowser State Machine
+
+The browser UI (`GbayBrowser.cs`) uses a simple state enum to manage navigation:
+
+```
+Closed → TopMenu → VehicleBrowser → VehiclePreview → DeliveryConfirm
+                 → WeaponBrowser
+                 → GearBrowser
+                 → GarageView
+```
+
+Each state has its own Draw and Input handler methods. The top menu routes to sub-browsers, and Escape always returns one level up.
+
+### Vehicle Model Resolution
+
+GTA V's `GET_DISPLAY_NAME_FROM_VEHICLE_MODEL` returns GXT label hashes, not spawn names. ALLIN1 builds a reverse lookup dictionary at init time:
+
+```csharp
+foreach (string name in VehicleList.All)
+    _hashToSpawnName[Game.GenerateHash(name)] = name;
+```
+
+This is used when a vehicle drives into the garage (hash from `GET_ENTITY_MODEL` → spawn name) and during save file migration.
+
+### SHVDN3 Script Auto-Discovery
+
+ScriptHookVDotNet uses reflection to find and instantiate all classes that inherit from `Script` in the loaded DLL. This means every `public class Foo : Script` in the compiled assembly will run automatically — there's no explicit registration. The `<Compile Remove="tools\**" />` csproj rule keeps development tools out of production builds.

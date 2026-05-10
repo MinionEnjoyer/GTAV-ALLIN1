@@ -1,4 +1,4 @@
-    // GbayBrowser.cs -- Custom-drawn browser UI for the GBAY vehicle shop.
+// GbayBrowser.cs -- Custom-drawn browser UI for the GBAY vehicle shop.
 //
 // Renders a grid-based vehicle catalog with category tabs, pagination,
 // and keyboard + mouse navigation using GTA native drawing functions.
@@ -353,9 +353,9 @@ namespace ALLIN1
             GbayRenderer.DrawLogo(BROWSER_CX, 0.36f, 0.12f);
 
             // Buttons
-            string[] labels = { "Vehicles", "Weapons", "My Garage" };
-            bool[] enabled = { true, true, true };
-            float startY = 0.42f;
+            string[] labels = { "Vehicles", "Weapons", "Gear", "My Garage" };
+            bool[] enabled = { true, true, true, true };
+            float startY = 0.40f;
 
             _topMenuHover = -1;
 
@@ -1152,7 +1152,7 @@ namespace ALLIN1
             // Footer
             GbayRenderer.DrawRect(BROWSER_CX, FOOTER_CY, BROWSER_W, FOOTER_H,
                 GbayRenderer.FooterBg);
-            GbayRenderer.DrawText("[Enter] Remove   [Q] Detail Cars   [Esc] Back",
+            GbayRenderer.DrawText("[Enter] Remove   [Esc] Back",
                 BROWSER_CX, FOOTER_Y + 0.012f, 0.24f, GbayRenderer.TextDim,
                 GbayRenderer.FONT_CONDENSED, true);
         }
