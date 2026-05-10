@@ -555,26 +555,32 @@ namespace ALLIN1
                         $"~g~{displayName}~w~ stored in garage. (Slot {slotIndex + 1})", 3000);
                     Log($"EnterGarage: stored drive-in vehicle {modelName} -> slot {slotIndex}");
 
-                    // Pull player out, then delete the outside vehicle
-                    Function.Call(Hash.TASK_LEAVE_VEHICLE, player, rideIn, 16); // 16 = instant
-                    Script.Wait(0);
+                    // Delete the outside vehicle (teleporting the player
+                    // out via SET_ENTITY_COORDS below handles extraction)
                     rideIn.IsPersistent = true;
                     rideIn.Delete();
                 }
             }
 
-
+            // Clear any leftover handles from a previous session
+            for (int i = 0; i < SLOT_COUNT; i++)
+            {
+                if (_handles[i] != null && _handles[i].Exists())
+                    _handles[i].Delete();
+                _handles[i] = null;
+            }
 
             // Choose spawn point based on which entrance was used
             Vector3 spawnPos = pedEntrance ? PED_EXIT : VEHICLE_EXIT_INTERIOR;
             float spawnHeading = pedEntrance ? PED_EXIT_HEADING : VEHICLE_EXIT_INTERIOR_HEADING;
 
-            // Freeze player, teleport into garage
-            player.IsPositionFrozen = true;
+            // Teleport player into garage (also rips them out of any vehicle)
             Function.Call(Hash.SET_ENTITY_COORDS, player,
                 spawnPos.X, spawnPos.Y, spawnPos.Z,
                 false, false, false, true);
             Function.Call(Hash.SET_ENTITY_HEADING, player, spawnHeading);
+            Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, player);
+            Script.Wait(0);
 
             // Spawn the current character's vehicles
             string key = CharacterKey();
@@ -604,6 +610,7 @@ namespace ALLIN1
                         {
                             Log($"EnterGarage: failed to spawn {sv.Model} at slot {sv.Slot}");
                         }
+                        Script.Wait(0); // yield a frame for model loading
                     }
                     catch (Exception ex)
                     {
