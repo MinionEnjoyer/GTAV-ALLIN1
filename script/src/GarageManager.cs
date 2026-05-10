@@ -275,7 +275,7 @@ namespace ALLIN1
                             GTA.UI.Screen.ShowHelpTextThisFrame(
                                 "Press ~INPUT_CONTEXT~ to enter your garage.");
                             if (Game.IsControlJustPressed(GTA.Control.Context))
-                                EnterGarage(pedEntrance: false);
+                                EnterGarage();
                         }
                     }
                 }
@@ -296,7 +296,7 @@ namespace ALLIN1
                         GTA.UI.Screen.ShowHelpTextThisFrame(
                             "Press ~INPUT_CONTEXT~ to enter your garage.");
                         if (Game.IsControlJustPressed(GTA.Control.Context))
-                            EnterGarage(pedEntrance: true);
+                            EnterGarage();
                     }
                 }
             }
@@ -494,7 +494,7 @@ namespace ALLIN1
         //  Garage Enter / Leave                                               //
         // ------------------------------------------------------------------ //
 
-        private static void EnterGarage(bool pedEntrance = false)
+        private static void EnterGarage()
         {
             Ped player = Game.Player.Character;
 
@@ -570,33 +570,36 @@ namespace ALLIN1
                 _handles[i] = null;
             }
 
-            // Choose spawn point based on which entrance was used
-            Vector3 spawnPos = pedEntrance ? PED_EXIT : VEHICLE_EXIT_INTERIOR;
-            float spawnHeading = pedEntrance ? PED_EXIT_HEADING : VEHICLE_EXIT_INTERIOR_HEADING;
-
-            // Teleport player into garage (also rips them out of any vehicle)
+            // Always spawn player at the ped exit point (safe on-foot position)
             Function.Call(Hash.SET_ENTITY_COORDS, player,
-                spawnPos.X, spawnPos.Y, spawnPos.Z,
+                PED_EXIT.X, PED_EXIT.Y, PED_EXIT.Z,
                 false, false, false, true);
-            Function.Call(Hash.SET_ENTITY_HEADING, player, spawnHeading);
+            Function.Call(Hash.SET_ENTITY_HEADING, player, PED_EXIT_HEADING);
             Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, player);
+
+            _isPlayerInGarage = true; // set early to block re-entry during spawning
             Script.Wait(0);
 
             // Spawn the current character's vehicles
             string key = CharacterKey();
             if (_stored.TryGetValue(key, out var list))
             {
+                Log($"EnterGarage: spawning {list.Count} vehicles");
                 foreach (var sv in list)
                 {
                     if (sv.Slot < 0 || sv.Slot >= SLOT_COUNT)
+                    {
+                        Log($"EnterGarage: skipping {sv.Model}, invalid slot {sv.Slot}");
                         continue;
+                    }
 
                     ParkingSlot slot = Slots[sv.Slot];
                     try
                     {
+                        Log($"EnterGarage: spawning {sv.Model} at slot {sv.Slot} ({slot.Position})");
                         Vehicle veh = VehicleHelper.CreateVehicle(
                             sv.Model, slot.Position, slot.Heading,
-                            sv.Color1, sv.Color2);
+                            sv.Color1, sv.Color2, 10000);
                         if (veh != null)
                         {
                             ApplyVehicleState(veh, sv);
@@ -605,12 +608,12 @@ namespace ALLIN1
                             Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, veh);
                             veh.IsPositionFrozen = true;
                             _handles[sv.Slot] = veh;
+                            Log($"EnterGarage: spawned {sv.Model} OK (handle={veh.Handle})");
                         }
                         else
                         {
-                            Log($"EnterGarage: failed to spawn {sv.Model} at slot {sv.Slot}");
+                            Log($"EnterGarage: FAILED to spawn {sv.Model} at slot {sv.Slot} (null return)");
                         }
-                        Script.Wait(0); // yield a frame for model loading
                     }
                     catch (Exception ex)
                     {
@@ -620,7 +623,6 @@ namespace ALLIN1
             }
 
             player.IsPositionFrozen = false;
-            _isPlayerInGarage = true;
 
             Log($"EnterGarage: character={key}, vehicles spawned");
         }
