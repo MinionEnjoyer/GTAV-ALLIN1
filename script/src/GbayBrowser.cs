@@ -40,6 +40,14 @@ namespace ALLIN1
         internal bool Owned;
     }
 
+    internal struct GearCard
+    {
+        internal string GearId;
+        internal string DisplayName;
+        internal string Category;
+        internal int Price;
+    }
+
     internal class GbayBrowser
     {
         // ------------------------------------------------------------------ //
@@ -353,9 +361,9 @@ namespace ALLIN1
             GbayRenderer.DrawLogo(BROWSER_CX, 0.36f, 0.12f);
 
             // Buttons
-            string[] labels = { "Vehicles", "Weapons", "Gear", "My Garage" };
-            bool[] enabled = { true, true, true, true };
-            float startY = 0.40f;
+            string[] labels = { "Vehicles", "Weapons", "My Garage" };
+            bool[] enabled = { true, true, true };
+            float startY = 0.42f;
 
             _topMenuHover = -1;
 
