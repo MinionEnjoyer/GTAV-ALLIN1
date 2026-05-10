@@ -702,16 +702,11 @@ namespace ALLIN1
             }
             else
             {
-                // Franklin — partially captured via outfit editor.
-                // Body armor confirmed, other slots use Michael's pattern with validation.
-                SafeSetComponent(player, 3,  5, 1); // torso (placeholder)
+                // Franklin — no juggernaut torso or helmet in his model.
+                // Slots 3 (torso) and prop 0 (helmet) left unchanged.
                 SafeSetComponent(player, 4,  4, 0); // legs — confirmed D4/T0
                 SafeSetComponent(player, 5,  4, 0); // hands — confirmed D4/T0
-                SafeSetComponent(player, 6,  1, 1); // shoes (placeholder)
-                SafeSetComponent(player, 8,  5, 2); // shirt/accessory (placeholder)
                 SafeSetComponent(player, 9,  3, 0); // body armor — confirmed D3/T0
-                SafeSetComponent(player, 11, 0, 1); // aux/torso2 (placeholder)
-                SafeSetProp(player, 0, 26, 1);      // helmet (placeholder)
             }
         }
 
