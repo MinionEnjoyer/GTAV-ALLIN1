@@ -307,24 +307,13 @@ namespace ALLIN1
                 // Keep all parked vehicles frozen with engines off
                 EnforceGarageVehicleState(player);
 
-                // ---- Vehicle exit (VEHICLE_EXIT_INTERIOR) — only when in a vehicle ----
+                // ---- Vehicle exit — press E anywhere while in a vehicle ----
                 if (inVehicle)
                 {
-                    World.DrawMarker(
-                        GTA.MarkerType.VerticalCylinder,
-                        VEHICLE_EXIT_INTERIOR - new Vector3(0f, 0f, 1f),
-                        Vector3.Zero, Vector3.Zero,
-                        new Vector3(2f, 2f, 1.5f),
-                        System.Drawing.Color.FromArgb(128, 0, 200, 0));
-
-                    float vehExitDist = player.Position.DistanceTo(VEHICLE_EXIT_INTERIOR);
-                    if (vehExitDist < EXIT_RADIUS)
-                    {
-                        GTA.UI.Screen.ShowHelpTextThisFrame(
-                            "Press ~INPUT_CONTEXT~ to leave the garage with your vehicle.");
-                        if (Game.IsControlJustPressed(GTA.Control.Context))
-                            LeaveGarage();
-                    }
+                    GTA.UI.Screen.ShowHelpTextThisFrame(
+                        "Press ~INPUT_CONTEXT~ to leave the garage with your vehicle.");
+                    if (Game.IsControlJustPressed(GTA.Control.Context))
+                        LeaveGarage();
                 }
 
                 // ---- Pedestrian exit (PED_EXIT) — only when on foot ----
