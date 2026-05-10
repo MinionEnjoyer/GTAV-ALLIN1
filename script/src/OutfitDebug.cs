@@ -320,6 +320,10 @@ namespace ALLIN1
                 PlayNav();
             }
 
+            // Recompute after possible tab switch
+            maxSlots = _propMode ? PROP_SLOTS.Length : 12;
+            names = _propMode ? PROP_NAMES : COMP_NAMES;
+
             curY += tabH + SMALL_GAP;
 
             // --- Slot list ---
