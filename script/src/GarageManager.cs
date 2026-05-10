@@ -1580,38 +1580,60 @@ namespace ALLIN1
             new Vector3(906f, 3554.3f, 33.8f);
         private const float FLOOR_GARAGE_PED_EXIT_DEST_HEADING = 180f;
 
-        // Interior ped spawn (placeholder — underground interior)
+        // Nightclub garage interior (DLC After Hours: BA_DLC_INT_02_BA)
+        // Single physical room reused for all virtual floors
+        private const string FLOOR_GARAGE_IPL = "ba_dlc_int_02_ba";
+        private const int FLOOR_GARAGE_INTERIOR_ID = 271873;
+
+        // Interior ped spawn — nightclub garage interior
         private static readonly Vector3 FLOOR_GARAGE_INTERIOR_PED =
-            new Vector3(0f, 0f, -50f); // TODO: set interior location
-        private const float FLOOR_GARAGE_INTERIOR_PED_HEADING = 0f;
+            new Vector3(-1493.0f, -3009.0f, -80.0f);
+        private const float FLOOR_GARAGE_INTERIOR_PED_HEADING = 270f;
 
+        // Interior vehicle exit — drive out from the garage area
         private static readonly Vector3 FLOOR_GARAGE_VEHICLE_EXIT =
-            new Vector3(0f, 0f, -50f); // TODO: set interior location
-        private const float FLOOR_GARAGE_VEHICLE_EXIT_HEADING = 0f;
+            new Vector3(-1493.0f, -3009.0f, -80.0f);
+        private const float FLOOR_GARAGE_VEHICLE_EXIT_HEADING = 90f;
 
-        // 15 parking slots across 3 floors (5 per floor)
+        // Virtual floor system — all 3 floors share the same 5 physical positions
+        // within the nightclub garage interior. Only the current floor's vehicles
+        // are spawned at a time; switching floors despawns/respawns.
+        private static int _currentFloor; // 0, 1, or 2
+
+        // 5 physical parking positions inside the nightclub garage interior
+        // Laid out in a single row along the Y axis, all facing heading 0
+        private static readonly ParkingSlot[] _floorGaragePhysicalSlots =
+        {
+            new ParkingSlot(-1517.0f, -3022.0f, -80.0f, 0f),
+            new ParkingSlot(-1517.0f, -3016.0f, -80.0f, 0f),
+            new ParkingSlot(-1517.0f, -3010.0f, -80.0f, 0f),
+            new ParkingSlot(-1517.0f, -3004.0f, -80.0f, 0f),
+            new ParkingSlot(-1517.0f, -2998.0f, -80.0f, 0f),
+        };
+
+        // 15 logical slots across 3 virtual floors (5 per floor)
         // Floor 0 = slots 0-4, Floor 1 = slots 5-9, Floor 2 = slots 10-14
-        // Placeholder positions — will be set after in-game location scouting
+        // All floors share the same physical positions — only current floor is spawned
         internal static readonly ParkingSlot[] FloorGarageSlots =
         {
-            // Floor 0 (ground) — 5 slots
-            new ParkingSlot(0f, -10f, -50.0f, 0f),
-            new ParkingSlot(0f, -6f,  -50.0f, 0f),
-            new ParkingSlot(0f, -2f,  -50.0f, 0f),
-            new ParkingSlot(0f,  2f,  -50.0f, 0f),
-            new ParkingSlot(0f,  6f,  -50.0f, 0f),
-            // Floor 1 — 5 slots (same layout, higher Z)
-            new ParkingSlot(0f, -10f, -46.0f, 0f),
-            new ParkingSlot(0f, -6f,  -46.0f, 0f),
-            new ParkingSlot(0f, -2f,  -46.0f, 0f),
-            new ParkingSlot(0f,  2f,  -46.0f, 0f),
-            new ParkingSlot(0f,  6f,  -46.0f, 0f),
-            // Floor 2 — 5 slots (same layout, higher Z)
-            new ParkingSlot(0f, -10f, -42.0f, 0f),
-            new ParkingSlot(0f, -6f,  -42.0f, 0f),
-            new ParkingSlot(0f, -2f,  -42.0f, 0f),
-            new ParkingSlot(0f,  2f,  -42.0f, 0f),
-            new ParkingSlot(0f,  6f,  -42.0f, 0f),
+            // Floor 0 — 5 slots (physical positions 0-4)
+            new ParkingSlot(-1517.0f, -3022.0f, -80.0f, 0f),
+            new ParkingSlot(-1517.0f, -3016.0f, -80.0f, 0f),
+            new ParkingSlot(-1517.0f, -3010.0f, -80.0f, 0f),
+            new ParkingSlot(-1517.0f, -3004.0f, -80.0f, 0f),
+            new ParkingSlot(-1517.0f, -2998.0f, -80.0f, 0f),
+            // Floor 1 — 5 slots (same physical positions)
+            new ParkingSlot(-1517.0f, -3022.0f, -80.0f, 0f),
+            new ParkingSlot(-1517.0f, -3016.0f, -80.0f, 0f),
+            new ParkingSlot(-1517.0f, -3010.0f, -80.0f, 0f),
+            new ParkingSlot(-1517.0f, -3004.0f, -80.0f, 0f),
+            new ParkingSlot(-1517.0f, -2998.0f, -80.0f, 0f),
+            // Floor 2 — 5 slots (same physical positions)
+            new ParkingSlot(-1517.0f, -3022.0f, -80.0f, 0f),
+            new ParkingSlot(-1517.0f, -3016.0f, -80.0f, 0f),
+            new ParkingSlot(-1517.0f, -3010.0f, -80.0f, 0f),
+            new ParkingSlot(-1517.0f, -3004.0f, -80.0f, 0f),
+            new ParkingSlot(-1517.0f, -2998.0f, -80.0f, 0f),
         };
 
         private static readonly string FLOOR_GARAGE_SAVE_PATH =
@@ -1723,29 +1745,36 @@ namespace ALLIN1
             };
             list.Add(stored);
 
+            // Only spawn the vehicle live if the player is in the garage
+            // AND the vehicle's slot is on the currently displayed floor
             if (_isPlayerInFloorGarage)
             {
-                try
+                int slotFloor = slotIndex / FLOOR_GARAGE_SLOTS_PER_FLOOR;
+                if (slotFloor == _currentFloor)
                 {
-                    ParkingSlot slot = FloorGarageSlots[slotIndex];
-                    Vehicle veh = VehicleHelper.CreateVehicle(
-                        model, slot.Position, slot.Heading, color1, color2);
-                    if (veh != null)
+                    try
                     {
-                        veh.IsPersistent = true;
-                        veh.IsEngineRunning = false;
-                        float deltaZ = VehicleList.GetSpawnDeltaZ(model);
-                        Function.Call(Hash.SET_ENTITY_COORDS, veh,
-                            slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
-                            false, false, false, true);
-                        Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
-                        veh.IsPositionFrozen = true;
-                        _floorGarageHandles[slotIndex] = veh;
+                        int physicalIndex = slotIndex % FLOOR_GARAGE_SLOTS_PER_FLOOR;
+                        ParkingSlot slot = _floorGaragePhysicalSlots[physicalIndex];
+                        Vehicle veh = VehicleHelper.CreateVehicle(
+                            model, slot.Position, slot.Heading, color1, color2);
+                        if (veh != null)
+                        {
+                            veh.IsPersistent = true;
+                            veh.IsEngineRunning = false;
+                            float deltaZ = VehicleList.GetSpawnDeltaZ(model);
+                            Function.Call(Hash.SET_ENTITY_COORDS, veh,
+                                slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
+                                false, false, false, true);
+                            Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
+                            veh.IsPositionFrozen = true;
+                            _floorGarageHandles[slotIndex] = veh;
+                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    LogException("DeliverToFloorGarage.Spawn", ex);
+                    catch (Exception ex)
+                    {
+                        LogException("DeliverToFloorGarage.Spawn", ex);
+                    }
                 }
             }
 
@@ -1868,6 +1897,10 @@ namespace ALLIN1
                 bool inVehicle = player.IsInVehicle();
                 EnforceFloorGarageVehicleState(player);
 
+                // Floor indicator (always show)
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~b~Floor {_currentFloor + 1}/3~w~  |  ~INPUT_FRONTEND_LEFT~ Prev  ~INPUT_FRONTEND_RIGHT~ Next", 1);
+
                 if (inVehicle)
                 {
                     GTA.UI.Screen.ShowHelpTextThisFrame(
@@ -1878,6 +1911,12 @@ namespace ALLIN1
 
                 if (!inVehicle)
                 {
+                    // Floor switching: left/right arrow (FRONTEND_LEFT/RIGHT)
+                    if (Game.IsControlJustPressed(GTA.Control.FrontendLeft))
+                        SwitchFloorGarageFloor(_currentFloor - 1);
+                    else if (Game.IsControlJustPressed(GTA.Control.FrontendRight))
+                        SwitchFloorGarageFloor(_currentFloor + 1);
+
                     World.DrawMarker(
                         GTA.MarkerType.VerticalCylinder,
                         FLOOR_GARAGE_INTERIOR_PED - new Vector3(0f, 0f, 1f),
@@ -1959,14 +1998,19 @@ namespace ALLIN1
 
                     string displayName = VehicleList.DisplayNames.ContainsKey(modelName)
                         ? VehicleList.DisplayNames[modelName] : modelName;
+                    int floor = slotIndex / FLOOR_GARAGE_SLOTS_PER_FLOOR + 1;
+                    int spotOnFloor = slotIndex % FLOOR_GARAGE_SLOTS_PER_FLOOR + 1;
                     GTA.UI.Screen.ShowSubtitle(
-                        $"~g~{displayName}~w~ stored in floor garage. (Slot {slotIndex + 1})", 3000);
-                    Log($"EnterFloorGarage: stored drive-in vehicle {modelName} -> slot {slotIndex}");
+                        $"~g~{displayName}~w~ stored in floor garage. (Floor {floor}, Spot {spotOnFloor})", 3000);
+                    Log($"EnterFloorGarage: stored drive-in vehicle {modelName} -> slot {slotIndex} (floor {floor})");
 
                     rideIn.IsPersistent = true;
                     rideIn.Delete();
                 }
             }
+
+            // Load the nightclub garage IPL
+            LoadFloorGarageInterior();
 
             // Clear existing handles
             for (int i = 0; i < FLOOR_GARAGE_SLOT_COUNT; i++)
@@ -1986,68 +2030,14 @@ namespace ALLIN1
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, true);
 
             _isPlayerInFloorGarage = true;
+            _currentFloor = 0; // Always start on floor 1
 
-            // Pre-load and spawn floor garage vehicles
-            string key = FloorGarageCharacterKey();
-            var models = new List<Model>();
-            if (_floorGarageStored.TryGetValue(key, out var list))
-            {
-                foreach (var sv in list)
-                {
-                    var m = new Model(sv.Model);
-                    m.Request();
-                    models.Add(m);
-                }
-
-                DateTime deadline = DateTime.UtcNow.AddMilliseconds(10000);
-                bool allLoaded = false;
-                while (!allLoaded && DateTime.UtcNow < deadline)
-                {
-                    allLoaded = true;
-                    foreach (var m in models)
-                        if (!m.IsLoaded) { allLoaded = false; break; }
-                    if (!allLoaded) Script.Wait(0);
-                }
-
-                foreach (var sv in list)
-                {
-                    if (sv.Slot < 0 || sv.Slot >= FLOOR_GARAGE_SLOT_COUNT) continue;
-
-                    ParkingSlot slot = FloorGarageSlots[sv.Slot];
-                    try
-                    {
-                        var model = new Model(sv.Model);
-                        Vehicle veh = World.CreateVehicle(model, slot.Position, slot.Heading);
-                        model.MarkAsNoLongerNeeded();
-
-                        if (veh != null)
-                        {
-                            ApplyVehicleState(veh, sv);
-                            veh.IsPersistent = true;
-                            veh.IsEngineRunning = false;
-                            float deltaZ = VehicleList.GetSpawnDeltaZ(sv.Model);
-                            Function.Call(Hash.SET_ENTITY_COORDS, veh,
-                                slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
-                                false, false, false, true);
-                            Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
-                            veh.IsPositionFrozen = true;
-                            _floorGarageHandles[sv.Slot] = veh;
-                            Log($"EnterFloorGarage: spawned {sv.Model} at slot {sv.Slot}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogException($"EnterFloorGarage.Spawn({sv.Model})", ex);
-                    }
-                }
-
-                foreach (var m in models)
-                    m.MarkAsNoLongerNeeded();
-            }
+            // Spawn vehicles for the current floor only
+            SpawnFloorGarageVehicles();
 
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
             player.IsPositionFrozen = false;
-            Log($"EnterFloorGarage: character={key}, vehicles spawned");
+            Log($"EnterFloorGarage: character={FloorGarageCharacterKey()}, floor=1");
         }
 
         private static void LeaveFloorGarage()
@@ -2157,14 +2147,177 @@ namespace ALLIN1
 
         private static void EnforceFloorGarageVehicleState(Ped player)
         {
-            Vehicle playerVeh = player.IsInVehicle() ? player.CurrentVehicle : null;
-            for (int i = 0; i < FLOOR_GARAGE_SLOT_COUNT; i++)
+            // Only enforce vehicles on the current floor
+            int startSlot = _currentFloor * FLOOR_GARAGE_SLOTS_PER_FLOOR;
+            int endSlot = startSlot + FLOOR_GARAGE_SLOTS_PER_FLOOR;
+            for (int i = startSlot; i < endSlot; i++)
             {
                 Vehicle veh = _floorGarageHandles[i];
                 if (veh == null || !veh.Exists()) continue;
                 veh.IsPositionFrozen = true;
                 veh.IsEngineRunning = false;
             }
+        }
+
+        /// <summary>
+        /// Load the nightclub garage IPL and configure interior entity sets.
+        /// </summary>
+        private static void LoadFloorGarageInterior()
+        {
+            // Request the IPL
+            Function.Call(Hash.REQUEST_IPL, FLOOR_GARAGE_IPL);
+
+            // Wait for IPL to load
+            DateTime deadline = DateTime.UtcNow.AddMilliseconds(5000);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (Function.Call<bool>(Hash.IS_IPL_ACTIVE, FLOOR_GARAGE_IPL))
+                    break;
+                Script.Wait(0);
+            }
+
+            // Get the interior ID and configure entity sets
+            int interior = Function.Call<int>(
+                Hash.GET_INTERIOR_AT_COORDS,
+                FLOOR_GARAGE_INTERIOR_PED.X,
+                FLOOR_GARAGE_INTERIOR_PED.Y,
+                FLOOR_GARAGE_INTERIOR_PED.Z);
+
+            if (interior != 0)
+            {
+                // Disable blockers so the full garage space is accessible
+                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_garage_blocker");
+                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_storage_blocker");
+                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_FanBlocker01");
+
+                // Enable a floor style
+                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_floor01");
+
+                // Enable security upgrade (adds more light)
+                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_sec_upgrade_grg");
+
+                // Refresh the interior to apply entity set changes
+                Function.Call(Hash.REFRESH_INTERIOR, interior);
+
+                Log($"LoadFloorGarageInterior: interior={interior}, IPL loaded, entity sets configured");
+            }
+            else
+            {
+                Log("LoadFloorGarageInterior: WARNING — could not get interior ID");
+            }
+        }
+
+        /// <summary>
+        /// Spawn vehicles for the current virtual floor only.
+        /// Despawns any previously spawned vehicles first.
+        /// </summary>
+        private static void SpawnFloorGarageVehicles()
+        {
+            // Despawn all existing floor garage vehicle handles
+            for (int i = 0; i < FLOOR_GARAGE_SLOT_COUNT; i++)
+            {
+                if (_floorGarageHandles[i] != null && _floorGarageHandles[i].Exists())
+                    _floorGarageHandles[i].Delete();
+                _floorGarageHandles[i] = null;
+            }
+
+            string key = FloorGarageCharacterKey();
+            if (!_floorGarageStored.TryGetValue(key, out var list))
+                return;
+
+            int startSlot = _currentFloor * FLOOR_GARAGE_SLOTS_PER_FLOOR;
+            int endSlot = startSlot + FLOOR_GARAGE_SLOTS_PER_FLOOR;
+
+            // Collect models for this floor
+            var modelsToLoad = new List<Model>();
+            foreach (var sv in list)
+            {
+                if (sv.Slot < startSlot || sv.Slot >= endSlot) continue;
+                var m = new Model(sv.Model);
+                m.Request();
+                modelsToLoad.Add(m);
+            }
+
+            // Wait for models to load
+            DateTime deadline = DateTime.UtcNow.AddMilliseconds(10000);
+            bool allLoaded = false;
+            while (!allLoaded && DateTime.UtcNow < deadline)
+            {
+                allLoaded = true;
+                foreach (var m in modelsToLoad)
+                    if (!m.IsLoaded) { allLoaded = false; break; }
+                if (!allLoaded) Script.Wait(0);
+            }
+
+            // Spawn vehicles at their physical positions
+            foreach (var sv in list)
+            {
+                if (sv.Slot < startSlot || sv.Slot >= endSlot) continue;
+                int physicalIndex = sv.Slot % FLOOR_GARAGE_SLOTS_PER_FLOOR;
+                ParkingSlot slot = _floorGaragePhysicalSlots[physicalIndex];
+
+                try
+                {
+                    var model = new Model(sv.Model);
+                    Vehicle veh = World.CreateVehicle(model, slot.Position, slot.Heading);
+                    model.MarkAsNoLongerNeeded();
+
+                    if (veh != null)
+                    {
+                        ApplyVehicleState(veh, sv);
+                        veh.IsPersistent = true;
+                        veh.IsEngineRunning = false;
+                        float deltaZ = VehicleList.GetSpawnDeltaZ(sv.Model);
+                        Function.Call(Hash.SET_ENTITY_COORDS, veh,
+                            slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
+                            false, false, false, true);
+                        Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
+                        veh.IsPositionFrozen = true;
+                        _floorGarageHandles[sv.Slot] = veh;
+                        Log($"SpawnFloorGarageVehicles: spawned {sv.Model} at slot {sv.Slot} (physical {physicalIndex})");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogException($"SpawnFloorGarageVehicles({sv.Model})", ex);
+                }
+            }
+
+            foreach (var m in modelsToLoad)
+                m.MarkAsNoLongerNeeded();
+
+            Log($"SpawnFloorGarageVehicles: floor {_currentFloor + 1}, spawned vehicles");
+        }
+
+        /// <summary>
+        /// Switch to a different virtual floor. Saves current vehicle state,
+        /// despawns all, then spawns the target floor's vehicles.
+        /// </summary>
+        private static void SwitchFloorGarageFloor(int newFloor)
+        {
+            if (newFloor < 0 || newFloor >= 3) return;
+            if (newFloor == _currentFloor) return;
+
+            Ped player = Game.Player.Character;
+            if (player.IsInVehicle())
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~Exit your vehicle before switching floors.", 2000);
+                return;
+            }
+
+            // Save state of vehicles on the current floor
+            FloorGarageUpdateStoredFromLive();
+
+            _currentFloor = newFloor;
+
+            // Freeze player while switching
+            player.IsPositionFrozen = true;
+
+            SpawnFloorGarageVehicles();
+
+            player.IsPositionFrozen = false;
+            GTA.UI.Screen.ShowSubtitle($"~b~Floor {_currentFloor + 1} of 3", 2000);
+            Log($"SwitchFloorGarageFloor: switched to floor {_currentFloor + 1}");
         }
 
         // ------------------------------------------------------------------ //
@@ -2328,9 +2481,13 @@ namespace ALLIN1
             string key = FloorGarageCharacterKey();
             if (!_floorGarageStored.TryGetValue(key, out var list)) return;
 
+            // Only update vehicles that are on the current floor (have live handles)
+            int startSlot = _currentFloor * FLOOR_GARAGE_SLOTS_PER_FLOOR;
+            int endSlot = startSlot + FLOOR_GARAGE_SLOTS_PER_FLOOR;
+
             foreach (var sv in list)
             {
-                if (sv.Slot < 0 || sv.Slot >= FLOOR_GARAGE_SLOT_COUNT) continue;
+                if (sv.Slot < startSlot || sv.Slot >= endSlot) continue;
                 Vehicle veh = _floorGarageHandles[sv.Slot];
                 if (veh == null || !veh.Exists()) continue;
 
