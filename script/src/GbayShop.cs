@@ -201,8 +201,8 @@ namespace ALLIN1
             {
                 GarageManager.Configure(_garageDebug, _enableLogging);
                 GarageManager.Initialize();
-                GarageManager.InitializeHangar();
-                Log("GarageManager initialized (garage + hangar)");
+                GarageManager.InitializeFloorGarage();
+                Log("GarageManager initialized (garage + floor garage)");
             }
             catch (Exception ex)
             {
@@ -256,10 +256,10 @@ namespace ALLIN1
 
         internal void ExecuteDeliverToGarage(string model, int price)
         {
-            // Oversized vehicles route to hangar instead
+            // Oversized vehicles route to floor garage instead
             if (VehicleList.GetSizeTier(model) == 2)
             {
-                ExecuteDeliverToHangar(model, price);
+                ExecuteDeliverToFloorGarage(model, price);
                 return;
             }
 
@@ -307,16 +307,16 @@ namespace ALLIN1
             }
         }
 
-        internal void ExecuteDeliverToHangar(string model, int price)
+        internal void ExecuteDeliverToFloorGarage(string model, int price)
         {
-            int used = GarageManager.GetHangarUsedSlots();
-            int cap = GarageManager.GetHangarCapacity();
+            int used = GarageManager.GetFloorGarageUsedSlots();
+            int cap = GarageManager.GetFloorGarageCapacity();
 
             if (used >= cap)
             {
-                Log($"DeliverToHangar: full ({used}/{cap})");
+                Log($"DeliverToFloorGarage: full ({used}/{cap})");
                 GTA.UI.Screen.ShowSubtitle(
-                    $"~r~Hangar full.~w~ ({used}/{cap} slots used)", 3000);
+                    $"~r~3-Floor Garage full.~w~ ({used}/{cap} slots used)", 3000);
                 return;
             }
 
@@ -326,11 +326,11 @@ namespace ALLIN1
 
             try
             {
-                bool success = GarageManager.DeliverToHangar(model, c1, c2);
+                bool success = GarageManager.DeliverToFloorGarage(model, c1, c2);
                 if (!success)
                 {
-                    Log($"DeliverToHangar: failed for {model}");
-                    GTA.UI.Screen.ShowSubtitle("~r~Delivery to hangar failed.", 3000);
+                    Log($"DeliverToFloorGarage: failed for {model}");
+                    GTA.UI.Screen.ShowSubtitle("~r~Delivery to 3-Floor Garage failed.", 3000);
                     return;
                 }
 
@@ -340,16 +340,16 @@ namespace ALLIN1
                 string name = VehicleList.DisplayNames.ContainsKey(model)
                     ? VehicleList.DisplayNames[model] : model;
                 string msg = _freeMode || price <= 0
-                    ? $"~g~{name}~w~ delivered to hangar!"
-                    : $"~g~{name}~w~ delivered to hangar for ~g~${price:N0}";
+                    ? $"~g~{name}~w~ delivered to 3-Floor Garage!"
+                    : $"~g~{name}~w~ delivered to 3-Floor Garage for ~g~${price:N0}";
                 GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
-                Log($"DeliverToHangar: {model}, price=${price}");
+                Log($"DeliverToFloorGarage: {model}, price=${price}");
             }
             catch (Exception ex)
             {
-                LogException("DeliverToHangar", ex);
-                GTA.UI.Screen.ShowSubtitle("~r~Delivery to hangar failed.", 3000);
+                LogException("DeliverToFloorGarage", ex);
+                GTA.UI.Screen.ShowSubtitle("~r~Delivery to 3-Floor Garage failed.", 3000);
             }
         }
 
@@ -926,7 +926,7 @@ namespace ALLIN1
                 if (_initialized)
                 {
                     GarageManager.OnTick();
-                    GarageManager.OnHangarTick();
+                    GarageManager.OnFloorGarageTick();
                 }
 
                 if (_browser != null)

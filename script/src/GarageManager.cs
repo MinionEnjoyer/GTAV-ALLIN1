@@ -243,8 +243,8 @@ namespace ALLIN1
             if (!_initialized)
                 return;
 
-            // Don't show garage markers while in hangar
-            if (_isPlayerInHangar)
+            // Don't show garage markers while in floor garage
+            if (_isPlayerInFloorGarage)
                 return;
 
             if (_exitCooldownFrames > 0)
@@ -579,7 +579,7 @@ namespace ALLIN1
                         string ovName = VehicleList.DisplayNames.ContainsKey(modelName)
                             ? VehicleList.DisplayNames[modelName] : modelName;
                         GTA.UI.Screen.ShowSubtitle(
-                            $"~r~{ovName}~w~ is too large for this garage. Use the hangar.", 3000);
+                            $"~r~{ovName}~w~ is too large for this garage. Use the 3-Floor Garage.", 3000);
                         return;
                     }
 
@@ -1565,139 +1565,152 @@ namespace ALLIN1
 
         // ================================================================== //
         //                                                                    //
-        //  HANGAR — Oversized vehicle storage at LSIA                        //
+        //  3-FLOOR GARAGE — Oversized vehicle storage (location TBD)         //
         //                                                                    //
         // ================================================================== //
 
-        private const int HANGAR_SLOT_COUNT = 6;
+        private const int FLOOR_GARAGE_SLOT_COUNT = 15; // 3 floors x 5 slots
+        private const int FLOOR_GARAGE_SLOTS_PER_FLOOR = 5;
 
-        // LSIA Hangar 1 interior (underground, always loaded)
-        // Coordinates approximate — adjust after in-game verification
-        private static readonly Vector3 HANGAR_ENTRANCE_POS =
-            new Vector3(-1145f, -2864f, 13.9f); // outside LSIA hangar area
+        // Outside entrance/exit — placeholder coordinates, will be set later
+        private static readonly Vector3 FLOOR_GARAGE_ENTRANCE_POS =
+            new Vector3(0f, 0f, 0f); // TODO: set location
 
-        private static readonly Vector3 HANGAR_PED_EXIT_DEST =
-            new Vector3(-1145f, -2868f, 13.9f);
-        private const float HANGAR_PED_EXIT_DEST_HEADING = 330f;
+        private static readonly Vector3 FLOOR_GARAGE_PED_EXIT_DEST =
+            new Vector3(0f, 0f, 0f); // TODO: set location
+        private const float FLOOR_GARAGE_PED_EXIT_DEST_HEADING = 0f;
 
-        // Interior spawn (Fort Zancudo hangar interior, underground)
-        private static readonly Vector3 HANGAR_INTERIOR_PED =
-            new Vector3(-1266f, -3014f, -49f);
-        private const float HANGAR_INTERIOR_PED_HEADING = 330f;
+        // Interior ped spawn (placeholder — underground interior)
+        private static readonly Vector3 FLOOR_GARAGE_INTERIOR_PED =
+            new Vector3(0f, 0f, -50f); // TODO: set interior location
+        private const float FLOOR_GARAGE_INTERIOR_PED_HEADING = 0f;
 
-        private static readonly Vector3 HANGAR_VEHICLE_EXIT =
-            new Vector3(-1267f, -3000f, -49f);
-        private const float HANGAR_VEHICLE_EXIT_HEADING = 330f;
+        private static readonly Vector3 FLOOR_GARAGE_VEHICLE_EXIT =
+            new Vector3(0f, 0f, -50f); // TODO: set interior location
+        private const float FLOOR_GARAGE_VEHICLE_EXIT_HEADING = 0f;
 
-        // 6 oversized parking slots (wide spacing for large vehicles)
-        internal static readonly ParkingSlot[] HangarSlots =
+        // 15 parking slots across 3 floors (5 per floor)
+        // Floor 0 = slots 0-4, Floor 1 = slots 5-9, Floor 2 = slots 10-14
+        // Placeholder positions — will be set after in-game location scouting
+        internal static readonly ParkingSlot[] FloorGarageSlots =
         {
-            // Two rows of 3, wide spacing (~8m apart)
-            new ParkingSlot(-1274f, -3024f, -49.0f, 60f),
-            new ParkingSlot(-1274f, -3016f, -49.0f, 60f),
-            new ParkingSlot(-1274f, -3008f, -49.0f, 60f),
-            new ParkingSlot(-1258f, -3024f, -49.0f, 240f),
-            new ParkingSlot(-1258f, -3016f, -49.0f, 240f),
-            new ParkingSlot(-1258f, -3008f, -49.0f, 240f),
+            // Floor 0 (ground) — 5 slots
+            new ParkingSlot(0f, -10f, -50.0f, 0f),
+            new ParkingSlot(0f, -6f,  -50.0f, 0f),
+            new ParkingSlot(0f, -2f,  -50.0f, 0f),
+            new ParkingSlot(0f,  2f,  -50.0f, 0f),
+            new ParkingSlot(0f,  6f,  -50.0f, 0f),
+            // Floor 1 — 5 slots (same layout, higher Z)
+            new ParkingSlot(0f, -10f, -46.0f, 0f),
+            new ParkingSlot(0f, -6f,  -46.0f, 0f),
+            new ParkingSlot(0f, -2f,  -46.0f, 0f),
+            new ParkingSlot(0f,  2f,  -46.0f, 0f),
+            new ParkingSlot(0f,  6f,  -46.0f, 0f),
+            // Floor 2 — 5 slots (same layout, higher Z)
+            new ParkingSlot(0f, -10f, -42.0f, 0f),
+            new ParkingSlot(0f, -6f,  -42.0f, 0f),
+            new ParkingSlot(0f, -2f,  -42.0f, 0f),
+            new ParkingSlot(0f,  2f,  -42.0f, 0f),
+            new ParkingSlot(0f,  6f,  -42.0f, 0f),
         };
 
-        private static readonly string HANGAR_SAVE_PATH =
-            Path.Combine(SCRIPTS_DIR, "ALLIN1_hangar.json");
+        private static readonly string FLOOR_GARAGE_SAVE_PATH =
+            Path.Combine(SCRIPTS_DIR, "ALLIN1_floor_garage.json");
 
-        // Hangar character keys
-        private const string KEY_MICHAEL_H  = "michael_hangar";
-        private const string KEY_FRANKLIN_H = "franklin_hangar";
-        private const string KEY_TREVOR_H   = "trevor_hangar";
+        // Floor Garage character keys
+        private const string KEY_MICHAEL_FG  = "michael_floor_garage";
+        private const string KEY_FRANKLIN_FG = "franklin_floor_garage";
+        private const string KEY_TREVOR_FG   = "trevor_floor_garage";
 
-        private static readonly Dictionary<string, List<StoredVehicle>> _hangarStored =
+        private static readonly Dictionary<string, List<StoredVehicle>> _floorGarageStored =
             new Dictionary<string, List<StoredVehicle>>
             {
-                { KEY_MICHAEL_H,  new List<StoredVehicle>() },
-                { KEY_FRANKLIN_H, new List<StoredVehicle>() },
-                { KEY_TREVOR_H,   new List<StoredVehicle>() },
+                { KEY_MICHAEL_FG,  new List<StoredVehicle>() },
+                { KEY_FRANKLIN_FG, new List<StoredVehicle>() },
+                { KEY_TREVOR_FG,   new List<StoredVehicle>() },
             };
 
-        private static readonly Vehicle[] _hangarHandles = new Vehicle[HANGAR_SLOT_COUNT];
-        private static bool _isPlayerInHangar;
-        private static int _hangarExitCooldownFrames;
-        private static Blip _hangarEntranceBlip;
-        private static Blip _hangarPedBlip;
-        private static bool _hangarInitialized;
+        private static readonly Vehicle[] _floorGarageHandles = new Vehicle[FLOOR_GARAGE_SLOT_COUNT];
+        private static bool _isPlayerInFloorGarage;
+        private static int _floorGarageExitCooldownFrames;
+        private static Blip _floorGarageEntranceBlip;
+        private static Blip _floorGaragePedBlip;
+        private static bool _floorGarageInitialized;
 
         // ------------------------------------------------------------------ //
-        //  Hangar Public API                                                  //
+        //  Floor Garage Public API                                                  //
         // ------------------------------------------------------------------ //
 
-        internal static bool IsPlayerInHangar => _isPlayerInHangar;
+        internal static bool IsPlayerInFloorGarage => _isPlayerInFloorGarage;
 
-        internal static void InitializeHangar()
+        internal static void InitializeFloorGarage()
         {
-            if (_hangarInitialized) return;
+            if (_floorGarageInitialized) return;
 
             try
             {
-                HangarLoad();
+                FloorGarageLoad();
                 int total = 0;
-                foreach (var list in _hangarStored.Values)
+                foreach (var list in _floorGarageStored.Values)
                     total += list.Count;
-                Log($"Hangar: loaded {total} stored vehicles");
+                Log($"Floor Garage: loaded {total} stored vehicles");
 
-                _hangarEntranceBlip = World.CreateBlip(HANGAR_ENTRANCE_POS);
-                _hangarEntranceBlip.Sprite = BlipSprite.Hangar;
-                _hangarEntranceBlip.Color = CharacterBlipColor();
-                _hangarEntranceBlip.Name = "ALLIN1 Hangar (Oversized)";
-                _hangarEntranceBlip.IsShortRange = true;
+                _floorGarageEntranceBlip = World.CreateBlip(FLOOR_GARAGE_ENTRANCE_POS);
+                _floorGarageEntranceBlip.Sprite = BlipSprite.Garage;
+                _floorGarageEntranceBlip.Color = CharacterBlipColor();
+                _floorGarageEntranceBlip.Name = "ALLIN1 Floor Garage (Oversized)";
+                _floorGarageEntranceBlip.IsShortRange = true;
 
-                _hangarPedBlip = World.CreateBlip(HANGAR_PED_EXIT_DEST);
-                _hangarPedBlip.Sprite = BlipSprite.Hangar;
-                _hangarPedBlip.Color = CharacterBlipColor();
-                _hangarPedBlip.Name = "ALLIN1 Hangar (Pedestrian)";
-                _hangarPedBlip.IsShortRange = true;
+                _floorGaragePedBlip = World.CreateBlip(FLOOR_GARAGE_PED_EXIT_DEST);
+                _floorGaragePedBlip.Sprite = BlipSprite.Garage;
+                _floorGaragePedBlip.Color = CharacterBlipColor();
+                _floorGaragePedBlip.Name = "ALLIN1 Floor Garage (Pedestrian)";
+                _floorGaragePedBlip.IsShortRange = true;
 
-                Log("Hangar initialized (LSIA oversized vehicle storage)");
+                Log("Floor Garage initialized (3-floor oversized vehicle storage)");
             }
             catch (Exception ex)
             {
-                LogException("InitializeHangar", ex);
+                LogException("InitializeFloorGarage", ex);
             }
 
-            _hangarInitialized = true;
+            _floorGarageInitialized = true;
         }
 
-        internal static int GetHangarUsedSlots()
+        internal static int GetFloorGarageUsedSlots()
         {
-            string key = HangarCharacterKey();
-            if (_hangarStored.TryGetValue(key, out var list))
+            string key = FloorGarageCharacterKey();
+            if (_floorGarageStored.TryGetValue(key, out var list))
                 return list.Count;
             return 0;
         }
 
-        internal static int GetHangarCapacity() => HANGAR_SLOT_COUNT;
+        internal static int GetFloorGarageCapacity() => FLOOR_GARAGE_SLOT_COUNT;
 
-        internal static List<StoredVehicle> GetHangarStoredVehicles()
+        internal static List<StoredVehicle> GetFloorGarageStoredVehicles()
         {
-            string key = HangarCharacterKey();
-            if (_hangarStored.TryGetValue(key, out var list))
+            string key = FloorGarageCharacterKey();
+            if (_floorGarageStored.TryGetValue(key, out var list))
                 return list;
             return new List<StoredVehicle>();
         }
 
-        internal static bool DeliverToHangar(string model, int color1, int color2)
+        internal static bool DeliverToFloorGarage(string model, int color1, int color2)
         {
-            string key = HangarCharacterKey();
-            if (!_hangarStored.TryGetValue(key, out var list))
+            string key = FloorGarageCharacterKey();
+            if (!_floorGarageStored.TryGetValue(key, out var list))
                 return false;
 
-            if (list.Count >= HANGAR_SLOT_COUNT)
+            if (list.Count >= FLOOR_GARAGE_SLOT_COUNT)
             {
-                Log($"DeliverToHangar: full ({list.Count}/{HANGAR_SLOT_COUNT})");
+                Log($"DeliverToFloorGarage: full ({list.Count}/{FLOOR_GARAGE_SLOT_COUNT})");
                 return false;
             }
 
-            int slotIndex = FindEmptyHangarSlot(list);
+            int slotIndex = FindEmptyFloorGarageSlot(list);
             if (slotIndex < 0)
             {
-                Log($"DeliverToHangar: no empty slot");
+                Log($"DeliverToFloorGarage: no empty slot");
                 return false;
             }
 
@@ -1710,11 +1723,11 @@ namespace ALLIN1
             };
             list.Add(stored);
 
-            if (_isPlayerInHangar)
+            if (_isPlayerInFloorGarage)
             {
                 try
                 {
-                    ParkingSlot slot = HangarSlots[slotIndex];
+                    ParkingSlot slot = FloorGarageSlots[slotIndex];
                     Vehicle veh = VehicleHelper.CreateVehicle(
                         model, slot.Position, slot.Heading, color1, color2);
                     if (veh != null)
@@ -1727,24 +1740,24 @@ namespace ALLIN1
                             false, false, false, true);
                         Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
                         veh.IsPositionFrozen = true;
-                        _hangarHandles[slotIndex] = veh;
+                        _floorGarageHandles[slotIndex] = veh;
                     }
                 }
                 catch (Exception ex)
                 {
-                    LogException("DeliverToHangar.Spawn", ex);
+                    LogException("DeliverToFloorGarage.Spawn", ex);
                 }
             }
 
-            Log($"DeliverToHangar: {model} -> slot {slotIndex}");
-            HangarSave();
+            Log($"DeliverToFloorGarage: {model} -> slot {slotIndex}");
+            FloorGarageSave();
             return true;
         }
 
-        internal static void RemoveHangarVehicle(int listIndex)
+        internal static void RemoveFloorGarageVehicle(int listIndex)
         {
-            string key = HangarCharacterKey();
-            if (!_hangarStored.TryGetValue(key, out var list))
+            string key = FloorGarageCharacterKey();
+            if (!_floorGarageStored.TryGetValue(key, out var list))
                 return;
             if (listIndex < 0 || listIndex >= list.Count)
                 return;
@@ -1752,63 +1765,63 @@ namespace ALLIN1
             StoredVehicle sv = list[listIndex];
             int slotIndex = sv.Slot;
 
-            if (slotIndex >= 0 && slotIndex < HANGAR_SLOT_COUNT)
+            if (slotIndex >= 0 && slotIndex < FLOOR_GARAGE_SLOT_COUNT)
             {
-                Vehicle veh = _hangarHandles[slotIndex];
+                Vehicle veh = _floorGarageHandles[slotIndex];
                 if (veh != null && veh.Exists())
                 {
                     veh.IsPersistent = true;
                     veh.Delete();
                 }
-                _hangarHandles[slotIndex] = null;
+                _floorGarageHandles[slotIndex] = null;
             }
 
             list.RemoveAt(listIndex);
-            HangarSave();
-            Log($"RemoveHangarVehicle: {sv.Model} from slot {slotIndex}");
+            FloorGarageSave();
+            Log($"RemoveFloorGarageVehicle: {sv.Model} from slot {slotIndex}");
         }
 
-        internal static void DetailHangarVehicles()
+        internal static void DetailFloorGarageVehicles()
         {
             int cleaned = 0;
-            for (int i = 0; i < HANGAR_SLOT_COUNT; i++)
+            for (int i = 0; i < FLOOR_GARAGE_SLOT_COUNT; i++)
             {
-                Vehicle veh = _hangarHandles[i];
+                Vehicle veh = _floorGarageHandles[i];
                 if (veh == null || !veh.Exists()) continue;
                 veh.DirtLevel = 0f;
                 Function.Call(Hash.SET_VEHICLE_FIXED, veh);
                 cleaned++;
             }
-            Log($"DetailHangarVehicles: cleaned {cleaned} vehicles");
+            Log($"DetailFloorGarageVehicles: cleaned {cleaned} vehicles");
         }
 
         // ------------------------------------------------------------------ //
-        //  Hangar Tick                                                        //
+        //  Floor Garage Tick                                                        //
         // ------------------------------------------------------------------ //
 
-        internal static void OnHangarTick()
+        internal static void OnFloorGarageTick()
         {
-            if (!_hangarInitialized) return;
+            if (!_floorGarageInitialized) return;
 
-            if (_hangarExitCooldownFrames > 0)
+            if (_floorGarageExitCooldownFrames > 0)
             {
-                _hangarExitCooldownFrames--;
+                _floorGarageExitCooldownFrames--;
                 return;
             }
 
             Ped player = Game.Player.Character;
             if (player == null || player.IsDead) return;
 
-            // Don't show hangar markers while in garage (and vice versa)
+            // Don't show floor garage markers while in garage (and vice versa)
             if (_isPlayerInGarage) return;
 
             BlipColor charColor = CharacterBlipColor();
-            if (_hangarEntranceBlip != null && _hangarEntranceBlip.Exists())
-                _hangarEntranceBlip.Color = charColor;
-            if (_hangarPedBlip != null && _hangarPedBlip.Exists())
-                _hangarPedBlip.Color = charColor;
+            if (_floorGarageEntranceBlip != null && _floorGarageEntranceBlip.Exists())
+                _floorGarageEntranceBlip.Color = charColor;
+            if (_floorGaragePedBlip != null && _floorGaragePedBlip.Exists())
+                _floorGaragePedBlip.Color = charColor;
 
-            if (!_isPlayerInHangar)
+            if (!_isPlayerInFloorGarage)
             {
                 bool inVehicle = player.IsInVehicle();
 
@@ -1816,18 +1829,18 @@ namespace ALLIN1
                 {
                     World.DrawMarker(
                         GTA.MarkerType.VerticalCylinder,
-                        HANGAR_ENTRANCE_POS - new Vector3(0f, 0f, 1f),
+                        FLOOR_GARAGE_ENTRANCE_POS - new Vector3(0f, 0f, 1f),
                         Vector3.Zero, Vector3.Zero,
                         new Vector3(3f, 3f, 1.5f),
                         System.Drawing.Color.FromArgb(128, 200, 100, 0));
 
-                    float dist = player.Position.DistanceTo(HANGAR_ENTRANCE_POS);
+                    float dist = player.Position.DistanceTo(FLOOR_GARAGE_ENTRANCE_POS);
                     if (dist < ENTER_RADIUS + 1f)
                     {
                         GTA.UI.Screen.ShowHelpTextThisFrame(
-                            "Press ~INPUT_CONTEXT~ to enter the hangar.");
+                            "Press ~INPUT_CONTEXT~ to enter the floor garage.");
                         if (Game.IsControlJustPressed(GTA.Control.Context))
-                            EnterHangar();
+                            EnterFloorGarage();
                     }
                 }
 
@@ -1835,60 +1848,60 @@ namespace ALLIN1
                 {
                     World.DrawMarker(
                         GTA.MarkerType.VerticalCylinder,
-                        HANGAR_PED_EXIT_DEST - new Vector3(0f, 0f, 1f),
+                        FLOOR_GARAGE_PED_EXIT_DEST - new Vector3(0f, 0f, 1f),
                         Vector3.Zero, Vector3.Zero,
                         new Vector3(2f, 2f, 1.2f),
                         System.Drawing.Color.FromArgb(128, 200, 100, 0));
 
-                    float dist = player.Position.DistanceTo(HANGAR_PED_EXIT_DEST);
+                    float dist = player.Position.DistanceTo(FLOOR_GARAGE_PED_EXIT_DEST);
                     if (dist < ENTER_RADIUS)
                     {
                         GTA.UI.Screen.ShowHelpTextThisFrame(
-                            "Press ~INPUT_CONTEXT~ to enter the hangar.");
+                            "Press ~INPUT_CONTEXT~ to enter the floor garage.");
                         if (Game.IsControlJustPressed(GTA.Control.Context))
-                            EnterHangar();
+                            EnterFloorGarage();
                     }
                 }
             }
             else
             {
                 bool inVehicle = player.IsInVehicle();
-                EnforceHangarVehicleState(player);
+                EnforceFloorGarageVehicleState(player);
 
                 if (inVehicle)
                 {
                     GTA.UI.Screen.ShowHelpTextThisFrame(
-                        "Press ~INPUT_CONTEXT~ to leave the hangar with your vehicle.");
+                        "Press ~INPUT_CONTEXT~ to leave the floor garage with your vehicle.");
                     if (Game.IsControlJustPressed(GTA.Control.Context))
-                        LeaveHangar();
+                        LeaveFloorGarage();
                 }
 
                 if (!inVehicle)
                 {
                     World.DrawMarker(
                         GTA.MarkerType.VerticalCylinder,
-                        HANGAR_INTERIOR_PED - new Vector3(0f, 0f, 1f),
+                        FLOOR_GARAGE_INTERIOR_PED - new Vector3(0f, 0f, 1f),
                         Vector3.Zero, Vector3.Zero,
                         new Vector3(1.5f, 1.5f, 1.2f),
                         System.Drawing.Color.FromArgb(128, 200, 100, 0));
 
-                    float dist = player.Position.DistanceTo(HANGAR_INTERIOR_PED);
+                    float dist = player.Position.DistanceTo(FLOOR_GARAGE_INTERIOR_PED);
                     if (dist < EXIT_RADIUS)
                     {
                         GTA.UI.Screen.ShowHelpTextThisFrame(
-                            "Press ~INPUT_CONTEXT~ to leave the hangar.");
+                            "Press ~INPUT_CONTEXT~ to leave the floor garage.");
                         if (Game.IsControlJustPressed(GTA.Control.Context))
-                            LeaveHangar();
+                            LeaveFloorGarage();
                     }
                 }
             }
         }
 
         // ------------------------------------------------------------------ //
-        //  Hangar Enter / Leave                                               //
+        //  Floor Garage Enter / Leave                                               //
         // ------------------------------------------------------------------ //
 
-        private static void EnterHangar()
+        private static void EnterFloorGarage()
         {
             Ped player = Game.Player.Character;
 
@@ -1901,7 +1914,7 @@ namespace ALLIN1
                     if (IsPersonalVehicle(rideIn))
                     {
                         GTA.UI.Screen.ShowSubtitle(
-                            "~r~You cannot bring your personal vehicle into the hangar.", 3000);
+                            "~r~You cannot bring your personal vehicle into the floor garage.", 3000);
                         return;
                     }
 
@@ -1919,36 +1932,36 @@ namespace ALLIN1
                             modelName = modelHash.ToString();
                     }
 
-                    string hKey = HangarCharacterKey();
-                    if (!_hangarStored.TryGetValue(hKey, out var storedList))
+                    string hKey = FloorGarageCharacterKey();
+                    if (!_floorGarageStored.TryGetValue(hKey, out var storedList))
                     {
                         storedList = new List<StoredVehicle>();
-                        _hangarStored[hKey] = storedList;
+                        _floorGarageStored[hKey] = storedList;
                     }
 
-                    if (storedList.Count >= HANGAR_SLOT_COUNT)
+                    if (storedList.Count >= FLOOR_GARAGE_SLOT_COUNT)
                     {
                         GTA.UI.Screen.ShowSubtitle(
-                            $"~r~Hangar full.~w~ ({storedList.Count}/{HANGAR_SLOT_COUNT} slots used)", 3000);
+                            $"~r~Floor Garage full.~w~ ({storedList.Count}/{FLOOR_GARAGE_SLOT_COUNT} slots used)", 3000);
                         return;
                     }
 
-                    int slotIndex = FindEmptyHangarSlot(storedList);
+                    int slotIndex = FindEmptyFloorGarageSlot(storedList);
                     if (slotIndex < 0)
                     {
-                        GTA.UI.Screen.ShowSubtitle("~r~Hangar full. No empty slots.", 3000);
+                        GTA.UI.Screen.ShowSubtitle("~r~Floor Garage full. No empty slots.", 3000);
                         return;
                     }
 
                     StoredVehicle sv = CaptureVehicleState(rideIn, modelName, slotIndex);
                     storedList.Add(sv);
-                    HangarSave();
+                    FloorGarageSave();
 
                     string displayName = VehicleList.DisplayNames.ContainsKey(modelName)
                         ? VehicleList.DisplayNames[modelName] : modelName;
                     GTA.UI.Screen.ShowSubtitle(
-                        $"~g~{displayName}~w~ stored in hangar. (Slot {slotIndex + 1})", 3000);
-                    Log($"EnterHangar: stored drive-in vehicle {modelName} -> slot {slotIndex}");
+                        $"~g~{displayName}~w~ stored in floor garage. (Slot {slotIndex + 1})", 3000);
+                    Log($"EnterFloorGarage: stored drive-in vehicle {modelName} -> slot {slotIndex}");
 
                     rideIn.IsPersistent = true;
                     rideIn.Delete();
@@ -1956,28 +1969,28 @@ namespace ALLIN1
             }
 
             // Clear existing handles
-            for (int i = 0; i < HANGAR_SLOT_COUNT; i++)
+            for (int i = 0; i < FLOOR_GARAGE_SLOT_COUNT; i++)
             {
-                if (_hangarHandles[i] != null && _hangarHandles[i].Exists())
-                    _hangarHandles[i].Delete();
-                _hangarHandles[i] = null;
+                if (_floorGarageHandles[i] != null && _floorGarageHandles[i].Exists())
+                    _floorGarageHandles[i].Delete();
+                _floorGarageHandles[i] = null;
             }
 
             // Freeze and teleport player
             player.IsPositionFrozen = true;
             Function.Call(Hash.SET_ENTITY_COORDS, player,
-                HANGAR_INTERIOR_PED.X, HANGAR_INTERIOR_PED.Y, HANGAR_INTERIOR_PED.Z,
+                FLOOR_GARAGE_INTERIOR_PED.X, FLOOR_GARAGE_INTERIOR_PED.Y, FLOOR_GARAGE_INTERIOR_PED.Z,
                 false, false, false, true);
-            Function.Call(Hash.SET_ENTITY_HEADING, player, HANGAR_INTERIOR_PED_HEADING);
+            Function.Call(Hash.SET_ENTITY_HEADING, player, FLOOR_GARAGE_INTERIOR_PED_HEADING);
             Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, player);
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, true);
 
-            _isPlayerInHangar = true;
+            _isPlayerInFloorGarage = true;
 
-            // Pre-load and spawn hangar vehicles
-            string key = HangarCharacterKey();
+            // Pre-load and spawn floor garage vehicles
+            string key = FloorGarageCharacterKey();
             var models = new List<Model>();
-            if (_hangarStored.TryGetValue(key, out var list))
+            if (_floorGarageStored.TryGetValue(key, out var list))
             {
                 foreach (var sv in list)
                 {
@@ -1998,9 +2011,9 @@ namespace ALLIN1
 
                 foreach (var sv in list)
                 {
-                    if (sv.Slot < 0 || sv.Slot >= HANGAR_SLOT_COUNT) continue;
+                    if (sv.Slot < 0 || sv.Slot >= FLOOR_GARAGE_SLOT_COUNT) continue;
 
-                    ParkingSlot slot = HangarSlots[sv.Slot];
+                    ParkingSlot slot = FloorGarageSlots[sv.Slot];
                     try
                     {
                         var model = new Model(sv.Model);
@@ -2018,13 +2031,13 @@ namespace ALLIN1
                                 false, false, false, true);
                             Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
                             veh.IsPositionFrozen = true;
-                            _hangarHandles[sv.Slot] = veh;
-                            Log($"EnterHangar: spawned {sv.Model} at slot {sv.Slot}");
+                            _floorGarageHandles[sv.Slot] = veh;
+                            Log($"EnterFloorGarage: spawned {sv.Model} at slot {sv.Slot}");
                         }
                     }
                     catch (Exception ex)
                     {
-                        LogException($"EnterHangar.Spawn({sv.Model})", ex);
+                        LogException($"EnterFloorGarage.Spawn({sv.Model})", ex);
                     }
                 }
 
@@ -2034,12 +2047,12 @@ namespace ALLIN1
 
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
             player.IsPositionFrozen = false;
-            Log($"EnterHangar: character={key}, vehicles spawned");
+            Log($"EnterFloorGarage: character={key}, vehicles spawned");
         }
 
-        private static void LeaveHangar()
+        private static void LeaveFloorGarage()
         {
-            HangarUpdateStoredFromLive();
+            FloorGarageUpdateStoredFromLive();
 
             Ped player = Game.Player.Character;
             Vehicle playerVehicle = null;
@@ -2050,40 +2063,40 @@ namespace ALLIN1
                 Vehicle current = player.CurrentVehicle;
                 if (current != null && current.Exists())
                 {
-                    for (int i = 0; i < HANGAR_SLOT_COUNT; i++)
+                    for (int i = 0; i < FLOOR_GARAGE_SLOT_COUNT; i++)
                     {
-                        if (_hangarHandles[i] != null && _hangarHandles[i] == current)
+                        if (_floorGarageHandles[i] != null && _floorGarageHandles[i] == current)
                         {
                             playerVehicle = current;
                             playerSlotIndex = i;
-                            _hangarHandles[i] = null;
+                            _floorGarageHandles[i] = null;
                             break;
                         }
                     }
                 }
             }
 
-            for (int i = 0; i < HANGAR_SLOT_COUNT; i++)
+            for (int i = 0; i < FLOOR_GARAGE_SLOT_COUNT; i++)
             {
-                Vehicle veh = _hangarHandles[i];
+                Vehicle veh = _floorGarageHandles[i];
                 if (veh != null && veh.Exists())
                 {
                     veh.IsPersistent = true;
                     veh.Delete();
                 }
-                _hangarHandles[i] = null;
+                _floorGarageHandles[i] = null;
             }
 
             if (playerVehicle != null)
             {
-                string hKey = HangarCharacterKey();
-                if (_hangarStored.TryGetValue(hKey, out var hList))
+                string hKey = FloorGarageCharacterKey();
+                if (_floorGarageStored.TryGetValue(hKey, out var hList))
                 {
                     for (int i = hList.Count - 1; i >= 0; i--)
                     {
                         if (hList[i].Slot == playerSlotIndex)
                         {
-                            Log($"LeaveHangar: removing {hList[i].Model} from slot {playerSlotIndex} (driven out)");
+                            Log($"LeaveFloorGarage: removing {hList[i].Model} from slot {playerSlotIndex} (driven out)");
                             hList.RemoveAt(i);
                             break;
                         }
@@ -2093,61 +2106,61 @@ namespace ALLIN1
                 playerVehicle.IsPositionFrozen = false;
                 playerVehicle.IsPersistent = true;
                 Function.Call(Hash.SET_ENTITY_COORDS, playerVehicle,
-                    HANGAR_ENTRANCE_POS.X, HANGAR_ENTRANCE_POS.Y, HANGAR_ENTRANCE_POS.Z,
+                    FLOOR_GARAGE_ENTRANCE_POS.X, FLOOR_GARAGE_ENTRANCE_POS.Y, FLOOR_GARAGE_ENTRANCE_POS.Z,
                     false, false, false, true);
                 Function.Call(Hash.SET_ENTITY_HEADING, playerVehicle, 180f);
                 playerVehicle.IsEngineRunning = true;
                 Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, playerVehicle);
 
-                HangarSave();
-                Log("LeaveHangar: drove out in vehicle");
+                FloorGarageSave();
+                Log("LeaveFloorGarage: drove out in vehicle");
             }
             else
             {
-                Vector3 dest = HANGAR_PED_EXIT_DEST;
+                Vector3 dest = FLOOR_GARAGE_PED_EXIT_DEST;
                 player.IsPositionFrozen = true;
                 Function.Call(Hash.SET_ENTITY_COORDS, player,
                     dest.X, dest.Y, dest.Z,
                     false, false, false, true);
-                Function.Call(Hash.SET_ENTITY_HEADING, player, HANGAR_PED_EXIT_DEST_HEADING);
+                Function.Call(Hash.SET_ENTITY_HEADING, player, FLOOR_GARAGE_PED_EXIT_DEST_HEADING);
                 player.IsPositionFrozen = false;
 
-                HangarSave();
-                Log("LeaveHangar: returned on foot");
+                FloorGarageSave();
+                Log("LeaveFloorGarage: returned on foot");
             }
 
-            _isPlayerInHangar = false;
-            _hangarExitCooldownFrames = 60;
+            _isPlayerInFloorGarage = false;
+            _floorGarageExitCooldownFrames = 60;
         }
 
         // ------------------------------------------------------------------ //
-        //  Hangar Helpers                                                     //
+        //  Floor Garage Helpers                                                     //
         // ------------------------------------------------------------------ //
 
-        private static string HangarCharacterKey()
+        private static string FloorGarageCharacterKey()
         {
             PedHash ch = GbayShop.GetCurrentCharacter();
-            if (ch == PedHash.Franklin) return KEY_FRANKLIN_H;
-            if (ch == PedHash.Trevor) return KEY_TREVOR_H;
-            return KEY_MICHAEL_H;
+            if (ch == PedHash.Franklin) return KEY_FRANKLIN_FG;
+            if (ch == PedHash.Trevor) return KEY_TREVOR_FG;
+            return KEY_MICHAEL_FG;
         }
 
-        private static int FindEmptyHangarSlot(List<StoredVehicle> list)
+        private static int FindEmptyFloorGarageSlot(List<StoredVehicle> list)
         {
             var occupied = new HashSet<int>();
             foreach (var sv in list)
                 occupied.Add(sv.Slot);
-            for (int i = 0; i < HANGAR_SLOT_COUNT; i++)
+            for (int i = 0; i < FLOOR_GARAGE_SLOT_COUNT; i++)
                 if (!occupied.Contains(i)) return i;
             return -1;
         }
 
-        private static void EnforceHangarVehicleState(Ped player)
+        private static void EnforceFloorGarageVehicleState(Ped player)
         {
             Vehicle playerVeh = player.IsInVehicle() ? player.CurrentVehicle : null;
-            for (int i = 0; i < HANGAR_SLOT_COUNT; i++)
+            for (int i = 0; i < FLOOR_GARAGE_SLOT_COUNT; i++)
             {
-                Vehicle veh = _hangarHandles[i];
+                Vehicle veh = _floorGarageHandles[i];
                 if (veh == null || !veh.Exists()) continue;
                 veh.IsPositionFrozen = true;
                 veh.IsEngineRunning = false;
@@ -2155,53 +2168,53 @@ namespace ALLIN1
         }
 
         // ------------------------------------------------------------------ //
-        //  Hangar JSON Persistence                                            //
+        //  Floor Garage JSON Persistence                                            //
         // ------------------------------------------------------------------ //
 
-        private static void HangarLoad()
+        private static void FloorGarageLoad()
         {
-            if (!File.Exists(HANGAR_SAVE_PATH))
+            if (!File.Exists(FLOOR_GARAGE_SAVE_PATH))
                 return;
             try
             {
-                string json = File.ReadAllText(HANGAR_SAVE_PATH);
-                HangarParseJson(json);
+                string json = File.ReadAllText(FLOOR_GARAGE_SAVE_PATH);
+                FloorGarageParseJson(json);
             }
             catch (Exception ex)
             {
-                LogException("HangarLoad", ex);
+                LogException("FloorGarageLoad", ex);
             }
         }
 
-        private static void HangarSave()
+        private static void FloorGarageSave()
         {
             try
             {
-                string json = HangarBuildJson();
-                string tmp = HANGAR_SAVE_PATH + ".tmp";
+                string json = FloorGarageBuildJson();
+                string tmp = FLOOR_GARAGE_SAVE_PATH + ".tmp";
                 File.WriteAllText(tmp, json);
-                if (File.Exists(HANGAR_SAVE_PATH))
-                    File.Delete(HANGAR_SAVE_PATH);
-                File.Move(tmp, HANGAR_SAVE_PATH);
+                if (File.Exists(FLOOR_GARAGE_SAVE_PATH))
+                    File.Delete(FLOOR_GARAGE_SAVE_PATH);
+                File.Move(tmp, FLOOR_GARAGE_SAVE_PATH);
             }
             catch (Exception ex)
             {
-                LogException("HangarSave", ex);
+                LogException("FloorGarageSave", ex);
             }
         }
 
-        private static string HangarBuildJson()
+        private static string FloorGarageBuildJson()
         {
             var sb = new StringBuilder();
             sb.AppendLine("{");
 
-            string[] keys = { KEY_MICHAEL_H, KEY_FRANKLIN_H, KEY_TREVOR_H };
+            string[] keys = { KEY_MICHAEL_FG, KEY_FRANKLIN_FG, KEY_TREVOR_FG };
             for (int k = 0; k < keys.Length; k++)
             {
                 string key = keys[k];
                 sb.Append($"  \"{key}\": [");
 
-                if (_hangarStored.TryGetValue(key, out var list) && list.Count > 0)
+                if (_floorGarageStored.TryGetValue(key, out var list) && list.Count > 0)
                 {
                     sb.AppendLine();
                     for (int i = 0; i < list.Count; i++)
@@ -2267,7 +2280,7 @@ namespace ALLIN1
             return sb.ToString();
         }
 
-        private static void HangarParseJson(string json)
+        private static void FloorGarageParseJson(string json)
         {
             // Reuse the same JSON parsing approach as the garage
             string currentKey = null;
@@ -2298,8 +2311,8 @@ namespace ALLIN1
                 {
                     i++;
                     var vehicles = ParseVehicleArray(json, ref i);
-                    if (_hangarStored.ContainsKey(currentKey))
-                        _hangarStored[currentKey] = vehicles;
+                    if (_floorGarageStored.ContainsKey(currentKey))
+                        _floorGarageStored[currentKey] = vehicles;
                     currentKey = null;
                     continue;
                 }
@@ -2308,17 +2321,17 @@ namespace ALLIN1
             }
         }
 
-        private static void HangarUpdateStoredFromLive()
+        private static void FloorGarageUpdateStoredFromLive()
         {
-            if (!_isPlayerInHangar) return;
+            if (!_isPlayerInFloorGarage) return;
 
-            string key = HangarCharacterKey();
-            if (!_hangarStored.TryGetValue(key, out var list)) return;
+            string key = FloorGarageCharacterKey();
+            if (!_floorGarageStored.TryGetValue(key, out var list)) return;
 
             foreach (var sv in list)
             {
-                if (sv.Slot < 0 || sv.Slot >= HANGAR_SLOT_COUNT) continue;
-                Vehicle veh = _hangarHandles[sv.Slot];
+                if (sv.Slot < 0 || sv.Slot >= FLOOR_GARAGE_SLOT_COUNT) continue;
+                Vehicle veh = _floorGarageHandles[sv.Slot];
                 if (veh == null || !veh.Exists()) continue;
 
                 var updated = CaptureVehicleState(veh, sv.Model, sv.Slot);
@@ -2343,7 +2356,7 @@ namespace ALLIN1
                 sv.CustomSecondary = updated.CustomSecondary;
             }
 
-            HangarSave();
+            FloorGarageSave();
         }
     }
 }

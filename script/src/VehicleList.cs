@@ -2906,7 +2906,7 @@ namespace ALLIN1
         }
 
         /// <summary>
-        /// Returns the size tier: 0 = normal, 1 = large (left row only), 2 = oversized (hangar only).
+        /// Returns the size tier: 0 = normal, 1 = large (left row only), 2 = oversized (floor garage only).
         /// </summary>
         internal static int GetSizeTier(string model)
         {
