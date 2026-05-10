@@ -141,6 +141,9 @@ namespace ALLIN1
         // Cooldown to avoid re-entering immediately after exiting
         private static int _exitCooldownFrames;
 
+        // Reverse lookup: model hash -> spawn name (built from VehicleList.All)
+        private static Dictionary<int, string> _hashToSpawnName;
+
         private static bool _debug;
         private static bool _enableLogging = true;
         private static bool _initialized;
@@ -189,6 +192,16 @@ namespace ALLIN1
 
             try
             {
+                // Build reverse hash -> spawn name lookup from VehicleList
+                _hashToSpawnName = new Dictionary<int, string>();
+                foreach (string name in VehicleList.All)
+                {
+                    int hash = Game.GenerateHash(name);
+                    if (!_hashToSpawnName.ContainsKey(hash))
+                        _hashToSpawnName[hash] = name;
+                }
+                Log($"Built hash->spawn lookup: {_hashToSpawnName.Count} entries");
+
                 Load();
 
                 int total = 0;
@@ -535,14 +548,25 @@ namespace ALLIN1
                         return;
                     }
 
-                    // Get model name from the vehicle
-                    string modelName = Function.Call<string>(
-                        Hash.GET_DISPLAY_NAME_FROM_VEHICLE_MODEL,
-                        (uint)rideIn.Model.Hash);
-                    if (!string.IsNullOrEmpty(modelName))
-                        modelName = modelName.ToLowerInvariant();
+                    // Get spawn name from model hash via our reverse lookup
+                    int modelHash = rideIn.Model.Hash;
+                    string modelName;
+                    if (_hashToSpawnName != null && _hashToSpawnName.TryGetValue(modelHash, out string spawnName))
+                    {
+                        modelName = spawnName;
+                    }
                     else
-                        modelName = rideIn.Model.Hash.ToString();
+                    {
+                        // Fallback: use GXT label lowercased (may not match spawn name for all vehicles)
+                        modelName = Function.Call<string>(
+                            Hash.GET_DISPLAY_NAME_FROM_VEHICLE_MODEL,
+                            (uint)modelHash);
+                        if (!string.IsNullOrEmpty(modelName))
+                            modelName = modelName.ToLowerInvariant();
+                        else
+                            modelName = modelHash.ToString();
+                        Log($"EnterGarage: vehicle hash {modelHash} not in VehicleList, fallback name={modelName}");
+                    }
 
                     // Capture full vehicle state (colors, mods, etc.)
                     StoredVehicle sv = CaptureVehicleState(rideIn, modelName, slotIndex);
@@ -570,21 +594,44 @@ namespace ALLIN1
                 _handles[i] = null;
             }
 
-            // Always spawn player at the ped exit point (safe on-foot position)
+            // Freeze player and teleport to safe interior position
+            player.IsPositionFrozen = true;
             Function.Call(Hash.SET_ENTITY_COORDS, player,
                 PED_EXIT.X, PED_EXIT.Y, PED_EXIT.Z,
                 false, false, false, true);
             Function.Call(Hash.SET_ENTITY_HEADING, player, PED_EXIT_HEADING);
             Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, player);
+            Function.Call(Hash.FREEZE_ENTITY_POSITION, player, true);
 
             _isPlayerInGarage = true; // set early to block re-entry during spawning
-            Script.Wait(0);
 
-            // Spawn the current character's vehicles
+            // Pre-load all vehicle models before spawning
             string key = CharacterKey();
+            var models = new List<Model>();
             if (_stored.TryGetValue(key, out var list))
             {
-                Log($"EnterGarage: spawning {list.Count} vehicles");
+                Log($"EnterGarage: pre-loading {list.Count} vehicle models");
+                foreach (var sv in list)
+                {
+                    var m = new Model(sv.Model);
+                    m.Request();
+                    models.Add(m);
+                }
+
+                // Wait for all models to load (up to 10s total)
+                DateTime deadline = DateTime.UtcNow.AddMilliseconds(10000);
+                bool allLoaded = false;
+                while (!allLoaded && DateTime.UtcNow < deadline)
+                {
+                    allLoaded = true;
+                    foreach (var m in models)
+                    {
+                        if (!m.IsLoaded) { allLoaded = false; break; }
+                    }
+                    if (!allLoaded) Script.Wait(0);
+                }
+
+                // Now spawn all vehicles quickly
                 foreach (var sv in list)
                 {
                     if (sv.Slot < 0 || sv.Slot >= SLOT_COUNT)
@@ -596,10 +643,10 @@ namespace ALLIN1
                     ParkingSlot slot = Slots[sv.Slot];
                     try
                     {
-                        Log($"EnterGarage: spawning {sv.Model} at slot {sv.Slot} ({slot.Position})");
-                        Vehicle veh = VehicleHelper.CreateVehicle(
-                            sv.Model, slot.Position, slot.Heading,
-                            sv.Color1, sv.Color2, 10000);
+                        var model = new Model(sv.Model);
+                        Vehicle veh = World.CreateVehicle(model, slot.Position, slot.Heading);
+                        model.MarkAsNoLongerNeeded();
+
                         if (veh != null)
                         {
                             ApplyVehicleState(veh, sv);
@@ -608,11 +655,11 @@ namespace ALLIN1
                             Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, veh);
                             veh.IsPositionFrozen = true;
                             _handles[sv.Slot] = veh;
-                            Log($"EnterGarage: spawned {sv.Model} OK (handle={veh.Handle})");
+                            Log($"EnterGarage: spawned {sv.Model} at slot {sv.Slot}");
                         }
                         else
                         {
-                            Log($"EnterGarage: FAILED to spawn {sv.Model} at slot {sv.Slot} (null return)");
+                            Log($"EnterGarage: FAILED to spawn {sv.Model} at slot {sv.Slot}");
                         }
                     }
                     catch (Exception ex)
@@ -620,8 +667,14 @@ namespace ALLIN1
                         LogException($"EnterGarage.Spawn({sv.Model})", ex);
                     }
                 }
+
+                // Release models
+                foreach (var m in models)
+                    m.MarkAsNoLongerNeeded();
             }
 
+            // Unfreeze player
+            Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
             player.IsPositionFrozen = false;
 
             Log($"EnterGarage: character={key}, vehicles spawned");
@@ -832,11 +885,56 @@ namespace ALLIN1
             {
                 string json = File.ReadAllText(SAVE_PATH);
                 ParseJson(json);
+                MigrateModelNames();
             }
             catch (Exception ex)
             {
                 LogException("Load", ex);
             }
+        }
+
+        /// <summary>
+        /// Fix stored vehicles that were saved with GXT labels instead of
+        /// spawn names (e.g. "insurgent" instead of "insurgent3"). Uses the
+        /// hash lookup built during Initialize.
+        /// </summary>
+        private static void MigrateModelNames()
+        {
+            if (_hashToSpawnName == null || _hashToSpawnName.Count == 0)
+                return;
+
+            // Build a set of valid spawn names for quick lookup
+            var validNames = new HashSet<string>();
+            foreach (string name in VehicleList.All)
+                validNames.Add(name);
+
+            bool changed = false;
+            foreach (var kvp in _stored)
+            {
+                foreach (var sv in kvp.Value)
+                {
+                    if (validNames.Contains(sv.Model))
+                        continue; // already a valid spawn name
+
+                    // Try to resolve: compute hash of stored name and see if
+                    // it maps to a known vehicle (it won't if the GXT label
+                    // differs from the spawn name)
+                    int hash = Game.GenerateHash(sv.Model);
+                    if (_hashToSpawnName.TryGetValue(hash, out string correctName))
+                    {
+                        Log($"Migrate: {sv.Model} -> {correctName} (hash match)");
+                        sv.Model = correctName;
+                        changed = true;
+                    }
+                    else
+                    {
+                        Log($"Migrate: {sv.Model} has no matching spawn name (hash {hash}), vehicle may not spawn");
+                    }
+                }
+            }
+
+            if (changed)
+                Save();
         }
 
         private static void Save()
