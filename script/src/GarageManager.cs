@@ -694,6 +694,7 @@ namespace ALLIN1
                 Function.Call(Hash.SET_ENTITY_COORDS, playerVehicle,
                     ENTRANCE_POS.X, ENTRANCE_POS.Y, ENTRANCE_POS.Z,
                     false, false, false, true);
+                Function.Call(Hash.SET_ENTITY_HEADING, playerVehicle, 180f);
                 playerVehicle.IsEngineRunning = true;
                 Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, playerVehicle);
 
