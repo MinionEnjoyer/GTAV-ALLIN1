@@ -15,6 +15,7 @@
     <Compile Remove="tools\**" />
     <Compile Include="tools\CoordinateDisplay.cs" />
     <Compile Include="tools\HeightChecker.cs" />
+    <Compile Include="tools\InteriorScout.cs" />
   </ItemGroup>
 
   <ItemGroup>
