@@ -867,18 +867,32 @@ namespace ALLIN1
             GbayRenderer.DrawText(priceText, BROWSER_CX, modalTop + 0.05f,
                 0.30f, GbayRenderer.TextPrice, GbayRenderer.FONT_CHALET, true);
 
-            // Garage info
-            int used = GarageManager.GetUsedSlots();
-            int cap = GarageManager.GetCapacity();
+            // Destination info (garage vs hangar based on size tier)
+            bool isOversized = VehicleList.GetSizeTier(_pendingModel) == 2;
+            int used, cap;
+            string destName;
+            if (isOversized)
+            {
+                used = GarageManager.GetHangarUsedSlots();
+                cap = GarageManager.GetHangarCapacity();
+                destName = "LSIA Hangar";
+            }
+            else
+            {
+                used = GarageManager.GetUsedSlots();
+                cap = GarageManager.GetCapacity();
+                destName = "Eclipse Towers Garage";
+            }
             bool isFull = used >= cap;
-            string garageInfo = $"Eclipse Towers Garage ({used}/{cap})";
+            string garageInfo = $"{destName} ({used}/{cap})";
             Color garageColor = isFull ? GbayRenderer.TextDim : GbayRenderer.TextDark;
             GbayRenderer.DrawText(garageInfo, BROWSER_CX, modalTop + 0.09f,
                 0.32f, garageColor, GbayRenderer.FONT_CHALET, true);
 
             if (isFull)
             {
-                GbayRenderer.DrawText("Garage is full!", BROWSER_CX, modalTop + 0.125f,
+                string fullMsg = isOversized ? "Hangar is full!" : "Garage is full!";
+                GbayRenderer.DrawText(fullMsg, BROWSER_CX, modalTop + 0.125f,
                     0.28f, Color.FromArgb(255, 200, 80, 80), GbayRenderer.FONT_CONDENSED, true);
             }
 
@@ -1091,7 +1105,9 @@ namespace ALLIN1
             // Capacity and money (right side of header)
             int used = GarageManager.GetUsedSlots();
             int cap = GarageManager.GetCapacity();
-            string capText = $"${Game.Player.Money:N0}  |  Eclipse Towers ({used}/{cap})";
+            int hUsed = GarageManager.GetHangarUsedSlots();
+            int hCap = GarageManager.GetHangarCapacity();
+            string capText = $"${Game.Player.Money:N0}  |  Garage {used}/{cap}  |  Hangar {hUsed}/{hCap}";
             GbayRenderer.DrawText(capText, BROWSER_RIGHT - 0.01f, HEADER_Y + 0.018f,
                 0.32f, GbayRenderer.HeaderText, GbayRenderer.FONT_CHALET,
                 false, false, true);

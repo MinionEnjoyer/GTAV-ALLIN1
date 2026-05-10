@@ -96,12 +96,12 @@ namespace ALLIN1
             new ParkingSlot(223.61f, -993.94f,  -99.0f, -105f),
             new ParkingSlot(223.65f, -989.04f,  -99.0f, -105f),
             new ParkingSlot(224.18f, -983.51f,  -99.0f, -105f),
-            // Right row (facing heading 134)
-            new ParkingSlot(234.44f, -1000.90f, -99.0f, 134f),
-            new ParkingSlot(233.68f, -995.90f,  -99.0f, 134f),
-            new ParkingSlot(233.00f, -991.15f,  -99.0f, 134f),
-            new ParkingSlot(232.94f, -985.76f,  -99.0f, 134f),
-            new ParkingSlot(232.39f, -981.39f,  -99.0f, 134f),
+            // Right row (facing heading 134) -- shifted -0.5 X for wall clearance
+            new ParkingSlot(233.94f, -1000.90f, -99.0f, 134f),
+            new ParkingSlot(233.18f, -995.90f,  -99.0f, 134f),
+            new ParkingSlot(232.50f, -991.15f,  -99.0f, 134f),
+            new ParkingSlot(232.44f, -985.76f,  -99.0f, 134f),
+            new ParkingSlot(231.89f, -981.39f,  -99.0f, 134f),
         };
 
         // Character keys for save file
@@ -241,6 +241,10 @@ namespace ALLIN1
         internal static void OnTick()
         {
             if (!_initialized)
+                return;
+
+            // Don't show garage markers while in hangar
+            if (_isPlayerInHangar)
                 return;
 
             if (_exitCooldownFrames > 0)
@@ -387,10 +391,10 @@ namespace ALLIN1
                 return false;
             }
 
-            int slotIndex = FindEmptySlot(list);
+            int slotIndex = FindEmptySlot(list, model);
             if (slotIndex < 0)
             {
-                Log($"DeliverVehicle: no empty slot");
+                Log($"DeliverVehicle: no empty slot for {model} (sizeTier={VehicleList.GetSizeTier(model)})");
                 return false;
             }
 
@@ -415,8 +419,9 @@ namespace ALLIN1
                     {
                         veh.IsPersistent = true;
                         veh.IsEngineRunning = false;
+                        float deltaZ = VehicleList.GetSpawnDeltaZ(model);
                         Function.Call(Hash.SET_ENTITY_COORDS, veh,
-                            slot.Position.X, slot.Position.Y, slot.Position.Z,
+                            slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
                             false, false, false, true);
                         Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
                         veh.IsPositionFrozen = true;
@@ -549,6 +554,35 @@ namespace ALLIN1
                         return;
                     }
 
+                    // Resolve spawn name from model hash before slot assignment
+                    int modelHash = rideIn.Model.Hash;
+                    string modelName;
+                    if (_hashToSpawnName != null && _hashToSpawnName.TryGetValue(modelHash, out string spawnName))
+                    {
+                        modelName = spawnName;
+                    }
+                    else
+                    {
+                        modelName = Function.Call<string>(
+                            Hash.GET_DISPLAY_NAME_FROM_VEHICLE_MODEL,
+                            (uint)modelHash);
+                        if (!string.IsNullOrEmpty(modelName))
+                            modelName = modelName.ToLowerInvariant();
+                        else
+                            modelName = modelHash.ToString();
+                        Log($"EnterGarage: vehicle hash {modelHash} not in VehicleList, fallback name={modelName}");
+                    }
+
+                    // Reject oversized vehicles
+                    if (VehicleList.GetSizeTier(modelName) == 2)
+                    {
+                        string ovName = VehicleList.DisplayNames.ContainsKey(modelName)
+                            ? VehicleList.DisplayNames[modelName] : modelName;
+                        GTA.UI.Screen.ShowSubtitle(
+                            $"~r~{ovName}~w~ is too large for this garage. Use the hangar.", 3000);
+                        return;
+                    }
+
                     // Try to store the vehicle in the garage
                     string charKey = CharacterKey();
                     if (!_stored.TryGetValue(charKey, out var storedList))
@@ -564,31 +598,11 @@ namespace ALLIN1
                         return;
                     }
 
-                    int slotIndex = FindEmptySlot(storedList);
+                    int slotIndex = FindEmptySlot(storedList, modelName);
                     if (slotIndex < 0)
                     {
                         GTA.UI.Screen.ShowSubtitle("~r~Garage full. No empty slots.", 3000);
                         return;
-                    }
-
-                    // Get spawn name from model hash via our reverse lookup
-                    int modelHash = rideIn.Model.Hash;
-                    string modelName;
-                    if (_hashToSpawnName != null && _hashToSpawnName.TryGetValue(modelHash, out string spawnName))
-                    {
-                        modelName = spawnName;
-                    }
-                    else
-                    {
-                        // Fallback: use GXT label lowercased (may not match spawn name for all vehicles)
-                        modelName = Function.Call<string>(
-                            Hash.GET_DISPLAY_NAME_FROM_VEHICLE_MODEL,
-                            (uint)modelHash);
-                        if (!string.IsNullOrEmpty(modelName))
-                            modelName = modelName.ToLowerInvariant();
-                        else
-                            modelName = modelHash.ToString();
-                        Log($"EnterGarage: vehicle hash {modelHash} not in VehicleList, fallback name={modelName}");
                     }
 
                     // Capture full vehicle state (colors, mods, etc.)
@@ -675,13 +689,14 @@ namespace ALLIN1
                             ApplyVehicleState(veh, sv);
                             veh.IsPersistent = true;
                             veh.IsEngineRunning = false;
+                            float deltaZ = VehicleList.GetSpawnDeltaZ(sv.Model);
                             Function.Call(Hash.SET_ENTITY_COORDS, veh,
-                                slot.Position.X, slot.Position.Y, slot.Position.Z,
+                                slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
                                 false, false, false, true);
                             Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
                             veh.IsPositionFrozen = true;
                             _handles[sv.Slot] = veh;
-                            Log($"EnterGarage: spawned {sv.Model} at slot {sv.Slot}");
+                            Log($"EnterGarage: spawned {sv.Model} at slot {sv.Slot} (deltaZ={deltaZ:F3})");
                         }
                         else
                         {
@@ -884,17 +899,28 @@ namespace ALLIN1
             return KEY_MICHAEL;
         }
 
-        private static int FindEmptySlot(List<StoredVehicle> list)
+        private static int FindEmptySlot(List<StoredVehicle> list, string model = null)
         {
             var occupied = new HashSet<int>();
             foreach (var sv in list)
                 occupied.Add(sv.Slot);
 
-            for (int i = 0; i < SLOT_COUNT; i++)
+            int sizeTier = (model != null) ? VehicleList.GetSizeTier(model) : 0;
+
+            if (sizeTier >= 1) // large vehicles: left row only (slots 0-4)
             {
-                if (!occupied.Contains(i))
-                    return i;
+                for (int i = 0; i < 5; i++)
+                    if (!occupied.Contains(i)) return i;
+                return -1;
             }
+
+            // Normal vehicles: prefer right row first (slots 5-9) to leave
+            // left row available for large vehicles. Fall back to left row.
+            for (int i = 5; i < SLOT_COUNT; i++)
+                if (!occupied.Contains(i)) return i;
+            for (int i = 0; i < 5; i++)
+                if (!occupied.Contains(i)) return i;
+
             return -1;
         }
 
@@ -1535,6 +1561,789 @@ namespace ALLIN1
             }
 
             Save();
+        }
+
+        // ================================================================== //
+        //                                                                    //
+        //  HANGAR — Oversized vehicle storage at LSIA                        //
+        //                                                                    //
+        // ================================================================== //
+
+        private const int HANGAR_SLOT_COUNT = 6;
+
+        // LSIA Hangar 1 interior (underground, always loaded)
+        // Coordinates approximate — adjust after in-game verification
+        private static readonly Vector3 HANGAR_ENTRANCE_POS =
+            new Vector3(-1145f, -2864f, 13.9f); // outside LSIA hangar area
+
+        private static readonly Vector3 HANGAR_PED_EXIT_DEST =
+            new Vector3(-1145f, -2868f, 13.9f);
+        private const float HANGAR_PED_EXIT_DEST_HEADING = 330f;
+
+        // Interior spawn (Fort Zancudo hangar interior, underground)
+        private static readonly Vector3 HANGAR_INTERIOR_PED =
+            new Vector3(-1266f, -3014f, -49f);
+        private const float HANGAR_INTERIOR_PED_HEADING = 330f;
+
+        private static readonly Vector3 HANGAR_VEHICLE_EXIT =
+            new Vector3(-1267f, -3000f, -49f);
+        private const float HANGAR_VEHICLE_EXIT_HEADING = 330f;
+
+        // 6 oversized parking slots (wide spacing for large vehicles)
+        internal static readonly ParkingSlot[] HangarSlots =
+        {
+            // Two rows of 3, wide spacing (~8m apart)
+            new ParkingSlot(-1274f, -3024f, -49.0f, 60f),
+            new ParkingSlot(-1274f, -3016f, -49.0f, 60f),
+            new ParkingSlot(-1274f, -3008f, -49.0f, 60f),
+            new ParkingSlot(-1258f, -3024f, -49.0f, 240f),
+            new ParkingSlot(-1258f, -3016f, -49.0f, 240f),
+            new ParkingSlot(-1258f, -3008f, -49.0f, 240f),
+        };
+
+        private static readonly string HANGAR_SAVE_PATH =
+            Path.Combine(SCRIPTS_DIR, "ALLIN1_hangar.json");
+
+        // Hangar character keys
+        private const string KEY_MICHAEL_H  = "michael_hangar";
+        private const string KEY_FRANKLIN_H = "franklin_hangar";
+        private const string KEY_TREVOR_H   = "trevor_hangar";
+
+        private static readonly Dictionary<string, List<StoredVehicle>> _hangarStored =
+            new Dictionary<string, List<StoredVehicle>>
+            {
+                { KEY_MICHAEL_H,  new List<StoredVehicle>() },
+                { KEY_FRANKLIN_H, new List<StoredVehicle>() },
+                { KEY_TREVOR_H,   new List<StoredVehicle>() },
+            };
+
+        private static readonly Vehicle[] _hangarHandles = new Vehicle[HANGAR_SLOT_COUNT];
+        private static bool _isPlayerInHangar;
+        private static int _hangarExitCooldownFrames;
+        private static Blip _hangarEntranceBlip;
+        private static Blip _hangarPedBlip;
+        private static bool _hangarInitialized;
+
+        // ------------------------------------------------------------------ //
+        //  Hangar Public API                                                  //
+        // ------------------------------------------------------------------ //
+
+        internal static bool IsPlayerInHangar => _isPlayerInHangar;
+
+        internal static void InitializeHangar()
+        {
+            if (_hangarInitialized) return;
+
+            try
+            {
+                HangarLoad();
+                int total = 0;
+                foreach (var list in _hangarStored.Values)
+                    total += list.Count;
+                Log($"Hangar: loaded {total} stored vehicles");
+
+                _hangarEntranceBlip = World.CreateBlip(HANGAR_ENTRANCE_POS);
+                _hangarEntranceBlip.Sprite = BlipSprite.Hangar;
+                _hangarEntranceBlip.Color = CharacterBlipColor();
+                _hangarEntranceBlip.Name = "ALLIN1 Hangar (Oversized)";
+                _hangarEntranceBlip.IsShortRange = true;
+
+                _hangarPedBlip = World.CreateBlip(HANGAR_PED_EXIT_DEST);
+                _hangarPedBlip.Sprite = BlipSprite.Hangar;
+                _hangarPedBlip.Color = CharacterBlipColor();
+                _hangarPedBlip.Name = "ALLIN1 Hangar (Pedestrian)";
+                _hangarPedBlip.IsShortRange = true;
+
+                Log("Hangar initialized (LSIA oversized vehicle storage)");
+            }
+            catch (Exception ex)
+            {
+                LogException("InitializeHangar", ex);
+            }
+
+            _hangarInitialized = true;
+        }
+
+        internal static int GetHangarUsedSlots()
+        {
+            string key = HangarCharacterKey();
+            if (_hangarStored.TryGetValue(key, out var list))
+                return list.Count;
+            return 0;
+        }
+
+        internal static int GetHangarCapacity() => HANGAR_SLOT_COUNT;
+
+        internal static List<StoredVehicle> GetHangarStoredVehicles()
+        {
+            string key = HangarCharacterKey();
+            if (_hangarStored.TryGetValue(key, out var list))
+                return list;
+            return new List<StoredVehicle>();
+        }
+
+        internal static bool DeliverToHangar(string model, int color1, int color2)
+        {
+            string key = HangarCharacterKey();
+            if (!_hangarStored.TryGetValue(key, out var list))
+                return false;
+
+            if (list.Count >= HANGAR_SLOT_COUNT)
+            {
+                Log($"DeliverToHangar: full ({list.Count}/{HANGAR_SLOT_COUNT})");
+                return false;
+            }
+
+            int slotIndex = FindEmptyHangarSlot(list);
+            if (slotIndex < 0)
+            {
+                Log($"DeliverToHangar: no empty slot");
+                return false;
+            }
+
+            var stored = new StoredVehicle
+            {
+                Model = model,
+                Slot = slotIndex,
+                Color1 = color1,
+                Color2 = color2,
+            };
+            list.Add(stored);
+
+            if (_isPlayerInHangar)
+            {
+                try
+                {
+                    ParkingSlot slot = HangarSlots[slotIndex];
+                    Vehicle veh = VehicleHelper.CreateVehicle(
+                        model, slot.Position, slot.Heading, color1, color2);
+                    if (veh != null)
+                    {
+                        veh.IsPersistent = true;
+                        veh.IsEngineRunning = false;
+                        float deltaZ = VehicleList.GetSpawnDeltaZ(model);
+                        Function.Call(Hash.SET_ENTITY_COORDS, veh,
+                            slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
+                            false, false, false, true);
+                        Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
+                        veh.IsPositionFrozen = true;
+                        _hangarHandles[slotIndex] = veh;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogException("DeliverToHangar.Spawn", ex);
+                }
+            }
+
+            Log($"DeliverToHangar: {model} -> slot {slotIndex}");
+            HangarSave();
+            return true;
+        }
+
+        internal static void RemoveHangarVehicle(int listIndex)
+        {
+            string key = HangarCharacterKey();
+            if (!_hangarStored.TryGetValue(key, out var list))
+                return;
+            if (listIndex < 0 || listIndex >= list.Count)
+                return;
+
+            StoredVehicle sv = list[listIndex];
+            int slotIndex = sv.Slot;
+
+            if (slotIndex >= 0 && slotIndex < HANGAR_SLOT_COUNT)
+            {
+                Vehicle veh = _hangarHandles[slotIndex];
+                if (veh != null && veh.Exists())
+                {
+                    veh.IsPersistent = true;
+                    veh.Delete();
+                }
+                _hangarHandles[slotIndex] = null;
+            }
+
+            list.RemoveAt(listIndex);
+            HangarSave();
+            Log($"RemoveHangarVehicle: {sv.Model} from slot {slotIndex}");
+        }
+
+        internal static void DetailHangarVehicles()
+        {
+            int cleaned = 0;
+            for (int i = 0; i < HANGAR_SLOT_COUNT; i++)
+            {
+                Vehicle veh = _hangarHandles[i];
+                if (veh == null || !veh.Exists()) continue;
+                veh.DirtLevel = 0f;
+                Function.Call(Hash.SET_VEHICLE_FIXED, veh);
+                cleaned++;
+            }
+            Log($"DetailHangarVehicles: cleaned {cleaned} vehicles");
+        }
+
+        // ------------------------------------------------------------------ //
+        //  Hangar Tick                                                        //
+        // ------------------------------------------------------------------ //
+
+        internal static void OnHangarTick()
+        {
+            if (!_hangarInitialized) return;
+
+            if (_hangarExitCooldownFrames > 0)
+            {
+                _hangarExitCooldownFrames--;
+                return;
+            }
+
+            Ped player = Game.Player.Character;
+            if (player == null || player.IsDead) return;
+
+            // Don't show hangar markers while in garage (and vice versa)
+            if (_isPlayerInGarage) return;
+
+            BlipColor charColor = CharacterBlipColor();
+            if (_hangarEntranceBlip != null && _hangarEntranceBlip.Exists())
+                _hangarEntranceBlip.Color = charColor;
+            if (_hangarPedBlip != null && _hangarPedBlip.Exists())
+                _hangarPedBlip.Color = charColor;
+
+            if (!_isPlayerInHangar)
+            {
+                bool inVehicle = player.IsInVehicle();
+
+                if (inVehicle)
+                {
+                    World.DrawMarker(
+                        GTA.MarkerType.VerticalCylinder,
+                        HANGAR_ENTRANCE_POS - new Vector3(0f, 0f, 1f),
+                        Vector3.Zero, Vector3.Zero,
+                        new Vector3(3f, 3f, 1.5f),
+                        System.Drawing.Color.FromArgb(128, 200, 100, 0));
+
+                    float dist = player.Position.DistanceTo(HANGAR_ENTRANCE_POS);
+                    if (dist < ENTER_RADIUS + 1f)
+                    {
+                        GTA.UI.Screen.ShowHelpTextThisFrame(
+                            "Press ~INPUT_CONTEXT~ to enter the hangar.");
+                        if (Game.IsControlJustPressed(GTA.Control.Context))
+                            EnterHangar();
+                    }
+                }
+
+                if (!inVehicle)
+                {
+                    World.DrawMarker(
+                        GTA.MarkerType.VerticalCylinder,
+                        HANGAR_PED_EXIT_DEST - new Vector3(0f, 0f, 1f),
+                        Vector3.Zero, Vector3.Zero,
+                        new Vector3(2f, 2f, 1.2f),
+                        System.Drawing.Color.FromArgb(128, 200, 100, 0));
+
+                    float dist = player.Position.DistanceTo(HANGAR_PED_EXIT_DEST);
+                    if (dist < ENTER_RADIUS)
+                    {
+                        GTA.UI.Screen.ShowHelpTextThisFrame(
+                            "Press ~INPUT_CONTEXT~ to enter the hangar.");
+                        if (Game.IsControlJustPressed(GTA.Control.Context))
+                            EnterHangar();
+                    }
+                }
+            }
+            else
+            {
+                bool inVehicle = player.IsInVehicle();
+                EnforceHangarVehicleState(player);
+
+                if (inVehicle)
+                {
+                    GTA.UI.Screen.ShowHelpTextThisFrame(
+                        "Press ~INPUT_CONTEXT~ to leave the hangar with your vehicle.");
+                    if (Game.IsControlJustPressed(GTA.Control.Context))
+                        LeaveHangar();
+                }
+
+                if (!inVehicle)
+                {
+                    World.DrawMarker(
+                        GTA.MarkerType.VerticalCylinder,
+                        HANGAR_INTERIOR_PED - new Vector3(0f, 0f, 1f),
+                        Vector3.Zero, Vector3.Zero,
+                        new Vector3(1.5f, 1.5f, 1.2f),
+                        System.Drawing.Color.FromArgb(128, 200, 100, 0));
+
+                    float dist = player.Position.DistanceTo(HANGAR_INTERIOR_PED);
+                    if (dist < EXIT_RADIUS)
+                    {
+                        GTA.UI.Screen.ShowHelpTextThisFrame(
+                            "Press ~INPUT_CONTEXT~ to leave the hangar.");
+                        if (Game.IsControlJustPressed(GTA.Control.Context))
+                            LeaveHangar();
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------ //
+        //  Hangar Enter / Leave                                               //
+        // ------------------------------------------------------------------ //
+
+        private static void EnterHangar()
+        {
+            Ped player = Game.Player.Character;
+
+            // Drive-in: store the vehicle
+            if (player.IsInVehicle())
+            {
+                Vehicle rideIn = player.CurrentVehicle;
+                if (rideIn != null && rideIn.Exists())
+                {
+                    if (IsPersonalVehicle(rideIn))
+                    {
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~r~You cannot bring your personal vehicle into the hangar.", 3000);
+                        return;
+                    }
+
+                    int modelHash = rideIn.Model.Hash;
+                    string modelName;
+                    if (_hashToSpawnName != null && _hashToSpawnName.TryGetValue(modelHash, out string spawnName))
+                        modelName = spawnName;
+                    else
+                    {
+                        modelName = Function.Call<string>(
+                            Hash.GET_DISPLAY_NAME_FROM_VEHICLE_MODEL, (uint)modelHash);
+                        if (!string.IsNullOrEmpty(modelName))
+                            modelName = modelName.ToLowerInvariant();
+                        else
+                            modelName = modelHash.ToString();
+                    }
+
+                    string hKey = HangarCharacterKey();
+                    if (!_hangarStored.TryGetValue(hKey, out var storedList))
+                    {
+                        storedList = new List<StoredVehicle>();
+                        _hangarStored[hKey] = storedList;
+                    }
+
+                    if (storedList.Count >= HANGAR_SLOT_COUNT)
+                    {
+                        GTA.UI.Screen.ShowSubtitle(
+                            $"~r~Hangar full.~w~ ({storedList.Count}/{HANGAR_SLOT_COUNT} slots used)", 3000);
+                        return;
+                    }
+
+                    int slotIndex = FindEmptyHangarSlot(storedList);
+                    if (slotIndex < 0)
+                    {
+                        GTA.UI.Screen.ShowSubtitle("~r~Hangar full. No empty slots.", 3000);
+                        return;
+                    }
+
+                    StoredVehicle sv = CaptureVehicleState(rideIn, modelName, slotIndex);
+                    storedList.Add(sv);
+                    HangarSave();
+
+                    string displayName = VehicleList.DisplayNames.ContainsKey(modelName)
+                        ? VehicleList.DisplayNames[modelName] : modelName;
+                    GTA.UI.Screen.ShowSubtitle(
+                        $"~g~{displayName}~w~ stored in hangar. (Slot {slotIndex + 1})", 3000);
+                    Log($"EnterHangar: stored drive-in vehicle {modelName} -> slot {slotIndex}");
+
+                    rideIn.IsPersistent = true;
+                    rideIn.Delete();
+                }
+            }
+
+            // Clear existing handles
+            for (int i = 0; i < HANGAR_SLOT_COUNT; i++)
+            {
+                if (_hangarHandles[i] != null && _hangarHandles[i].Exists())
+                    _hangarHandles[i].Delete();
+                _hangarHandles[i] = null;
+            }
+
+            // Freeze and teleport player
+            player.IsPositionFrozen = true;
+            Function.Call(Hash.SET_ENTITY_COORDS, player,
+                HANGAR_INTERIOR_PED.X, HANGAR_INTERIOR_PED.Y, HANGAR_INTERIOR_PED.Z,
+                false, false, false, true);
+            Function.Call(Hash.SET_ENTITY_HEADING, player, HANGAR_INTERIOR_PED_HEADING);
+            Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, player);
+            Function.Call(Hash.FREEZE_ENTITY_POSITION, player, true);
+
+            _isPlayerInHangar = true;
+
+            // Pre-load and spawn hangar vehicles
+            string key = HangarCharacterKey();
+            var models = new List<Model>();
+            if (_hangarStored.TryGetValue(key, out var list))
+            {
+                foreach (var sv in list)
+                {
+                    var m = new Model(sv.Model);
+                    m.Request();
+                    models.Add(m);
+                }
+
+                DateTime deadline = DateTime.UtcNow.AddMilliseconds(10000);
+                bool allLoaded = false;
+                while (!allLoaded && DateTime.UtcNow < deadline)
+                {
+                    allLoaded = true;
+                    foreach (var m in models)
+                        if (!m.IsLoaded) { allLoaded = false; break; }
+                    if (!allLoaded) Script.Wait(0);
+                }
+
+                foreach (var sv in list)
+                {
+                    if (sv.Slot < 0 || sv.Slot >= HANGAR_SLOT_COUNT) continue;
+
+                    ParkingSlot slot = HangarSlots[sv.Slot];
+                    try
+                    {
+                        var model = new Model(sv.Model);
+                        Vehicle veh = World.CreateVehicle(model, slot.Position, slot.Heading);
+                        model.MarkAsNoLongerNeeded();
+
+                        if (veh != null)
+                        {
+                            ApplyVehicleState(veh, sv);
+                            veh.IsPersistent = true;
+                            veh.IsEngineRunning = false;
+                            float deltaZ = VehicleList.GetSpawnDeltaZ(sv.Model);
+                            Function.Call(Hash.SET_ENTITY_COORDS, veh,
+                                slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
+                                false, false, false, true);
+                            Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
+                            veh.IsPositionFrozen = true;
+                            _hangarHandles[sv.Slot] = veh;
+                            Log($"EnterHangar: spawned {sv.Model} at slot {sv.Slot}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogException($"EnterHangar.Spawn({sv.Model})", ex);
+                    }
+                }
+
+                foreach (var m in models)
+                    m.MarkAsNoLongerNeeded();
+            }
+
+            Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
+            player.IsPositionFrozen = false;
+            Log($"EnterHangar: character={key}, vehicles spawned");
+        }
+
+        private static void LeaveHangar()
+        {
+            HangarUpdateStoredFromLive();
+
+            Ped player = Game.Player.Character;
+            Vehicle playerVehicle = null;
+            int playerSlotIndex = -1;
+
+            if (player.IsInVehicle())
+            {
+                Vehicle current = player.CurrentVehicle;
+                if (current != null && current.Exists())
+                {
+                    for (int i = 0; i < HANGAR_SLOT_COUNT; i++)
+                    {
+                        if (_hangarHandles[i] != null && _hangarHandles[i] == current)
+                        {
+                            playerVehicle = current;
+                            playerSlotIndex = i;
+                            _hangarHandles[i] = null;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            for (int i = 0; i < HANGAR_SLOT_COUNT; i++)
+            {
+                Vehicle veh = _hangarHandles[i];
+                if (veh != null && veh.Exists())
+                {
+                    veh.IsPersistent = true;
+                    veh.Delete();
+                }
+                _hangarHandles[i] = null;
+            }
+
+            if (playerVehicle != null)
+            {
+                string hKey = HangarCharacterKey();
+                if (_hangarStored.TryGetValue(hKey, out var hList))
+                {
+                    for (int i = hList.Count - 1; i >= 0; i--)
+                    {
+                        if (hList[i].Slot == playerSlotIndex)
+                        {
+                            Log($"LeaveHangar: removing {hList[i].Model} from slot {playerSlotIndex} (driven out)");
+                            hList.RemoveAt(i);
+                            break;
+                        }
+                    }
+                }
+
+                playerVehicle.IsPositionFrozen = false;
+                playerVehicle.IsPersistent = true;
+                Function.Call(Hash.SET_ENTITY_COORDS, playerVehicle,
+                    HANGAR_ENTRANCE_POS.X, HANGAR_ENTRANCE_POS.Y, HANGAR_ENTRANCE_POS.Z,
+                    false, false, false, true);
+                Function.Call(Hash.SET_ENTITY_HEADING, playerVehicle, 180f);
+                playerVehicle.IsEngineRunning = true;
+                Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, playerVehicle);
+
+                HangarSave();
+                Log("LeaveHangar: drove out in vehicle");
+            }
+            else
+            {
+                Vector3 dest = HANGAR_PED_EXIT_DEST;
+                player.IsPositionFrozen = true;
+                Function.Call(Hash.SET_ENTITY_COORDS, player,
+                    dest.X, dest.Y, dest.Z,
+                    false, false, false, true);
+                Function.Call(Hash.SET_ENTITY_HEADING, player, HANGAR_PED_EXIT_DEST_HEADING);
+                player.IsPositionFrozen = false;
+
+                HangarSave();
+                Log("LeaveHangar: returned on foot");
+            }
+
+            _isPlayerInHangar = false;
+            _hangarExitCooldownFrames = 60;
+        }
+
+        // ------------------------------------------------------------------ //
+        //  Hangar Helpers                                                     //
+        // ------------------------------------------------------------------ //
+
+        private static string HangarCharacterKey()
+        {
+            PedHash ch = GbayShop.GetCurrentCharacter();
+            if (ch == PedHash.Franklin) return KEY_FRANKLIN_H;
+            if (ch == PedHash.Trevor) return KEY_TREVOR_H;
+            return KEY_MICHAEL_H;
+        }
+
+        private static int FindEmptyHangarSlot(List<StoredVehicle> list)
+        {
+            var occupied = new HashSet<int>();
+            foreach (var sv in list)
+                occupied.Add(sv.Slot);
+            for (int i = 0; i < HANGAR_SLOT_COUNT; i++)
+                if (!occupied.Contains(i)) return i;
+            return -1;
+        }
+
+        private static void EnforceHangarVehicleState(Ped player)
+        {
+            Vehicle playerVeh = player.IsInVehicle() ? player.CurrentVehicle : null;
+            for (int i = 0; i < HANGAR_SLOT_COUNT; i++)
+            {
+                Vehicle veh = _hangarHandles[i];
+                if (veh == null || !veh.Exists()) continue;
+                veh.IsPositionFrozen = true;
+                veh.IsEngineRunning = false;
+            }
+        }
+
+        // ------------------------------------------------------------------ //
+        //  Hangar JSON Persistence                                            //
+        // ------------------------------------------------------------------ //
+
+        private static void HangarLoad()
+        {
+            if (!File.Exists(HANGAR_SAVE_PATH))
+                return;
+            try
+            {
+                string json = File.ReadAllText(HANGAR_SAVE_PATH);
+                HangarParseJson(json);
+            }
+            catch (Exception ex)
+            {
+                LogException("HangarLoad", ex);
+            }
+        }
+
+        private static void HangarSave()
+        {
+            try
+            {
+                string json = HangarBuildJson();
+                string tmp = HANGAR_SAVE_PATH + ".tmp";
+                File.WriteAllText(tmp, json);
+                if (File.Exists(HANGAR_SAVE_PATH))
+                    File.Delete(HANGAR_SAVE_PATH);
+                File.Move(tmp, HANGAR_SAVE_PATH);
+            }
+            catch (Exception ex)
+            {
+                LogException("HangarSave", ex);
+            }
+        }
+
+        private static string HangarBuildJson()
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("{");
+
+            string[] keys = { KEY_MICHAEL_H, KEY_FRANKLIN_H, KEY_TREVOR_H };
+            for (int k = 0; k < keys.Length; k++)
+            {
+                string key = keys[k];
+                sb.Append($"  \"{key}\": [");
+
+                if (_hangarStored.TryGetValue(key, out var list) && list.Count > 0)
+                {
+                    sb.AppendLine();
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        var sv = list[i];
+                        sb.Append("    { ");
+                        sb.Append($"\"model\": \"{sv.Model}\", ");
+                        sb.Append($"\"slot\": {sv.Slot}, ");
+                        sb.Append($"\"color1\": {sv.Color1}, ");
+                        sb.Append($"\"color2\": {sv.Color2}");
+
+                        if (sv.PlateText != null)
+                            sb.Append($", \"plate\": \"{EscapeJson(sv.PlateText)}\"");
+                        if (sv.PlateStyle != 0)
+                            sb.Append($", \"plateStyle\": {sv.PlateStyle}");
+                        if (sv.WheelType != 0)
+                            sb.Append($", \"wheelType\": {sv.WheelType}");
+                        if (sv.WindowTint != 0)
+                            sb.Append($", \"windowTint\": {sv.WindowTint}");
+                        if (sv.Livery > 0)
+                            sb.Append($", \"livery\": {sv.Livery}");
+                        if (sv.PearlescentColor != 0)
+                            sb.Append($", \"pearlescent\": {sv.PearlescentColor}");
+                        if (sv.RimColor != 0)
+                            sb.Append($", \"rimColor\": {sv.RimColor}");
+                        if (sv.Mods != null)
+                            sb.Append($", \"mods\": [{string.Join(",", sv.Mods)}]");
+                        if (sv.ModToggles != null)
+                            sb.Append($", \"modToggles\": [{string.Join(",", BoolArrayToInts(sv.ModToggles))}]");
+                        if (sv.NeonEnabled != null)
+                            sb.Append($", \"neonEnabled\": [{string.Join(",", sv.NeonEnabled)}]");
+                        if (sv.NeonColor != null)
+                            sb.Append($", \"neonColor\": [{string.Join(",", sv.NeonColor)}]");
+                        if (sv.TyreSmokeColor != null)
+                            sb.Append($", \"tyreSmokeColor\": [{string.Join(",", sv.TyreSmokeColor)}]");
+                        if (sv.Extras != null)
+                            sb.Append($", \"extras\": [{string.Join(",", sv.Extras)}]");
+                        if (sv.CustomPrimaryColor && sv.CustomPrimary != null)
+                            sb.Append($", \"customPrimary\": [{string.Join(",", sv.CustomPrimary)}]");
+                        if (sv.CustomSecondaryColor && sv.CustomSecondary != null)
+                            sb.Append($", \"customSecondary\": [{string.Join(",", sv.CustomSecondary)}]");
+
+                        sb.Append(" }");
+                        if (i < list.Count - 1)
+                            sb.AppendLine(",");
+                        else
+                            sb.AppendLine();
+                    }
+                    sb.Append("  ]");
+                }
+                else
+                {
+                    sb.Append("]");
+                }
+
+                if (k < keys.Length - 1)
+                    sb.AppendLine(",");
+                else
+                    sb.AppendLine();
+            }
+
+            sb.AppendLine("}");
+            return sb.ToString();
+        }
+
+        private static void HangarParseJson(string json)
+        {
+            // Reuse the same JSON parsing approach as the garage
+            string currentKey = null;
+            int i = 0;
+            while (i < json.Length)
+            {
+                char c = json[i];
+                if (c == '"')
+                {
+                    int end = json.IndexOf('"', i + 1);
+                    if (end < 0) break;
+                    string str = json.Substring(i + 1, end - i - 1);
+                    i = end + 1;
+
+                    if (currentKey == null)
+                    {
+                        int peek = SkipWhitespace(json, i);
+                        if (peek < json.Length && json[peek] == ':')
+                        {
+                            currentKey = str;
+                            i = peek + 1;
+                        }
+                    }
+                    continue;
+                }
+
+                if (c == '[' && currentKey != null)
+                {
+                    i++;
+                    var vehicles = ParseVehicleArray(json, ref i);
+                    if (_hangarStored.ContainsKey(currentKey))
+                        _hangarStored[currentKey] = vehicles;
+                    currentKey = null;
+                    continue;
+                }
+
+                i++;
+            }
+        }
+
+        private static void HangarUpdateStoredFromLive()
+        {
+            if (!_isPlayerInHangar) return;
+
+            string key = HangarCharacterKey();
+            if (!_hangarStored.TryGetValue(key, out var list)) return;
+
+            foreach (var sv in list)
+            {
+                if (sv.Slot < 0 || sv.Slot >= HANGAR_SLOT_COUNT) continue;
+                Vehicle veh = _hangarHandles[sv.Slot];
+                if (veh == null || !veh.Exists()) continue;
+
+                var updated = CaptureVehicleState(veh, sv.Model, sv.Slot);
+                sv.Color1 = updated.Color1;
+                sv.Color2 = updated.Color2;
+                sv.Mods = updated.Mods;
+                sv.ModToggles = updated.ModToggles;
+                sv.WheelType = updated.WheelType;
+                sv.WindowTint = updated.WindowTint;
+                sv.Livery = updated.Livery;
+                sv.PlateText = updated.PlateText;
+                sv.PlateStyle = updated.PlateStyle;
+                sv.PearlescentColor = updated.PearlescentColor;
+                sv.RimColor = updated.RimColor;
+                sv.NeonEnabled = updated.NeonEnabled;
+                sv.NeonColor = updated.NeonColor;
+                sv.TyreSmokeColor = updated.TyreSmokeColor;
+                sv.Extras = updated.Extras;
+                sv.CustomPrimaryColor = updated.CustomPrimaryColor;
+                sv.CustomPrimary = updated.CustomPrimary;
+                sv.CustomSecondaryColor = updated.CustomSecondaryColor;
+                sv.CustomSecondary = updated.CustomSecondary;
+            }
+
+            HangarSave();
         }
     }
 }

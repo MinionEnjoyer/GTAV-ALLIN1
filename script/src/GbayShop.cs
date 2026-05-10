@@ -201,7 +201,8 @@ namespace ALLIN1
             {
                 GarageManager.Configure(_garageDebug, _enableLogging);
                 GarageManager.Initialize();
-                Log("GarageManager initialized");
+                GarageManager.InitializeHangar();
+                Log("GarageManager initialized (garage + hangar)");
             }
             catch (Exception ex)
             {
@@ -255,6 +256,13 @@ namespace ALLIN1
 
         internal void ExecuteDeliverToGarage(string model, int price)
         {
+            // Oversized vehicles route to hangar instead
+            if (VehicleList.GetSizeTier(model) == 2)
+            {
+                ExecuteDeliverToHangar(model, price);
+                return;
+            }
+
             int used = GarageManager.GetUsedSlots();
             int cap = GarageManager.GetCapacity();
 
@@ -296,6 +304,52 @@ namespace ALLIN1
             {
                 LogException("DeliverToGarage", ex);
                 GTA.UI.Screen.ShowSubtitle("~r~Delivery to garage failed.", 3000);
+            }
+        }
+
+        internal void ExecuteDeliverToHangar(string model, int price)
+        {
+            int used = GarageManager.GetHangarUsedSlots();
+            int cap = GarageManager.GetHangarCapacity();
+
+            if (used >= cap)
+            {
+                Log($"DeliverToHangar: full ({used}/{cap})");
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~r~Hangar full.~w~ ({used}/{cap} slots used)", 3000);
+                return;
+            }
+
+            var rng = new Random();
+            int c1 = rng.Next(0, 160);
+            int c2 = rng.Next(0, 160);
+
+            try
+            {
+                bool success = GarageManager.DeliverToHangar(model, c1, c2);
+                if (!success)
+                {
+                    Log($"DeliverToHangar: failed for {model}");
+                    GTA.UI.Screen.ShowSubtitle("~r~Delivery to hangar failed.", 3000);
+                    return;
+                }
+
+                if (!_freeMode && price > 0)
+                    Game.Player.Money -= price;
+
+                string name = VehicleList.DisplayNames.ContainsKey(model)
+                    ? VehicleList.DisplayNames[model] : model;
+                string msg = _freeMode || price <= 0
+                    ? $"~g~{name}~w~ delivered to hangar!"
+                    : $"~g~{name}~w~ delivered to hangar for ~g~${price:N0}";
+                GTA.UI.Screen.ShowSubtitle(msg, 3000);
+
+                Log($"DeliverToHangar: {model}, price=${price}");
+            }
+            catch (Exception ex)
+            {
+                LogException("DeliverToHangar", ex);
+                GTA.UI.Screen.ShowSubtitle("~r~Delivery to hangar failed.", 3000);
             }
         }
 
@@ -870,7 +924,10 @@ namespace ALLIN1
                     Initialize();
 
                 if (_initialized)
+                {
                     GarageManager.OnTick();
+                    GarageManager.OnHangarTick();
+                }
 
                 if (_browser != null)
                     _browser.Draw();
