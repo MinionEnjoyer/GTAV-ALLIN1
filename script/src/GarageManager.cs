@@ -415,7 +415,10 @@ namespace ALLIN1
                     {
                         veh.IsPersistent = true;
                         veh.IsEngineRunning = false;
-                        Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, veh);
+                        Function.Call(Hash.SET_ENTITY_COORDS, veh,
+                            slot.Position.X, slot.Position.Y, slot.Position.Z,
+                            false, false, false, true);
+                        Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
                         veh.IsPositionFrozen = true;
                         _handles[slotIndex] = veh;
                     }
@@ -652,7 +655,10 @@ namespace ALLIN1
                             ApplyVehicleState(veh, sv);
                             veh.IsPersistent = true;
                             veh.IsEngineRunning = false;
-                            Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, veh);
+                            Function.Call(Hash.SET_ENTITY_COORDS, veh,
+                                slot.Position.X, slot.Position.Y, slot.Position.Z,
+                                false, false, false, true);
+                            Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
                             veh.IsPositionFrozen = true;
                             _handles[sv.Slot] = veh;
                             Log($"EnterGarage: spawned {sv.Model} at slot {sv.Slot}");
