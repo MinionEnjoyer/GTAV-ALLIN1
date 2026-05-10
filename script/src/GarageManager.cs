@@ -1574,11 +1574,11 @@ namespace ALLIN1
 
         // Outside entrance/exit — placeholder coordinates, will be set later
         private static readonly Vector3 FLOOR_GARAGE_ENTRANCE_POS =
-            new Vector3(0f, 0f, 0f); // TODO: set location
+            new Vector3(922.4f, 3564.8f, 33.8f);
 
         private static readonly Vector3 FLOOR_GARAGE_PED_EXIT_DEST =
-            new Vector3(0f, 0f, 0f); // TODO: set location
-        private const float FLOOR_GARAGE_PED_EXIT_DEST_HEADING = 0f;
+            new Vector3(906f, 3554.3f, 33.8f);
+        private const float FLOOR_GARAGE_PED_EXIT_DEST_HEADING = 180f;
 
         // Interior ped spawn (placeholder — underground interior)
         private static readonly Vector3 FLOOR_GARAGE_INTERIOR_PED =
@@ -2108,7 +2108,7 @@ namespace ALLIN1
                 Function.Call(Hash.SET_ENTITY_COORDS, playerVehicle,
                     FLOOR_GARAGE_ENTRANCE_POS.X, FLOOR_GARAGE_ENTRANCE_POS.Y, FLOOR_GARAGE_ENTRANCE_POS.Z,
                     false, false, false, true);
-                Function.Call(Hash.SET_ENTITY_HEADING, playerVehicle, 180f);
+                Function.Call(Hash.SET_ENTITY_HEADING, playerVehicle, 270f);
                 playerVehicle.IsEngineRunning = true;
                 Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, playerVehicle);
 
