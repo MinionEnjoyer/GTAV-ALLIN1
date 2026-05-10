@@ -466,6 +466,26 @@ namespace ALLIN1
         }
 
         /// <summary>
+        /// Clean (detail) all spawned vehicles in the garage.
+        /// Sets dirt level to 0 and fixes any damage.
+        /// </summary>
+        internal static void DetailVehicles()
+        {
+            int cleaned = 0;
+            for (int i = 0; i < SLOT_COUNT; i++)
+            {
+                Vehicle veh = _handles[i];
+                if (veh == null || !veh.Exists())
+                    continue;
+
+                Function.Call(Hash.SET_VEHICLE_DIRT_LEVEL, veh, 0f);
+                Function.Call(Hash.SET_VEHICLE_FIXED, veh);
+                cleaned++;
+            }
+            Log($"DetailVehicles: cleaned {cleaned} vehicles");
+        }
+
+        /// <summary>
         /// Draw debug markers at all parking slots and entrance/exit points.
         /// </summary>
         internal static void DrawDebugMarkers()

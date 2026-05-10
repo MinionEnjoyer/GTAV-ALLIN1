@@ -490,6 +490,41 @@ namespace ALLIN1
             Log($"SellVehicle: {model}, sellPrice=${sellPrice}");
         }
 
+        // ------------------------------------------------------------------ //
+        //  Detail Cars (clean all garage vehicles)                            //
+        // ------------------------------------------------------------------ //
+
+        private const int DETAIL_COST = 500;
+
+        internal int GetDetailCost()
+        {
+            if (_freeMode) return 0;
+            return DETAIL_COST;
+        }
+
+        internal bool ExecuteDetailCars()
+        {
+            int cost = GetDetailCost();
+
+            if (!_freeMode && cost > 0 && Game.Player.Money < cost)
+            {
+                GTA.UI.Screen.ShowSubtitle($"~r~Not enough money.~w~ Detailing costs ~g~${cost:N0}", 3000);
+                return false;
+            }
+
+            GarageManager.DetailVehicles();
+
+            if (!_freeMode && cost > 0)
+                Game.Player.Money -= cost;
+
+            string msg = _freeMode || cost <= 0
+                ? "All vehicles have been ~b~detailed~w~!"
+                : $"All vehicles ~b~detailed~w~ for ~g~${cost:N0}";
+            GTA.UI.Screen.ShowSubtitle(msg, 3000);
+            Log($"DetailCars: cost=${cost}");
+            return true;
+        }
+
         /// <summary>
         /// Get the ammo refill cost for an owned weapon. Returns -1 if not
         /// applicable (melee/misc), 0 if fully stocked, otherwise the cost.

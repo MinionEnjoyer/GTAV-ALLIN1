@@ -1,5 +1,5 @@
 // VehicleList.cs - Auto-generated from data/vehicles.toml + prices_vehicles.toml
-// 444 GTA Online DLC vehicles by class.
+// 442 GTA Online DLC vehicles by class.
 using System.Collections.Generic;
 
 namespace ALLIN1
@@ -29,8 +29,6 @@ namespace ALLIN1
             "warrener2",
             "glendale2",
             "stafford",
-            "schafter3",
-            "schafter4",
             "limo2",
             "schafter5",
             "schafter6",
@@ -718,8 +716,6 @@ namespace ALLIN1
             "warrener2",
             "glendale2",
             "stafford",
-            "schafter3",
-            "schafter4",
             "limo2",
             "schafter5",
             "schafter6",
@@ -1039,8 +1035,6 @@ namespace ALLIN1
             { "warrener2", "Vulcar Warrener HKR" },
             { "glendale2", "Benefactor Glendale Custom" },
             { "stafford", "Enus Stafford" },
-            { "schafter3", "Benefactor Schafter V12" },
-            { "schafter4", "Benefactor Schafter LWB" },
             { "limo2", "Benefactor Turreted Limo" },
             { "schafter5", "Benefactor Schafter V12 (Armored)" },
             { "schafter6", "Benefactor Schafter LWB (Armored)" },
@@ -1213,6 +1207,8 @@ namespace ALLIN1
             { "bestiagts", "Grotti Bestia GTS" },
             { "mamba", "Declasse Mamba" },
             { "verlierer2", "Benefactor Feltzer" },
+            { "schafter3", "Benefactor Schafter V12" },
+            { "schafter4", "Benefactor Schafter LWB" },
             { "feltzer3", "Benefactor Stirling GT" },
             { "casco", "Lampadati Casco" },
             { "kuruma", "Karin Kuruma" },
@@ -1485,8 +1481,6 @@ namespace ALLIN1
             { "warrener2", 167500 },
             { "glendale2", 79500 },
             { "stafford", 152500 },
-            { "schafter3", 356000 },
-            { "schafter4", 338000 },
             { "limo2", 92500 },
             { "schafter5", 132000 },
             { "schafter6", 142000 },
@@ -1659,6 +1653,8 @@ namespace ALLIN1
             { "bestiagts", 75000 },
             { "mamba", 248000 },
             { "verlierer2", 448000 },
+            { "schafter3", 356000 },
+            { "schafter4", 338000 },
             { "feltzer3", 171000 },
             { "casco", 75000 },
             { "kuruma", 219000 },
@@ -1931,8 +1927,6 @@ namespace ALLIN1
             { "warrener2", "Sedans" },
             { "glendale2", "Sedans" },
             { "stafford", "Sedans" },
-            { "schafter3", "Sedans" },
-            { "schafter4", "Sedans" },
             { "limo2", "Sedans" },
             { "schafter5", "Sedans" },
             { "schafter6", "Sedans" },
@@ -2105,6 +2099,8 @@ namespace ALLIN1
             { "bestiagts", "Sportsclassics" },
             { "mamba", "Sportsclassics" },
             { "verlierer2", "Sportsclassics" },
+            { "schafter3", "Sportsclassics" },
+            { "schafter4", "Sportsclassics" },
             { "feltzer3", "Sportsclassics" },
             { "casco", "Sportsclassics" },
             { "kuruma", "Sportsclassics" },

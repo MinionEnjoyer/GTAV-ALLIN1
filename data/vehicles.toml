@@ -172,20 +172,6 @@ manufacturer = "Enus"
 traffic = ["veh_mid"]
 
 [[vehicles]]
-model = "schafter3"
-name = "Benefactor Schafter V12"
-class = "sedans"
-manufacturer = "Benefactor"
-traffic = ["veh_mid"]
-
-[[vehicles]]
-model = "schafter4"
-name = "Benefactor Schafter LWB"
-class = "sedans"
-manufacturer = "Benefactor"
-traffic = ["veh_mid"]
-
-[[vehicles]]
 model = "limo2"
 name = "Benefactor Turreted Limo"
 class = "sedans"
