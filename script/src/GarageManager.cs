@@ -72,7 +72,7 @@ namespace ALLIN1
 
         private static readonly Vector3 PED_EXIT_DEST =
             new Vector3(-774f, 310.2f, 85.7f);
-        private const float PED_EXIT_DEST_HEADING = 354.5f;
+        private const float PED_EXIT_DEST_HEADING = 180f;
 
         // Interior positions (shared underground garage)
         private static readonly Vector3 INTERIOR_SPAWN =
