@@ -891,6 +891,14 @@ namespace ALLIN1
             return BlipColor.Blue; // Michael
         }
 
+        private static System.Drawing.Color CharacterMarkerColor()
+        {
+            PedHash ch = GbayShop.GetCurrentCharacter();
+            if (ch == PedHash.Franklin) return System.Drawing.Color.FromArgb(128, 100, 255, 100);
+            if (ch == PedHash.Trevor)   return System.Drawing.Color.FromArgb(128, 255, 170, 50);
+            return System.Drawing.Color.FromArgb(128, 100, 100, 255); // Michael
+        }
+
         private static string CharacterKey()
         {
             PedHash ch = GbayShop.GetCurrentCharacter();
@@ -1965,12 +1973,13 @@ namespace ALLIN1
                     else
                     {
                         // Draw elevator 1 marker
+                        var markerColor = CharacterMarkerColor();
                         World.DrawMarker(
                             GTA.MarkerType.VerticalCylinder,
                             FLOOR_GARAGE_ELEVATOR_1 - new Vector3(0f, 0f, 1f),
                             Vector3.Zero, Vector3.Zero,
                             new Vector3(1.5f, 1.5f, 1.2f),
-                            System.Drawing.Color.FromArgb(128, 100, 100, 255));
+                            markerColor);
 
                         float dist1 = player.Position.DistanceTo(FLOOR_GARAGE_ELEVATOR_1);
                         if (dist1 < ELEVATOR_INTERACT_RADIUS)
@@ -1992,7 +2001,7 @@ namespace ALLIN1
                                 FLOOR_GARAGE_ELEVATOR_2 - new Vector3(0f, 0f, 1f),
                                 Vector3.Zero, Vector3.Zero,
                                 new Vector3(1.5f, 1.5f, 1.2f),
-                                System.Drawing.Color.FromArgb(128, 100, 100, 255));
+                                markerColor);
 
                             float dist2 = player.Position.DistanceTo(FLOOR_GARAGE_ELEVATOR_2);
                             if (dist2 < ELEVATOR_INTERACT_RADIUS)
