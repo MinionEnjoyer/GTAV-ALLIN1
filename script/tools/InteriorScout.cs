@@ -368,30 +368,57 @@ namespace ALLIN1
                 log.AppendLine($"Probing {ENTITY_SET_PROBES.Length} names...");
                 log.AppendLine();
 
-                foreach (string setName in ENTITY_SET_PROBES)
+                // First: test with a known-garbage name to see if IS_ACTIVE lies
+                string garbageName = "Int02_ba_ZZZZZ_DOES_NOT_EXIST_99";
+                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, garbageName);
+                bool garbageActive = Function.Call<bool>(
+                    (Hash)0x35F7DD45E8C0A16D, interior, garbageName);
+                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, garbageName);
+
+                log.AppendLine($"Garbage test: activate+check '{garbageName}' = {garbageActive}");
+                log.AppendLine();
+
+                if (garbageActive)
                 {
-                    // Activate, check, deactivate — no REFRESH_INTERIOR per probe
-                    Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, setName);
+                    // IS_ACTIVE returns true for anything after ACTIVATE — useless.
+                    // Fall back: only check IS_ACTIVE WITHOUT activating first.
+                    // This finds sets currently active + won't false-positive on junk.
+                    log.AppendLine("NOTE: IS_ACTIVE lies after ACTIVATE. Using passive scan.");
+                    log.AppendLine();
 
-                    bool isActive = Function.Call<bool>(
-                        (Hash)0x35F7DD45E8C0A16D, // IS_INTERIOR_ENTITY_SET_ACTIVE
-                        interior, setName);
-
-                    if (isActive)
+                    foreach (string setName in ENTITY_SET_PROBES)
                     {
-                        _activeEntitySets.Add(setName);
-                        log.AppendLine($"  VALID: {setName}");
-                        Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, setName);
+                        bool isActive = Function.Call<bool>(
+                            (Hash)0x35F7DD45E8C0A16D, interior, setName);
+                        log.AppendLine($"  {(isActive ? "ACTIVE" : "inactive")}: {setName}");
+                        if (isActive)
+                            _activeEntitySets.Add(setName);
                     }
                 }
+                else
+                {
+                    // ACTIVATE + IS_ACTIVE is reliable — use it
+                    foreach (string setName in ENTITY_SET_PROBES)
+                    {
+                        Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, setName);
+                        bool isActive = Function.Call<bool>(
+                            (Hash)0x35F7DD45E8C0A16D, interior, setName);
+                        if (isActive)
+                        {
+                            _activeEntitySets.Add(setName);
+                            log.AppendLine($"  VALID: {setName}");
+                            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, setName);
+                        }
+                    }
 
-                // Restore known good state
-                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_garage_blocker");
-                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_storage_blocker");
-                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_FanBlocker01");
-                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_floor01");
-                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_sec_upgrade_grg");
-                Function.Call(Hash.REFRESH_INTERIOR, interior);
+                    // Restore known good state
+                    Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_garage_blocker");
+                    Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_storage_blocker");
+                    Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_FanBlocker01");
+                    Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_floor01");
+                    Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_sec_upgrade_grg");
+                    Function.Call(Hash.REFRESH_INTERIOR, interior);
+                }
 
                 log.AppendLine();
                 log.AppendLine($"Total valid: {_activeEntitySets.Count} / {ENTITY_SET_PROBES.Length}");
