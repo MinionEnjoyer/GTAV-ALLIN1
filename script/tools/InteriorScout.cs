@@ -30,10 +30,12 @@ namespace ALLIN1
         private bool _active;
         private int _probeIndex;
 
-        // IPLs to load for the nightclub garage
+        // IPLs to load — full milo path names (from Enable All Interiors mod)
         private static readonly string[] IPLS =
         {
-            "ba_dlc_int_02_ba",
+            "ba_int_placement_ba_interior_1_dlc_int_02_ba_milo_", // garage & storage
+            "ba_int_placement_ba_interior_0_dlc_int_01_ba_milo_", // main nightclub
+            "ba_int_placement_ba_interior_2_dlc_int_03_ba_milo_", // terrorbyte bay
         };
 
         // Probe positions to try -- various coordinates near the known interior center
@@ -136,22 +138,22 @@ namespace ALLIN1
 
         private void LoadAndTeleport()
         {
-            // Load all IPLs
+            // Remove then re-request all IPLs (same pattern as Enable All Interiors mod)
+            foreach (string ipl in IPLS)
+            {
+                Function.Call(Hash.REMOVE_IPL, ipl);
+            }
             foreach (string ipl in IPLS)
             {
                 Function.Call(Hash.REQUEST_IPL, ipl);
             }
 
-            // Also load the main nightclub IPL in case the garage depends on it
-            Function.Call(Hash.REQUEST_IPL, "ba_dlc_int_01_ba");
+            // Wait for IPLs to load
+            Wait(1000);
 
-            // Wait for IPLs
-            Wait(500);
-
-            // Get interior and configure entity sets
-            Vector3 center = PROBES[0];
+            // Get interior at the nightclub main coords (like EAI does)
             int interior = Function.Call<int>(
-                Hash.GET_INTERIOR_AT_COORDS, center.X, center.Y, center.Z);
+                Hash.GET_INTERIOR_AT_COORDS, -1604.664f, -3012.583f, -80.0f);
 
             if (interior != 0)
             {
@@ -161,11 +163,26 @@ namespace ALLIN1
                     Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, set);
                 Function.Call(Hash.REFRESH_INTERIOR, interior);
 
-                GTA.UI.Screen.ShowSubtitle($"~g~Interior {interior} loaded. Entity sets configured.", 3000);
+                GTA.UI.Screen.ShowSubtitle($"~g~Main nightclub interior {interior} configured.", 2000);
             }
-            else
+
+            // Also try to get the garage interior specifically
+            int garageInterior = Function.Call<int>(
+                Hash.GET_INTERIOR_AT_COORDS, -1505.78f, -3012.59f, -80.0f);
+
+            if (garageInterior != 0 && garageInterior != interior)
             {
-                GTA.UI.Screen.ShowSubtitle("~r~No interior found at probe coords. Teleporting anyway.", 3000);
+                foreach (string set in DISABLE_SETS)
+                    Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, garageInterior, set);
+                foreach (string set in ENABLE_SETS)
+                    Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, garageInterior, set);
+                Function.Call(Hash.REFRESH_INTERIOR, garageInterior);
+
+                GTA.UI.Screen.ShowSubtitle($"~g~Garage interior {garageInterior} also configured.", 2000);
+            }
+            else if (garageInterior == 0)
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~No garage interior found. Teleporting anyway.", 3000);
             }
 
             // Teleport player

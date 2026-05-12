@@ -1582,8 +1582,13 @@ namespace ALLIN1
 
         // Nightclub garage interior (DLC After Hours: BA_DLC_INT_02_BA)
         // Single physical room reused for all virtual floors
-        private const string FLOOR_GARAGE_IPL = "ba_dlc_int_02_ba";
-        private const int FLOOR_GARAGE_INTERIOR_ID = 271873;
+        // Must use full milo path names — short names don't load in SP
+        private static readonly string[] FLOOR_GARAGE_IPLS =
+        {
+            "ba_int_placement_ba_interior_1_dlc_int_02_ba_milo_", // garage & storage
+            "ba_int_placement_ba_interior_0_dlc_int_01_ba_milo_", // main nightclub
+            "ba_int_placement_ba_interior_2_dlc_int_03_ba_milo_", // terrorbyte bay
+        };
 
         // Interior ped spawn — nightclub garage interior
         private static readonly Vector3 FLOOR_GARAGE_INTERIOR_PED =
@@ -2164,24 +2169,18 @@ namespace ALLIN1
         /// </summary>
         private static void LoadFloorGarageInterior()
         {
-            // Request the IPL
-            Function.Call(Hash.REQUEST_IPL, FLOOR_GARAGE_IPL);
+            // Remove then re-request all IPLs (pattern from Enable All Interiors mod)
+            foreach (string ipl in FLOOR_GARAGE_IPLS)
+                Function.Call(Hash.REMOVE_IPL, ipl);
+            foreach (string ipl in FLOOR_GARAGE_IPLS)
+                Function.Call(Hash.REQUEST_IPL, ipl);
 
-            // Wait for IPL to load
-            DateTime deadline = DateTime.UtcNow.AddMilliseconds(5000);
-            while (DateTime.UtcNow < deadline)
-            {
-                if (Function.Call<bool>(Hash.IS_IPL_ACTIVE, FLOOR_GARAGE_IPL))
-                    break;
-                Script.Wait(0);
-            }
+            // Wait for IPLs to load
+            Script.Wait(1000);
 
-            // Get the interior ID and configure entity sets
+            // Get the interior ID at the nightclub main coords and configure entity sets
             int interior = Function.Call<int>(
-                Hash.GET_INTERIOR_AT_COORDS,
-                FLOOR_GARAGE_INTERIOR_PED.X,
-                FLOOR_GARAGE_INTERIOR_PED.Y,
-                FLOOR_GARAGE_INTERIOR_PED.Z);
+                Hash.GET_INTERIOR_AT_COORDS, -1604.664f, -3012.583f, -80.0f);
 
             if (interior != 0)
             {
