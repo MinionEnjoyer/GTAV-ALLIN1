@@ -65,6 +65,109 @@ namespace ALLIN1
             "Int02_ba_sec_upgrade_grg",
         };
 
+        // Entity set names to probe on the garage interior (Int02_ba).
+        // Comprehensive list based on Int01 naming patterns + common garage names.
+        private static readonly string[] ENTITY_SET_PROBES =
+        {
+            // Known working
+            "Int02_ba_garage_blocker",
+            "Int02_ba_storage_blocker",
+            "Int02_ba_FanBlocker01",
+            "Int02_ba_floor01",
+            "Int02_ba_floor02",
+            "Int02_ba_floor03",
+            "Int02_ba_sec_upgrade_grg",
+            // Floor styles (extrapolated from Int01 Style patterns)
+            "Int02_ba_Style01",
+            "Int02_ba_Style02",
+            "Int02_ba_Style03",
+            "Int02_ba_style01",
+            "Int02_ba_style02",
+            "Int02_ba_style03",
+            // Security / upgrades
+            "Int02_ba_security_upgrade",
+            "Int02_ba_equipment_upgrade",
+            "Int02_ba_equipment_setup",
+            "Int02_ba_upgrade01",
+            "Int02_ba_upgrade02",
+            "Int02_ba_upgrade03",
+            // Garage specific
+            "Int02_ba_garage01",
+            "Int02_ba_garage02",
+            "Int02_ba_garage03",
+            "Int02_ba_garage_a",
+            "Int02_ba_garage_b",
+            "Int02_ba_garage_c",
+            "Int02_ba_garage_d",
+            "Int02_ba_garage_floor01",
+            "Int02_ba_garage_floor02",
+            "Int02_ba_garage_floor03",
+            "Int02_ba_garage_level01",
+            "Int02_ba_garage_level02",
+            "Int02_ba_garage_level03",
+            // Storage
+            "Int02_ba_storage01",
+            "Int02_ba_storage02",
+            "Int02_ba_storage03",
+            "Int02_ba_storage_a",
+            "Int02_ba_storage_b",
+            "Int02_ba_storage_c",
+            // Decorative / misc
+            "Int02_ba_Clutter",
+            "Int02_ba_clutter",
+            "Int02_ba_Worklamps",
+            "Int02_ba_worklamps",
+            "Int02_ba_deliverytruck",
+            "Int02_ba_lightgrid_01",
+            "Int02_ba_lights",
+            "Int02_ba_neon",
+            "Int02_ba_neon01",
+            "Int02_ba_neon02",
+            "Int02_ba_trad_lights",
+            "Int02_ba_dry_ice",
+            "Int02_ba_Screen",
+            // Vehicles / lifts
+            "Int02_ba_carmod",
+            "Int02_ba_mod_booth",
+            "Int02_ba_no_mod_booth",
+            "Int02_ba_vehiclelift",
+            "Int02_ba_carlift",
+            // Blockers
+            "Int02_ba_blocker",
+            "Int02_ba_blocker01",
+            "Int02_ba_blocker02",
+            "Int02_ba_FanBlocker02",
+            "Int02_ba_door_blocker",
+            // B levels (if they exist as separate sets)
+            "Int02_ba_b1",
+            "Int02_ba_b2",
+            "Int02_ba_b3",
+            "Int02_ba_b4",
+            "Int02_ba_B1",
+            "Int02_ba_B2",
+            "Int02_ba_B3",
+            "Int02_ba_B4",
+            "Int02_ba_level_b1",
+            "Int02_ba_level_b2",
+            "Int02_ba_level_b3",
+            "Int02_ba_level_b4",
+            // Wall / decor variants
+            "Int02_ba_walls_01",
+            "Int02_ba_walls_02",
+            "Int02_ba_walls_03",
+            "Int02_ba_decor_01",
+            "Int02_ba_decor_02",
+            "Int02_ba_decor_03",
+            // Tint
+            "Int02_ba_tint_01",
+            "Int02_ba_tint_02",
+            "Int02_ba_tint_03",
+        };
+
+        private List<string> _activeEntitySets = new List<string>();
+        private bool _entitySetScanDone;
+        private int _entitySetPage; // for paging results display
+
         public InteriorScout()
         {
             Tick += OnTick;
@@ -88,6 +191,18 @@ namespace ALLIN1
                     _probeIndex = (_probeIndex + 1) % PROBES.Length;
                     TeleportTo(PROBES[_probeIndex]);
                 }
+                return;
+            }
+
+            if (e.KeyCode == Keys.F11 && _active)
+            {
+                ScanEntitySets();
+                return;
+            }
+
+            if (e.KeyCode == Keys.F12 && _active && _entitySetScanDone)
+            {
+                _entitySetPage = (_entitySetPage + 1) % Math.Max(1, (_activeEntitySets.Count + 7) / 8);
                 return;
             }
 
@@ -208,6 +323,69 @@ namespace ALLIN1
             player.IsPositionFrozen = false;
         }
 
+        /// <summary>
+        /// Scans all probe entity set names against the current interior.
+        /// For each name, tries to activate it, checks if it became active,
+        /// then deactivates it. Records which names are valid.
+        /// </summary>
+        private void ScanEntitySets()
+        {
+            Ped player = Game.Player.Character;
+            Vector3 pos = player.Position;
+
+            int interior = Function.Call<int>(
+                Hash.GET_INTERIOR_AT_COORDS, pos.X, pos.Y, pos.Z);
+
+            if (interior == 0)
+            {
+                // Also try the documented coords
+                interior = Function.Call<int>(
+                    Hash.GET_INTERIOR_AT_COORDS, -1505.78f, -3012.59f, -80.0f);
+            }
+
+            if (interior == 0)
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~No interior found. Cannot scan entity sets.", 3000);
+                return;
+            }
+
+            GTA.UI.Screen.ShowSubtitle($"~y~Scanning {ENTITY_SET_PROBES.Length} entity set names on interior {interior}...", 2000);
+
+            _activeEntitySets.Clear();
+            _entitySetPage = 0;
+
+            foreach (string setName in ENTITY_SET_PROBES)
+            {
+                // Try to activate it
+                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, setName);
+                Function.Call(Hash.REFRESH_INTERIOR, interior);
+
+                // Check if it's now active
+                bool isActive = Function.Call<bool>(
+                    (Hash)0x35F7DD45E8C0A16D, // IS_INTERIOR_ENTITY_SET_ACTIVE
+                    interior, setName);
+
+                if (isActive)
+                {
+                    _activeEntitySets.Add(setName);
+                    // Deactivate it again so we don't mess up the interior
+                    Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, setName);
+                }
+            }
+
+            // Re-activate the known good sets
+            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_garage_blocker");
+            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_storage_blocker");
+            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_FanBlocker01");
+            Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_floor01");
+            Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_sec_upgrade_grg");
+            Function.Call(Hash.REFRESH_INTERIOR, interior);
+
+            _entitySetScanDone = true;
+            GTA.UI.Screen.ShowSubtitle(
+                $"~g~Scan complete: {_activeEntitySets.Count} valid entity sets found. F12 to page.", 5000);
+        }
+
         private void OnTick(object sender, EventArgs e)
         {
             if (!_active) return;
@@ -241,9 +419,39 @@ namespace ALLIN1
 
             // Line 3: Controls
             GbayRenderer.DrawText(
-                "F10:next probe  Num+-:Z  Num4682:XY(5m)  Num1379:XY(1m)  Num0:freeze",
+                "F10:probe  F11:scan entity sets  F12:page results  Num:move",
                 0.5f, 0.055f, 0.25f, Color.FromArgb(160, 200, 200, 200),
                 GbayRenderer.FONT_CONDENSED, true);
+
+            // Entity set scan results
+            if (_entitySetScanDone && _activeEntitySets.Count > 0)
+            {
+                int perPage = 8;
+                int totalPages = (_activeEntitySets.Count + perPage - 1) / perPage;
+                int start = _entitySetPage * perPage;
+                int end = Math.Min(start + perPage, _activeEntitySets.Count);
+
+                GbayRenderer.DrawText(
+                    $"Entity Sets ({_activeEntitySets.Count} found) - Page {_entitySetPage + 1}/{totalPages}",
+                    0.5f, 0.08f, 0.3f, Color.FromArgb(220, 255, 200, 50),
+                    GbayRenderer.FONT_CONDENSED, true);
+
+                for (int i = start; i < end; i++)
+                {
+                    float y = 0.10f + (i - start) * 0.02f;
+                    GbayRenderer.DrawText(
+                        _activeEntitySets[i],
+                        0.5f, y, 0.28f, Color.FromArgb(220, 200, 255, 200),
+                        GbayRenderer.FONT_CONDENSED, true);
+                }
+            }
+            else if (_entitySetScanDone)
+            {
+                GbayRenderer.DrawText(
+                    "No valid entity sets found for this interior",
+                    0.5f, 0.08f, 0.3f, Color.FromArgb(220, 255, 100, 100),
+                    GbayRenderer.FONT_CONDENSED, true);
+            }
         }
     }
 }
