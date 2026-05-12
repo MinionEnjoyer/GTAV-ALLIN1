@@ -635,8 +635,7 @@ namespace ALLIN1
 
             // Fade to black before teleporting
             Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            while (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT))
-                Script.Wait(0);
+            Script.Wait(600);
 
             // Freeze player and teleport to safe interior position
             player.IsPositionFrozen = true;
@@ -771,8 +770,7 @@ namespace ALLIN1
 
             // Fade to black before teleporting outside
             Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            while (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT))
-                Script.Wait(0);
+            Script.Wait(600);
 
             if (playerVehicle != null)
             {
@@ -2292,8 +2290,7 @@ namespace ALLIN1
 
             // Fade to black before teleporting
             Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            while (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT))
-                Script.Wait(0);
+            Script.Wait(600);
 
             // Freeze and teleport player
             player.IsPositionFrozen = true;
@@ -2355,8 +2352,7 @@ namespace ALLIN1
 
             // Fade to black before teleporting outside
             Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            while (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT))
-                Script.Wait(0);
+            Script.Wait(600);
 
             if (playerVehicle != null)
             {
