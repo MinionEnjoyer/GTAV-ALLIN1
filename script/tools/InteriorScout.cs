@@ -138,6 +138,11 @@ namespace ALLIN1
 
         private void LoadAndTeleport()
         {
+            // Load MP DLC maps first — required for Online interiors in SP
+            // Native: _LOAD_MP_DLC_MAPS (0x0888C3502DBBEEF5)
+            Function.Call((Hash)0x0888C3502DBBEEF5, 1);
+            Wait(500);
+
             // Remove then re-request all IPLs (same pattern as Enable All Interiors mod)
             foreach (string ipl in IPLS)
             {

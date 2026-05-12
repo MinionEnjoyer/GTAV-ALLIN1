@@ -2169,6 +2169,11 @@ namespace ALLIN1
         /// </summary>
         private static void LoadFloorGarageInterior()
         {
+            // Load MP DLC maps — required for Online interiors in SP
+            // Native: _LOAD_MP_DLC_MAPS (0x0888C3502DBBEEF5)
+            Function.Call((Hash)0x0888C3502DBBEEF5, 1);
+            Script.Wait(500);
+
             // Remove then re-request all IPLs (pattern from Enable All Interiors mod)
             foreach (string ipl in FLOOR_GARAGE_IPLS)
                 Function.Call(Hash.REMOVE_IPL, ipl);
