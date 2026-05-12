@@ -169,6 +169,7 @@ namespace ALLIN1
         private bool _entitySetScanDone;
         private int _entitySetPage; // for paging results display
 
+
         public InteriorScout()
         {
             Tick += OnTick;

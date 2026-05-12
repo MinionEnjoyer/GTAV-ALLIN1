@@ -2313,8 +2313,9 @@ namespace ALLIN1
                 Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_storage_blocker");
                 Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_FanBlocker01");
 
-                // Enable a floor style
-                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_floor01");
+                // Enable floor style matching current virtual floor
+                string floorSet = $"Int02_ba_floor0{_currentFloor + 1}";
+                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, floorSet);
 
                 // Enable security upgrade (adds more light)
                 Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_sec_upgrade_grg");
@@ -2431,10 +2432,23 @@ namespace ALLIN1
             // Save state of vehicles on the current floor
             FloorGarageUpdateStoredFromLive();
 
+            int oldFloor = _currentFloor;
             _currentFloor = newFloor;
 
             // Freeze player while switching
             player.IsPositionFrozen = true;
+
+            // Switch entity sets — different floor style per level
+            int interior = Function.Call<int>(
+                Hash.GET_INTERIOR_AT_COORDS, -1604.664f, -3012.583f, -80.0f);
+            if (interior != 0)
+            {
+                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET,
+                    interior, $"Int02_ba_floor0{oldFloor + 1}");
+                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET,
+                    interior, $"Int02_ba_floor0{_currentFloor + 1}");
+                Function.Call(Hash.REFRESH_INTERIOR, interior);
+            }
 
             SpawnFloorGarageVehicles();
 
