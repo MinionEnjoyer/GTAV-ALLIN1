@@ -631,6 +631,11 @@ namespace ALLIN1
                 _handles[i] = null;
             }
 
+            // Fade to black before teleporting
+            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
+            while (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT))
+                Script.Wait(0);
+
             // Freeze player and teleport to safe interior position
             player.IsPositionFrozen = true;
             Function.Call(Hash.SET_ENTITY_COORDS, player,
@@ -718,6 +723,9 @@ namespace ALLIN1
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
             player.IsPositionFrozen = false;
 
+            // Fade back in
+            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+
             Log($"EnterGarage: character={key}, vehicles spawned");
         }
 
@@ -760,6 +768,11 @@ namespace ALLIN1
                 }
                 _handles[i] = null;
             }
+
+            // Fade to black before teleporting outside
+            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
+            while (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT))
+                Script.Wait(0);
 
             if (playerVehicle != null)
             {
@@ -812,6 +825,9 @@ namespace ALLIN1
 
             _isPlayerInGarage = false;
             _exitCooldownFrames = 60; // ~1 second cooldown
+
+            // Fade back in
+            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
         }
 
         // ------------------------------------------------------------------ //
@@ -2271,6 +2287,11 @@ namespace ALLIN1
                 _floorGarageHandles[i] = null;
             }
 
+            // Fade to black before teleporting
+            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
+            while (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT))
+                Script.Wait(0);
+
             // Freeze and teleport player
             player.IsPositionFrozen = true;
             Function.Call(Hash.SET_ENTITY_COORDS, player,
@@ -2288,6 +2309,10 @@ namespace ALLIN1
 
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
             player.IsPositionFrozen = false;
+
+            // Fade back in
+            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+
             Log($"EnterFloorGarage: character={FloorGarageCharacterKey()}, floor=1");
         }
 
@@ -2327,6 +2352,11 @@ namespace ALLIN1
                 }
                 _floorGarageHandles[i] = null;
             }
+
+            // Fade to black before teleporting outside
+            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
+            while (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT))
+                Script.Wait(0);
 
             if (playerVehicle != null)
             {
@@ -2372,6 +2402,9 @@ namespace ALLIN1
 
             _isPlayerInFloorGarage = false;
             _floorGarageExitCooldownFrames = 60;
+
+            // Fade back in
+            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
         }
 
         // ------------------------------------------------------------------ //
