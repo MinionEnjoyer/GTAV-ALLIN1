@@ -1676,6 +1676,9 @@ namespace ALLIN1
 
         internal static bool IsPlayerInFloorGarage => _isPlayerInFloorGarage;
 
+        /// <summary>Debug: force the floor garage state (used by InteriorScout).</summary>
+        internal static void DebugSetInFloorGarage(bool value) => _isPlayerInFloorGarage = value;
+
         internal static void InitializeFloorGarage()
         {
             if (_floorGarageInitialized) return;

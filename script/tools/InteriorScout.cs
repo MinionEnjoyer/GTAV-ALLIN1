@@ -307,8 +307,9 @@ namespace ALLIN1
                 GTA.UI.Screen.ShowSubtitle("~r~No garage interior found. Teleporting anyway.", 3000);
             }
 
-            // Teleport player
+            // Teleport player and activate floor garage state so elevator works
             TeleportTo(PROBES[_probeIndex]);
+            GarageManager.DebugSetInFloorGarage(true);
         }
 
         private void TeleportTo(Vector3 pos)
