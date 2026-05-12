@@ -38,15 +38,15 @@ namespace ALLIN1
             "ba_int_placement_ba_interior_2_dlc_int_03_ba_milo_", // terrorbyte bay
         };
 
-        // Probe positions to try -- various coordinates near the known interior center
+        // Probe positions to try -- first probe is the confirmed ped spawn (B2 garage floor)
         private static readonly Vector3[] PROBES =
         {
+            new Vector3(-1507.65f, -3031.08f, -79.23f),  // confirmed ped spawn (B2 garage)
+            new Vector3(-1507.55f, -3014.50f, -79.24f),  // elevator 1 position
             new Vector3(-1505.78f, -3012.59f, -80.0f),   // documented center
             new Vector3(-1505.78f, -3012.59f, -78.0f),   // 2 units higher
-            new Vector3(-1505.78f, -3012.59f, -76.0f),   // 4 units higher
-            new Vector3(-1505.78f, -3012.59f, -74.0f),   // 6 units higher
             new Vector3(-1517.0f,  -3010.0f,  -80.0f),   // offset X/Y
-            new Vector3(-1493.0f,  -3009.0f,  -80.0f),   // our ped spawn
+            new Vector3(-1493.0f,  -3009.0f,  -80.0f),   // east side
             new Vector3(-1520.0f,  -3012.59f, -80.0f),   // further west
             new Vector3(-1490.0f,  -3012.59f, -80.0f),   // further east
         };
