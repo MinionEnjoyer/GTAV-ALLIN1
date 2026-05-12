@@ -1598,10 +1598,10 @@ namespace ALLIN1
             "ba_int_placement_ba_interior_2_dlc_int_03_ba_milo_", // terrorbyte bay
         };
 
-        // Interior ped spawn — nightclub garage interior
+        // Interior ped spawn — at elevator 1 position
         private static readonly Vector3 FLOOR_GARAGE_INTERIOR_PED =
-            new Vector3(-1507.65f, -3031.08f, -79.23f);
-        private const float FLOOR_GARAGE_INTERIOR_PED_HEADING = 180f;
+            new Vector3(-1507.55f, -3014.50f, -79.24f);
+        private const float FLOOR_GARAGE_INTERIOR_PED_HEADING = 0f;
 
         // Elevator positions inside the garage (for floor switching + exit)
         private static readonly Vector3 FLOOR_GARAGE_ELEVATOR_1 =
@@ -2338,9 +2338,9 @@ namespace ALLIN1
             // Wait for IPLs to load
             Script.Wait(1000);
 
-            // Get the interior ID at the nightclub main coords and configure entity sets
+            // Get the garage interior ID (Int02_ba at garage coords, NOT main nightclub)
             int interior = Function.Call<int>(
-                Hash.GET_INTERIOR_AT_COORDS, -1604.664f, -3012.583f, -80.0f);
+                Hash.GET_INTERIOR_AT_COORDS, -1505.782f, -3012.587f, -80.0f);
 
             if (interior != 0)
             {
@@ -2472,7 +2472,7 @@ namespace ALLIN1
 
             // Switch entity sets — different theme per floor
             int interior = Function.Call<int>(
-                Hash.GET_INTERIOR_AT_COORDS, -1604.664f, -3012.583f, -80.0f);
+                Hash.GET_INTERIOR_AT_COORDS, -1505.782f, -3012.587f, -80.0f);
             if (interior != 0)
             {
                 // Deactivate old floor's sets

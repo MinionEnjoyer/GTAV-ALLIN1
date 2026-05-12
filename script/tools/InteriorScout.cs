@@ -275,7 +275,7 @@ namespace ALLIN1
 
             // Get interior at the nightclub main coords (like EAI does)
             int interior = Function.Call<int>(
-                Hash.GET_INTERIOR_AT_COORDS, -1604.664f, -3012.583f, -80.0f);
+                Hash.GET_INTERIOR_AT_COORDS, -1505.782f, -3012.587f, -80.0f);
 
             if (interior != 0)
             {
@@ -285,24 +285,9 @@ namespace ALLIN1
                     Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, set);
                 Function.Call(Hash.REFRESH_INTERIOR, interior);
 
-                GTA.UI.Screen.ShowSubtitle($"~g~Main nightclub interior {interior} configured.", 2000);
+                GTA.UI.Screen.ShowSubtitle($"~g~Garage interior {interior} configured.", 2000);
             }
-
-            // Also try to get the garage interior specifically
-            int garageInterior = Function.Call<int>(
-                Hash.GET_INTERIOR_AT_COORDS, -1505.78f, -3012.59f, -80.0f);
-
-            if (garageInterior != 0 && garageInterior != interior)
-            {
-                foreach (string set in DISABLE_SETS)
-                    Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, garageInterior, set);
-                foreach (string set in ENABLE_SETS)
-                    Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, garageInterior, set);
-                Function.Call(Hash.REFRESH_INTERIOR, garageInterior);
-
-                GTA.UI.Screen.ShowSubtitle($"~g~Garage interior {garageInterior} also configured.", 2000);
-            }
-            else if (garageInterior == 0)
+            else
             {
                 GTA.UI.Screen.ShowSubtitle("~r~No garage interior found. Teleporting anyway.", 3000);
             }
