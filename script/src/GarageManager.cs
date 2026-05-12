@@ -631,6 +631,8 @@ namespace ALLIN1
                 _handles[i] = null;
             }
 
+            _isPlayerInGarage = true; // set early to block re-entry during fade
+
             // Fade to black before teleporting
             Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
             while (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT))
@@ -644,8 +646,6 @@ namespace ALLIN1
             Function.Call(Hash.SET_ENTITY_HEADING, player, PED_EXIT_HEADING);
             Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, player);
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, true);
-
-            _isPlayerInGarage = true; // set early to block re-entry during spawning
 
             // Pre-load all vehicle models before spawning
             string key = CharacterKey();
@@ -2287,6 +2287,9 @@ namespace ALLIN1
                 _floorGarageHandles[i] = null;
             }
 
+            _isPlayerInFloorGarage = true; // set early to block re-entry during fade
+            _currentFloor = 0; // Always start on floor 1
+
             // Fade to black before teleporting
             Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
             while (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT))
@@ -2300,9 +2303,6 @@ namespace ALLIN1
             Function.Call(Hash.SET_ENTITY_HEADING, player, FLOOR_GARAGE_INTERIOR_PED_HEADING);
             Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, player);
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, true);
-
-            _isPlayerInFloorGarage = true;
-            _currentFloor = 0; // Always start on floor 1
 
             // Spawn vehicles for the current floor only
             SpawnFloorGarageVehicles();
