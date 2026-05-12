@@ -79,6 +79,15 @@ namespace ALLIN1
         {
             Game.DisableAllControlsThisFrame();
 
+            // Explicitly disable attack/aim in both control groups to prevent shooting
+            Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, (int)Control.Attack, true);
+            Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, (int)Control.Attack2, true);
+            Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, (int)Control.Aim, true);
+            Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, (int)Control.VehicleAttack, true);
+            Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, (int)Control.VehicleAttack2, true);
+            Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, (int)Control.MeleeAttack1, true);
+            Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, (int)Control.MeleeAttack2, true);
+
             // Re-enable frontend navigation (keyboard arrows, enter, esc)
             Game.EnableControlThisFrame(Control.FrontendAccept);
             Game.EnableControlThisFrame(Control.FrontendCancel);
