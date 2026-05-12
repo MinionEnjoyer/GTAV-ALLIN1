@@ -1619,19 +1619,66 @@ namespace ALLIN1
         private static bool _elevatorMenuActive;
         private static int _elevatorMenuSelection; // 0=Floor1, 1=Floor2, 2=Floor3, 3=Exit
 
-        // Per-floor entity set themes — each floor gets a distinct visual style
-        private static readonly string[][] FLOOR_ENTITY_SETS =
+        // Garage customization — 5 categories, each with 3 options
+        // Players pick one option per category per floor via GBay menu
+        internal static readonly string[] CUSTOM_CATEGORY_NAMES =
+            { "Floor", "Style", "Walls", "Decor", "Lighting" };
+
+        internal static readonly string[][] CUSTOM_OPTION_LABELS =
         {
-            // Floor 1: traditional style
-            new[] { "Int02_ba_floor01", "Int02_ba_Style01", "Int02_ba_walls_01",
-                    "Int02_ba_decor_01", "Int02_ba_trad_lights" },
-            // Floor 2: edgy/neon style
-            new[] { "Int02_ba_floor02", "Int02_ba_Style02", "Int02_ba_walls_02",
-                    "Int02_ba_decor_02", "Int02_ba_neon" },
-            // Floor 3: glamorous style
-            new[] { "Int02_ba_floor03", "Int02_ba_Style03", "Int02_ba_walls_03",
-                    "Int02_ba_decor_03", "Int02_ba_lights" },
+            new[] { "Option 1", "Option 2", "Option 3" },  // Floor
+            new[] { "Option 1", "Option 2", "Option 3" },  // Style
+            new[] { "Option 1", "Option 2", "Option 3" },  // Walls
+            new[] { "Option 1", "Option 2", "Option 3" },  // Decor
+            new[] { "Traditional", "Neon", "Glamorous" },   // Lighting
         };
+
+        // Entity set name per [category][option]
+        private static readonly string[][] CUSTOM_ENTITY_SETS =
+        {
+            new[] { "Int02_ba_floor01",     "Int02_ba_floor02",     "Int02_ba_floor03" },
+            new[] { "Int02_ba_Style01",     "Int02_ba_Style02",     "Int02_ba_Style03" },
+            new[] { "Int02_ba_walls_01",    "Int02_ba_walls_02",    "Int02_ba_walls_03" },
+            new[] { "Int02_ba_decor_01",    "Int02_ba_decor_02",    "Int02_ba_decor_03" },
+            new[] { "Int02_ba_trad_lights", "Int02_ba_neon",        "Int02_ba_lights" },
+        };
+
+        internal const int CUSTOM_CATEGORY_COUNT = 5;
+        internal const int CUSTOM_OPTION_COUNT = 3;
+
+        // Per-floor theme choices: _floorThemes[charKey][floor] = int[5] (one choice per category)
+        // Default: floor 0 = all 0s, floor 1 = all 1s, floor 2 = all 2s
+        private static readonly Dictionary<string, int[][]> _floorThemes =
+            new Dictionary<string, int[][]>
+            {
+                { KEY_MICHAEL_FG,  DefaultThemes() },
+                { KEY_FRANKLIN_FG, DefaultThemes() },
+                { KEY_TREVOR_FG,   DefaultThemes() },
+            };
+
+        private static int[][] DefaultThemes()
+        {
+            return new[]
+            {
+                new[] { 0, 0, 0, 0, 0 }, // floor 0: all option 1
+                new[] { 1, 1, 1, 1, 1 }, // floor 1: all option 2
+                new[] { 2, 2, 2, 2, 2 }, // floor 2: all option 3
+            };
+        }
+
+        /// <summary>
+        /// Build the list of entity set names for a floor based on current theme choices.
+        /// </summary>
+        private static string[] GetFloorEntitySets(int floor)
+        {
+            string key = FloorGarageCharacterKey();
+            int[][] themes = _floorThemes.ContainsKey(key) ? _floorThemes[key] : DefaultThemes();
+            int[] choices = themes[floor];
+            var sets = new string[CUSTOM_CATEGORY_COUNT];
+            for (int c = 0; c < CUSTOM_CATEGORY_COUNT; c++)
+                sets[c] = CUSTOM_ENTITY_SETS[c][choices[c]];
+            return sets;
+        }
 
         // 5 physical parking positions inside the nightclub garage interior
         // Laid out in a single row along the Y axis, all facing heading 0
@@ -1685,6 +1732,9 @@ namespace ALLIN1
                 { KEY_TREVOR_FG,   new List<StoredVehicle>() },
             };
 
+        private static readonly string FLOOR_GARAGE_THEMES_PATH =
+            Path.Combine(SCRIPTS_DIR, "ALLIN1_floor_themes.json");
+
         private static readonly Vehicle[] _floorGarageHandles = new Vehicle[FLOOR_GARAGE_SLOT_COUNT];
         private static bool _isPlayerInFloorGarage;
         private static int _floorGarageExitCooldownFrames;
@@ -1697,9 +1747,59 @@ namespace ALLIN1
         // ------------------------------------------------------------------ //
 
         internal static bool IsPlayerInFloorGarage => _isPlayerInFloorGarage;
+        internal static int CurrentFloor => _currentFloor;
 
         /// <summary>Debug: force the floor garage state (used by InteriorScout).</summary>
         internal static void DebugSetInFloorGarage(bool value) => _isPlayerInFloorGarage = value;
+
+        /// <summary>Get the theme choice for a specific floor and category.</summary>
+        internal static int GetFloorThemeChoice(int floor, int category)
+        {
+            string key = FloorGarageCharacterKey();
+            if (!_floorThemes.TryGetValue(key, out var themes)) return floor;
+            if (floor < 0 || floor >= 3 || category < 0 || category >= CUSTOM_CATEGORY_COUNT) return 0;
+            return themes[floor][category];
+        }
+
+        /// <summary>Set the theme choice for a specific floor and category. Applies live if in garage.</summary>
+        internal static void SetFloorThemeChoice(int floor, int category, int option)
+        {
+            if (floor < 0 || floor >= 3) return;
+            if (category < 0 || category >= CUSTOM_CATEGORY_COUNT) return;
+            if (option < 0 || option >= CUSTOM_OPTION_COUNT) return;
+
+            string key = FloorGarageCharacterKey();
+            if (!_floorThemes.TryGetValue(key, out var themes))
+            {
+                themes = DefaultThemes();
+                _floorThemes[key] = themes;
+            }
+
+            int oldOption = themes[floor][category];
+            if (oldOption == option) return;
+
+            themes[floor][category] = option;
+
+            // If the player is currently viewing this floor, swap the entity sets live
+            if (_isPlayerInFloorGarage && floor == _currentFloor)
+            {
+                int interior = Function.Call<int>(
+                    Hash.GET_INTERIOR_AT_COORDS, -1505.782f, -3012.587f, -80.0f);
+                if (interior != 0)
+                {
+                    // Deactivate the old entity set for this category
+                    Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior,
+                        CUSTOM_ENTITY_SETS[category][oldOption]);
+                    // Activate the new one
+                    Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior,
+                        CUSTOM_ENTITY_SETS[category][option]);
+                    Function.Call(Hash.REFRESH_INTERIOR, interior);
+                }
+            }
+
+            FloorGarageThemesSave();
+            Log($"SetFloorThemeChoice: floor={floor} cat={CUSTOM_CATEGORY_NAMES[category]} option={option}");
+        }
 
         internal static void InitializeFloorGarage()
         {
@@ -1708,6 +1808,7 @@ namespace ALLIN1
             try
             {
                 FloorGarageLoad();
+                FloorGarageThemesLoad();
                 int total = 0;
                 foreach (var list in _floorGarageStored.Values)
                     total += list.Count;
@@ -2311,10 +2412,12 @@ namespace ALLIN1
 
         /// <summary>
         /// Activate entity sets for the given floor and refresh the interior.
+        /// Uses customized theme choices instead of hardcoded sets.
         /// </summary>
         private static void ApplyFloorEntitySets(int interior, int floor)
         {
-            foreach (string set in FLOOR_ENTITY_SETS[floor])
+            string[] sets = GetFloorEntitySets(floor);
+            foreach (string set in sets)
                 Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, set);
             Function.Call(Hash.REFRESH_INTERIOR, interior);
         }
@@ -2476,7 +2579,7 @@ namespace ALLIN1
             if (interior != 0)
             {
                 // Deactivate old floor's sets
-                foreach (string set in FLOOR_ENTITY_SETS[oldFloor])
+                foreach (string set in GetFloorEntitySets(oldFloor))
                     Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, set);
                 // Activate new floor's sets
                 ApplyFloorEntitySets(interior, _currentFloor);
@@ -2522,6 +2625,90 @@ namespace ALLIN1
             catch (Exception ex)
             {
                 LogException("FloorGarageSave", ex);
+            }
+        }
+
+        // ------------------------------------------------------------------ //
+        //  Floor Garage Theme Persistence                                     //
+        // ------------------------------------------------------------------ //
+
+        private static void FloorGarageThemesLoad()
+        {
+            if (!File.Exists(FLOOR_GARAGE_THEMES_PATH))
+                return;
+            try
+            {
+                string json = File.ReadAllText(FLOOR_GARAGE_THEMES_PATH);
+                // Simple JSON: { "key": [[0,1,2,0,1],[...],[...]], ... }
+                string[] keys = { KEY_MICHAEL_FG, KEY_FRANKLIN_FG, KEY_TREVOR_FG };
+                foreach (string key in keys)
+                {
+                    int keyIdx = json.IndexOf($"\"{key}\"");
+                    if (keyIdx < 0) continue;
+                    int arrStart = json.IndexOf('[', keyIdx);
+                    if (arrStart < 0) continue;
+
+                    // Parse 3 inner arrays of 5 ints each: [[a,b,c,d,e],[...],[...]]
+                    int[][] themes = new int[3][];
+                    int pos = arrStart + 1; // skip outer [
+                    for (int f = 0; f < 3; f++)
+                    {
+                        int innerStart = json.IndexOf('[', pos);
+                        int innerEnd = json.IndexOf(']', innerStart);
+                        if (innerStart < 0 || innerEnd < 0) break;
+                        string inner = json.Substring(innerStart + 1, innerEnd - innerStart - 1);
+                        string[] parts = inner.Split(',');
+                        themes[f] = new int[CUSTOM_CATEGORY_COUNT];
+                        for (int c = 0; c < Math.Min(parts.Length, CUSTOM_CATEGORY_COUNT); c++)
+                        {
+                            if (int.TryParse(parts[c].Trim(), out int val) && val >= 0 && val < CUSTOM_OPTION_COUNT)
+                                themes[f][c] = val;
+                        }
+                        pos = innerEnd + 1;
+                    }
+                    if (themes[0] != null && themes[1] != null && themes[2] != null)
+                        _floorThemes[key] = themes;
+                }
+                Log("FloorGarageThemesLoad: loaded custom themes");
+            }
+            catch (Exception ex)
+            {
+                LogException("FloorGarageThemesLoad", ex);
+            }
+        }
+
+        private static void FloorGarageThemesSave()
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine("{");
+                string[] keys = { KEY_MICHAEL_FG, KEY_FRANKLIN_FG, KEY_TREVOR_FG };
+                for (int k = 0; k < keys.Length; k++)
+                {
+                    string key = keys[k];
+                    int[][] themes = _floorThemes.ContainsKey(key) ? _floorThemes[key] : DefaultThemes();
+                    sb.Append($"  \"{key}\": [");
+                    for (int f = 0; f < 3; f++)
+                    {
+                        sb.Append($"[{string.Join(",", themes[f])}]");
+                        if (f < 2) sb.Append(", ");
+                    }
+                    sb.Append("]");
+                    if (k < keys.Length - 1) sb.AppendLine(",");
+                    else sb.AppendLine();
+                }
+                sb.AppendLine("}");
+
+                string tmp = FLOOR_GARAGE_THEMES_PATH + ".tmp";
+                File.WriteAllText(tmp, sb.ToString());
+                if (File.Exists(FLOOR_GARAGE_THEMES_PATH))
+                    File.Delete(FLOOR_GARAGE_THEMES_PATH);
+                File.Move(tmp, FLOOR_GARAGE_THEMES_PATH);
+            }
+            catch (Exception ex)
+            {
+                LogException("FloorGarageThemesSave", ex);
             }
         }
 
