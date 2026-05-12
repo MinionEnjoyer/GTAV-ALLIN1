@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Windows.Forms;
 using GTA;
 using GTA.Math;
@@ -382,8 +383,23 @@ namespace ALLIN1
             Function.Call(Hash.REFRESH_INTERIOR, interior);
 
             _entitySetScanDone = true;
+
+            // Write results to log file
+            string logPath = Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory,
+                "ALLIN1_entity_sets.log");
+            using (var sw = new System.IO.StreamWriter(logPath, false))
+            {
+                sw.WriteLine($"Entity Set Scan — Interior {interior}");
+                sw.WriteLine($"Scanned {ENTITY_SET_PROBES.Length} names, {_activeEntitySets.Count} valid");
+                sw.WriteLine($"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                sw.WriteLine();
+                foreach (string name in _activeEntitySets)
+                    sw.WriteLine(name);
+            }
+
             GTA.UI.Screen.ShowSubtitle(
-                $"~g~Scan complete: {_activeEntitySets.Count} valid entity sets found. F12 to page.", 5000);
+                $"~g~Scan complete: {_activeEntitySets.Count} valid sets found. Saved to {logPath}", 5000);
         }
 
         private void OnTick(object sender, EventArgs e)
