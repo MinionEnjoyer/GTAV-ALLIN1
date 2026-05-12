@@ -1611,6 +1611,20 @@ namespace ALLIN1
         private static bool _elevatorMenuActive;
         private static int _elevatorMenuSelection; // 0=Floor1, 1=Floor2, 2=Floor3, 3=Exit
 
+        // Per-floor entity set themes — each floor gets a distinct visual style
+        private static readonly string[][] FLOOR_ENTITY_SETS =
+        {
+            // Floor 1: traditional style
+            new[] { "Int02_ba_floor01", "Int02_ba_Style01", "Int02_ba_walls_01",
+                    "Int02_ba_decor_01", "Int02_ba_trad_lights" },
+            // Floor 2: edgy/neon style
+            new[] { "Int02_ba_floor02", "Int02_ba_Style02", "Int02_ba_walls_02",
+                    "Int02_ba_decor_02", "Int02_ba_neon" },
+            // Floor 3: glamorous style
+            new[] { "Int02_ba_floor03", "Int02_ba_Style03", "Int02_ba_walls_03",
+                    "Int02_ba_decor_03", "Int02_ba_lights" },
+        };
+
         // 5 physical parking positions inside the nightclub garage interior
         // Laid out in a single row along the Y axis, all facing heading 0
         private static readonly ParkingSlot[] _floorGaragePhysicalSlots =
@@ -2287,6 +2301,16 @@ namespace ALLIN1
         }
 
         /// <summary>
+        /// Activate entity sets for the given floor and refresh the interior.
+        /// </summary>
+        private static void ApplyFloorEntitySets(int interior, int floor)
+        {
+            foreach (string set in FLOOR_ENTITY_SETS[floor])
+                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, set);
+            Function.Call(Hash.REFRESH_INTERIOR, interior);
+        }
+
+        /// <summary>
         /// Load the nightclub garage IPL and configure interior entity sets.
         /// </summary>
         private static void LoadFloorGarageInterior()
@@ -2316,15 +2340,11 @@ namespace ALLIN1
                 Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_storage_blocker");
                 Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_FanBlocker01");
 
-                // Enable floor style matching current virtual floor
-                string floorSet = $"Int02_ba_floor0{_currentFloor + 1}";
-                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, floorSet);
-
                 // Enable security upgrade (adds more light)
                 Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_sec_upgrade_grg");
 
-                // Refresh the interior to apply entity set changes
-                Function.Call(Hash.REFRESH_INTERIOR, interior);
+                // Activate current floor's entity set theme
+                ApplyFloorEntitySets(interior, _currentFloor);
 
                 Log($"LoadFloorGarageInterior: interior={interior}, IPL loaded, entity sets configured");
             }
@@ -2441,16 +2461,16 @@ namespace ALLIN1
             // Freeze player while switching
             player.IsPositionFrozen = true;
 
-            // Switch entity sets — different floor style per level
+            // Switch entity sets — different theme per floor
             int interior = Function.Call<int>(
                 Hash.GET_INTERIOR_AT_COORDS, -1604.664f, -3012.583f, -80.0f);
             if (interior != 0)
             {
-                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET,
-                    interior, $"Int02_ba_floor0{oldFloor + 1}");
-                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET,
-                    interior, $"Int02_ba_floor0{_currentFloor + 1}");
-                Function.Call(Hash.REFRESH_INTERIOR, interior);
+                // Deactivate old floor's sets
+                foreach (string set in FLOOR_ENTITY_SETS[oldFloor])
+                    Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, set);
+                // Activate new floor's sets
+                ApplyFloorEntitySets(interior, _currentFloor);
             }
 
             SpawnFloorGarageVehicles();
