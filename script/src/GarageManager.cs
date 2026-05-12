@@ -1592,18 +1592,24 @@ namespace ALLIN1
 
         // Interior ped spawn — nightclub garage interior
         private static readonly Vector3 FLOOR_GARAGE_INTERIOR_PED =
-            new Vector3(-1493.0f, -3009.0f, -80.0f);
-        private const float FLOOR_GARAGE_INTERIOR_PED_HEADING = 270f;
+            new Vector3(-1507.65f, -3031.08f, -79.23f);
+        private const float FLOOR_GARAGE_INTERIOR_PED_HEADING = 180f;
 
-        // Interior vehicle exit — drive out from the garage area
-        private static readonly Vector3 FLOOR_GARAGE_VEHICLE_EXIT =
-            new Vector3(-1493.0f, -3009.0f, -80.0f);
-        private const float FLOOR_GARAGE_VEHICLE_EXIT_HEADING = 90f;
+        // Elevator positions inside the garage (for floor switching + exit)
+        private static readonly Vector3 FLOOR_GARAGE_ELEVATOR_1 =
+            new Vector3(-1507.55f, -3014.50f, -79.24f);
+        // Elevator 2 — TBD, will be set after in-game scouting
+        private static readonly Vector3 FLOOR_GARAGE_ELEVATOR_2 =
+            new Vector3(0f, 0f, 0f); // placeholder
+
+        private const float ELEVATOR_INTERACT_RADIUS = 1.8f;
 
         // Virtual floor system — all 3 floors share the same 5 physical positions
         // within the nightclub garage interior. Only the current floor's vehicles
         // are spawned at a time; switching floors despawns/respawns.
         private static int _currentFloor; // 0, 1, or 2
+        private static bool _elevatorMenuActive;
+        private static int _elevatorMenuSelection; // 0=Floor1, 1=Floor2, 2=Floor3, 3=Exit
 
         // 5 physical parking positions inside the nightclub garage interior
         // Laid out in a single row along the Y axis, all facing heading 0
@@ -1904,7 +1910,7 @@ namespace ALLIN1
 
                 // Floor indicator (always show)
                 GTA.UI.Screen.ShowSubtitle(
-                    $"~b~Floor {_currentFloor + 1}/3~w~  |  ~INPUT_FRONTEND_LEFT~ Prev  ~INPUT_FRONTEND_RIGHT~ Next", 1);
+                    $"~b~Floor {_currentFloor + 1}/3", 1);
 
                 if (inVehicle)
                 {
@@ -1916,29 +1922,142 @@ namespace ALLIN1
 
                 if (!inVehicle)
                 {
-                    // Floor switching: left/right arrow (FRONTEND_LEFT/RIGHT)
-                    if (Game.IsControlJustPressed(GTA.Control.FrontendLeft))
-                        SwitchFloorGarageFloor(_currentFloor - 1);
-                    else if (Game.IsControlJustPressed(GTA.Control.FrontendRight))
-                        SwitchFloorGarageFloor(_currentFloor + 1);
-
-                    World.DrawMarker(
-                        GTA.MarkerType.VerticalCylinder,
-                        FLOOR_GARAGE_INTERIOR_PED - new Vector3(0f, 0f, 1f),
-                        Vector3.Zero, Vector3.Zero,
-                        new Vector3(1.5f, 1.5f, 1.2f),
-                        System.Drawing.Color.FromArgb(128, 200, 100, 0));
-
-                    float dist = player.Position.DistanceTo(FLOOR_GARAGE_INTERIOR_PED);
-                    if (dist < EXIT_RADIUS)
+                    if (_elevatorMenuActive)
                     {
-                        GTA.UI.Screen.ShowHelpTextThisFrame(
-                            "Press ~INPUT_CONTEXT~ to leave the floor garage.");
-                        if (Game.IsControlJustPressed(GTA.Control.Context))
-                            LeaveFloorGarage();
+                        // Draw elevator menu
+                        DrawElevatorMenu();
+
+                        if (Game.IsControlJustPressed(GTA.Control.FrontendUp))
+                            _elevatorMenuSelection = (_elevatorMenuSelection + 3) % 4; // wrap up
+                        else if (Game.IsControlJustPressed(GTA.Control.FrontendDown))
+                            _elevatorMenuSelection = (_elevatorMenuSelection + 1) % 4; // wrap down
+                        else if (Game.IsControlJustPressed(GTA.Control.FrontendAccept)
+                              || Game.IsControlJustPressed(GTA.Control.Context))
+                        {
+                            _elevatorMenuActive = false;
+                            if (_elevatorMenuSelection == 3) // Exit
+                                LeaveFloorGarage();
+                            else
+                                SwitchFloorGarageFloor(_elevatorMenuSelection);
+                        }
+                        else if (Game.IsControlJustPressed(GTA.Control.FrontendCancel))
+                        {
+                            _elevatorMenuActive = false;
+                        }
+                    }
+                    else
+                    {
+                        // Draw elevator 1 marker
+                        World.DrawMarker(
+                            GTA.MarkerType.VerticalCylinder,
+                            FLOOR_GARAGE_ELEVATOR_1 - new Vector3(0f, 0f, 1f),
+                            Vector3.Zero, Vector3.Zero,
+                            new Vector3(1.5f, 1.5f, 1.2f),
+                            System.Drawing.Color.FromArgb(128, 100, 100, 255));
+
+                        float dist1 = player.Position.DistanceTo(FLOOR_GARAGE_ELEVATOR_1);
+                        if (dist1 < ELEVATOR_INTERACT_RADIUS)
+                        {
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                "Press ~INPUT_CONTEXT~ to use the elevator.");
+                            if (Game.IsControlJustPressed(GTA.Control.Context))
+                            {
+                                _elevatorMenuActive = true;
+                                _elevatorMenuSelection = _currentFloor;
+                            }
+                        }
+
+                        // Draw elevator 2 marker (if set)
+                        if (FLOOR_GARAGE_ELEVATOR_2.X != 0f)
+                        {
+                            World.DrawMarker(
+                                GTA.MarkerType.VerticalCylinder,
+                                FLOOR_GARAGE_ELEVATOR_2 - new Vector3(0f, 0f, 1f),
+                                Vector3.Zero, Vector3.Zero,
+                                new Vector3(1.5f, 1.5f, 1.2f),
+                                System.Drawing.Color.FromArgb(128, 100, 100, 255));
+
+                            float dist2 = player.Position.DistanceTo(FLOOR_GARAGE_ELEVATOR_2);
+                            if (dist2 < ELEVATOR_INTERACT_RADIUS)
+                            {
+                                GTA.UI.Screen.ShowHelpTextThisFrame(
+                                    "Press ~INPUT_CONTEXT~ to use the elevator.");
+                                if (Game.IsControlJustPressed(GTA.Control.Context))
+                                {
+                                    _elevatorMenuActive = true;
+                                    _elevatorMenuSelection = _currentFloor;
+                                }
+                            }
+                        }
                     }
                 }
             }
+        }
+
+        // ------------------------------------------------------------------ //
+        //  Floor Garage Elevator Menu                                         //
+        // ------------------------------------------------------------------ //
+
+        private static readonly string[] _elevatorLabels =
+            { "Floor 1", "Floor 2", "Floor 3", "Exit Garage" };
+
+        /// <summary>
+        /// Draws a simple centered elevator menu on screen with 4 options.
+        /// The currently selected option is highlighted.
+        /// </summary>
+        private static void DrawElevatorMenu()
+        {
+            const float menuW = 0.16f;
+            const float rowH = 0.035f;
+            const float titleH = 0.04f;
+            const float pad = 0.005f;
+            const float menuX = 0.5f; // centered
+            float totalH = titleH + rowH * 4 + pad * 2;
+            float menuTop = 0.5f - totalH / 2f;
+
+            // Background
+            GbayRenderer.DrawRect(menuX, 0.5f, menuW, totalH,
+                System.Drawing.Color.FromArgb(220, 15, 15, 15));
+
+            // Title
+            GbayRenderer.DrawText("ELEVATOR", menuX, menuTop + pad,
+                0.38f, System.Drawing.Color.FromArgb(255, 100, 180, 255),
+                font: 0, centered: true, shadow: true);
+
+            // Options
+            for (int i = 0; i < 4; i++)
+            {
+                float rowY = menuTop + titleH + rowH * i;
+                float rowCY = rowY + rowH / 2f;
+
+                bool selected = (i == _elevatorMenuSelection);
+                bool isCurrent = (i < 3 && i == _currentFloor);
+
+                if (selected)
+                {
+                    GbayRenderer.DrawRect(menuX, rowCY, menuW - 0.006f, rowH - 0.003f,
+                        System.Drawing.Color.FromArgb(200, 60, 130, 220));
+                }
+
+                string label = _elevatorLabels[i];
+                if (isCurrent)
+                    label += "  (current)";
+
+                var textColor = selected
+                    ? System.Drawing.Color.White
+                    : (isCurrent
+                        ? System.Drawing.Color.FromArgb(255, 130, 190, 255)
+                        : System.Drawing.Color.FromArgb(255, 200, 200, 200));
+
+                GbayRenderer.DrawText(label, menuX, rowY + 0.006f,
+                    0.33f, textColor, font: 0, centered: true, shadow: true);
+            }
+
+            // Hint at bottom
+            GbayRenderer.DrawText("Up/Down to select  Enter to confirm  Esc to close",
+                menuX, menuTop + totalH + 0.005f,
+                0.22f, System.Drawing.Color.FromArgb(180, 160, 160, 160),
+                font: 0, centered: true);
         }
 
         // ------------------------------------------------------------------ //
