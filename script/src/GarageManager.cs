@@ -537,6 +537,7 @@ namespace ALLIN1
 
         private static void EnterGarage()
         {
+            Log("EnterGarage: START");
             Ped player = Game.Player.Character;
 
             // If player is in a vehicle, store it in the garage (if space),
@@ -632,10 +633,12 @@ namespace ALLIN1
             }
 
             _isPlayerInGarage = true; // set early to block re-entry during fade
+            Log("EnterGarage: flag set, starting fade out");
 
             // Fade to black before teleporting
             Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
             Script.Wait(600);
+            Log("EnterGarage: fade out done, teleporting");
 
             // Freeze player and teleport to safe interior position
             player.IsPositionFrozen = true;
@@ -645,6 +648,7 @@ namespace ALLIN1
             Function.Call(Hash.SET_ENTITY_HEADING, player, PED_EXIT_HEADING);
             Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, player);
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, true);
+            Log("EnterGarage: teleported, spawning vehicles");
 
             // Pre-load all vehicle models before spawning
             string key = CharacterKey();
@@ -723,13 +727,15 @@ namespace ALLIN1
             player.IsPositionFrozen = false;
 
             // Fade back in
+            Log("EnterGarage: fading in");
             Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
 
-            Log($"EnterGarage: character={key}, vehicles spawned");
+            Log($"EnterGarage: COMPLETE, character={key}");
         }
 
         private static void LeaveGarage()
         {
+            Log("LeaveGarage: START");
             // Save all vehicle states before leaving
             UpdateStoredFromLive();
 
@@ -768,9 +774,11 @@ namespace ALLIN1
                 _handles[i] = null;
             }
 
+            Log("LeaveGarage: vehicles cleaned, starting fade out");
             // Fade to black before teleporting outside
             Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
             Script.Wait(600);
+            Log("LeaveGarage: fade done, teleporting");
 
             if (playerVehicle != null)
             {
@@ -825,7 +833,9 @@ namespace ALLIN1
             _exitCooldownFrames = 60; // ~1 second cooldown
 
             // Fade back in
+            Log("LeaveGarage: fading in");
             Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+            Log("LeaveGarage: COMPLETE");
         }
 
         // ------------------------------------------------------------------ //
@@ -2207,6 +2217,7 @@ namespace ALLIN1
 
         private static void EnterFloorGarage()
         {
+            Log("EnterFloorGarage: START");
             Ped player = Game.Player.Character;
 
             // Drive-in: store the vehicle
@@ -2274,8 +2285,10 @@ namespace ALLIN1
                 }
             }
 
+            Log("EnterFloorGarage: loading IPL");
             // Load the nightclub garage IPL
             LoadFloorGarageInterior();
+            Log("EnterFloorGarage: IPL loaded");
 
             // Clear existing handles
             for (int i = 0; i < FLOOR_GARAGE_SLOT_COUNT; i++)
@@ -2287,10 +2300,12 @@ namespace ALLIN1
 
             _isPlayerInFloorGarage = true; // set early to block re-entry during fade
             _currentFloor = 0; // Always start on floor 1
+            Log("EnterFloorGarage: flag set, starting fade out");
 
             // Fade to black before teleporting
             Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
             Script.Wait(600);
+            Log("EnterFloorGarage: fade done, teleporting");
 
             // Freeze and teleport player
             player.IsPositionFrozen = true;
@@ -2300,21 +2315,25 @@ namespace ALLIN1
             Function.Call(Hash.SET_ENTITY_HEADING, player, FLOOR_GARAGE_INTERIOR_PED_HEADING);
             Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, player);
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, true);
+            Log("EnterFloorGarage: teleported, spawning vehicles");
 
             // Spawn vehicles for the current floor only
             SpawnFloorGarageVehicles();
+            Log("EnterFloorGarage: vehicles spawned, unfreezing");
 
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
             player.IsPositionFrozen = false;
 
             // Fade back in
+            Log("EnterFloorGarage: fading in");
             Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
 
-            Log($"EnterFloorGarage: character={FloorGarageCharacterKey()}, floor=1");
+            Log($"EnterFloorGarage: COMPLETE, character={FloorGarageCharacterKey()}");
         }
 
         private static void LeaveFloorGarage()
         {
+            Log("LeaveFloorGarage: START");
             FloorGarageUpdateStoredFromLive();
 
             Ped player = Game.Player.Character;
@@ -2339,6 +2358,7 @@ namespace ALLIN1
                 }
             }
 
+            Log($"LeaveFloorGarage: player in vehicle={playerVehicle != null}, cleaning vehicles");
             for (int i = 0; i < FLOOR_GARAGE_SLOT_COUNT; i++)
             {
                 Vehicle veh = _floorGarageHandles[i];
@@ -2350,9 +2370,11 @@ namespace ALLIN1
                 _floorGarageHandles[i] = null;
             }
 
+            Log("LeaveFloorGarage: vehicles cleaned, starting fade out");
             // Fade to black before teleporting outside
             Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
             Script.Wait(600);
+            Log("LeaveFloorGarage: fade done, teleporting");
 
             if (playerVehicle != null)
             {
@@ -2400,7 +2422,9 @@ namespace ALLIN1
             _floorGarageExitCooldownFrames = 60;
 
             // Fade back in
+            Log("LeaveFloorGarage: fading in");
             Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+            Log("LeaveFloorGarage: COMPLETE");
         }
 
         // ------------------------------------------------------------------ //
