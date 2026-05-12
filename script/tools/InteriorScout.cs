@@ -328,78 +328,85 @@ namespace ALLIN1
         /// Scans all probe entity set names against the current interior.
         /// For each name, tries to activate it, checks if it became active,
         /// then deactivates it. Records which names are valid.
+        /// Writes results to ALLIN1_entity_sets.log.
         /// </summary>
         private void ScanEntitySets()
         {
-            Ped player = Game.Player.Character;
-            Vector3 pos = player.Position;
-
-            int interior = Function.Call<int>(
-                Hash.GET_INTERIOR_AT_COORDS, pos.X, pos.Y, pos.Z);
-
-            if (interior == 0)
-            {
-                // Also try the documented coords
-                interior = Function.Call<int>(
-                    Hash.GET_INTERIOR_AT_COORDS, -1505.78f, -3012.59f, -80.0f);
-            }
-
-            if (interior == 0)
-            {
-                GTA.UI.Screen.ShowSubtitle("~r~No interior found. Cannot scan entity sets.", 3000);
-                return;
-            }
-
-            GTA.UI.Screen.ShowSubtitle($"~y~Scanning {ENTITY_SET_PROBES.Length} entity set names on interior {interior}...", 2000);
-
-            _activeEntitySets.Clear();
-            _entitySetPage = 0;
-
-            foreach (string setName in ENTITY_SET_PROBES)
-            {
-                // Try to activate it
-                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, setName);
-                Function.Call(Hash.REFRESH_INTERIOR, interior);
-
-                // Check if it's now active
-                bool isActive = Function.Call<bool>(
-                    (Hash)0x35F7DD45E8C0A16D, // IS_INTERIOR_ENTITY_SET_ACTIVE
-                    interior, setName);
-
-                if (isActive)
-                {
-                    _activeEntitySets.Add(setName);
-                    // Deactivate it again so we don't mess up the interior
-                    Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, setName);
-                }
-            }
-
-            // Re-activate the known good sets
-            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_garage_blocker");
-            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_storage_blocker");
-            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_FanBlocker01");
-            Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_floor01");
-            Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_sec_upgrade_grg");
-            Function.Call(Hash.REFRESH_INTERIOR, interior);
-
-            _entitySetScanDone = true;
-
-            // Write results to log file
             string logPath = Path.Combine(
                 AppDomain.CurrentDomain.BaseDirectory,
                 "ALLIN1_entity_sets.log");
-            using (var sw = new System.IO.StreamWriter(logPath, false))
-            {
-                sw.WriteLine($"Entity Set Scan — Interior {interior}");
-                sw.WriteLine($"Scanned {ENTITY_SET_PROBES.Length} names, {_activeEntitySets.Count} valid");
-                sw.WriteLine($"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-                sw.WriteLine();
-                foreach (string name in _activeEntitySets)
-                    sw.WriteLine(name);
-            }
 
-            GTA.UI.Screen.ShowSubtitle(
-                $"~g~Scan complete: {_activeEntitySets.Count} valid sets found. Saved to {logPath}", 5000);
+            try
+            {
+                Ped player = Game.Player.Character;
+                Vector3 pos = player.Position;
+
+                int interior = Function.Call<int>(
+                    Hash.GET_INTERIOR_AT_COORDS, pos.X, pos.Y, pos.Z);
+
+                if (interior == 0)
+                    interior = Function.Call<int>(
+                        Hash.GET_INTERIOR_AT_COORDS, -1505.78f, -3012.59f, -80.0f);
+                if (interior == 0)
+                    interior = Function.Call<int>(
+                        Hash.GET_INTERIOR_AT_COORDS, -1604.664f, -3012.583f, -80.0f);
+
+                if (interior == 0)
+                {
+                    File.WriteAllText(logPath, "ERROR: No interior found at any known coords.\n");
+                    GTA.UI.Screen.ShowSubtitle("~r~No interior found. Check log.", 3000);
+                    return;
+                }
+
+                _activeEntitySets.Clear();
+                _entitySetPage = 0;
+
+                var log = new System.Text.StringBuilder();
+                log.AppendLine($"Entity Set Scan - Interior {interior}");
+                log.AppendLine($"Player pos: {pos.X:F2}, {pos.Y:F2}, {pos.Z:F2}");
+                log.AppendLine($"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                log.AppendLine($"Probing {ENTITY_SET_PROBES.Length} names...");
+                log.AppendLine();
+
+                foreach (string setName in ENTITY_SET_PROBES)
+                {
+                    // Activate, check, deactivate — no REFRESH_INTERIOR per probe
+                    Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, setName);
+
+                    bool isActive = Function.Call<bool>(
+                        (Hash)0x35F7DD45E8C0A16D, // IS_INTERIOR_ENTITY_SET_ACTIVE
+                        interior, setName);
+
+                    if (isActive)
+                    {
+                        _activeEntitySets.Add(setName);
+                        log.AppendLine($"  VALID: {setName}");
+                        Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, setName);
+                    }
+                }
+
+                // Restore known good state
+                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_garage_blocker");
+                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_storage_blocker");
+                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_FanBlocker01");
+                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_floor01");
+                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_sec_upgrade_grg");
+                Function.Call(Hash.REFRESH_INTERIOR, interior);
+
+                log.AppendLine();
+                log.AppendLine($"Total valid: {_activeEntitySets.Count} / {ENTITY_SET_PROBES.Length}");
+
+                File.WriteAllText(logPath, log.ToString());
+                _entitySetScanDone = true;
+
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~g~Scan done: {_activeEntitySets.Count} valid. Saved to ALLIN1_entity_sets.log", 5000);
+            }
+            catch (Exception ex)
+            {
+                File.WriteAllText(logPath, $"EXCEPTION: {ex.Message}\n{ex.StackTrace}\n");
+                GTA.UI.Screen.ShowSubtitle("~r~Scan crashed. Check ALLIN1_entity_sets.log", 5000);
+            }
         }
 
         private void OnTick(object sender, EventArgs e)
