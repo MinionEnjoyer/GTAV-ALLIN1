@@ -195,8 +195,7 @@ namespace ALLIN1
                 return;
             }
 
-            // F9 = scan entity sets (F11 conflicts with CoordinateDisplay)
-            if (e.KeyCode == Keys.F9 && _active)
+            if (e.KeyCode == Keys.F11 && _active)
             {
                 ScanEntitySets();
                 return;
@@ -436,7 +435,7 @@ namespace ALLIN1
 
             // Line 3: Controls
             GbayRenderer.DrawText(
-                "F10:probe  F9:scan entity sets  F12:page results  Num:move",
+                "F10:probe  F11:scan entity sets  F12:page results  Num:move",
                 0.5f, 0.055f, 0.25f, Color.FromArgb(160, 200, 200, 200),
                 GbayRenderer.FONT_CONDENSED, true);
 
