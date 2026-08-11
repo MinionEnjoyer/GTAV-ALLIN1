@@ -11,6 +11,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from allin1.config import Config
+from allin1.game_launcher import launch_gta
 from allin1.logging import setup_logging
 from allin1.manager import InstallationStatus, ModManager
 from allin1.mods import ModCatalog, ModIntegrationService, ModManifest
@@ -300,9 +301,11 @@ class ManagerWindow:
 
         actions = ttk.Frame(home)
         actions.pack(fill="x", pady=12)
-        self.install_button = ttk.Button(actions, text="Install / Repair", command=self.install,
-                                         style="Accent.TButton")
-        self.install_button.pack(side="left")
+        self.launch_button = ttk.Button(actions, text="Launch GTA V", command=self.launch_game,
+                                        style="Accent.TButton")
+        self.launch_button.pack(side="left")
+        self.install_button = ttk.Button(actions, text="Install / Repair", command=self.install)
+        self.install_button.pack(side="left", padx=(8, 0))
         self.uninstall_button = ttk.Button(actions, text="Uninstall", command=self.uninstall)
         self.uninstall_button.pack(side="left", padx=8)
         self.save_button = ttk.Button(actions, text="Save settings", command=self.save)
@@ -625,6 +628,24 @@ class ManagerWindow:
         config = self._current_config()
         self._run("Installing", lambda: self.manager.install(config))
 
+    def launch_game(self) -> None:
+        """Save the current settings and start the selected GTA V installation."""
+        if self.busy:
+            return
+        config = self._current_config()
+        gta_path = self.manager.resolve_path(config)
+        if gta_path is None:
+            messagebox.showerror("Game not found", "Select a GTA V installation first.")
+            return
+        try:
+            self.manager.save_config(config)
+            target = launch_gta(gta_path)
+        except (FileNotFoundError, OSError, ValueError) as exc:
+            self._append_log(f"Launch failed: {exc}")
+            messagebox.showerror("Could not launch GTA V", str(exc))
+            return
+        self._append_log(f"Launching {target.description}.")
+
     def uninstall(self) -> None:
         if not messagebox.askyesno("Uninstall ALLIN1", "Remove ALLIN1 files and restore its game changes?"):
             return
@@ -722,7 +743,13 @@ class ManagerWindow:
 
     def _set_actions(self, enabled: bool) -> None:
         state = "normal" if enabled else "disabled"
-        for button in (self.install_button, self.uninstall_button, self.save_button, self.refresh_button):
+        for button in (
+            self.launch_button,
+            self.install_button,
+            self.uninstall_button,
+            self.save_button,
+            self.refresh_button,
+        ):
             button.configure(state=state)
         for button in self.mod_action_buttons:
             button.configure(state=state)
