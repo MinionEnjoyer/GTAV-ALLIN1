@@ -43,6 +43,22 @@ def test_vehicle_generate_file(tmp_path):
     assert '{ "a", 42 }' in output.read_text()
 
 
+def test_vehicle_generate_file_preserves_calibration_suffix(tmp_path):
+    vehicles = tmp_path / "vehicles.toml"
+    vehicles.write_text('[[vehicles]]\nmodel="a"\nname="A"\nclass="super"\nmanufacturer="M"\n')
+    prices = tmp_path / "prices.toml"
+    prices.write_text('[super]\na=42\n')
+    output = tmp_path / "VehicleList.cs"
+    marker = "        //  Vehicle size data (generated from HeightChecker measurements)"
+    output.write_text("old generated data\n" + marker + "\n        internal static int Calibration = 1;\n    }\n}\n")
+
+    vehiclelist.generate_file(vehicles, prices, output)
+
+    source = output.read_text()
+    assert 'internal static int Calibration = 1;' in source
+    assert source.count(marker) == 1
+
+
 def test_weapon_generator_and_file(tmp_path):
     weapons = tmp_path / "weapons.toml"
     weapons.write_text('[[weapons]]\nname="WEAPON_TEST"\nlabel="Test \\\"Gun\\\""\ncategory="pistols"\nprice=10\n')
@@ -92,6 +108,50 @@ def test_build_ytd_requires_tool(tmp_path):
         ytd_builder.build_ytd_files(tmp_path, None, tmp_path / "out", tmp_path, [])
 
 
+def test_build_ytd_keeps_catalog_chunk_numbers_when_previews_are_missing(tmp_path, monkeypatch):
+    previews = tmp_path / "previews"
+    previews.mkdir()
+    (previews / "c.png").write_bytes(b"png")
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    (tools / "YTDToolio.exe").touch()
+    monkeypatch.setattr(ytd_builder, "_pack_ytd",
+                        lambda _source, output, _tool: output.write_bytes(b"ytd"))
+
+    files = ytd_builder.build_ytd_files(
+        previews, None, tmp_path / "out", tools, ["a", "b", "c"], 2
+    )
+
+    assert [path.name for path in files] == ["allin1_prev_02.ytd"]
+
+
+def test_build_ytd_recovers_tool_output_from_alternate_location(tmp_path, monkeypatch):
+    previews = tmp_path / "previews"
+    previews.mkdir()
+    (previews / "a.png").write_bytes(b"png")
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    (tools / "YTDToolio.exe").touch()
+
+    def misplaced(source, _output, _tool):
+        (source / "allin1_prev_01.ytd").write_bytes(b"ytd")
+    monkeypatch.setattr(ytd_builder, "_pack_ytd", misplaced)
+    files = ytd_builder.build_ytd_files(previews, None, tmp_path / "out", tools, ["a"])
+    assert files[0].read_bytes() == b"ytd"
+
+
+def test_build_ytd_raises_when_tool_reports_success_without_output(tmp_path, monkeypatch):
+    previews = tmp_path / "previews"
+    previews.mkdir()
+    (previews / "a.png").write_bytes(b"png")
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    (tools / "YTDToolio.exe").touch()
+    monkeypatch.setattr(ytd_builder, "_pack_ytd", lambda *_args: None)
+    with pytest.raises(FileNotFoundError, match="was not created"):
+        ytd_builder.build_ytd_files(previews, None, tmp_path / "out", tools, ["a"])
+
+
 def test_dlc_metadata_staging_deploy_and_remove(tmp_path):
     ytd = tmp_path / "preview.ytd"
     ytd.write_bytes(b"texture")
@@ -109,3 +169,21 @@ def test_dlc_metadata_staging_deploy_and_remove(tmp_path):
     assert not old.exists()
     assert dlc_previews.remove_dlc_pack(game) is True
     assert dlc_previews.remove_dlc_pack(game) is False
+
+
+def test_dlc_deploy_preserves_backup_and_rolls_back_on_failure(tmp_path, monkeypatch):
+    game = tmp_path / "game"
+    dest = game / "mods/update/x64/dlcpacks/allin1_previews/dlc.rpf"
+    dest.parent.mkdir(parents=True)
+    dest.write_bytes(b"old")
+    built = tmp_path / "new.rpf"
+    built.write_bytes(b"new")
+    dlc_previews.deploy_dlc_rpf(built, game)
+    assert dest.read_bytes() == b"new"
+    assert (dest.parent / "dlc.rpf.bak").read_bytes() == b"old"
+
+    built.write_bytes(b"newer")
+    monkeypatch.setattr(Path, "replace", lambda *_a: (_ for _ in ()).throw(OSError("locked")))
+    with pytest.raises(OSError, match="locked"):
+        dlc_previews.deploy_dlc_rpf(built, game)
+    assert dest.read_bytes() == b"new"

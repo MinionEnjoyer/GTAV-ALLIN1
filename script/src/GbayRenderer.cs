@@ -173,6 +173,8 @@ namespace ALLIN1
             if (Function.Call<bool>(Hash.HAS_STREAMED_TEXTURE_DICT_LOADED, dict))
             {
                 _loadedDicts.Add(dict);
+                ClientLog.Info("Preview", "texture_loaded",
+                    new Dictionary<string, object> { { "dictionary", dict } });
                 return true;
             }
 

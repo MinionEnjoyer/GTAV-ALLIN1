@@ -36,6 +36,7 @@ namespace ALLIN1
                                               int color2,
                                               int timeout = DEFAULT_TIMEOUT)
         {
+            DateTime started = DateTime.UtcNow;
             var model = new Model(modelName);
             model.Request(timeout);
 
@@ -45,6 +46,10 @@ namespace ALLIN1
                 if (DateTime.UtcNow > deadline)
                 {
                     model.MarkAsNoLongerNeeded();
+                    ClientLog.Warn("VehicleHelper", "model_load_timeout",
+                        new System.Collections.Generic.Dictionary<string, object> {
+                            { "model", modelName }, { "timeout_ms", timeout }
+                        });
                     return null;
                 }
                 Script.Wait(0);
@@ -54,7 +59,11 @@ namespace ALLIN1
             model.MarkAsNoLongerNeeded();
 
             if (veh == null)
+            {
+                ClientLog.Warn("VehicleHelper", "create_vehicle_failed",
+                    new System.Collections.Generic.Dictionary<string, object> { { "model", modelName } });
                 return null;
+            }
 
             veh.PlaceOnGround();
 
@@ -62,6 +71,12 @@ namespace ALLIN1
 
             // MPBitset decorator -- prevents despawning in Story Mode
             Function.Call(Hash.DECOR_SET_INT, veh.Handle, "MPBitset", 0);
+
+            ClientLog.Info("VehicleHelper", "vehicle_created",
+                new System.Collections.Generic.Dictionary<string, object> {
+                    { "model", modelName }, { "handle", veh.Handle },
+                    { "elapsed_ms", (long)(DateTime.UtcNow - started).TotalMilliseconds }
+                });
 
             return veh;
         }

@@ -2,7 +2,7 @@
 
 from lxml import etree
 
-from allin1.generators.dlclist import patch_dlclist
+from allin1.generators.dlclist import patch_dlclist, unpatch_dlclist
 from allin1.generators.gameconfig import patch_gameconfig
 from allin1.generators.popgroups import create_base_template, generate_popgroups_xml
 from allin1.vehicles.database import Vehicle
@@ -135,6 +135,21 @@ class TestDlclist:
         # Patch again -- should add nothing new
         _, added2 = patch_dlclist(result)
         assert len(added2) == 0
+
+    def test_missing_paths_is_created_and_custom_pack_is_removed(self):
+        empty = "<SMandatoryPacksData/>"
+        patched, added = patch_dlclist(empty)
+        assert "allin1_previews" in added
+        unpatched, removed = unpatch_dlclist(patched)
+        assert removed == ["allin1_previews"]
+        assert "allin1_previews" not in unpatched
+
+    def test_unpatch_without_paths_or_text_is_safe(self):
+        source = "<SMandatoryPacksData/>"
+        assert unpatch_dlclist(source) == (source, [])
+        source = "<SMandatoryPacksData><Paths><Item/></Paths></SMandatoryPacksData>"
+        output, removed = unpatch_dlclist(source)
+        assert removed == [] and "<Item/>" in output
 
 
 class TestGameconfig:

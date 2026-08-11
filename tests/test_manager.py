@@ -74,3 +74,17 @@ def test_uninstall_delegates_without_loading_database(tmp_path):
 
     assert removed == uninstall_fn.return_value
     uninstall_fn.assert_called_once_with(config)
+
+
+def test_load_config_precedence_and_auto_detection_none(tmp_path, monkeypatch):
+    manager = _manager(tmp_path)
+    assert manager.load_config() == Config.default()
+    (tmp_path / "config.example.toml").write_text("[general]\nfree_mode=true\n")
+    assert manager.load_config().general.free_mode is True
+    config = Config.default()
+    config.general.free_mode = False
+    config.save(tmp_path / "config.toml")
+    assert manager.load_config().general.free_mode is False
+    monkeypatch.setattr("allin1.manager.detect_gta_path", lambda: None)
+    assert manager.resolve_path(Config.default()) is None
+    assert manager.status(Config.default()).gta_path is None

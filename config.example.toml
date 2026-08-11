@@ -19,6 +19,17 @@ enabled = true
 # Only spawn super/sports cars in wealthy neighborhoods (Vinewood, etc.)
 rich_areas_only_supers = true
 
+# Advanced ambient traffic tuning.
+max_driven = 20
+spawn_distance_min = 80.0
+spawn_distance_max = 200.0
+cleanup_distance = 350.0
+driven_cooldown_ms = 5000
+scan_cooldown_ms = 3000
+scan_radius = 200.0
+minimum_replace_distance = 50.0
+replacement_chance = 0.30
+
 [vehicles]
 # Enable all GTA Online vehicles. Set to false to use the catalog
 # to pick specific vehicles.
@@ -43,6 +54,13 @@ enable_dlc_police = false
 # Key to open the GBAY vehicle shop menu (default: F9).
 # Uses .NET Keys enum names: F1-F12, NumPad0-9, etc.
 gbay_key = "F9"
+
+# Key to toggle purchased night vision and to start the developer preview tool.
+night_vision_key = "N"
+preview_capture_key = "F10"
+
+# Hold the game's enter/exit control to choose a specific vehicle seat.
+seat_selector_enabled = true
 
 # When true, all GBAY purchases are free regardless of prices.
 gbay_free_mode = false

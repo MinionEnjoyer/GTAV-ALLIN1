@@ -3,6 +3,8 @@
 from pathlib import Path
 from unittest.mock import Mock
 
+import pytest
+
 from allin1.config import Config
 from allin1 import installer
 
@@ -173,3 +175,26 @@ def test_install_orchestrates_steps_and_collects_preview_warning(tmp_path, monke
     assert result.battleye_status == "set"
     assert result.warnings == ["Preview DLC pack failed: preview failed"]
     patch.assert_not_called()
+
+
+def test_atomic_copy_replaces_complete_file_and_keeps_backup(tmp_path):
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.write_bytes(b"new")
+    destination.write_bytes(b"old")
+    installer._copy_atomic(source, destination)
+    assert destination.read_bytes() == b"new"
+    assert (tmp_path / "destination.bak").read_bytes() == b"old"
+
+
+def test_atomic_copy_restores_previous_file_on_replace_failure(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.write_bytes(b"new")
+    destination.write_bytes(b"old")
+    original_replace = installer.Path.replace
+    monkeypatch.setattr(installer.Path, "replace", lambda *_args: (_ for _ in ()).throw(OSError("locked")))
+    with pytest.raises(OSError, match="locked"):
+        installer._copy_atomic(source, destination)
+    assert destination.read_bytes() == b"old"
+    monkeypatch.setattr(installer.Path, "replace", original_replace)

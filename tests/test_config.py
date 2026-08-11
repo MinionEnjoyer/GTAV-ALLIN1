@@ -94,6 +94,8 @@ def test_default_config():
     config = Config.default()
     assert config.general.gta_path == "auto"
     assert config.traffic.enabled is True
+    assert config.traffic.max_driven == 20
+    assert config.traffic.replacement_chance == 0.30
     assert config.vehicles.enable_all is True
 
 
@@ -109,9 +111,50 @@ def test_save_round_trip_preserves_all_fields(tmp_path):
     config.vehicles.disabled_vehicles = ["oppressor2"]
     config.script.enable_logging = True
     config.script.enable_dlc_police = True
+    config.script.gbay_key = "F8"
+    config.script.night_vision_key = "V"
+    config.script.preview_capture_key = "F11"
+    config.script.seat_selector_enabled = False
     path = tmp_path / "nested" / "config.toml"
 
     config.save(path)
     loaded = Config.load(path)
 
     assert loaded == config
+
+
+@pytest.mark.parametrize("field,value,match", [
+    ("gbay_key", "", "Unsupported"),
+    ("night_vision_key", "Space", "Unsupported"),
+    ("preview_capture_key", "F13", "Unsupported"),
+])
+def test_keybind_validation_rejects_unsupported_values(field, value, match):
+    config = Config.default()
+    setattr(config.script, field, value)
+    with pytest.raises(ValueError, match=match):
+        config.validate()
+
+
+def test_keybind_validation_rejects_conflicts_and_normalizes_case():
+    config = Config.default()
+    config.script.gbay_key = "f9"
+    config.script.preview_capture_key = "F9"
+    with pytest.raises(ValueError, match="both"):
+        config.validate()
+    config.script.preview_capture_key = "NumPad9"
+    config.validate()
+
+
+@pytest.mark.parametrize("field,value", [
+    ("max_driven", -1), ("max_driven", 101),
+    ("spawn_distance_min", 10), ("spawn_distance_max", 50),
+    ("cleanup_distance", 100),
+    ("replacement_chance", -0.1), ("replacement_chance", 1.1),
+    ("driven_cooldown_ms", 249), ("scan_cooldown_ms", 100),
+    ("scan_radius", 10),
+])
+def test_traffic_validation_rejects_unsafe_values(field, value):
+    config = Config.default()
+    setattr(config.traffic, field, value)
+    with pytest.raises(ValueError):
+        config.validate()

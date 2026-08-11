@@ -147,11 +147,21 @@ def deploy_dlc_rpf(
     Returns the deployment directory.
     """
     dest_dir = gta_path / "mods" / "update" / "x64" / "dlcpacks" / DLC_NAME
-    if dest_dir.exists():
-        shutil.rmtree(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(dlc_rpf, dest_dir / "dlc.rpf")
-    log.info("Deployed dlc.rpf -> %s", dest_dir / "dlc.rpf")
+    destination = dest_dir / "dlc.rpf"
+    temporary = dest_dir / "dlc.rpf.tmp"
+    backup = dest_dir / "dlc.rpf.bak"
+    try:
+        shutil.copy2(dlc_rpf, temporary)
+        if destination.exists():
+            shutil.copy2(destination, backup)
+        temporary.replace(destination)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        if backup.exists():
+            shutil.copy2(backup, destination)
+        raise
+    log.info("Deployed dlc.rpf -> %s", destination)
 
     # Clean up old location (pre-mods-folder installs) and any stale loose files
     old_dir = gta_path / "update" / "x64" / "dlcpacks" / DLC_NAME

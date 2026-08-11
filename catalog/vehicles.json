@@ -228,26 +228,6 @@
     ]
   },
   {
-    "model": "schafter3",
-    "name": "Benefactor Schafter V12",
-    "class": "sedans",
-    "manufacturer": "Benefactor",
-    "price": 356000,
-    "traffic": [
-      "veh_mid"
-    ]
-  },
-  {
-    "model": "schafter4",
-    "name": "Benefactor Schafter LWB",
-    "class": "sedans",
-    "manufacturer": "Benefactor",
-    "price": 338000,
-    "traffic": [
-      "veh_mid"
-    ]
-  },
-  {
     "model": "limo2",
     "name": "Benefactor Turreted Limo",
     "class": "sedans",
@@ -4547,6 +4527,175 @@
     "class": "special",
     "manufacturer": "BF",
     "price": 435000,
+    "traffic": []
+  },
+  {
+    "model": "poldominator10",
+    "name": "Vapid Dominator FX Interceptor",
+    "class": "emergency",
+    "manufacturer": "Vapid",
+    "price": 0,
+    "traffic": []
+  },
+  {
+    "model": "poldorado",
+    "name": "Bravado Dorado Cruiser",
+    "class": "emergency",
+    "manufacturer": "Bravado",
+    "price": 0,
+    "traffic": []
+  },
+  {
+    "model": "polgreenwood",
+    "name": "Bravado Greenwood Cruiser",
+    "class": "emergency",
+    "manufacturer": "Bravado",
+    "price": 0,
+    "traffic": []
+  },
+  {
+    "model": "polimpaler5",
+    "name": "Declasse Impaler SZ Cruiser",
+    "class": "emergency",
+    "manufacturer": "Declasse",
+    "price": 0,
+    "traffic": []
+  },
+  {
+    "model": "polimpaler6",
+    "name": "Declasse Impaler LX Cruiser",
+    "class": "emergency",
+    "manufacturer": "Declasse",
+    "price": 0,
+    "traffic": []
+  },
+  {
+    "model": "cargobob5",
+    "name": "Buckingham DH-7 Iron Mule",
+    "class": "helicopters",
+    "manufacturer": "Buckingham",
+    "price": 455000,
+    "traffic": []
+  },
+  {
+    "model": "maverick2",
+    "name": "Higgins Helitours Maverick",
+    "class": "helicopters",
+    "manufacturer": "Higgins",
+    "price": 185000,
+    "traffic": []
+  },
+  {
+    "model": "duster2",
+    "name": "Western Duster 300-H",
+    "class": "planes",
+    "manufacturer": "Western",
+    "price": 165000,
+    "traffic": []
+  },
+  {
+    "model": "titan2",
+    "name": "Eberhard Titan 250 D",
+    "class": "planes",
+    "manufacturer": "Eberhard",
+    "price": 925000,
+    "traffic": []
+  },
+  {
+    "model": "youga5",
+    "name": "Vapid Youga Custom",
+    "class": "vans",
+    "manufacturer": "Vapid",
+    "price": 112500,
+    "traffic": [
+      "veh_poor",
+      "veh_freeway"
+    ]
+  },
+  {
+    "model": "vivanite2",
+    "name": "Karin Vivanite Service",
+    "class": "service",
+    "manufacturer": "Karin",
+    "price": 94500,
+    "traffic": [
+      "veh_mid",
+      "veh_rich"
+    ]
+  },
+  {
+    "model": "veleno",
+    "name": "Grotti Veleno GT",
+    "class": "super",
+    "manufacturer": "Grotti",
+    "price": 2995000,
+    "traffic": []
+  },
+  {
+    "model": "caracara3",
+    "name": "Vapid Caracara (Armored)",
+    "class": "offroad",
+    "manufacturer": "Vapid",
+    "price": 0,
+    "traffic": []
+  },
+  {
+    "model": "merula",
+    "name": "Albany Merula",
+    "class": "sedans",
+    "manufacturer": "Albany",
+    "price": 1394000,
+    "traffic": [
+      "veh_mid",
+      "veh_rich"
+    ]
+  },
+  {
+    "model": "laufer",
+    "name": "Benefactor L\u00e4ufer",
+    "class": "vans",
+    "manufacturer": "Benefactor",
+    "price": 1250000,
+    "traffic": [
+      "veh_mid",
+      "veh_rich"
+    ]
+  },
+  {
+    "model": "lrcgt",
+    "name": "Benefactor LRC GT",
+    "class": "super",
+    "manufacturer": "Benefactor",
+    "price": 3200000,
+    "traffic": []
+  },
+  {
+    "model": "cartuccia",
+    "name": "Grotti Cartuccia GT",
+    "class": "sports",
+    "manufacturer": "Grotti",
+    "price": 2395000,
+    "traffic": [
+      "veh_rich"
+    ]
+  },
+  {
+    "model": "estride",
+    "name": "Ocelot E-Stride",
+    "class": "suvs",
+    "manufacturer": "Ocelot",
+    "price": 1425000,
+    "traffic": [
+      "veh_mid",
+      "veh_rich"
+    ]
+  },
+  {
+    "model": "polignus",
+    "name": "Pegassi Ignus Pursuit",
+    "class": "emergency",
+    "manufacturer": "Pegassi",
+    "price": 5835000,
     "traffic": []
   }
 ]

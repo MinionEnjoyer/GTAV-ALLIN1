@@ -257,5 +257,63 @@ def generate_weaponlist(ctx: click.Context, output: str | None) -> None:
     click.echo(f"Generated WeaponList.cs with {count} weapons at {out_path}")
 
 
+@main.command("import-previews")
+@click.argument("source", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def import_previews(source: Path) -> None:
+    """Validate and import PNGs made by the in-game preview capture tool."""
+    from allin1.preview_assets import merge_previews
+
+    db = VehicleDatabase.load(VEHICLES_DB)
+    destination = PROJECT_ROOT / "script" / "dist" / "previews"
+    result = merge_previews([source], destination, [v.model for v in db])
+    click.echo(f"Imported {result.copied} valid vehicle preview(s).")
+    if result.rejected:
+        click.echo(f"Rejected {len(result.rejected)} invalid or unknown file(s).")
+        for reason in result.rejected:
+            click.echo(f"  - {reason}")
+
+
+@main.command("verify-preview-artifacts")
+@click.argument("directory", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def verify_preview_artifacts(directory: Path) -> None:
+    """Verify that a built YTD directory covers the complete vehicle catalog."""
+    from allin1.preview_artifacts import verify_ytd_set
+
+    report = verify_ytd_set(directory, len(VehicleDatabase.load(VEHICLES_DB)))
+    if not report.valid:
+        if report.missing_dicts:
+            click.echo("Missing: " + ", ".join(report.missing_dicts), err=True)
+        if report.unexpected_dicts:
+            click.echo("Unexpected: " + ", ".join(report.unexpected_dicts), err=True)
+        raise SystemExit(1)
+    click.echo(f"Verified {len(report.present_dicts)} preview dictionaries.")
+
+
+@main.command("analyze-client-log")
+@click.argument("log_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--edition", type=click.Choice(["legacy", "enhanced"]), required=True)
+@click.option("--output", type=click.Path(path_type=Path), default="ALLIN1_smoke_report.json")
+def analyze_client_log_cmd(log_file: Path, edition: str, output: Path) -> None:
+    """Convert an in-game structured client log into a smoke-test report."""
+    from allin1.reliability import analyze_client_log, write_smoke_report
+
+    checks = analyze_client_log(log_file)
+    passed = write_smoke_report(output, edition, checks)
+    click.echo(f"Smoke report: {output} ({'PASS' if passed else 'FAIL'})")
+    if not passed:
+        raise SystemExit(1)
+
+
+@main.command("diagnostics")
+@click.option("--output", "-o", type=click.Path(path_type=Path),
+              default="ALLIN1_diagnostics.zip")
+@click.option("--scripts-dir", type=click.Path(path_type=Path), default=None)
+def diagnostics_cmd(output: Path, scripts_dir: Path | None) -> None:
+    """Create a redacted troubleshooting bundle for bug reports."""
+    from allin1.diagnostics import create_diagnostic_bundle
+    created = create_diagnostic_bundle(output, PROJECT_ROOT, scripts_dir)
+    click.echo(f"Diagnostic bundle created: {created}")
+
+
 if __name__ == "__main__":
     main()

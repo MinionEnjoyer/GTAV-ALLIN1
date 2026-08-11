@@ -122,6 +122,18 @@ label = "Perico Pistol"
 category = "pistols"
 price = 17500
 
+[[weapons]]
+name = "WEAPON_PISTOLXM3"
+label = "WM 29 Pistol"
+category = "pistols"
+price = 199000
+
+[[weapons]]
+name = "WEAPON_STUNGUN_MP"
+label = "Stun Gun (Online)"
+category = "pistols"
+price = 375000
+
 # =============================================================================
 # SMGS
 # =============================================================================
@@ -173,6 +185,12 @@ name = "WEAPON_RAYCARBINE"
 label = "Unholy Hellbringer"
 category = "smgs"
 price = 449000
+
+[[weapons]]
+name = "WEAPON_TECPISTOL"
+label = "Tactical SMG"
+category = "smgs"
+price = 325000
 
 # =============================================================================
 # SHOTGUNS
@@ -320,6 +338,18 @@ label = "Service Carbine"
 category = "rifles"
 price = 405000
 
+[[weapons]]
+name = "WEAPON_BATTLERIFLE"
+label = "Battle Rifle"
+category = "rifles"
+price = 497500
+
+[[weapons]]
+name = "WEAPON_STRICKLER"
+label = "El Strickler"
+category = "rifles"
+price = 650000
+
 # =============================================================================
 # MACHINE GUNS
 # =============================================================================
@@ -446,6 +476,18 @@ label = "EMP Launcher"
 category = "heavy"
 price = 325000
 
+[[weapons]]
+name = "WEAPON_RAILGUNXM3"
+label = "Railgun (Online)"
+category = "heavy"
+price = 657000
+
+[[weapons]]
+name = "WEAPON_SNOWLAUNCHER"
+label = "Snowball Launcher"
+category = "heavy"
+price = 100000
+
 # =============================================================================
 # MELEE
 # =============================================================================
@@ -552,6 +594,18 @@ label = "Stone Hatchet"
 category = "melee"
 price = 0
 
+[[weapons]]
+name = "WEAPON_CANDYCANE"
+label = "Candy Cane"
+category = "melee"
+price = 1000
+
+[[weapons]]
+name = "WEAPON_STUNROD"
+label = "The Shocker"
+category = "melee"
+price = 375000
+
 # =============================================================================
 # THROWABLES
 # =============================================================================
@@ -615,6 +669,12 @@ name = "WEAPON_FLARE"
 label = "Flare"
 category = "throwables"
 price = 0
+
+[[weapons]]
+name = "WEAPON_NEWSPAPER"
+label = "Newspaper"
+category = "throwables"
+price = 50
 
 # =============================================================================
 # MISCELLANEOUS

@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "edition": "legacy-or-enhanced",
+  "checks": [
+    {"name": "vehicle_spawn", "passed": false, "detail": ""},
+    {"name": "weapon_grant", "passed": false, "detail": ""},
+    {"name": "preview_stream", "passed": false, "detail": ""},
+    {"name": "garage_enter_exit", "passed": false, "detail": ""},
+    {"name": "floor_garage_enter_exit", "passed": false, "detail": ""},
+    {"name": "seat_switch", "passed": false, "detail": ""}
+  ]
+}

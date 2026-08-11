@@ -1,6 +1,6 @@
 # GTA V ALLIN1 — Comprehensive Documentation
 
-GTA V ALLIN1 is a mod installer that ports 442 GTA Online DLC vehicles, 100+ weapons, and gear into GTA V single-player Story Mode. It includes a traffic spawner, an in-game shop (GBAY), a personal garage system, and a vehicle seat selector.
+GTA V ALLIN1 is a mod installer that ports 461 GTA Online DLC vehicles, 100+ weapons, and gear into GTA V single-player Story Mode. It includes a traffic spawner, an in-game shop (GBAY), a personal garage system, and a vehicle seat selector.
 
 Supports both GTA V Legacy and GTA V Enhanced editions.
 
@@ -88,13 +88,21 @@ Configuration is stored in `config.toml` (copied to `scripts/ALLIN1.toml` during
 | Key | Default | Description |
 |-----|---------|-------------|
 | `enabled` | `true` | Add GTA Online vehicles to ambient traffic. |
+| `max_driven` | `20` | Maximum client-spawned, AI-driven DLC vehicles. |
+| `spawn_distance_min` / `spawn_distance_max` | `80` / `200` | Spawn annulus around the player, in metres. |
+| `cleanup_distance` | `350` | Distance at which managed traffic is released. |
+| `driven_cooldown_ms` | `5000` | Delay between driven vehicle spawns. |
+| `scan_cooldown_ms` | `3000` | Delay between ambient replacement scans. |
+| `scan_radius` | `200` | Ambient vehicle scan radius. |
+| `minimum_replace_distance` | `50` | Prevent replacements too near the player. |
+| `replacement_chance` | `0.30` | Per-candidate replacement probability from 0 to 1. |
 | `rich_areas_only_supers` | `true` | Super/sports cars spawn only in wealthy neighborhoods. |
 
 ### [vehicles]
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `enable_all` | `true` | Enable all 442 DLC vehicles. When false, use catalog to pick specific ones. |
+| `enable_all` | `true` | Enable all 461 DLC vehicles. When false, use catalog to pick specific ones. |
 | `disabled_classes` | `[]` | Vehicle classes to exclude (e.g., `["helicopters", "planes", "boats"]`). |
 | `disabled_vehicles` | `[]` | Specific model names to exclude (e.g., `["adder", "t20"]`). |
 
@@ -105,6 +113,9 @@ Available classes: `compacts`, `coupes`, `sedans`, `suvs`, `muscle`, `sports`, `
 | Key | Default | Description |
 |-----|---------|-------------|
 | `gbay_key` | `"F9"` | Key to open the GBAY shop menu. Uses .NET `Keys` enum names. |
+| `night_vision_key` | `"N"` | Toggle purchased night vision. |
+| `preview_capture_key` | `"F10"` | Start/stop the developer preview capture tool. |
+| `seat_selector_enabled` | `true` | Enable hold-to-select vehicle seats. |
 | `gbay_free_mode` | `false` | All GBAY purchases are free regardless of prices. |
 | `enable_logging` | `false` | Write debug info to `scripts/ALLIN1.log`. |
 | `enable_dlc_police` | `false` | Replace vanilla police cars with DLC police vehicles. |
@@ -129,8 +140,54 @@ Edit these files and re-run the installer (or regenerate the lists via CLI) to c
 
 Press **F9** (configurable) to open the GBAY shop menu.
 
+Opening GBAY now presents an animated PHAT avatar loading screen, followed by
+short cross-fades when moving between shop, garage, weapon, and customization
+screens.
+
+### Character Customization
+
+The desktop manager's **Character customization** window provides three tabs:
+
+- advanced traffic-spawner settings;
+- import, export, add, remove, and validate per-character garage vehicles;
+- exact per-character weapon and gear loadouts.
+- an outfit unlocker/customizer for all 12 component slots and 8 prop slots.
+
+Managed loadouts are stored in `scripts/ALLIN1_characters.json`. They are opt-in
+per character: an untouched character retains the inventory from the native
+Story Mode save. Once managed, launcher additions and removals are applied by
+the client, while purchases made in GBAY are written back to the same file.
+Outfits are also opt-in. Drawable and texture IDs are validated against the
+active Michael, Franklin, or Trevor model before native calls are made. A prop
+drawable of `-1` removes that prop. The unlock option exposes native component
+variants without modifying the player's underlying GTA save file.
+Named outfit presets can be saved, loaded, and deleted independently for each
+character. Legacy character and garage JSON files remain readable; subsequent
+saves add schema-version markers and normalized fields while retaining `.bak`
+recovery copies.
+
+### Diagnostic bundles
+
+Use **Diagnostics** in the desktop manager or run:
+
+```text
+allin1 diagnostics --scripts-dir "C:\Games\GTAV\scripts" -o diagnostics.zip
+```
+
+The bundle contains available ALLIN1 configuration, structured logs, managed
+save files, smoke reports, and a checksum manifest. GTA installation paths and
+home-directory usernames are redacted before files enter the archive.
+
+### Runtime optimization
+
+The client keeps render-frequency work limited to controls, markers, and active
+UI drawing. Traffic simulation runs at 10 Hz, traffic cleanup runs once per
+second, character loadout file checks run once per second, repeated character
+and weapon hashes are cached, garage blip colors update only after a character
+change, and the former per-frame GBAY texture-debug overlay has been removed.
+
 **Top Menu** — choose between:
-- **Vehicles** — browse and purchase 442 DLC vehicles
+- **Vehicles** — browse and purchase 461 DLC vehicles
 - **Weapons** — browse and purchase 100+ weapons
 - **Gear** — purchase body armor, parachute, and utility items
 - **My Garage** — manage and sell stored vehicles
@@ -258,6 +315,19 @@ allin1 [--config PATH] [--verbose] COMMAND
 | `export-catalog [--output PATH]` | Export vehicle database as JSON (default: `catalog/vehicles.json`). |
 | `generate-vehiclelist [--output PATH]` | Regenerate `VehicleList.cs` from data files. |
 | `generate-weaponlist [--output PATH]` | Regenerate `WeaponList.cs` from data files. |
+| `import-previews SOURCE` | Validate and import screenshots captured in-game. |
+| `verify-preview-artifacts DIRECTORY` | Verify built YTD dictionary coverage. |
+| `analyze-client-log LOG --edition EDITION` | Produce a machine-readable smoke report from an in-game session. |
+
+### Advanced client diagnostics
+
+The mod writes structured JSON-lines events to `scripts/ALLIN1_client.log` when
+logging is enabled. Each event includes UTC time, severity, session ID,
+component, message, optional operation fields, elapsed time, and exception
+details. Logs rotate at 5 MiB with three retained archives. Run
+`allin1 analyze-client-log` after an in-game qualification session to verify
+vehicle creation, weapon granting, preview streaming, garage transitions, and
+seat switching.
 
 ---
 
@@ -268,7 +338,7 @@ GTA_V_ALLIN1/
 ├── .github/workflows/
 │   └── build-asi.yml              # GitHub Actions CI build
 ├── data/
-│   ├── vehicles.toml              # Vehicle database (442 entries)
+│   ├── vehicles.toml              # Vehicle database (461 entries)
 │   ├── weapons.toml               # Weapon database (100+ entries)
 │   └── templates/
 │       └── popgroups_base.xml     # Population group template
@@ -283,7 +353,7 @@ GTA_V_ALLIN1/
 │   │   ├── TrafficSpawner.cs      # DLC traffic integration
 │   │   ├── SeatSelector.cs        # Hold-F seat picker
 │   │   ├── VehicleHelper.cs       # Vehicle spawn utilities
-│   │   ├── VehicleList.cs         # Auto-generated vehicle data (442 vehicles)
+│   │   ├── VehicleList.cs         # Auto-generated vehicle data (461 vehicles)
 │   │   ├── WeaponList.cs          # Auto-generated weapon data
 │   │   └── GearList.cs            # Static gear item data (12 items)
 │   ├── tools/
@@ -295,7 +365,7 @@ GTA_V_ALLIN1/
 │   │   ├── ALLIN1.dll
 │   │   ├── LemonUI.SHVDN3.dll
 │   │   ├── PHAT.png               # GBAY logo
-│   │   └── previews/              # 442 vehicle preview PNGs
+│   │   └── previews/              # Captured previews plus generated placeholders
 │   └── out/                       # Alternative build output
 ├── src/allin1/                    # Python installer package
 │   ├── cli.py                     # CLI commands (click)
@@ -378,7 +448,7 @@ allin1 generate-vehiclelist
 **Input:** `data/vehicles.toml` + `prices_vehicles.toml`
 
 **Output:** `script/src/VehicleList.cs` containing:
-- `string[] All` — all 442 model names
+- `string[] All` — all 461 model names
 - Per-class arrays (`Compacts[]`, `Super[]`, `Weaponized[]`, etc.)
 - `Dictionary<string, string> DisplayNames` — model to display name
 - `Dictionary<string, int> Prices` — model to price
@@ -425,7 +495,7 @@ mods/update/x64/dlcpacks/allin1_previews/dlc.rpf
 
 ### Build Pipeline
 
-1. **PNG source:** 442 preview images in `script/dist/previews/`
+1. **PNG source:** captured preview images in `script/dist/previews/`; models listed in `data/preview_pending.toml` use placeholders
 2. **YTD packing:** `YTDToolio.exe` converts PNGs to `.ytd` files (DXT1 compression, 89 textures per YTD)
 3. **DLC structure:** Python generates `content.xml` and `setup2.xml`
 4. **RPF packing:** `RpfPatcher.exe build-dlc` creates outer `dlc.rpf` with nested `textures.rpf`
@@ -490,11 +560,12 @@ Located at `script/tools/HeightChecker.cs`.
 
 ### GbayPreviewCapture (F10) — Excluded from Build
 
-Automated vehicle screenshot tool. Press **F10** to cycle through all 442 vehicles, spawning each at a fixed showroom location and capturing a side-profile screenshot.
+Automated vehicle screenshot tool. Press **F10** (configurable) to cycle through all 461 vehicles, spawning each at a fixed showroom location and capturing a side-profile screenshot.
 
 - Showroom position: (-736, -1455.7, 4.5) near LSIA
 - Camera: dynamic radius based on vehicle dimensions, 50° FOV
 - Output: `scripts/previews/{model}.png`
+- Re-run Install / Repair to merge these captures into the preview DLC automatically, or run `allin1 import-previews <GTA V>/scripts/previews` to import them into a source checkout.
 - Progress bar shown on screen during capture
 
 Located at `script/tools/GbayPreviewCapture.cs`. To enable, add a `<Compile Include>` entry in `ALLIN1.csproj`.
@@ -511,7 +582,7 @@ Located at `script/tools/OutfitDebug.cs`.
 
 ### data/vehicles.toml
 
-442 vehicle entries with the following fields per vehicle:
+461 vehicle entries with the following fields per vehicle:
 
 ```toml
 [[vehicles]]

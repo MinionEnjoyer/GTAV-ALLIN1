@@ -1,6 +1,6 @@
 // GbayPreviewCapture.cs -- Automated vehicle preview screenshot tool.
 //
-// Press F10 to start. Automatically cycles through all 444 vehicles,
+// Press F10 to start. Automatically cycles through the full vehicle catalog,
 // spawning each in Simeon's showroom with a fixed camera angle, capturing
 // a screenshot, and saving it as {model}.png to scripts/previews/.
 //
@@ -51,6 +51,7 @@ namespace ALLIN1
         private bool _settling;   // waiting for vehicle to render
         private bool _cleaning;   // drawing nothing so HUD/notifications fade
         private bool _capturing;  // about to capture clean frame
+        private Keys _captureKey = Keys.F10;
 
         // Screen dimensions (cached on start)
         private int _screenW;
@@ -58,6 +59,7 @@ namespace ALLIN1
 
         public GbayPreviewCapture()
         {
+            LoadCaptureKey();
             Tick += OnTick;
             KeyDown += OnKeyDown;
             Interval = 0;
@@ -65,13 +67,34 @@ namespace ALLIN1
 
         private void OnKeyDown(object sender, KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.F10)
+            if (e.KeyCode == _captureKey)
             {
                 if (!_active)
                     StartCapture();
                 else
                     StopCapture();
             }
+        }
+
+        private void LoadCaptureKey()
+        {
+            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ALLIN1.toml");
+            if (!File.Exists(path)) return;
+            try
+            {
+                foreach (string raw in File.ReadAllLines(path))
+                {
+                    string line = raw.Trim();
+                    if (!line.StartsWith("preview_capture_key", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    int eq = line.IndexOf('=');
+                    if (eq < 0) continue;
+                    string value = line.Substring(eq + 1).Trim().Trim('"', '\'');
+                    if (Enum.TryParse(value, true, out Keys parsed))
+                        _captureKey = parsed;
+                }
+            }
+            catch { }
         }
 
         private void OnTick(object sender, EventArgs e)

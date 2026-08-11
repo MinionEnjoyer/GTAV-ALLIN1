@@ -1,6 +1,7 @@
 """Whole-repository contracts connecting data, generated code, and releases."""
 
 import json
+import tomllib
 from pathlib import Path
 
 from allin1.config import load_prices
@@ -29,7 +30,9 @@ def test_every_vehicle_price_and_catalog_entry_refers_to_a_model():
 def test_vehicle_previews_cover_database():
     models = {vehicle.model for vehicle in VehicleDatabase.load(ROOT / "data/vehicles.toml")}
     previews = {path.stem for path in (ROOT / "script/dist/previews").glob("*.png")}
-    assert models <= previews
+    pending = set(tomllib.loads((ROOT / "data/preview_pending.toml").read_text())["models"])
+    assert models - previews == pending
+    assert pending <= models
 
 
 def test_generated_csharp_contains_every_data_model():
@@ -53,3 +56,116 @@ def test_prebuilt_runtime_artifacts_are_present_and_nonempty():
 def test_required_user_entrypoints_exist():
     for relative in ("install.bat", "uninstall.bat", "manager.bat", "install.sh", "uninstall.sh"):
         assert (ROOT / relative).is_file()
+
+
+def test_garage_transitions_are_guarded_and_recoverable():
+    garage = (ROOT / "script/src/GarageManager.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    for operation in ("EnterGarage", "LeaveGarage", "EnterFloorGarage", "LeaveFloorGarage"):
+        assert f'BeginTransition("{operation}")' in garage
+        assert f"{operation}Core();" in garage
+        assert f'EndTransition("{operation}")' in garage
+    assert "RecoverTransition(" in garage
+    assert "if (_transitionInProgress)" in garage
+    assert "GarageManager.IsTransitionInProgress" in shop
+
+
+def test_drive_in_vehicle_is_deleted_after_player_extraction():
+    garage = (ROOT / "script/src/GarageManager.cs").read_text()
+    for core_name in ("EnterGarageCore", "EnterFloorGarageCore"):
+        start = garage.index(f"private static void {core_name}")
+        section = garage[start: garage.index("private static void", start + 30)]
+        assert section.index("CLEAR_PED_TASKS_IMMEDIATELY") < section.index("rideInToDelete.Delete()")
+
+
+def test_garage_persistence_uses_atomic_backup_replacement():
+    garage = (ROOT / "script/src/GarageManager.cs").read_text()
+    assert "private static void AtomicWriteText" in garage
+    assert "File.Replace(tmp, path, backup, true)" in garage
+    assert 'SAVE_PATH + ".bak"' in garage
+
+
+def test_content_audit_models_are_in_catalog():
+    models = {vehicle.model for vehicle in VehicleDatabase.load(ROOT / "data/vehicles.toml")}
+    audited = {
+        "cargobob5", "duster2", "maverick2", "poldominator10", "poldorado",
+        "polgreenwood", "polimpaler5", "polimpaler6", "titan2", "vivanite2", "youga5",
+        "caracara3", "cartuccia", "estride", "laufer", "lrcgt", "merula",
+        "polignus", "veleno",
+    }
+    assert audited <= models
+
+
+def test_current_online_weapons_are_generated_and_safely_granted():
+    weapons = tomllib.loads((ROOT / "data/weapons.toml").read_text())["weapons"]
+    names = {weapon["name"] for weapon in weapons}
+    expected = {
+        "WEAPON_PISTOLXM3", "WEAPON_STUNGUN_MP", "WEAPON_TECPISTOL",
+        "WEAPON_BATTLERIFLE", "WEAPON_STRICKLER", "WEAPON_RAILGUNXM3",
+        "WEAPON_SNOWLAUNCHER", "WEAPON_CANDYCANE", "WEAPON_STUNROD",
+        "WEAPON_NEWSPAPER",
+    }
+    assert expected <= names
+    generated = (ROOT / "script/src/WeaponList.cs").read_text()
+    assert all(name in generated for name in expected)
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    assert "IS_WEAPON_VALID" in shop
+    assert "HAS_PED_GOT_WEAPON" in shop
+
+
+def test_preview_capture_and_seat_selector_contracts():
+    installer = (ROOT / "src/allin1/installer.py").read_text()
+    seat = (ROOT / "script/src/SeatSelector.cs").read_text()
+    assert 'gta_path / SCRIPTS_DIR / "previews"' in installer
+    assert "models = sorted(v.model" in installer
+    assert "IsEnterExitHeld" in seat
+    assert "That seat is no longer available" in seat
+    assert "seat_selector_enabled" in seat
+
+
+def test_client_logging_is_structured_rotating_and_shared():
+    client = (ROOT / "script/src/ClientLog.cs").read_text()
+    assert "ALLIN1_client.log" in client
+    assert "RotateIfNeeded" in client
+    assert 'Add(line, "session", Session)' in client
+    assert 'Add(line, "elapsed_ms"' in client or '["elapsed_ms"]' in client
+    for relative in (
+        "script/src/GbayShop.cs", "script/src/GarageManager.cs",
+        "script/src/SeatSelector.cs", "script/src/TrafficSpawner.cs",
+        "script/src/VehicleHelper.cs",
+    ):
+        assert "ClientLog." in (ROOT / relative).read_text()
+
+
+def test_character_customization_is_shared_with_gbay_and_has_animated_loading():
+    inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    traffic = (ROOT / "script/src/TrafficSpawner.cs").read_text()
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    assert "ALLIN1_characters.json" in inventory
+    assert "RecordOwned(weaponName, false)" in shop
+    assert "RecordOwned(gearId, true)" in shop
+    assert 'key == "replacement_chance"' in traffic
+    assert "BrowserState.Loading" in browser
+    assert "DrawLogo(0.5f, 0.43f" in browser
+    assert "GET_NUMBER_OF_PED_DRAWABLE_VARIATIONS" in inventory
+    assert "GET_NUMBER_OF_PED_PROP_DRAWABLE_VARIATIONS" in inventory
+    assert "outfit_applied" in inventory
+    assert "DEBUG: show texture dict loading status" not in browser
+    assert "WeaponHashes" in inventory
+
+
+def test_runtime_hot_paths_are_throttled_and_cached():
+    traffic = (ROOT / "script/src/TrafficSpawner.cs").read_text()
+    garage = (ROOT / "script/src/GarageManager.cs").read_text()
+    assert "Interval = 100" in traffic
+    assert "now - _lastCleanupTime >= 1000" in traffic
+    assert "charColor != _lastBlipColor" in garage
+    assert "charColor != _lastFloorBlipColor" in garage
+
+
+def test_runtime_save_files_emit_backward_compatible_schema_markers():
+    garage = (ROOT / "script/src/GarageManager.cs").read_text()
+    inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()
+    assert garage.count('\\"_schema_v2\\": []') >= 2
+    assert "presets" in inventory

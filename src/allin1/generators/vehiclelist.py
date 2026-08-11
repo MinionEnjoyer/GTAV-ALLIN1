@@ -171,5 +171,19 @@ def generate_file(
     db = VehicleDatabase.load(vehicles_path)
     prices = load_prices(prices_path)
     source = generate(db, prices)
+
+    # Height/size calibration is maintained from in-game measurements and is
+    # intentionally not generated from vehicles.toml. Preserve that section
+    # when refreshing the generated catalog instead of silently deleting it.
+    marker = "        //  Vehicle size data (generated from HeightChecker measurements)"
+    if output_path.exists():
+        existing = output_path.read_text(encoding="utf-8")
+        marker_index = existing.find(marker)
+        if marker_index >= 0:
+            calibrated_suffix = existing[marker_index:]
+            generated_close = "    }\n}\n"
+            if source.endswith(generated_close):
+                source = source[: -len(generated_close)] + calibrated_suffix
+
     output_path.write_text(source, encoding="utf-8")
     return len(db)

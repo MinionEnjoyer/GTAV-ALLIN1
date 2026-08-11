@@ -61,23 +61,12 @@ namespace ALLIN1
         {
             if (!_enableLogging)
                 return;
-            try
-            {
-                File.AppendAllText(LOG_PATH,
-                    $"[{DateTime.Now:HH:mm:ss}] {msg}{Environment.NewLine}");
-            }
-            catch { }
+            ClientLog.Info("GBAY", msg);
         }
 
         internal void LogException(string context, Exception ex)
         {
-            try
-            {
-                File.AppendAllText(LOG_PATH,
-                    $"[{DateTime.Now:HH:mm:ss}] EXCEPTION in {context}: {ex.Message}{Environment.NewLine}" +
-                    $"  {ex.StackTrace}{Environment.NewLine}");
-            }
-            catch { }
+            ClientLog.Error("GBAY", context, ex);
         }
 
         // ------------------------------------------------------------------ //
@@ -126,6 +115,12 @@ namespace ALLIN1
                         string cleaned = val.Trim('"', '\'');
                         if (Enum.TryParse(cleaned, true, out Keys parsed))
                             _openKey = parsed;
+                    }
+                    else if (key == "night_vision_key")
+                    {
+                        string cleaned = val.Trim('"', '\'');
+                        if (Enum.TryParse(cleaned, true, out Keys parsed))
+                            _nightVisionKey = parsed;
                     }
                     else if (key == "gbay_free_mode")
                     {
@@ -194,6 +189,7 @@ namespace ALLIN1
         private void Initialize()
         {
             LoadConfig();
+            ClientLog.Configure(_enableLogging);
             LoadGearPrices();
             Log($"=== GBAY Initialized: key={_openKey} freeMode={_freeMode} garageDebug={_garageDebug} ===");
 
@@ -362,6 +358,14 @@ namespace ALLIN1
             Ped player = Game.Player.Character;
             Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
 
+            if (!Function.Call<bool>(Hash.IS_WEAPON_VALID, weaponHash))
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~This weapon is unavailable in the installed GTA V build.", 3500);
+                Log($"GiveWeapon: rejected unavailable weapon {weaponName}");
+                return;
+            }
+
             // Check funds
             if (!_freeMode && price > 0 && Game.Player.Money < price)
             {
@@ -371,6 +375,17 @@ namespace ALLIN1
 
             // Give weapon with ammo
             player.Weapons.Give((WeaponHash)(uint)weaponHash, 9999, false, true);
+
+            // Some Online-only weapons are edition/build gated. Never charge
+            // the player unless the native confirms the weapon was granted.
+            if (!Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON,
+                    player.Handle, weaponHash, false))
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Weapon could not be granted by this GTA V build.", 3500);
+                Log($"GiveWeapon: native grant failed for {weaponName}");
+                return;
+            }
 
             if (!_freeMode && price > 0)
                 Game.Player.Money -= price;
@@ -383,6 +398,7 @@ namespace ALLIN1
             GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
             Log($"GiveWeapon: {weaponName}, price=${price}");
+            CharacterInventory.RecordOwned(weaponName, false);
         }
 
         /// <summary>
@@ -471,6 +487,7 @@ namespace ALLIN1
                         : $"~g~Juggernaut Armor~w~ purchased for ~g~${price:N0}~w~. Heavy movement active.",
                     4000);
                 Log($"GiveGear: {gearId}, price=${price}");
+                CharacterInventory.RecordOwned(gearId, true);
                 return;
             }
             else if (GearList.IsArmor(gearId))
@@ -491,6 +508,7 @@ namespace ALLIN1
                 if (!_freeMode && price > 0)
                     Game.Player.Money -= price;
                 Log($"GiveGear: {gearId}, price=${price}");
+                CharacterInventory.RecordOwned(gearId, true);
                 return;
             }
             else
@@ -510,6 +528,7 @@ namespace ALLIN1
             GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
             Log($"GiveGear: {gearId}, price=${price}");
+            CharacterInventory.RecordOwned(gearId, true);
         }
 
         // ------------------------------------------------------------------ //
@@ -952,6 +971,12 @@ namespace ALLIN1
             {
                 try
                 {
+                    if (GarageManager.IsTransitionInProgress)
+                    {
+                        GTA.UI.Screen.ShowSubtitle("~y~Garage transition in progress...", 1500);
+                        return;
+                    }
+
                     if (!_initialized)
                         Initialize();
 

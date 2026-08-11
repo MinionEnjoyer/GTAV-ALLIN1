@@ -27,6 +27,9 @@ test = [
 [tool.pytest.ini_options]
 addopts = "--strict-markers --strict-config"
 testpaths = ["tests"]
+markers = [
+    "windows_integration: requires Windows and the real preview packaging tools",
+]
 
 [tool.coverage.run]
 source = ["allin1"]
@@ -34,9 +37,10 @@ branch = true
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 60
+fail_under = 91
 omit = [
     "src/allin1/gui.py",
+    "src/allin1/customization_ui.py",
 ]
 
 [tool.setuptools.packages.find]
