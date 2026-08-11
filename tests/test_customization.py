@@ -116,3 +116,21 @@ def test_garage_rejects_invalid_content(tmp_path, payload):
     path.write_text(json.dumps(payload))
     with pytest.raises(ValueError):
         GarageSaveStore(path, {"adder"}).load()
+
+
+def test_garage_repair_reassigns_and_quarantines(tmp_path):
+    path = tmp_path / "garage.json"
+    path.write_text(json.dumps({"michael": [{"model": "adder", "slot": 0},
+        {"model": "zentorno", "slot": 0}, {"model": "unknown", "slot": 2}, "broken"],
+        "franklin": "bad"}))
+    report = GarageSaveStore(path, {"adder", "zentorno"}).repair()
+    assert (report.kept, report.reassigned, report.quarantined) == (2, 1, 3)
+    assert [v["slot"] for v in GarageSaveStore(path, {"adder", "zentorno"}).load()["michael"]] == [0, 1]
+    assert report.quarantine_path.is_file()
+
+
+def test_garage_repair_handles_missing_and_invalid_json(tmp_path):
+    store = GarageSaveStore(tmp_path / "garage.json", {"adder"})
+    assert store.repair().kept == 0
+    store.path.write_text("{")
+    assert store.repair().quarantined == 1 and store.load()["michael"] == []

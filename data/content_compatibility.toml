@@ -1,0 +1,13 @@
+schema_version = 1
+
+[editions.legacy]
+min_build = 3095
+max_build = 0 # 0 means no hard upper bound; newer builds are runtime-validated.
+scripthook = "ScriptHookV"
+rpf_loader = "OpenIV.asi"
+
+[editions.enhanced]
+min_build = 811
+max_build = 0
+scripthook = "ScriptHookVDotNet Enhanced"
+rpf_loader = "OpenRPF.asi"

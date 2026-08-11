@@ -27,6 +27,8 @@ def create_diagnostic_bundle(output: Path, project_root: Path,
             "ALLIN1.toml", "ALLIN1_client.log", "ALLIN1_client.log.1",
             "ALLIN1_gbay.log", "ALLIN1_garage.json", "ALLIN1_floor_garage.json",
             "ALLIN1_characters.json", "ALLIN1_smoke_report.json",
+            "ALLIN1.version", "ALLIN1_session.lock", "ALLIN1_gbay_preferences.json",
+            "ALLIN1_garage.quarantine.json", "ALLIN1_qualification.json",
         ))
     files = [path for path in candidates if path.is_file()]
     manifest = {
@@ -41,7 +43,7 @@ def create_diagnostic_bundle(output: Path, project_root: Path,
         for path in files:
             raw = path.read_bytes()
             name = f"files/{path.name}"
-            if path.suffix.lower() in {".toml", ".json", ".log"}:
+            if path.suffix.lower() in {".toml", ".json", ".log", ".lock"}:
                 raw = _redact(raw.decode("utf-8", errors="replace")).encode()
             archive.writestr(name, raw)
             manifest["files"].append({

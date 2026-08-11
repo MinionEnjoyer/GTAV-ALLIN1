@@ -1,0 +1,83 @@
+"""Pre-launch installation health and conflict checks."""
+
+from __future__ import annotations
+
+import hashlib
+from dataclasses import asdict, dataclass
+from pathlib import Path
+
+from allin1.versioning import read_installed_version
+
+
+@dataclass(frozen=True)
+class HealthIssue:
+    code: str
+    severity: str
+    message: str
+    path: str = ""
+
+
+@dataclass(frozen=True)
+class HealthReport:
+    edition: str
+    installed_version: str | None
+    issues: tuple[HealthIssue, ...]
+
+    @property
+    def launch_safe(self) -> bool:
+        return not any(issue.severity == "error" for issue in self.issues)
+
+    def to_dict(self) -> dict:
+        return {"edition": self.edition, "installed_version": self.installed_version,
+                "launch_safe": self.launch_safe,
+                "issues": [asdict(issue) for issue in self.issues]}
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def scan_installation(gta_path: Path, *, expected_hashes: dict[str, str] | None = None) -> HealthReport:
+    issues: list[HealthIssue] = []
+    legacy = gta_path / "GTA5.exe"
+    enhanced = gta_path / "GTA5_Enhanced.exe"
+    edition = "enhanced" if enhanced.is_file() else "legacy" if legacy.is_file() else "unknown"
+    if edition == "unknown":
+        issues.append(HealthIssue("game_missing", "error", "GTA V executable was not found.", str(gta_path)))
+    for name in ("ScriptHookV.dll", "ScriptHookVDotNet.asi"):
+        path = gta_path / name
+        if not path.is_file():
+            issues.append(HealthIssue("dependency_missing", "error", f"Required dependency is missing: {name}", str(path)))
+    loader = "OpenRPF.asi" if edition == "enhanced" else "OpenIV.asi"
+    if edition != "unknown" and not (gta_path / loader).is_file():
+        issues.append(HealthIssue("rpf_loader_missing", "warning", f"{loader} is missing; previews may not load.", str(gta_path / loader)))
+
+    scripts = gta_path / "scripts"
+    dll = scripts / "ALLIN1.dll"
+    if not dll.is_file():
+        issues.append(HealthIssue("mod_missing", "error", "ALLIN1.dll is not installed.", str(dll)))
+    duplicates = sorted(path for path in gta_path.rglob("ALLIN1.dll") if path != dll)
+    for duplicate in duplicates:
+        issues.append(HealthIssue("duplicate_mod", "error", "Duplicate ALLIN1.dll may load twice.", str(duplicate)))
+    for old_name in ("ALLIN1.asi", "ALLIN1-Launcher.exe"):
+        old = gta_path / old_name
+        if old.exists():
+            issues.append(HealthIssue("legacy_file", "warning", f"Legacy file should be removed: {old_name}", str(old)))
+    for conflict in ("PackfileLimitAdjuster.asi", "HeapAdjuster.asi"):
+        path = gta_path / conflict
+        if path.exists():
+            issues.append(HealthIssue("review_conflict", "info", f"Detected {conflict}; verify its settings match your game build.", str(path)))
+    for relative, expected in (expected_hashes or {}).items():
+        path = gta_path / relative
+        if not path.is_file() or sha256_file(path).lower() != expected.lower():
+            issues.append(HealthIssue("checksum_mismatch", "error", f"Installed file failed verification: {relative}", str(path)))
+    try:
+        installed = read_installed_version(scripts)
+    except (OSError, ValueError):
+        installed = None
+        issues.append(HealthIssue("version_invalid", "warning", "Installed version marker is missing or invalid.", str(scripts)))
+    return HealthReport(edition, installed, tuple(issues))

@@ -3,6 +3,7 @@
 // All coordinates use GTA's normalized 0.0-1.0 screen space.
 // DRAW_RECT uses center-based coordinates (x,y = center of rect).
 
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using GTA.Native;
@@ -11,6 +12,15 @@ namespace ALLIN1
 {
     internal static class GbayRenderer
     {
+        internal static float UiScale { get; set; } = 1f;
+        internal static bool ColorblindMode { get; set; }
+
+        private static Color Accessible(Color color)
+        {
+            if (!ColorblindMode || color.G <= color.R + 25 || color.G <= color.B + 25)
+                return color;
+            return Color.FromArgb(color.A, 35, Math.Min(190, (int)color.G), 210);
+        }
         // ------------------------------------------------------------------ //
         //  Theme Colors                                                       //
         // ------------------------------------------------------------------ //
@@ -105,6 +115,7 @@ namespace ALLIN1
         /// </summary>
         internal static void DrawRect(float x, float y, float w, float h, Color c)
         {
+            c = Accessible(c);
             Function.Call(Hash.DRAW_RECT, x, y, w, h, c.R, c.G, c.B, c.A);
         }
 
@@ -243,6 +254,8 @@ namespace ALLIN1
                                        bool shadow = false,
                                        bool rightAlign = false)
         {
+            c = Accessible(c);
+            scale *= UiScale;
             Function.Call(Hash.SET_TEXT_FONT, font);
             Function.Call(Hash.SET_TEXT_SCALE, 0f, scale);
             Function.Call(Hash.SET_TEXT_COLOUR, c.R, c.G, c.B, c.A);
@@ -269,6 +282,7 @@ namespace ALLIN1
         /// </summary>
         internal static float GetTextWidth(string text, float scale, int font = FONT_CHALET)
         {
+            scale *= UiScale;
             Function.Call(Hash.SET_TEXT_FONT, font);
             Function.Call(Hash.SET_TEXT_SCALE, 0f, scale);
             Function.Call(Hash.BEGIN_TEXT_COMMAND_GET_SCREEN_WIDTH_OF_DISPLAY_TEXT, "STRING");

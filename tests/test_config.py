@@ -97,6 +97,8 @@ def test_default_config():
     assert config.traffic.max_driven == 20
     assert config.traffic.replacement_chance == 0.30
     assert config.vehicles.enable_all is True
+    assert config.traffic.adaptive_performance is True
+    assert config.script.ui_scale == 1.0
 
 
 def test_save_round_trip_preserves_all_fields(tmp_path):
@@ -158,3 +160,13 @@ def test_traffic_validation_rejects_unsafe_values(field, value):
     setattr(config.traffic, field, value)
     with pytest.raises(ValueError):
         config.validate()
+
+
+@pytest.mark.parametrize("section,field,value", [
+    ("traffic", "minimum_fps", 19), ("traffic", "minimum_fps", 121),
+    ("script", "ui_scale", 0.5), ("script", "ui_scale", 2.0),
+    ("script", "hold_duration_ms", 99), ("script", "hold_duration_ms", 2001),
+])
+def test_performance_and_accessibility_validation(section, field, value):
+    config = Config.default(); setattr(getattr(config, section), field, value)
+    with pytest.raises(ValueError): config.validate()

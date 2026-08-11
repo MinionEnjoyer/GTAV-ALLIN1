@@ -29,6 +29,8 @@ scan_cooldown_ms = 3000
 scan_radius = 200.0
 minimum_replace_distance = 50.0
 replacement_chance = 0.30
+adaptive_performance = true
+minimum_fps = 40
 
 [vehicles]
 # Enable all GTA Online vehicles. Set to false to use the catalog
@@ -61,6 +63,11 @@ preview_capture_key = "F10"
 
 # Hold the game's enter/exit control to choose a specific vehicle seat.
 seat_selector_enabled = true
+safe_mode = false
+ui_scale = 1.0
+reduced_motion = false
+colorblind_mode = false
+hold_duration_ms = 350
 
 # When true, all GBAY purchases are free regardless of prices.
 gbay_free_mode = false

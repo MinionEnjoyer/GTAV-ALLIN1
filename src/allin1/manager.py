@@ -7,9 +7,11 @@ from pathlib import Path
 from typing import Callable
 
 from allin1.config import Config
+from allin1 import __version__
 from allin1.detector import detect_gta_path, validate_gta_path
 from allin1.installer import InstallResult, install, uninstall
 from allin1.vehicles.database import VehicleDatabase
+from allin1.versioning import read_installed_version
 
 
 @dataclass(frozen=True)
@@ -21,6 +23,8 @@ class InstallationStatus:
     scripthookv_installed: bool
     shvdn_installed: bool
     openrpf_installed: bool
+    installed_version: str | None = None
+    manager_version: str = __version__
 
 
 class ModManager:
@@ -67,6 +71,10 @@ class ModManager:
         valid = legacy_exe.exists() or enhanced_exe.exists()
         edition = "Enhanced" if enhanced_exe.exists() else "Legacy" if legacy_exe.exists() else "Unknown"
         scripts = gta_path / "scripts"
+        try:
+            installed_version = read_installed_version(scripts)
+        except (OSError, ValueError):
+            installed_version = None
         return InstallationStatus(
             gta_path=gta_path,
             valid_game=valid,
@@ -76,6 +84,7 @@ class ModManager:
             shvdn_installed=(gta_path / "ScriptHookVDotNet.asi").exists(),
             openrpf_installed=(gta_path / "OpenRPF.asi").exists()
             or (gta_path / "OpenIV.asi").exists(),
+            installed_version=installed_version,
         )
 
     def install(self, config: Config) -> InstallResult:

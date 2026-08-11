@@ -8,6 +8,7 @@ from pathlib import Path
 import click
 
 from allin1.config import Config
+from allin1 import __version__
 from allin1.installer import install, uninstall
 from allin1.logging import setup_logging
 from allin1.vehicles.database import VehicleDatabase
@@ -29,6 +30,7 @@ log = logging.getLogger("allin1.cli")
     help="Path to config.toml",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose (debug) output")
+@click.version_option(__version__, prog_name="GTA V ALLIN1")
 @click.pass_context
 def main(ctx: click.Context, config: str, verbose: bool) -> None:
     """GTA V ALLIN1 - Unlock all GTA Online vehicles in single player."""
@@ -273,6 +275,21 @@ def import_previews(source: Path) -> None:
             click.echo(f"  - {reason}")
 
 
+@main.command("audit-previews")
+@click.argument("directory", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def audit_preview_quality(directory: Path) -> None:
+    """Inspect captured previews for blank, transparent, or poor framing."""
+    from allin1.preview_assets import audit_previews
+    models = [vehicle.model for vehicle in VehicleDatabase.load(VEHICLES_DB)]
+    results = audit_previews(directory, models)
+    failed = {model: quality for model, quality in results.items() if not quality.valid}
+    click.echo(f"Inspected {len(results)} preview(s); {len(failed)} need recapture.")
+    for model, quality in failed.items():
+        click.echo(f"  {model}: {'; '.join(quality.reasons)}", err=True)
+    if failed:
+        raise SystemExit(1)
+
+
 @main.command("verify-preview-artifacts")
 @click.argument("directory", type=click.Path(exists=True, file_okay=False, path_type=Path))
 def verify_preview_artifacts(directory: Path) -> None:
@@ -302,6 +319,80 @@ def analyze_client_log_cmd(log_file: Path, edition: str, output: Path) -> None:
     click.echo(f"Smoke report: {output} ({'PASS' if passed else 'FAIL'})")
     if not passed:
         raise SystemExit(1)
+
+
+@main.command("health-check")
+@click.argument("gta_path", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--json-output", type=click.Path(path_type=Path))
+def health_check_cmd(gta_path: Path, json_output: Path | None) -> None:
+    """Run the pre-launch dependency, duplicate, and integrity scanner."""
+    import json
+    from allin1.health import scan_installation
+
+    report = scan_installation(gta_path)
+    click.echo(f"Edition: {report.edition}; launch safe: {report.launch_safe}")
+    for issue in report.issues:
+        click.echo(f"[{issue.severity.upper()}] {issue.message}")
+    if json_output:
+        json_output.parent.mkdir(parents=True, exist_ok=True)
+        json_output.write_text(json.dumps(report.to_dict(), indent=2) + "\n")
+    if not report.launch_safe:
+        raise SystemExit(1)
+
+
+@main.command("repair-garage")
+@click.argument("garage_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def repair_garage_cmd(garage_file: Path) -> None:
+    """Repair slots and quarantine invalid entries in an ALLIN1 garage save."""
+    from allin1.customization import GarageSaveStore
+
+    models = {vehicle.model for vehicle in VehicleDatabase.load(VEHICLES_DB)}
+    report = GarageSaveStore(garage_file, models).repair()
+    click.echo(f"Kept {report.kept}; reassigned {report.reassigned}; quarantined {report.quarantined}.")
+
+
+@main.command("qualification-report")
+@click.argument("output", type=click.Path(path_type=Path))
+@click.option("--coverage", type=float, default=0.0)
+@click.option("--minimum-coverage", type=float, default=91.0)
+@click.option("--script-build/--no-script-build", default=True)
+@click.option("--smoke-pass/--no-smoke-pass", default=False)
+def qualification_report_cmd(output: Path, coverage: float, minimum_coverage: float,
+                             script_build: bool, smoke_pass: bool) -> None:
+    """Create a release qualification dashboard JSON file."""
+    from allin1.qualification import QualificationCheck, build_report
+
+    checks = [
+        QualificationCheck("python_coverage", coverage >= minimum_coverage,
+                           f"{coverage:.2f}% / {minimum_coverage:.2f}%"),
+        QualificationCheck("script_build", script_build, "C# Release build"),
+        QualificationCheck("in_game_smoke", smoke_pass, "Legacy/Enhanced smoke report"),
+    ]
+    report = build_report(output, checks, metrics={"coverage": coverage})
+    click.echo(f"Qualification: {'PASS' if report['passed'] else 'FAIL'} ({output})")
+    if not report["passed"]:
+        raise SystemExit(1)
+
+
+@main.command("apply-update")
+@click.argument("archive", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("destination", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--backup-dir", type=click.Path(path_type=Path), required=True)
+def apply_update_cmd(archive: Path, destination: Path, backup_dir: Path) -> None:
+    """Apply a local checksum-verified release archive transactionally."""
+    from allin1.updater import deploy_release
+    result = deploy_release(archive, destination, backup_dir)
+    click.echo(f"Deployed {len(result.deployed)} files; rollback stored at {result.backup}.")
+
+
+@main.command("rollback-update")
+@click.argument("destination", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.argument("backup", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def rollback_update_cmd(destination: Path, backup: Path) -> None:
+    """Restore the files saved by the last transactional update."""
+    from allin1.updater import rollback_update
+    restored = rollback_update(destination, backup)
+    click.echo(f"Restored {len(restored)} files.")
 
 
 @main.command("diagnostics")

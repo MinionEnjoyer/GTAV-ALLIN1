@@ -35,7 +35,10 @@ class CharacterCustomizationDialog(tk.Toplevel):
             self.weapons = sorted(item["name"] for item in tomllib.load(stream)["weapons"])
         self.garage_store = GarageSaveStore(scripts / "ALLIN1_garage.json", set(self.models))
         self.loadout_store = LoadoutStore(scripts / "ALLIN1_characters.json", set(self.weapons), GEAR)
-        self.garages = self.garage_store.load()
+        try:
+            self.garages = self.garage_store.load()
+        except (OSError, ValueError):
+            self.garages = {character: [] for character in CHARACTERS}
         self.loadouts = self.loadout_store.load()
         self.character = tk.StringVar(value=CHARACTERS[0])
         tabs = ttk.Notebook(self); tabs.pack(fill="both", expand=True, padx=10, pady=10)
@@ -83,6 +86,7 @@ class CharacterCustomizationDialog(tk.Toplevel):
         buttons = ttk.Frame(frame); buttons.pack(fill="x", pady=8)
         for label, command in (("Add", self._add_vehicle), ("Remove", self._remove_vehicle),
                                ("Import…", self._import_garage), ("Export…", self._export_garage),
+                               ("Repair", self._repair_garage),
                                ("Save", self._save_garage)):
             ttk.Button(buttons, text=label, command=command).pack(side="left", padx=3)
         self._refresh_garage()
@@ -119,6 +123,16 @@ class CharacterCustomizationDialog(tk.Toplevel):
     def _export_garage(self) -> None:
         path = filedialog.asksaveasfilename(defaultextension=".json")
         if path: self.garage_store.export_file(Path(path))
+
+    def _repair_garage(self) -> None:
+        try:
+            report = self.garage_store.repair()
+            self.garages = self.garage_store.load()
+            self._refresh_garage()
+            messagebox.showinfo("Garage repair", f"Kept {report.kept}, reassigned "
+                                f"{report.reassigned}, quarantined {report.quarantined}.")
+        except OSError as exc:
+            messagebox.showerror("Garage repair failed", str(exc))
 
     def _inventory_tab(self, tabs) -> None:
         frame = ttk.Frame(tabs, padding=14); tabs.add(frame, text="Weapons & Gear")

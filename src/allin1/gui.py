@@ -6,6 +6,7 @@ import logging
 import queue
 import threading
 import tkinter as tk
+import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -13,6 +14,9 @@ from allin1.config import Config
 from allin1.logging import setup_logging
 from allin1.manager import InstallationStatus, ModManager
 from allin1.customization_ui import CharacterCustomizationDialog
+from allin1 import __version__
+from allin1.versioning import fetch_latest_release
+from allin1.profiles import ProfileStore
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -33,9 +37,10 @@ class ManagerWindow:
         self.config = manager.load_config()
         self.messages: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy = False
+        self.profiles = ProfileStore(manager.project_root / "profiles")
 
         root.title("GTA V ALLIN1 Manager")
-        root.geometry("760x610")
+        root.geometry("820x720")
         root.minsize(680, 540)
 
         self.path = tk.StringVar(value=self.config.general.gta_path)
@@ -47,7 +52,14 @@ class ManagerWindow:
         self.night_vision_key = tk.StringVar(value=self.config.script.night_vision_key)
         self.preview_capture_key = tk.StringVar(value=self.config.script.preview_capture_key)
         self.seat_selector_enabled = tk.BooleanVar(value=self.config.script.seat_selector_enabled)
+        self.safe_mode = tk.BooleanVar(value=self.config.script.safe_mode)
+        self.reduced_motion = tk.BooleanVar(value=self.config.script.reduced_motion)
+        self.colorblind_mode = tk.BooleanVar(value=self.config.script.colorblind_mode)
+        self.ui_scale = tk.DoubleVar(value=self.config.script.ui_scale)
+        self.hold_duration_ms = tk.IntVar(value=self.config.script.hold_duration_ms)
         self.status_text = tk.StringVar(value="Checking installation…")
+        self.version_text = tk.StringVar(value=f"Manager {__version__} · latest not checked")
+        self.profile_name = tk.StringVar(value="Full ALLIN1")
 
         self._build()
         handler = QueueLogHandler(self.messages)
@@ -63,6 +75,14 @@ class ManagerWindow:
         ttk.Label(outer, text="GTA V ALLIN1", font=("Segoe UI", 20, "bold")).pack(anchor="w")
         ttk.Label(outer, text="Install, configure, and remove the single-player mod.").pack(anchor="w", pady=(0, 14))
 
+        profiles = ttk.LabelFrame(outer, text="Profile", padding=8)
+        profiles.pack(fill="x", pady=(0, 10))
+        self.profile_box = ttk.Combobox(profiles, textvariable=self.profile_name,
+                                        values=self.profiles.list(), width=28)
+        self.profile_box.pack(side="left")
+        ttk.Button(profiles, text="Load", command=self.load_profile).pack(side="left", padx=6)
+        ttk.Button(profiles, text="Save as…", command=self.save_profile).pack(side="left")
+
         location = ttk.LabelFrame(outer, text="Game location", padding=10)
         location.pack(fill="x")
         ttk.Entry(location, textvariable=self.path).pack(side="left", fill="x", expand=True)
@@ -74,6 +94,12 @@ class ManagerWindow:
         ttk.Checkbutton(options, text="DLC traffic", variable=self.traffic).grid(row=0, column=1, sticky="w", padx=(0, 30))
         ttk.Checkbutton(options, text="DLC police", variable=self.police).grid(row=1, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Detailed script logging", variable=self.logging_enabled).grid(row=1, column=1, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(options, text="Force safe mode", variable=self.safe_mode).grid(row=2, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(options, text="Reduced motion", variable=self.reduced_motion).grid(row=2, column=1, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(options, text="Colorblind-safe palette", variable=self.colorblind_mode).grid(row=3, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(options, text="UI text scale").grid(row=3, column=1, sticky="w", pady=(8, 0))
+        ttk.Spinbox(options, from_=0.75, to=1.5, increment=0.05, textvariable=self.ui_scale,
+                    width=6).grid(row=3, column=1, sticky="e", pady=(8, 0))
 
         controls = ttk.LabelFrame(outer, text="Mod controls", padding=10)
         controls.pack(fill="x", pady=(0, 12))
@@ -90,10 +116,14 @@ class ManagerWindow:
                          state="readonly", width=14).grid(row=row, column=1, sticky="w", padx=(12, 30), pady=3)
         ttk.Checkbutton(controls, text="Enable hold-to-select vehicle seats",
                         variable=self.seat_selector_enabled).grid(row=0, column=2, rowspan=2, sticky="w")
+        ttk.Label(controls, text="Seat hold (ms)").grid(row=2, column=2, sticky="w")
+        ttk.Spinbox(controls, from_=100, to=2000, increment=50,
+                    textvariable=self.hold_duration_ms, width=7).grid(row=2, column=3, sticky="w")
 
         state = ttk.LabelFrame(outer, text="Installation status", padding=10)
         state.pack(fill="x")
         ttk.Label(state, textvariable=self.status_text, justify="left").pack(anchor="w")
+        ttk.Label(state, textvariable=self.version_text, justify="left").pack(anchor="w", pady=(4, 0))
 
         actions = ttk.Frame(outer)
         actions.pack(fill="x", pady=12)
@@ -106,6 +136,8 @@ class ManagerWindow:
         ttk.Button(actions, text="Character customization…",
                    command=self.customize_characters).pack(side="left", padx=8)
         ttk.Button(actions, text="Diagnostics…", command=self.create_diagnostics).pack(side="left")
+        ttk.Button(actions, text="Health check", command=self.run_health_check).pack(side="left", padx=(8, 0))
+        ttk.Button(actions, text="About…", command=self.show_about).pack(side="left", padx=(8, 0))
         self.refresh_button = ttk.Button(actions, text="Refresh", command=self.refresh)
         self.refresh_button.pack(side="right")
 
@@ -135,6 +167,11 @@ class ManagerWindow:
         self.config.script.night_vision_key = self.night_vision_key.get()
         self.config.script.preview_capture_key = self.preview_capture_key.get()
         self.config.script.seat_selector_enabled = self.seat_selector_enabled.get()
+        self.config.script.safe_mode = self.safe_mode.get()
+        self.config.script.reduced_motion = self.reduced_motion.get()
+        self.config.script.colorblind_mode = self.colorblind_mode.get()
+        self.config.script.ui_scale = self.ui_scale.get()
+        self.config.script.hold_duration_ms = self.hold_duration_ms.get()
         return self.config
 
     def save(self) -> None:
@@ -143,6 +180,35 @@ class ManagerWindow:
             self._append_log("Settings saved.")
         except (OSError, ValueError) as exc:
             messagebox.showerror("Could not save settings", str(exc))
+
+    def save_profile(self) -> None:
+        try:
+            self.profiles.save(self.profile_name.get(), self._current_config())
+            self.profile_box.configure(values=self.profiles.list())
+            self._append_log(f"Saved profile {self.profile_name.get().strip()}.")
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Could not save profile", str(exc))
+
+    def load_profile(self) -> None:
+        try:
+            self.config = self.profiles.load(self.profile_name.get())
+            self.path.set(self.config.general.gta_path)
+            self.free_mode.set(self.config.general.free_mode)
+            self.traffic.set(self.config.traffic.enabled)
+            self.police.set(self.config.script.enable_dlc_police)
+            self.logging_enabled.set(self.config.script.enable_logging)
+            self.gbay_key.set(self.config.script.gbay_key)
+            self.night_vision_key.set(self.config.script.night_vision_key)
+            self.preview_capture_key.set(self.config.script.preview_capture_key)
+            self.seat_selector_enabled.set(self.config.script.seat_selector_enabled)
+            self.safe_mode.set(self.config.script.safe_mode)
+            self.reduced_motion.set(self.config.script.reduced_motion)
+            self.colorblind_mode.set(self.config.script.colorblind_mode)
+            self.ui_scale.set(self.config.script.ui_scale)
+            self.hold_duration_ms.set(self.config.script.hold_duration_ms)
+            self.refresh()
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Could not load profile", str(exc))
 
     def refresh(self) -> None:
         status = self.manager.status(self._current_config())
@@ -158,6 +224,51 @@ class ManagerWindow:
             f"ScriptHookVDotNet: {mark(status.shvdn_installed)}    "
             f"OpenRPF/OpenIV: {mark(status.openrpf_installed)}"
         )
+        installed = status.installed_version or ("unknown" if status.mod_installed else "not installed")
+        self.version_text.set(
+            f"Manager {status.manager_version} · Installed client {installed} · latest not checked"
+        )
+
+    def show_about(self) -> None:
+        dialog = tk.Toplevel(self.root)
+        dialog.title("About GTA V ALLIN1")
+        dialog.geometry("560x390")
+        dialog.resizable(False, False)
+        body = ttk.Frame(dialog, padding=22)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text="GTA V ALLIN1", font=("Segoe UI", 20, "bold")).pack(anchor="w")
+        ttk.Label(body, text=f"Manager and mod client version {__version__}").pack(anchor="w", pady=(2, 16))
+        ttk.Label(
+            body,
+            text=("Project goal\n\nBring GTA Online DLC vehicles, weapons, garages, "
+                  "and related content into GTA V Story Mode through a safe, manageable "
+                  "one-click install."),
+            wraplength=510, justify="left",
+        ).pack(anchor="w")
+        ttk.Label(body, text="Created and maintained by MinionEnjoyer.").pack(anchor="w", pady=(18, 4))
+        link = ttk.Label(body, text="buymeacoffee.com/minionenjoyer",
+                         foreground="#087f5b", cursor="hand2")
+        link.pack(anchor="w")
+        link.bind("<Button-1>", lambda _event: webbrowser.open(
+            "https://buymeacoffee.com/minionenjoyer"))
+        update_status = tk.StringVar(value="Release status has not been checked.")
+        ttk.Label(body, textvariable=update_status, wraplength=510).pack(anchor="w", pady=(22, 8))
+
+        def check() -> None:
+            update_status.set("Checking GitHub Releases…")
+            button.configure(state="disabled")
+
+            def worker() -> None:
+                try:
+                    release = fetch_latest_release(__version__)
+                    self.messages.put(("release", (release, update_status, button)))
+                except Exception as exc:
+                    self.messages.put(("release_error", (exc, update_status, button)))
+
+            threading.Thread(target=worker, daemon=True).start()
+
+        button = ttk.Button(body, text="Check for updates", command=check)
+        button.pack(anchor="w")
 
     def install(self) -> None:
         config = self._current_config()
@@ -191,6 +302,18 @@ class ManagerWindow:
             messagebox.showinfo("Diagnostics", "Redacted diagnostic bundle created.")
         except OSError as exc:
             messagebox.showerror("Diagnostics failed", str(exc))
+
+    def run_health_check(self) -> None:
+        from allin1.health import scan_installation
+        gta_path = self.manager.resolve_path(self._current_config())
+        if gta_path is None:
+            messagebox.showerror("Health check", "Select a GTA V installation first.")
+            return
+        report = scan_installation(gta_path)
+        details = "\n".join(f"[{issue.severity.upper()}] {issue.message}"
+                            for issue in report.issues) or "No issues found."
+        title = "Ready to launch" if report.launch_safe else "Action required"
+        messagebox.showinfo("Health check", f"{title}\n\n{details}")
 
     def _run(self, label: str, operation) -> None:
         if self.busy:
@@ -226,6 +349,19 @@ class ManagerWindow:
                 self._finish()
                 self._append_log(f"{label} failed: {exc}")
                 messagebox.showerror(f"{label} failed", str(exc))
+            elif kind == "release":
+                release, variable, button = payload
+                state = "Update available" if release.update_available else "Up to date"
+                variable.set(f"{state}: latest release is {release.version}.")
+                self.version_text.set(
+                    f"Manager {__version__} · latest {release.version} · {state.lower()}"
+                )
+                button.configure(state="normal", text="Open latest release",
+                                 command=lambda url=release.url: webbrowser.open(url))
+            elif kind == "release_error":
+                exc, variable, button = payload
+                variable.set(f"Could not check releases: {exc}")
+                button.configure(state="normal")
         self.root.after(100, self._drain_messages)
 
     def _finish(self) -> None:

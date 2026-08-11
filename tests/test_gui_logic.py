@@ -27,6 +27,11 @@ def _window():
     window.night_vision_key = Variable("V")
     window.preview_capture_key = Variable("F11")
     window.seat_selector_enabled = Variable(False)
+    window.safe_mode = Variable(True)
+    window.reduced_motion = Variable(True)
+    window.colorblind_mode = Variable(True)
+    window.ui_scale = Variable(1.2)
+    window.hold_duration_ms = Variable(600)
     return window
 
 
@@ -39,6 +44,11 @@ def test_current_config_collects_all_launcher_fields():
     assert config.script.night_vision_key == "V"
     assert config.script.preview_capture_key == "F11"
     assert config.script.seat_selector_enabled is False
+    assert config.script.safe_mode is True
+    assert config.script.reduced_motion is True
+    assert config.script.colorblind_mode is True
+    assert config.script.ui_scale == 1.2
+    assert config.script.hold_duration_ms == 600
 
 
 def test_queue_log_handler_sends_formatted_record():

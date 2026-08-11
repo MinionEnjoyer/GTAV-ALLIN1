@@ -34,6 +34,13 @@ namespace ALLIN1
         private float _scanRadius = 200f;
         private float _minReplaceDist = 50f;
         private float _replaceChance = 0.30f;
+        private bool _adaptivePerformance = true;
+        private int _minimumFps = 40;
+        private float _smoothedFps = 60f;
+        private bool _throttled;
+        internal static int ManagedVehicleCount { get; private set; }
+        internal static float SmoothedFps { get; private set; }
+        internal static bool IsThrottled { get; private set; }
 
         // Road-appropriate vehicle classes used for driven spawns.
         private static readonly string[][] ROAD_CLASSES =
@@ -125,6 +132,8 @@ namespace ALLIN1
                     else if (key == "scan_radius" && float.TryParse(value, out float sr)) _scanRadius = sr;
                     else if (key == "minimum_replace_distance" && float.TryParse(value, out float mr)) _minReplaceDist = mr;
                     else if (key == "replacement_chance" && float.TryParse(value, out float rc)) _replaceChance = rc;
+                    else if (key == "adaptive_performance") _adaptivePerformance = value.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    else if (key == "minimum_fps" && int.TryParse(value, out int fps)) _minimumFps = Math.Max(20, Math.Min(120, fps));
                 }
                 ClientLog.Info("Traffic", "settings_loaded", new Dictionary<string, object> {
                     { "max_driven", _maxDriven }, { "replacement_chance", _replaceChance }
@@ -148,7 +157,7 @@ namespace ALLIN1
 
         private void OnTick(object sender, EventArgs e)
         {
-            if (!_enabled) return;
+            if (!_enabled || ClientWatchdog.SafeMode) return;
             if (Game.IsLoading)
                 return;
 
@@ -162,6 +171,13 @@ namespace ALLIN1
                 return;
 
             int now = Game.GameTime;
+            float frameTime = Function.Call<float>(Hash.GET_FRAME_TIME);
+            if (frameTime > 0.0001f)
+                _smoothedFps = _smoothedFps * 0.92f + (1f / frameTime) * 0.08f;
+            _throttled = _adaptivePerformance && _smoothedFps < _minimumFps;
+            ManagedVehicleCount = _spawned.Count;
+            SmoothedFps = _smoothedFps;
+            IsThrottled = _throttled;
             if (now - _lastCleanupTime >= 1000)
             {
                 Cleanup();
@@ -169,15 +185,18 @@ namespace ALLIN1
             }
 
             // Driven spawner
-            if (now - _lastDrivenTime >= _drivenCooldownMs
-                && _spawned.Count < _maxDriven)
+            int effectiveMax = _throttled ? Math.Max(2, _maxDriven / 2) : _maxDriven;
+            int effectiveDrivenCooldown = _throttled ? _drivenCooldownMs * 2 : _drivenCooldownMs;
+            int effectiveScanCooldown = _throttled ? _scanCooldownMs * 2 : _scanCooldownMs;
+            if (now - _lastDrivenTime >= effectiveDrivenCooldown
+                && _spawned.Count < effectiveMax)
             {
                 if (SpawnDriven())
                     _lastDrivenTime = now;
             }
 
             // Replacement scanner
-            if (now - _lastScanTime >= _scanCooldownMs)
+            if (now - _lastScanTime >= effectiveScanCooldown)
             {
                 ScanAndReplace();
                 _lastScanTime = now;

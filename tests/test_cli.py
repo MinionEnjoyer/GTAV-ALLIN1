@@ -5,6 +5,7 @@ import struct
 from unittest.mock import Mock
 
 from click.testing import CliRunner
+from PIL import Image, ImageDraw
 
 from allin1 import cli
 from allin1.config import Config
@@ -126,9 +127,9 @@ def test_status_reports_filters_and_import_previews(tmp_path, monkeypatch):
 
     source = tmp_path / "captures"
     source.mkdir()
-    (source / "alpha.png").write_bytes(
-        b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR" + struct.pack(">II", 10, 10)
-    )
+    image = Image.new("RGB", (800, 450), "black")
+    ImageDraw.Draw(image).rectangle((200, 100, 600, 350), fill="red")
+    image.save(source / "alpha.png")
     imported = CliRunner().invoke(cli.main, ["import-previews", str(source)])
     assert imported.exit_code == 0
     assert "Imported 1" in imported.output
@@ -163,3 +164,36 @@ def test_diagnostics_command(tmp_path, monkeypatch):
     result = CliRunner().invoke(cli.main, ["diagnostics", "-o", str(output)])
     assert result.exit_code == 0
     assert output.exists() and "Diagnostic bundle created" in result.output
+
+
+def test_audit_previews_command_reports_failure_and_success(tmp_path, monkeypatch):
+    _project(tmp_path, monkeypatch)
+    previews = tmp_path / "previews"; previews.mkdir()
+    Image.new("RGB", (800, 450), "black").save(previews / "alpha.png")
+    failed = CliRunner().invoke(cli.main, ["audit-previews", str(previews)])
+    assert failed.exit_code == 1 and "need recapture" in failed.output
+    image = Image.new("RGB", (800, 450), "black")
+    ImageDraw.Draw(image).rectangle((200, 100, 600, 350), fill="red")
+    image.save(previews / "alpha.png")
+    passed = CliRunner().invoke(cli.main, ["audit-previews", str(previews)])
+    assert passed.exit_code == 0 and "0 need recapture" in passed.output
+
+
+def test_health_repair_and_qualification_commands(tmp_path, monkeypatch):
+    _project(tmp_path, monkeypatch)
+    game = tmp_path / "game"; game.mkdir()
+    failed = CliRunner().invoke(cli.main, ["health-check", str(game), "--json-output", str(tmp_path / "health.json")])
+    assert failed.exit_code == 1 and (tmp_path / "health.json").exists()
+
+    garage = tmp_path / "garage.json"
+    garage.write_text('{"michael":[{"model":"alpha","slot":0},{"model":"bad","slot":1}]}')
+    repaired = CliRunner().invoke(cli.main, ["repair-garage", str(garage)])
+    assert repaired.exit_code == 0 and "quarantined 1" in repaired.output
+
+    report = tmp_path / "qualification.json"
+    passed = CliRunner().invoke(cli.main, ["qualification-report", str(report),
+        "--coverage", "92", "--smoke-pass"])
+    assert passed.exit_code == 0 and "PASS" in passed.output
+    failed = CliRunner().invoke(cli.main, ["qualification-report", str(report),
+        "--coverage", "80", "--no-script-build"])
+    assert failed.exit_code == 1 and "FAIL" in failed.output
