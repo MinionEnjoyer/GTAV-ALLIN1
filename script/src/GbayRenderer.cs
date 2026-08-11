@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using GTA.Native;
 
 namespace ALLIN1
@@ -157,6 +158,20 @@ namespace ALLIN1
         private const string LOGO_DICT = "allin1_logo";
         private const string LOGO_TEX  = "phat";
 
+        internal static string PreviewDiagnostics =>
+            $"{_loadedDicts.Count} loaded / {_failedDicts.Count} unavailable; vector placeholders enabled";
+
+        internal static string OpenRpfStatus
+        {
+            get
+            {
+                string scripts = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
+                string root = Directory.GetParent(scripts)?.FullName ?? scripts;
+                return File.Exists(Path.Combine(root, "OpenRPF.asi")) ||
+                       File.Exists(Path.Combine(root, "OpenIV.asi")) ? "detected" : "not detected (fallback active)";
+            }
+        }
+
         /// <summary>Request a texture dictionary for async streaming.</summary>
         internal static void RequestDict(string dict)
         {
@@ -238,6 +253,9 @@ namespace ALLIN1
             if (!IsDictLoaded(LOGO_DICT))
             {
                 RequestDict(LOGO_DICT);
+                DrawRect(x, y, h * 0.78f, h * 0.72f, HeaderBg);
+                DrawText("GBAY", x, y - h * 0.16f, h * 4.2f, TextWhite,
+                    FONT_PRICEDOWN, true);
                 return;
             }
             float w = h * (440f / 559f);

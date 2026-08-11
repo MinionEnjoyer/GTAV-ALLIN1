@@ -8,8 +8,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 CHARACTERS = ("michael", "franklin", "trevor")
-LOADOUT_SCHEMA_VERSION = 2
+LOADOUT_SCHEMA_VERSION = 3
 GARAGE_SCHEMA_VERSION = 2
+SKILLS = ("stamina", "strength", "lung_capacity", "driving", "flying", "shooting", "stealth")
 
 
 @dataclass(frozen=True)
@@ -48,11 +49,19 @@ class CharacterOutfit:
 
 
 @dataclass
+class CharacterProgress:
+    managed: bool = False
+    money: int = 0
+    skills: dict[str, int] = field(default_factory=lambda: {name: 0 for name in SKILLS})
+
+
+@dataclass
 class CharacterLoadout:
     weapons: list[str] = field(default_factory=list)
     gear: list[str] = field(default_factory=list)
     managed: bool = False
     outfit: CharacterOutfit = field(default_factory=CharacterOutfit)
+    progress: CharacterProgress = field(default_factory=CharacterProgress)
 
 
 class LoadoutStore:
@@ -82,6 +91,12 @@ class LoadoutStore:
                     props or [OutfitVariation(-1, 0) for _ in range(8)],
                     dict(outfit_raw.get("presets", {})),
                 ),
+                CharacterProgress(
+                    bool(item.get("progress", {}).get("managed", False)),
+                    int(item.get("progress", {}).get("money", 0)),
+                    {name: int(item.get("progress", {}).get("skills", {}).get(name, 0))
+                     for name in SKILLS},
+                ),
             )
         return result
 
@@ -97,6 +112,7 @@ class LoadoutStore:
             if bad_weapons or bad_gear:
                 raise ValueError(f"Unknown inventory items: {sorted(bad_weapons | bad_gear)}")
             self._validate_outfit(loadout.outfit)
+            self._validate_progress(loadout.progress)
             output[character] = {
                 "weapons": sorted(set(loadout.weapons)),
                 "gear": sorted(set(loadout.gear)),
@@ -108,9 +124,24 @@ class LoadoutStore:
                     "props": [vars(value) for value in loadout.outfit.props],
                     "presets": loadout.outfit.presets,
                 },
+                "progress": {
+                    "managed": loadout.progress.managed,
+                    "money": loadout.progress.money,
+                    "skills": loadout.progress.skills,
+                },
                 "schema_version": LOADOUT_SCHEMA_VERSION,
             }
         _atomic_json(self.path, output)
+
+    @staticmethod
+    def _validate_progress(progress: CharacterProgress) -> None:
+        if not isinstance(progress.money, int) or not 0 <= progress.money <= 2_147_483_647:
+            raise ValueError("Character money must be between 0 and 2,147,483,647")
+        if set(progress.skills) != set(SKILLS):
+            raise ValueError("Character progress must include every supported skill")
+        if any(not isinstance(value, int) or not 0 <= value <= 100
+               for value in progress.skills.values()):
+            raise ValueError("Character skills must be whole numbers from 0 to 100")
 
     @staticmethod
     def _validate_outfit(outfit: CharacterOutfit) -> None:

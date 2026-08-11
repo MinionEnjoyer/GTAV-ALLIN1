@@ -167,6 +167,22 @@ def test_runtime_hot_paths_are_throttled_and_cached():
     assert "charColor != _lastFloorBlipColor" in garage
 
 
+def test_issue_five_playtest_regressions_are_guarded():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    renderer = (ROOT / "script/src/GbayRenderer.cs").read_text()
+    traffic = (ROOT / "script/src/TrafficSpawner.cs").read_text()
+    customize = (ROOT / "script/src/GbayBrowserCustomize.cs").read_text()
+    inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()
+    assert "GbayRenderer.TextDark" in browser and "GBAY artwork:" in browser
+    assert "vector placeholders enabled" in renderer and "OpenRpfStatus" in renderer
+    for guard in ("GET_MISSION_FLAG", "WantedLevel", "GET_INTERIOR_FROM_ENTITY",
+                  "IS_POINT_ON_ROAD", "IS_ANY_VEHICLE_NEAR_POINT", "IS_SPHERE_VISIBLE"):
+        assert guard in traffic
+    assert "floorCount = GarageManager.IsPlayerInFloorGarage ? 3 : 1" in customize
+    assert "GarageSellConfirm" in browser and "CONFIRM VEHICLE SALE" in browser
+    assert "progress_applied" in inventory and "STAT_SET_INT" in inventory
+
+
 def test_runtime_save_files_emit_backward_compatible_schema_markers():
     garage = (ROOT / "script/src/GarageManager.cs").read_text()
     inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()

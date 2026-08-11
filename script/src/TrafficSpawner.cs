@@ -91,6 +91,7 @@ namespace ALLIN1
         private int _lastCleanupTime;
         private bool _initialized;
         private bool _enabled = true;
+        private string _lastSuppressionReason = "";
 
         // Toggled via config: shows per-spawn debug notifications
         internal static bool ShowSpawnMessages;
@@ -161,6 +162,17 @@ namespace ALLIN1
             if (Game.IsLoading)
                 return;
 
+            string suppression = GetSuppressionReason();
+            if (suppression.Length > 0)
+            {
+                if (suppression != _lastSuppressionReason)
+                    ClientLog.Info("Traffic", "spawning_suppressed",
+                        new Dictionary<string, object> { { "reason", suppression } });
+                _lastSuppressionReason = suppression;
+                return;
+            }
+            _lastSuppressionReason = "";
+
             if (!_initialized)
             {
                 Initialize();
@@ -201,6 +213,18 @@ namespace ALLIN1
                 ScanAndReplace();
                 _lastScanTime = now;
             }
+        }
+
+        private static string GetSuppressionReason()
+        {
+            Ped player = Game.Player.Character;
+            if (player == null || !player.Exists() || player.IsDead) return "player_unavailable";
+            if (Game.Player.WantedLevel > 0) return "wanted_level";
+            if (Function.Call<bool>(Hash.GET_MISSION_FLAG)) return "mission_active";
+            if (Function.Call<bool>(Hash.IS_CUTSCENE_ACTIVE)) return "cutscene_active";
+            if (Function.Call<bool>(Hash.IS_PLAYER_SWITCH_IN_PROGRESS)) return "player_switch";
+            if (Function.Call<int>(Hash.GET_INTERIOR_FROM_ENTITY, player.Handle) != 0) return "interior";
+            return "";
         }
 
         // ------------------------------------------------------------------ //
@@ -719,7 +743,7 @@ namespace ALLIN1
             nodePos = Vector3.Zero;
             heading = 0f;
 
-            for (int attempt = 0; attempt < 10; attempt++)
+            for (int attempt = 0; attempt < 24; attempt++)
             {
                 float angle = (float)(_rng.NextDouble() * 2.0 * Math.PI);
                 float dist = minDist
@@ -744,12 +768,19 @@ namespace ALLIN1
                     Vector3 pos = outPos.GetResult<Vector3>();
                     float h = outHead.GetResult<float>();
 
-                    if (pos.DistanceTo(playerPos) >= minDist)
-                    {
-                        nodePos = pos;
-                        heading = h;
-                        return true;
-                    }
+                    float actualDistance = pos.DistanceTo(playerPos);
+                    if (actualDistance < minDist || actualDistance > maxDist) continue;
+                    if (!Function.Call<bool>(Hash.IS_POINT_ON_ROAD,
+                        pos.X, pos.Y, pos.Z, Game.Player.Character.Handle)) continue;
+                    if (Function.Call<bool>(Hash.IS_ANY_VEHICLE_NEAR_POINT,
+                        pos.X, pos.Y, pos.Z, 8f)) continue;
+                    // Never create a vehicle where the camera can see it pop in.
+                    if (Function.Call<bool>(Hash.IS_SPHERE_VISIBLE,
+                        pos.X, pos.Y, pos.Z, 5f)) continue;
+
+                    nodePos = pos;
+                    heading = h;
+                    return true;
                 }
             }
 

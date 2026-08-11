@@ -24,11 +24,12 @@ namespace ALLIN1
 
         public sealed class Inventory
         {
-            public int schema_version { get; set; } = 2;
+            public int schema_version { get; set; } = 3;
             public List<string> weapons { get; set; } = new List<string>();
             public List<string> gear { get; set; } = new List<string>();
             public bool managed { get; set; }
             public Outfit outfit { get; set; } = new Outfit();
+            public Progress progress { get; set; } = new Progress();
         }
 
         public sealed class Variation
@@ -44,6 +45,13 @@ namespace ALLIN1
             public List<Variation> components { get; set; } = new List<Variation>();
             public List<Variation> props { get; set; } = new List<Variation>();
             public Dictionary<string, object> presets { get; set; } = new Dictionary<string, object>();
+        }
+
+        public sealed class Progress
+        {
+            public bool managed { get; set; }
+            public int money { get; set; }
+            public Dictionary<string, int> skills { get; set; } = new Dictionary<string, int>();
         }
 
         public CharacterInventory()
@@ -106,7 +114,8 @@ namespace ALLIN1
         private static void Apply(string character)
         {
             if (!_state.TryGetValue(character, out Inventory inventory)) return;
-            if (!inventory.managed && !(inventory.outfit?.managed ?? false)) return;
+            if (!inventory.managed && !(inventory.outfit?.managed ?? false) &&
+                !(inventory.progress?.managed ?? false)) return;
             Ped ped = Game.Player.Character;
             var owned = new HashSet<string>(inventory.weapons ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
             if (inventory.managed)
@@ -125,9 +134,34 @@ namespace ALLIN1
                 }
             }
             if (inventory.outfit?.managed ?? false) ApplyOutfit(ped, inventory.outfit);
+            if (inventory.progress?.managed ?? false) ApplyProgress(character, inventory.progress);
             ClientLog.Info("Character", "loadout_applied", new Dictionary<string, object> {
                 { "character", character }, { "weapons", owned.Count }, { "gear", inventory.gear?.Count ?? 0 }
             });
+        }
+
+        private static void ApplyProgress(string character, Progress progress)
+        {
+            int prefix = character == "michael" ? 0 : character == "franklin" ? 1 : 2;
+            var statSuffixes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                { "stamina", "STAMINA" }, { "strength", "STRENGTH" },
+                { "lung_capacity", "LUNG_CAPACITY" }, { "driving", "WHEELIE_ABILITY" },
+                { "flying", "FLYING_ABILITY" }, { "shooting", "SHOOTING_ABILITY" },
+                { "stealth", "STEALTH_ABILITY" }
+            };
+            Game.Player.Money = Math.Max(0, progress.money);
+            foreach (var entry in statSuffixes)
+            {
+                if (progress.skills == null || !progress.skills.TryGetValue(entry.Key, out int value)) continue;
+                value = Math.Max(0, Math.Min(100, value));
+                int statHash = Game.GenerateHash($"SP{prefix}_{entry.Value}");
+                Function.Call(Hash.STAT_SET_INT, statHash, value, true);
+            }
+            ClientLog.Info("Character", "progress_applied", new Dictionary<string, object> {
+                { "character", character }, { "money", progress.money },
+                { "skills", progress.skills?.Count ?? 0 }
+            });
+            GTA.UI.Screen.ShowSubtitle($"~g~ALLIN1~w~ applied {character}'s saved stats and money.", 3000);
         }
 
         private static void ApplyOutfit(Ped ped, Outfit outfit)
