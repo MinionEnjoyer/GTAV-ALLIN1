@@ -51,6 +51,11 @@ class ModManager:
 
     def save_config(self, config: Config) -> None:
         config.save(self.config_path)
+        gta_path = self.resolve_path(config)
+        if gta_path is not None:
+            scripts = gta_path / "scripts"
+            if scripts.is_dir():
+                config.save(scripts / "ALLIN1.toml")
 
     def resolve_path(self, config: Config) -> Path | None:
         if config.general.gta_path != "auto":

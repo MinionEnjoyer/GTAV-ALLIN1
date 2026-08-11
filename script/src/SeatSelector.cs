@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Windows.Forms;
 using GTA;
 using GTA.Math;
 using GTA.Native;
@@ -23,6 +24,7 @@ namespace ALLIN1
         // ------------------------------------------------------------------ //
 
         private int _holdThresholdMs = 350;
+        private Keys _selectorKey = Keys.L;
         private const float NEARBY_RADIUS = 3.5f;
         private const float MAX_DIST_WHILE_SELECTING = 5f;
         private const int EXECUTE_TIMEOUT_MS = 5000;
@@ -150,7 +152,7 @@ namespace ALLIN1
         private void TickIdle(Ped player)
         {
             // F key maps to different controls on foot vs in vehicle — check both
-            bool fHeld = IsEnterExitHeld();
+            bool fHeld = IsSelectorHeld();
 
             if (!fHeld)
             {
@@ -225,7 +227,7 @@ namespace ALLIN1
             }
 
             // Check if F was released → confirm selection
-            bool fHeld = IsEnterExitHeld();
+            bool fHeld = IsSelectorHeld();
 
             if (!fHeld)
             {
@@ -234,7 +236,7 @@ namespace ALLIN1
             }
 
             // Check Esc/Back → cancel
-            if (Game.IsControlJustPressed(Control.FrontendCancel))
+            if (Game.IsControlJustPressed(GTA.Control.FrontendCancel))
             {
                 GbayRenderer.PlayBack();
                 Reset();
@@ -268,14 +270,14 @@ namespace ALLIN1
         {
             int dX = 0, dY = 0;
 
-            if (Game.IsControlJustPressed(Control.FrontendLeft))
+            if (Game.IsControlJustPressed(GTA.Control.FrontendLeft))
                 dX = -1;
-            else if (Game.IsControlJustPressed(Control.FrontendRight))
+            else if (Game.IsControlJustPressed(GTA.Control.FrontendRight))
                 dX = 1;
 
-            if (Game.IsControlJustPressed(Control.FrontendUp))
+            if (Game.IsControlJustPressed(GTA.Control.FrontendUp))
                 dY = -1;
-            else if (Game.IsControlJustPressed(Control.FrontendDown))
+            else if (Game.IsControlJustPressed(GTA.Control.FrontendDown))
                 dY = 1;
 
             if (dX == 0 && dY == 0)
@@ -610,8 +612,8 @@ namespace ALLIN1
             // Footer
             float footerY = HUD_TOP + TITLE_H + gridH + FOOTER_H / 2;
             string footerText = _playerInVehicle
-                ? "Release F: switch  |  ESC: cancel"
-                : "Release F: enter  |  ESC: cancel";
+                ? $"Release {_selectorKey}: switch  |  ESC: cancel"
+                : $"Release {_selectorKey}: enter  |  ESC: cancel";
             GbayRenderer.DrawText(footerText, panelX, footerY - 0.009f,
                 0.2f, COL_TEXT_DIM, GbayRenderer.FONT_CONDENSED, true);
         }
@@ -622,12 +624,16 @@ namespace ALLIN1
 
         private void SuppressEnterExit()
         {
-            Game.DisableControlThisFrame(Control.Enter);
-            Game.DisableControlThisFrame(Control.VehicleExit);
+            if (_selectorKey != Keys.F)
+                return;
+            Game.DisableControlThisFrame(GTA.Control.Enter);
+            Game.DisableControlThisFrame(GTA.Control.VehicleExit);
         }
 
-        private bool IsEnterExitHeld()
+        private bool IsSelectorHeld()
         {
+            if (_selectorKey != Keys.F)
+                return Game.IsKeyPressed(_selectorKey);
             return Function.Call<bool>(Hash.IS_CONTROL_PRESSED, 0, CONTROL_ENTER)
                 || Function.Call<bool>(Hash.IS_CONTROL_PRESSED, 0, CONTROL_VEHICLE_EXIT)
                 || Function.Call<bool>(Hash.IS_DISABLED_CONTROL_PRESSED, 0, CONTROL_ENTER)
@@ -650,6 +656,12 @@ namespace ALLIN1
                     if (key.Equals("seat_selector_enabled", StringComparison.OrdinalIgnoreCase))
                         _enabled = line.Substring(eq + 1).Trim().Equals(
                             "true", StringComparison.OrdinalIgnoreCase);
+                    else if (key.Equals("seat_selector_key", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string cleaned = value.Trim().Trim('"', '\'');
+                        if (Enum.TryParse(cleaned, true, out Keys parsed))
+                            _selectorKey = parsed;
+                    }
                     else if (key.Equals("hold_duration_ms", StringComparison.OrdinalIgnoreCase)
                         && int.TryParse(value, out int duration))
                         _holdThresholdMs = Math.Max(100, Math.Min(2000, duration));

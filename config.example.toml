@@ -5,8 +5,8 @@
 # Path to your GTA V installation. Set to "auto" to detect automatically.
 gta_path = "auto"
 
-# When true, all vehicles are free (no in-game cost).
-# When false, vehicles use prices from prices_vehicles.toml (editable).
+# Deprecated compatibility alias for script.gbay_free_mode.
+# The launcher keeps both values synchronized.
 free_mode = false
 
 # Create backups of original game files before modifying.
@@ -68,13 +68,16 @@ preview_capture_key = "F10"
 
 # Hold the game's enter/exit control to choose a specific vehicle seat.
 seat_selector_enabled = true
+seat_selector_key = "L"
+# Recovery mode: disables DLC traffic and the multi-floor garage initializer.
 safe_mode = false
 ui_scale = 1.0
+# Disable GBAY's brief page-transition fade overlay.
 reduced_motion = false
 colorblind_mode = false
 hold_duration_ms = 350
 
-# When true, all GBAY purchases are free regardless of prices.
+# When true, all GBAY purchases are free and vehicle sales have no payout.
 gbay_free_mode = false
 
 

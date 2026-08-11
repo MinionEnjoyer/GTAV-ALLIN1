@@ -1,0 +1,13 @@
+schema_version = 1
+id = "example-config"
+name = "Example Config/Data Pack"
+version = "1.0.0"
+type = "config"
+description = "Template for script or RPF-side configuration and data files."
+editions = ["legacy", "enhanced"]
+dependencies = []
+conflicts = []
+
+[[files]]
+source = "payload/settings.toml"
+destination = "scripts/Example/settings.toml"

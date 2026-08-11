@@ -32,10 +32,13 @@ namespace ALLIN1
             GbayRenderer.DrawText("CUSTOMIZE GARAGE", BROWSER_LEFT + 0.07f, HEADER_Y + 0.018f,
                 0.38f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
 
-            // Floor tabs (right side of header)
+            // Eclipse Towers is one garage. Multi-floor tabs are only valid
+            // while the player is inside the dedicated three-floor garage.
+            int floorCount = GarageManager.IsPlayerInFloorGarage ? 3 : 1;
+            if (floorCount == 1) _customFloor = 0;
             float floorTabW = 0.08f;
-            float floorTabStartX = BROWSER_RIGHT - 0.28f;
-            for (int f = 0; f < 3; f++)
+            float floorTabStartX = BROWSER_RIGHT - (floorCount == 1 ? 0.10f : 0.28f);
+            for (int f = 0; f < floorCount; f++)
             {
                 float tabX = floorTabStartX + f * (floorTabW + 0.01f);
                 float tabCX = tabX + floorTabW / 2f;
@@ -49,7 +52,7 @@ namespace ALLIN1
                 if (isActive || isHover)
                     GbayRenderer.DrawRect(tabCX, HEADER_CY, floorTabW, HEADER_H - 0.01f, tabBg);
 
-                GbayRenderer.DrawText($"Floor {f + 1}", tabCX, HEADER_Y + 0.018f,
+                GbayRenderer.DrawText(floorCount == 1 ? "Garage" : $"Floor {f + 1}", tabCX, HEADER_Y + 0.018f,
                     0.32f, isActive ? GbayRenderer.TextWhite : GbayRenderer.HeaderText,
                     GbayRenderer.FONT_CONDENSED, true);
 
@@ -153,8 +156,9 @@ namespace ALLIN1
 
             string inGarageHint = GarageManager.IsPlayerInFloorGarage
                 ? "  (changes apply live)" : "";
+            string floorHint = floorCount > 1 ? "   [Z/X] Floor" : "";
             GbayRenderer.DrawText(
-                $"[Up/Down] Category   [Left/Right] Option   [Z/X] Floor   [Esc] Back{inGarageHint}",
+                $"[Up/Down] Category   [Left/Right] Option{floorHint}   [Esc] Back{inGarageHint}",
                 BROWSER_CX, FOOTER_Y + 0.012f, 0.24f, GbayRenderer.TextDim,
                 GbayRenderer.FONT_CONDENSED, true);
         }
@@ -185,12 +189,12 @@ namespace ALLIN1
             }
 
             // Switch floor (Z/X)
-            if (input.CategoryPrev && _customFloor > 0)
+            if (GarageManager.IsPlayerInFloorGarage && input.CategoryPrev && _customFloor > 0)
             {
                 _customFloor--;
                 GbayRenderer.PlayNav();
             }
-            else if (input.CategoryNext && _customFloor < 2)
+            else if (GarageManager.IsPlayerInFloorGarage && input.CategoryNext && _customFloor < 2)
             {
                 _customFloor++;
                 GbayRenderer.PlayNav();

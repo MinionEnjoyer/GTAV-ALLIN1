@@ -5,6 +5,7 @@
 // so GbayBrowser only handles presentation.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Windows.Forms;
 using GTA;
@@ -574,7 +575,14 @@ namespace ALLIN1
         {
             int sellPrice = GetSellPrice(model);
 
-            GarageManager.RemoveVehicle(listIndex);
+            if (!GarageManager.RemoveVehicle(listIndex))
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~Sale failed; your garage and money were not changed.", 3500);
+                ClientLog.Warn("GBAY", "vehicle_sale_failed", new Dictionary<string, object> {
+                    { "model", model }, { "list_index", listIndex }
+                });
+                return;
+            }
 
             if (!_freeMode && sellPrice > 0)
                 Game.Player.Money += sellPrice;

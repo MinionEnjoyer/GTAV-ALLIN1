@@ -8,6 +8,26 @@ from allin1.customization import (
 )
 
 
+def test_character_progress_round_trip_and_validation(tmp_path):
+    from allin1.customization import CharacterProgress, SKILLS
+    store = LoadoutStore(tmp_path / "characters.json", {"A"}, {"G"})
+    progress = CharacterProgress(True, 123456, {name: 75 for name in SKILLS})
+    store.save({"michael": CharacterLoadout(progress=progress)})
+    assert store.load()["michael"].progress == progress
+
+    progress.skills["stamina"] = 101
+    with pytest.raises(ValueError, match="0 to 100"):
+        store.save({"michael": CharacterLoadout(progress=progress)})
+
+
+@pytest.mark.parametrize("money", [-1, 2_147_483_648])
+def test_character_progress_rejects_unsafe_money(tmp_path, money):
+    from allin1.customization import CharacterProgress
+    store = LoadoutStore(tmp_path / "characters.json", set(), set())
+    with pytest.raises(ValueError, match="money"):
+        store.save({"franklin": CharacterLoadout(progress=CharacterProgress(money=money))})
+
+
 def test_atomic_json_creates_and_backs_up(tmp_path):
     path = tmp_path / "state.json"
     _atomic_json(path, {"version": 1})
@@ -23,7 +43,7 @@ def test_loadout_round_trip_normalizes_all_characters(tmp_path):
     loaded = store.load()
     assert loaded["michael"] == CharacterLoadout(["WEAPON_A"], ["GEAR_A"], False)
     assert loaded["franklin"] == CharacterLoadout()
-    assert json.loads((tmp_path / "loadouts.json").read_text())["michael"]["schema_version"] == 2
+    assert json.loads((tmp_path / "loadouts.json").read_text())["michael"]["schema_version"] == 3
 
 
 @pytest.mark.parametrize("loadouts", [
