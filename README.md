@@ -34,19 +34,15 @@ If GTA V ALLIN1 is useful to you, project support is available through
 - **DLC traffic integration** — adds Online vehicles to ambient traffic with class-aware
   replacements, road and visibility checks, mission/interior/wanted-level guards, distance-based
   cleanup, and adaptive performance throttling.
-- **Animation-first seat selector** — choose a seat with the configurable selector key (default
-  **L**). Accessible seats use native entry and shuffle animations; moving between inaccessible
-  rows or external mounts uses an exit-and-re-enter sequence rather than teleportation.
+- **Vehicle seat selector** — choose a seat with the configurable selector key (default
+  **L**). Accessible seats use native entry and shuffle animations.
 - **Character control** — manage Michael, Franklin, and Trevor independently, including money,
   skill levels, weapons, gear, garage saves, outfit components, props, and named outfit presets.
 - **Desktop control center** — detect the game edition, configure gameplay and accessibility
   options, install or repair the mod, run health checks, export redacted diagnostics, manage
-  profiles, and launch GTA V without a background console window.
+  profiles, and launch GTA V.
 - **Local mod packages** — install, update, enable, disable, and uninstall user-supplied ASI,
   ScriptHookVDotNet, RPF, and config/data packages through validated `mod.toml` manifests.
-- **Preview texture pipeline** — validates PNG captures, encodes BC3 textures, builds YTD
-  dictionaries, converts Enhanced resources, packages the registered DLC archive, and verifies
-  every nested resource before deployment.
 - **Recovery-minded operation** — backs up replaced files, preserves garage recovery copies,
   detects unclean sessions, offers a safe mode, and writes structured client diagnostics.
 
