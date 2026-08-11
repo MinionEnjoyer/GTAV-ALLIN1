@@ -2,12 +2,13 @@ name: Tests
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 # A binary refresh commit can immediately supersede the source commit that
 # triggered it. Do not run two copies of the expensive Windows toolchain job.
 concurrency:
-  group: tests-${{ github.workflow }}-${{ github.ref }}
+  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:

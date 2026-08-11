@@ -191,6 +191,8 @@ def test_windows_toolchain_ci_is_cached_bounded_and_non_mutating():
     build_workflow = (ROOT / ".github/workflows/build-asi.yml").read_text()
     tools_script = (ROOT / "runtools.ps1").read_text()
     assert "cancel-in-progress: true" in tests_workflow
+    assert "branches: [main]" in tests_workflow
+    assert "github.event.pull_request.number || github.ref" in tests_workflow
     assert "actions/cache@v4" in tests_workflow
     assert "windows-real-tools-v2-" in tests_workflow
     assert "timeout-minutes: 20" in tests_workflow
