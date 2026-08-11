@@ -18,6 +18,8 @@ namespace ALLIN1
         {
             Tick += OnTick;
             Aborted += OnAborted;
+            AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+            AppDomain.CurrentDomain.DomainUnload += OnDomainUnload;
             Interval = 1000;
             try
             {
@@ -31,6 +33,23 @@ namespace ALLIN1
         private void OnTick(object sender, EventArgs e) { }
 
         private void OnAborted(object sender, EventArgs e)
+        {
+            AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
+            AppDomain.CurrentDomain.DomainUnload -= OnDomainUnload;
+            CleanupMarker();
+        }
+
+        private void OnProcessExit(object sender, EventArgs e)
+        {
+            CleanupMarker();
+        }
+
+        private void OnDomainUnload(object sender, EventArgs e)
+        {
+            CleanupMarker();
+        }
+
+        private static void CleanupMarker()
         {
             try { if (File.Exists(Marker)) File.Delete(Marker); }
             catch (Exception ex) { ClientLog.Error("Watchdog", "marker_cleanup_failed", ex); }

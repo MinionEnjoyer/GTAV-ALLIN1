@@ -91,6 +91,11 @@ namespace ALLIN1
         private const float TOP_BTN_H      = 0.08f;
         private const float TOP_BTN_GAP    = 0.025f;
 
+        // Shared informational page action
+        private const float INFO_BACK_W    = 0.28f;
+        private const float INFO_BACK_H    = 0.055f;
+        private const float INFO_BACK_CY   = 0.815f;
+
         // Delivery modal
         private const float MODAL_W        = 0.45f;
         private const float MODAL_ITEM_H   = 0.055f;
@@ -517,9 +522,18 @@ namespace ALLIN1
                     GbayRenderer.TextDark, GbayRenderer.FONT_CHALET, true);
                 y += 0.055f;
             }
+            bool backHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
+                BROWSER_CX, INFO_BACK_CY, INFO_BACK_W, INFO_BACK_H);
+            Color backBg = backHover
+                ? GbayRenderer.BtnGreenHover
+                : GbayRenderer.BtnGreen;
+            GbayRenderer.DrawRect(BROWSER_CX, INFO_BACK_CY,
+                INFO_BACK_W, INFO_BACK_H, backBg);
             GbayRenderer.DrawText("BACK  Return to GBAY", BROWSER_CX, 0.80f, 0.32f,
-                GbayRenderer.TextDim, GbayRenderer.FONT_CHALET, true);
-            if (input.Back || input.MouseRightClick)
+                GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
+
+            bool backClicked = input.MouseClick && backHover;
+            if (input.Back || input.MouseRightClick || backClicked)
             {
                 GbayRenderer.PlayBack();
                 _state = BrowserState.TopMenu;

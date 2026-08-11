@@ -184,6 +184,24 @@ def test_issue_five_playtest_regressions_are_guarded():
     assert "progress_applied" in inventory and "STAT_SET_INT" in inventory
 
 
+def test_gbay_information_pages_have_a_clickable_back_action():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    assert "INFO_BACK_W" in browser and "INFO_BACK_H" in browser
+    assert "bool backHover = GbayRenderer.HitTest" in browser
+    assert "bool backClicked = input.MouseClick && backHover" in browser
+    assert "input.Back || input.MouseRightClick || backClicked" in browser
+    assert 'DrawInfoPanel("DIAGNOSTICS"' in browser
+    assert 'DrawInfoPanel("ABOUT ALLIN1"' in browser
+
+
+def test_watchdog_cleans_session_marker_on_all_graceful_shutdown_paths():
+    watchdog = (ROOT / "script/src/ClientWatchdog.cs").read_text()
+    assert "AppDomain.CurrentDomain.ProcessExit += OnProcessExit" in watchdog
+    assert "AppDomain.CurrentDomain.DomainUnload += OnDomainUnload" in watchdog
+    assert "private static void CleanupMarker()" in watchdog
+    assert watchdog.count("CleanupMarker();") >= 3
+
+
 def test_runtime_save_files_emit_backward_compatible_schema_markers():
     garage = (ROOT / "script/src/GarageManager.cs").read_text()
     inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()
