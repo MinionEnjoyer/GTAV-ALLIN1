@@ -199,3 +199,6 @@ def test_windows_toolchain_ci_is_cached_bounded_and_non_mutating():
     assert '$env:CI -eq "true"' in tools_script
     assert "refusing to modify the hosted runner" in tools_script
     assert "-requires Microsoft.VisualStudio.Workload.NativeDesktop" in tools_script
+    assert '$RpfPublishDir = Join-Path $TempDir "rpfpatcher_publish"' in tools_script
+    assert '-o $RpfPublishDir' in tools_script
+    assert '-o $RpfPatcherDir' not in tools_script

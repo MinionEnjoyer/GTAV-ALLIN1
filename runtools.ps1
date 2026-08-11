@@ -293,8 +293,17 @@ if (-not (Test-Path $CwCorePath)) {
 }
 
 Write-Host "  Publishing RpfPatcher (self-contained win-x64)..."
-dotnet publish $RpfPatcherProj -c Release -r win-x64 --self-contained true -o $RpfPatcherDir --nologo
+$RpfPublishDir = Join-Path $TempDir "rpfpatcher_publish"
+if (Test-Path $RpfPublishDir) { Remove-Item -Recurse -Force $RpfPublishDir }
+New-Item -ItemType Directory -Path $RpfPublishDir | Out-Null
+
+# Never publish into the project source directory. When the output path equals
+# the project directory, the SDK adds it to DefaultItemExcludes and can omit
+# Program.cs during evaluation, producing CS5001 (no suitable Main method).
+dotnet publish $RpfPatcherProj -c Release -r win-x64 --self-contained true -o $RpfPublishDir --nologo
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for RpfPatcher" }
+Copy-Item (Join-Path $RpfPublishDir "*") -Destination $RpfPatcherDir -Recurse -Force
+if (-not (Test-Path $RpfPatcherExe)) { throw "RpfPatcher.exe was not created after publish" }
 Write-Host "  Saved to $RpfPatcherDir" -ForegroundColor Green
 
 # ---------------------------------------------------------------------
