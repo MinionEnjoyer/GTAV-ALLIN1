@@ -1,0 +1,24 @@
+# Models intentionally using GBAY's generated placeholder until a verified
+# in-game preview capture is available. Keep this list synchronized with the
+# repository contract test.
+models = [
+  "cargobob5",
+  "duster2",
+  "maverick2",
+  "poldominator10",
+  "poldorado",
+  "polgreenwood",
+  "polimpaler5",
+  "polimpaler6",
+  "titan2",
+  "vivanite2",
+  "youga5",
+  "caracara3",
+  "cartuccia",
+  "estride",
+  "laufer",
+  "lrcgt",
+  "merula",
+  "polignus",
+  "veleno",
+]

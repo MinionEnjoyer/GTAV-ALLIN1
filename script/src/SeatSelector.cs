@@ -89,6 +89,7 @@ namespace ALLIN1
         private int _executeStart;
         private int _targetSeatIdx;
         private bool _reenterAfterExit;
+        private bool _enabled = true;
 
         // ------------------------------------------------------------------ //
         //  Constructor                                                        //
@@ -96,6 +97,7 @@ namespace ALLIN1
 
         public SeatSelector()
         {
+            LoadConfig();
             Tick += OnTick;
             Interval = 0;
         }
@@ -109,6 +111,9 @@ namespace ALLIN1
             try
             {
                 if (Game.IsLoading)
+                    return;
+
+                if (!_enabled)
                     return;
 
                 Ped player = Game.Player.Character;
@@ -145,10 +150,7 @@ namespace ALLIN1
         private void TickIdle(Ped player)
         {
             // F key maps to different controls on foot vs in vehicle — check both
-            bool fHeld = Function.Call<bool>(
-                    Hash.IS_DISABLED_CONTROL_PRESSED, 0, CONTROL_ENTER)
-                || Function.Call<bool>(
-                    Hash.IS_DISABLED_CONTROL_PRESSED, 0, CONTROL_VEHICLE_EXIT);
+            bool fHeld = IsEnterExitHeld();
 
             if (!fHeld)
             {
@@ -223,10 +225,7 @@ namespace ALLIN1
             }
 
             // Check if F was released → confirm selection
-            bool fHeld = Function.Call<bool>(
-                    Hash.IS_DISABLED_CONTROL_PRESSED, 0, CONTROL_ENTER)
-                || Function.Call<bool>(
-                    Hash.IS_DISABLED_CONTROL_PRESSED, 0, CONTROL_VEHICLE_EXIT);
+            bool fHeld = IsEnterExitHeld();
 
             if (!fHeld)
             {
@@ -242,7 +241,9 @@ namespace ALLIN1
                 return;
             }
 
-            // Refresh seat availability each frame (occupants can change)
+            // Refresh seat availability each frame (occupants can change),
+            // preserving the selected physical seat rather than list position.
+            int selectedSeat = _seats[_selectedIdx].Index;
             BuildSeatList(player);
             if (_seats.Count == 0)
             {
@@ -253,6 +254,8 @@ namespace ALLIN1
             // Clamp selection index after rebuild
             if (_selectedIdx >= _seats.Count)
                 _selectedIdx = _seats.Count - 1;
+            for (int i = 0; i < _seats.Count; i++)
+                if (_seats[i].Index == selectedSeat) _selectedIdx = i;
 
             // Arrow key navigation
             HandleNavigation();
@@ -286,7 +289,8 @@ namespace ALLIN1
             int bestIdx = -1;
             for (int i = 0; i < _seats.Count; i++)
             {
-                if (_seats[i].GridRow == targetRow && _seats[i].GridCol == targetCol)
+                if (_seats[i].GridRow == targetRow && _seats[i].GridCol == targetCol
+                    && (_seats[i].Free || _seats[i].IsPlayer))
                 {
                     bestIdx = i;
                     break;
@@ -298,7 +302,8 @@ namespace ALLIN1
             {
                 for (int i = 0; i < _seats.Count; i++)
                 {
-                    if (_seats[i].GridRow == targetRow)
+                    if (_seats[i].GridRow == targetRow
+                        && (_seats[i].Free || _seats[i].IsPlayer))
                     {
                         bestIdx = i;
                         break;
@@ -320,6 +325,17 @@ namespace ALLIN1
         private void ConfirmSelection(Ped player)
         {
             SeatInfo seat = _seats[_selectedIdx];
+
+            // Re-read immediately before acting; an NPC can claim a seat on
+            // the same frame the player releases the selector key.
+            if (_targetVeh == null || !_targetVeh.Exists()
+                || (!_targetVeh.IsSeatFree((VehicleSeat)seat.Index) && !seat.IsPlayer))
+            {
+                GbayRenderer.PlayError();
+                GTA.UI.Screen.ShowSubtitle("~y~That seat is no longer available.", 2000);
+                Reset();
+                return;
+            }
 
             // Already in this seat
             if (seat.IsPlayer)
@@ -389,6 +405,8 @@ namespace ALLIN1
             // Check timeout
             if (Game.GameTime - _executeStart > EXECUTE_TIMEOUT_MS)
             {
+                Function.Call(Hash.CLEAR_PED_TASKS, player.Handle);
+                GTA.UI.Screen.ShowSubtitle("~y~Seat switch timed out safely.", 2000);
                 Reset();
                 return;
             }
@@ -414,6 +432,8 @@ namespace ALLIN1
                 && player.CurrentVehicle == _targetVeh
                 && GetPlayerSeatIndex(player) == _targetSeatIdx)
             {
+                ClientLog.Info("SeatSelector", "seat_switch_completed",
+                    new Dictionary<string, object> { { "seat", _targetSeatIdx } });
                 Reset();
                 return;
             }
@@ -606,6 +626,37 @@ namespace ALLIN1
             Game.DisableControlThisFrame(Control.VehicleExit);
         }
 
+        private bool IsEnterExitHeld()
+        {
+            return Function.Call<bool>(Hash.IS_CONTROL_PRESSED, 0, CONTROL_ENTER)
+                || Function.Call<bool>(Hash.IS_CONTROL_PRESSED, 0, CONTROL_VEHICLE_EXIT)
+                || Function.Call<bool>(Hash.IS_DISABLED_CONTROL_PRESSED, 0, CONTROL_ENTER)
+                || Function.Call<bool>(Hash.IS_DISABLED_CONTROL_PRESSED, 0, CONTROL_VEHICLE_EXIT);
+        }
+
+        private void LoadConfig()
+        {
+            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ALLIN1.toml");
+            if (!File.Exists(path)) return;
+            try
+            {
+                foreach (string raw in File.ReadAllLines(path))
+                {
+                    string line = raw.Trim();
+                    if (!line.StartsWith("seat_selector_enabled", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    int eq = line.IndexOf('=');
+                    if (eq >= 0)
+                        _enabled = line.Substring(eq + 1).Trim().Equals(
+                            "true", StringComparison.OrdinalIgnoreCase);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError("LoadConfig", ex);
+            }
+        }
+
         private void Reset()
         {
             _state = State.Idle;
@@ -621,15 +672,7 @@ namespace ALLIN1
 
         private void LogError(string context, Exception ex)
         {
-            try
-            {
-                string msg = $"[{DateTime.Now:HH:mm:ss}] SeatSelector.{context}: {ex.Message}\n{ex.StackTrace}\n";
-                File.AppendAllText(LOG_PATH, msg);
-            }
-            catch
-            {
-                // Ignore logging failures
-            }
+            ClientLog.Error("SeatSelector", context, ex);
         }
     }
 }

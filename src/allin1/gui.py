@@ -12,6 +12,7 @@ from tkinter import filedialog, messagebox, ttk
 from allin1.config import Config
 from allin1.logging import setup_logging
 from allin1.manager import InstallationStatus, ModManager
+from allin1.customization_ui import CharacterCustomizationDialog
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -42,6 +43,10 @@ class ManagerWindow:
         self.traffic = tk.BooleanVar(value=self.config.traffic.enabled)
         self.police = tk.BooleanVar(value=self.config.script.enable_dlc_police)
         self.logging_enabled = tk.BooleanVar(value=self.config.script.enable_logging)
+        self.gbay_key = tk.StringVar(value=self.config.script.gbay_key)
+        self.night_vision_key = tk.StringVar(value=self.config.script.night_vision_key)
+        self.preview_capture_key = tk.StringVar(value=self.config.script.preview_capture_key)
+        self.seat_selector_enabled = tk.BooleanVar(value=self.config.script.seat_selector_enabled)
         self.status_text = tk.StringVar(value="Checking installation…")
 
         self._build()
@@ -70,6 +75,22 @@ class ManagerWindow:
         ttk.Checkbutton(options, text="DLC police", variable=self.police).grid(row=1, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Detailed script logging", variable=self.logging_enabled).grid(row=1, column=1, sticky="w", pady=(8, 0))
 
+        controls = ttk.LabelFrame(outer, text="Mod controls", padding=10)
+        controls.pack(fill="x", pady=(0, 12))
+        key_choices = tuple([f"F{i}" for i in range(1, 13)] +
+                            [chr(i) for i in range(ord("A"), ord("Z") + 1)] +
+                            [f"NumPad{i}" for i in range(10)])
+        for row, (label, variable) in enumerate((
+            ("Open GBAY", self.gbay_key),
+            ("Night vision", self.night_vision_key),
+            ("Preview capture", self.preview_capture_key),
+        )):
+            ttk.Label(controls, text=label).grid(row=row, column=0, sticky="w", pady=3)
+            ttk.Combobox(controls, textvariable=variable, values=key_choices,
+                         state="readonly", width=14).grid(row=row, column=1, sticky="w", padx=(12, 30), pady=3)
+        ttk.Checkbutton(controls, text="Enable hold-to-select vehicle seats",
+                        variable=self.seat_selector_enabled).grid(row=0, column=2, rowspan=2, sticky="w")
+
         state = ttk.LabelFrame(outer, text="Installation status", padding=10)
         state.pack(fill="x")
         ttk.Label(state, textvariable=self.status_text, justify="left").pack(anchor="w")
@@ -82,6 +103,9 @@ class ManagerWindow:
         self.uninstall_button.pack(side="left", padx=8)
         self.save_button = ttk.Button(actions, text="Save settings", command=self.save)
         self.save_button.pack(side="left")
+        ttk.Button(actions, text="Character customization…",
+                   command=self.customize_characters).pack(side="left", padx=8)
+        ttk.Button(actions, text="Diagnostics…", command=self.create_diagnostics).pack(side="left")
         self.refresh_button = ttk.Button(actions, text="Refresh", command=self.refresh)
         self.refresh_button.pack(side="right")
 
@@ -107,13 +131,17 @@ class ManagerWindow:
         self.config.traffic.enabled = self.traffic.get()
         self.config.script.enable_dlc_police = self.police.get()
         self.config.script.enable_logging = self.logging_enabled.get()
+        self.config.script.gbay_key = self.gbay_key.get()
+        self.config.script.night_vision_key = self.night_vision_key.get()
+        self.config.script.preview_capture_key = self.preview_capture_key.get()
+        self.config.script.seat_selector_enabled = self.seat_selector_enabled.get()
         return self.config
 
     def save(self) -> None:
         try:
             self.manager.save_config(self._current_config())
             self._append_log("Settings saved.")
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             messagebox.showerror("Could not save settings", str(exc))
 
     def refresh(self) -> None:
@@ -140,6 +168,29 @@ class ManagerWindow:
             return
         config = self._current_config()
         self._run("Uninstalling", lambda: self.manager.uninstall(config))
+
+    def customize_characters(self) -> None:
+        gta_path = self.manager.resolve_path(self._current_config())
+        if gta_path is None:
+            messagebox.showerror("Game not found", "Select a GTA V installation first.")
+            return
+        CharacterCustomizationDialog(self.root, self.manager.project_root,
+                                     gta_path / "scripts", self.config)
+
+    def create_diagnostics(self) -> None:
+        from allin1.diagnostics import create_diagnostic_bundle
+        destination = filedialog.asksaveasfilename(
+            title="Save diagnostic bundle", defaultextension=".zip",
+            filetypes=(("ZIP archive", "*.zip"),))
+        if not destination:
+            return
+        gta_path = self.manager.resolve_path(self._current_config())
+        scripts = gta_path / "scripts" if gta_path else None
+        try:
+            create_diagnostic_bundle(Path(destination), self.manager.project_root, scripts)
+            messagebox.showinfo("Diagnostics", "Redacted diagnostic bundle created.")
+        except OSError as exc:
+            messagebox.showerror("Diagnostics failed", str(exc))
 
     def _run(self, label: str, operation) -> None:
         if self.busy:

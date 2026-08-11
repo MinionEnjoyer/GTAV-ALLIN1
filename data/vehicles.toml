@@ -3235,6 +3235,147 @@ manufacturer = "BF"
 traffic = []
 
 # =============================================================================
+# CONTENT AUDIT ADDITIONS (GTA Online 1.69-1.72)
+# Source: DurtyFree gta-v-data-dumps, game build 3717 / Online 1.72.
+# These distinct models were omitted from the original curated list.
+# =============================================================================
+
+[[vehicles]]
+model = "poldominator10"
+name = "Vapid Dominator FX Interceptor"
+class = "emergency"
+manufacturer = "Vapid"
+traffic = []
+
+[[vehicles]]
+model = "poldorado"
+name = "Bravado Dorado Cruiser"
+class = "emergency"
+manufacturer = "Bravado"
+traffic = []
+
+[[vehicles]]
+model = "polgreenwood"
+name = "Bravado Greenwood Cruiser"
+class = "emergency"
+manufacturer = "Bravado"
+traffic = []
+
+[[vehicles]]
+model = "polimpaler5"
+name = "Declasse Impaler SZ Cruiser"
+class = "emergency"
+manufacturer = "Declasse"
+traffic = []
+
+[[vehicles]]
+model = "polimpaler6"
+name = "Declasse Impaler LX Cruiser"
+class = "emergency"
+manufacturer = "Declasse"
+traffic = []
+
+[[vehicles]]
+model = "cargobob5"
+name = "Buckingham DH-7 Iron Mule"
+class = "helicopters"
+manufacturer = "Buckingham"
+traffic = []
+
+[[vehicles]]
+model = "maverick2"
+name = "Higgins Helitours Maverick"
+class = "helicopters"
+manufacturer = "Higgins"
+traffic = []
+
+[[vehicles]]
+model = "duster2"
+name = "Western Duster 300-H"
+class = "planes"
+manufacturer = "Western"
+traffic = []
+
+[[vehicles]]
+model = "titan2"
+name = "Eberhard Titan 250 D"
+class = "planes"
+manufacturer = "Eberhard"
+traffic = []
+
+[[vehicles]]
+model = "youga5"
+name = "Vapid Youga Custom"
+class = "vans"
+manufacturer = "Vapid"
+traffic = ["veh_poor", "veh_freeway"]
+
+[[vehicles]]
+model = "vivanite2"
+name = "Karin Vivanite Service"
+class = "service"
+manufacturer = "Karin"
+traffic = ["veh_mid", "veh_rich"]
+
+# GTA Online 1.73 / The Kortz Center Heist (July 2026).
+[[vehicles]]
+model = "veleno"
+name = "Grotti Veleno GT"
+class = "super"
+manufacturer = "Grotti"
+traffic = []
+
+[[vehicles]]
+model = "caracara3"
+name = "Vapid Caracara (Armored)"
+class = "offroad"
+manufacturer = "Vapid"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "merula"
+name = "Albany Merula"
+class = "sedans"
+manufacturer = "Albany"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "laufer"
+name = "Benefactor Läufer"
+class = "vans"
+manufacturer = "Benefactor"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "lrcgt"
+name = "Benefactor LRC GT"
+class = "super"
+manufacturer = "Benefactor"
+traffic = []
+
+[[vehicles]]
+model = "cartuccia"
+name = "Grotti Cartuccia GT"
+class = "sports"
+manufacturer = "Grotti"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "estride"
+name = "Ocelot E-Stride"
+class = "suvs"
+manufacturer = "Ocelot"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "polignus"
+name = "Pegassi Ignus Pursuit"
+class = "emergency"
+manufacturer = "Pegassi"
+traffic = []
+
+# =============================================================================
 # END OF VEHICLE DATABASE
-# Total vehicles: 442
+# Total vehicles: 461
 # =============================================================================

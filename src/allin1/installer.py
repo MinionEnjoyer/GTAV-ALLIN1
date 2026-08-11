@@ -5,7 +5,7 @@ and ALLIN1 script deployment.
 
 File placement:
 - <GTA V root>/scripts/ALLIN1.dll — SHVDN script loaded at runtime.
-  Spawns 444 GTA Online DLC vehicles into Story Mode traffic.
+  Spawns the configured GTA Online DLC vehicle catalog into Story Mode traffic.
 - <GTA V root>/scripts/ALLIN1.toml — Config deployed from project config.toml.
 
 Prerequisites (installed separately by the user):
@@ -45,6 +45,22 @@ LEGACY_FILES = ("ALLIN1.asi", "ALLIN1.dll", "ALLIN1-Launcher.exe")
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _SCRIPT_DIST_DIR = _PROJECT_ROOT / "script" / "dist"
 _TOOLS_DIR = _PROJECT_ROOT / "tools"
+
+
+def _copy_atomic(source: Path, destination: Path) -> None:
+    """Replace a deployed file without exposing a partial destination."""
+    temporary = destination.with_name(destination.name + ".tmp")
+    backup = destination.with_name(destination.name + ".bak")
+    try:
+        shutil.copy2(source, temporary)
+        if destination.exists():
+            shutil.copy2(destination, backup)
+        temporary.replace(destination)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        if backup.exists():
+            shutil.copy2(backup, destination)
+        raise
 
 
 def _is_enhanced(gta_path: Path) -> bool:
@@ -130,6 +146,8 @@ def uninstall(config: Config) -> list[Path]:
     scripts_dir = gta_path / SCRIPTS_DIR
     for fname in (DLL_FILENAME, LEMONUI_FILENAME, "ALLIN1.toml",
                    "ALLIN1.log", "ALLIN1_spawner.log", "ALLIN1_gbay.log",
+                   "ALLIN1_client.log", "ALLIN1_client.log.1",
+                   "ALLIN1_client.log.2", "ALLIN1_client.log.3",
                    "ALLIN1_garage.json", "ALLIN1_garages.json",
                    "ALLIN1_garages.json.bak", "ALLIN1.ini"):
         fpath = scripts_dir / fname
@@ -246,14 +264,14 @@ def _deploy_script(gta_path: Path) -> bool:
     scripts_dir = gta_path / SCRIPTS_DIR
     scripts_dir.mkdir(exist_ok=True)
     dest = scripts_dir / DLL_FILENAME
-    shutil.copy2(src, dest)
+    _copy_atomic(src, dest)
     log.info("Deployed %s → %s", DLL_FILENAME, dest)
 
     # Deploy LemonUI dependency (required by GBAY menu system)
     lemonui_src = _SCRIPT_DIST_DIR / LEMONUI_FILENAME
     if lemonui_src.exists():
         lemonui_dest = scripts_dir / LEMONUI_FILENAME
-        shutil.copy2(lemonui_src, lemonui_dest)
+        _copy_atomic(lemonui_src, lemonui_dest)
         log.info("Deployed %s → %s", LEMONUI_FILENAME, lemonui_dest)
 
     # Deploy config.toml as ALLIN1.toml so the C# script can read it
@@ -262,7 +280,7 @@ def _deploy_script(gta_path: Path) -> bool:
     if not toml_src.exists():
         toml_src = _PROJECT_ROOT / "config.example.toml"
     if toml_src.exists():
-        shutil.copy2(toml_src, toml_dest)
+        _copy_atomic(toml_src, toml_dest)
         log.info("Deployed config %s -> %s", toml_src.name, toml_dest)
 
     # Clean up legacy INI from previous versions
@@ -347,6 +365,7 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
     so the game discovers it.
     """
     from allin1.generators import dlc_previews, ytd_builder
+    from allin1.preview_assets import merge_previews
 
     previews_src = _SCRIPT_DIST_DIR / "previews"
     logo_src = _SCRIPT_DIST_DIR / "PHAT.png"
@@ -371,20 +390,43 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
         result.warnings.append("RpfPatcher.exe missing; run runtools.ps1 first.")
         return
 
-    models = sorted(p.stem for p in previews_src.glob("*.png"))
-    if not models:
-        log.warning("No PNG files found in previews/")
-        return
-
-    log.info("Building preview textures for %d vehicles...", len(models))
+    # Dictionary assignment is generated from the complete sorted catalog.
+    # Never derive it from the set of successful captures: one missing image
+    # would shift every subsequent texture into the wrong dictionary.
+    models = sorted(v.model for v in VehicleDatabase.load(
+        _PROJECT_ROOT / "data" / "vehicles.toml"
+    ))
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         ytd_out = tmp_path / "ytd"
+        preview_inputs = tmp_path / "preview_inputs"
+
+        # The in-game F10 tool writes to scripts/previews. On a later install,
+        # those captures override the bundled images automatically.
+        merged = merge_previews(
+            [previews_src, gta_path / SCRIPTS_DIR / "previews"],
+            preview_inputs,
+            models,
+        )
+        if merged.copied == 0:
+            log.warning("No valid PNG preview files found")
+            result.warnings.append("No valid vehicle previews were found.")
+            return
+        if merged.rejected:
+            result.warnings.append(
+                f"Ignored {len(merged.rejected)} invalid preview capture(s)."
+            )
+        if merged.missing:
+            result.warnings.append(
+                f"{len(merged.missing)} vehicle preview(s) missing; placeholders will be used."
+            )
+        log.info("Building preview textures for %d/%d vehicles...",
+                 merged.copied, len(models))
 
         # Step 1: Build .ytd files from PNGs
         ytd_files = ytd_builder.build_ytd_files(
-            previews_src,
+            preview_inputs,
             logo_src if logo_src.exists() else None,
             ytd_out, _TOOLS_DIR, models,
         )

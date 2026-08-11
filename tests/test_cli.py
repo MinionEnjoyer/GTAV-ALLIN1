@@ -1,6 +1,7 @@
 """Command-level tests for every public CLI operation."""
 
 from pathlib import Path
+import struct
 from unittest.mock import Mock
 
 from click.testing import CliRunner
@@ -97,3 +98,68 @@ def test_uninstall_command_lists_removed_files(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert str(removed) in result.output
     assert "Uninstall complete" in result.output
+
+
+def test_install_command_reports_all_missing_prerequisites(tmp_path, monkeypatch):
+    _project(tmp_path, monkeypatch)
+    result = InstallResult(tmp_path / "game", warnings=["preview warning"])
+    monkeypatch.setattr(cli, "install", Mock(return_value=result))
+    output = CliRunner().invoke(cli.main, ["install"]).output
+    assert "preview warning" in output
+    assert "ALLIN1.dll not found" in output
+    assert "ScriptHookV not found" in output
+    assert "ScriptHookVDotNet not found" in output
+    assert "OpenIV.asi not found" in output
+
+
+def test_status_reports_filters_and_import_previews(tmp_path, monkeypatch):
+    _project(tmp_path, monkeypatch)
+    config = Config.default()
+    config.traffic.enabled = False
+    config.vehicles.disabled_classes = ["boats"]
+    config.vehicles.disabled_vehicles = ["alpha"]
+    config.save(tmp_path / "config.toml")
+    status = CliRunner().invoke(cli.main, ["--config", str(tmp_path / "config.toml"), "status"])
+    assert "Traffic: disabled" in status.output
+    assert "Disabled classes: boats" in status.output
+    assert "Disabled vehicles: 1" in status.output
+
+    source = tmp_path / "captures"
+    source.mkdir()
+    (source / "alpha.png").write_bytes(
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR" + struct.pack(">II", 10, 10)
+    )
+    imported = CliRunner().invoke(cli.main, ["import-previews", str(source)])
+    assert imported.exit_code == 0
+    assert "Imported 1" in imported.output
+
+
+def test_verify_preview_artifacts_success_and_failure(tmp_path, monkeypatch):
+    _project(tmp_path, monkeypatch)
+    built = tmp_path / "ytd"
+    built.mkdir()
+    failed = CliRunner().invoke(cli.main, ["verify-preview-artifacts", str(built)])
+    assert failed.exit_code == 1 and "Missing" in failed.output
+    (built / "allin1_prev_01.ytd").write_bytes(b"ytd")
+    passed = CliRunner().invoke(cli.main, ["verify-preview-artifacts", str(built)])
+    assert passed.exit_code == 0 and "Verified 1" in passed.output
+
+
+def test_analyze_client_log_command_writes_failure_report(tmp_path, monkeypatch):
+    _project(tmp_path, monkeypatch)
+    log = tmp_path / "client.log"
+    log.write_text('{"component":"VehicleHelper","message":"vehicle_created"}\n')
+    report = tmp_path / "report.json"
+    result = CliRunner().invoke(cli.main, [
+        "analyze-client-log", str(log), "--edition", "legacy", "--output", str(report)
+    ])
+    assert result.exit_code == 1 and "FAIL" in result.output
+    assert report.exists()
+
+
+def test_diagnostics_command(tmp_path, monkeypatch):
+    _project(tmp_path, monkeypatch)
+    output = tmp_path / "diagnostics.zip"
+    result = CliRunner().invoke(cli.main, ["diagnostics", "-o", str(output)])
+    assert result.exit_code == 0
+    assert output.exists() and "Diagnostic bundle created" in result.output

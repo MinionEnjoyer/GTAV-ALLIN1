@@ -93,12 +93,20 @@ def build_ytd_files(
         png_dir.mkdir(parents=True, exist_ok=True)
 
         try:
+            copied = 0
             for model in chunk:
                 png = previews_dir / f"{model}.png"
                 if not png.exists():
                     log.warning("Missing preview: %s", png)
                     continue
                 shutil.copy2(png, png_dir / f"{model}.png")
+                copied += 1
+
+            # Keep dictionary numbering tied to the complete vehicle catalog,
+            # but do not ask YTDToolio to pack an empty directory.
+            if copied == 0:
+                log.warning("Skipping empty texture dictionary %s", dict_name)
+                continue
 
             ytd_path = output_dir / f"{dict_name}.ytd"
             _pack_ytd(png_dir, ytd_path, ytdtool)

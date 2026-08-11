@@ -22,18 +22,18 @@ namespace ALLIN1
     public class TrafficSpawner : Script
     {
         // --- Driven spawner config ---
-        private const int MAX_DRIVEN = 20;
-        private const float SPAWN_DIST_MIN = 80f;
-        private const float SPAWN_DIST_MAX = 200f;
-        private const float CLEANUP_DIST = 350f;
-        private const int DRIVEN_COOLDOWN_MS = 5000;
+        private int _maxDriven = 20;
+        private float _spawnDistMin = 80f;
+        private float _spawnDistMax = 200f;
+        private float _cleanupDist = 350f;
+        private int _drivenCooldownMs = 5000;
         private const int MODEL_LOAD_TIMEOUT = 5000;
 
         // --- Replacement scanner config ---
-        private const int SCAN_COOLDOWN_MS = 3000;
-        private const float SCAN_RADIUS = 200f;
-        private const float MIN_REPLACE_DIST = 50f;
-        private const float REPLACE_CHANCE = 0.30f;
+        private int _scanCooldownMs = 3000;
+        private float _scanRadius = 200f;
+        private float _minReplaceDist = 50f;
+        private float _replaceChance = 0.30f;
 
         // Road-appropriate vehicle classes used for driven spawns.
         private static readonly string[][] ROAD_CLASSES =
@@ -81,17 +81,56 @@ namespace ALLIN1
         private readonly Random _rng = new Random();
         private int _lastDrivenTime;
         private int _lastScanTime;
+        private int _lastCleanupTime;
         private bool _initialized;
+        private bool _enabled = true;
 
         // Toggled via config: shows per-spawn debug notifications
         internal static bool ShowSpawnMessages;
 
         public TrafficSpawner()
         {
+            LoadSettings();
             Tick += OnTick;
-            Interval = 0;
+            // Traffic work is proximity/cooldown based and does not need to run
+            // at rendering frequency. This substantially reduces idle CPU use.
+            Interval = 100;
 
             Function.Call(Hash.DECOR_REGISTER, "MPBitset", 3);
+        }
+
+        private void LoadSettings()
+        {
+            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ALLIN1.toml");
+            if (!File.Exists(path)) return;
+            try
+            {
+                string section = "";
+                foreach (string raw in File.ReadAllLines(path))
+                {
+                    string line = raw.Trim();
+                    if (line.StartsWith("[") && line.EndsWith("]"))
+                    { section = line.Substring(1, line.Length - 2).ToLowerInvariant(); continue; }
+                    if (section != "traffic" || line.StartsWith("#")) continue;
+                    int eq = line.IndexOf('='); if (eq < 1) continue;
+                    string key = line.Substring(0, eq).Trim().ToLowerInvariant();
+                    string value = line.Substring(eq + 1).Trim();
+                    if (key == "enabled") _enabled = value.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    else if (key == "max_driven" && int.TryParse(value, out int md)) _maxDriven = Math.Max(0, Math.Min(100, md));
+                    else if (key == "spawn_distance_min" && float.TryParse(value, out float smin)) _spawnDistMin = smin;
+                    else if (key == "spawn_distance_max" && float.TryParse(value, out float smax)) _spawnDistMax = smax;
+                    else if (key == "cleanup_distance" && float.TryParse(value, out float clean)) _cleanupDist = clean;
+                    else if (key == "driven_cooldown_ms" && int.TryParse(value, out int dc)) _drivenCooldownMs = dc;
+                    else if (key == "scan_cooldown_ms" && int.TryParse(value, out int sc)) _scanCooldownMs = sc;
+                    else if (key == "scan_radius" && float.TryParse(value, out float sr)) _scanRadius = sr;
+                    else if (key == "minimum_replace_distance" && float.TryParse(value, out float mr)) _minReplaceDist = mr;
+                    else if (key == "replacement_chance" && float.TryParse(value, out float rc)) _replaceChance = rc;
+                }
+                ClientLog.Info("Traffic", "settings_loaded", new Dictionary<string, object> {
+                    { "max_driven", _maxDriven }, { "replacement_chance", _replaceChance }
+                });
+            }
+            catch (Exception ex) { ClientLog.Error("Traffic", "settings_load_failed", ex); }
         }
 
         // ------------------------------------------------------------------ //
@@ -100,12 +139,7 @@ namespace ALLIN1
 
         private void Log(string msg)
         {
-            try
-            {
-                File.AppendAllText(LOG_PATH,
-                    $"[{DateTime.Now:HH:mm:ss}] {msg}{Environment.NewLine}");
-            }
-            catch { }
+            ClientLog.Info("Traffic", msg);
         }
 
         // ------------------------------------------------------------------ //
@@ -114,6 +148,7 @@ namespace ALLIN1
 
         private void OnTick(object sender, EventArgs e)
         {
+            if (!_enabled) return;
             if (Game.IsLoading)
                 return;
 
@@ -126,20 +161,23 @@ namespace ALLIN1
             if (_validModels.Count == 0)
                 return;
 
-            Cleanup();
-
             int now = Game.GameTime;
+            if (now - _lastCleanupTime >= 1000)
+            {
+                Cleanup();
+                _lastCleanupTime = now;
+            }
 
             // Driven spawner
-            if (now - _lastDrivenTime >= DRIVEN_COOLDOWN_MS
-                && _spawned.Count < MAX_DRIVEN)
+            if (now - _lastDrivenTime >= _drivenCooldownMs
+                && _spawned.Count < _maxDriven)
             {
                 if (SpawnDriven())
                     _lastDrivenTime = now;
             }
 
             // Replacement scanner
-            if (now - _lastScanTime >= SCAN_COOLDOWN_MS)
+            if (now - _lastScanTime >= _scanCooldownMs)
             {
                 ScanAndReplace();
                 _lastScanTime = now;
@@ -220,7 +258,7 @@ namespace ALLIN1
         {
             Vector3 playerPos = Game.Player.Character.Position;
 
-            if (!FindRoadNode(playerPos, SPAWN_DIST_MIN, SPAWN_DIST_MAX,
+            if (!FindRoadNode(playerPos, _spawnDistMin, _spawnDistMax,
                               out Vector3 nodePos, out float heading))
                 return false;
 
@@ -389,7 +427,7 @@ namespace ALLIN1
             Vehicle[] nearby;
             try
             {
-                nearby = World.GetNearbyVehicles(player, SCAN_RADIUS);
+                nearby = World.GetNearbyVehicles(player, _scanRadius);
             }
             catch
             {
@@ -409,7 +447,7 @@ namespace ALLIN1
                     continue;
 
                 // 30 % replacement chance
-                if (_rng.NextDouble() > REPLACE_CHANCE)
+                if (_rng.NextDouble() > _replaceChance)
                 {
                     // Mark as seen even when skipped so we don't re-roll
                     // the same vehicle every scan.
@@ -470,7 +508,7 @@ namespace ALLIN1
 
             // Too close — prevents pop-in even if off-screen check fails
             float dist = veh.Position.DistanceTo(playerPos);
-            if (dist < MIN_REPLACE_DIST)
+            if (dist < _minReplaceDist)
                 return false;
 
             // Must be off-screen to prevent visible pop-in
@@ -712,7 +750,7 @@ namespace ALLIN1
                 Vehicle v = _spawned[i];
 
                 if (v == null || !v.Exists()
-                    || v.Position.DistanceTo(playerPos) > CLEANUP_DIST)
+                    || v.Position.DistanceTo(playerPos) > _cleanupDist)
                 {
                     _spawned.RemoveAt(i);
                 }

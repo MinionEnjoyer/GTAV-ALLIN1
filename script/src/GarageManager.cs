@@ -134,9 +134,12 @@ namespace ALLIN1
 
         // Player state
         private static bool _isPlayerInGarage;
+        private static bool _transitionInProgress;
 
         private static Blip _entranceBlip;
         private static Blip _pedEntranceBlip;
+        private static BlipColor _lastBlipColor;
+        private static bool _hasBlipColor;
 
         // Cooldown to avoid re-entering immediately after exiting
         private static int _exitCooldownFrames;
@@ -156,23 +159,12 @@ namespace ALLIN1
         {
             if (!_enableLogging)
                 return;
-            try
-            {
-                File.AppendAllText(LOG_PATH,
-                    $"[{DateTime.Now:HH:mm:ss}] [Garage] {msg}{Environment.NewLine}");
-            }
-            catch { }
+            ClientLog.Info("Garage", msg);
         }
 
         private static void LogException(string context, Exception ex)
         {
-            try
-            {
-                File.AppendAllText(LOG_PATH,
-                    $"[{DateTime.Now:HH:mm:ss}] [Garage] EXCEPTION in {context}: {ex.Message}{Environment.NewLine}" +
-                    $"  {ex.StackTrace}{Environment.NewLine}");
-            }
-            catch { }
+            ClientLog.Error("Garage", context, ex);
         }
 
         // ------------------------------------------------------------------ //
@@ -233,6 +225,7 @@ namespace ALLIN1
         }
 
         internal static bool IsPlayerInGarage => _isPlayerInGarage;
+        internal static bool IsTransitionInProgress => _transitionInProgress;
 
         /// <summary>
         /// Called every frame from GbayShop.OnTick. Handles entrance/exit
@@ -241,6 +234,9 @@ namespace ALLIN1
         internal static void OnTick()
         {
             if (!_initialized)
+                return;
+
+            if (_transitionInProgress)
                 return;
 
             // Don't show garage markers while in floor garage
@@ -259,10 +255,15 @@ namespace ALLIN1
 
             // Update blip colors to match current character
             BlipColor charColor = CharacterBlipColor();
-            if (_entranceBlip != null && _entranceBlip.Exists())
-                _entranceBlip.Color = charColor;
-            if (_pedEntranceBlip != null && _pedEntranceBlip.Exists())
-                _pedEntranceBlip.Color = charColor;
+            if (!_hasBlipColor || charColor != _lastBlipColor)
+            {
+                if (_entranceBlip != null && _entranceBlip.Exists())
+                    _entranceBlip.Color = charColor;
+                if (_pedEntranceBlip != null && _pedEntranceBlip.Exists())
+                    _pedEntranceBlip.Color = charColor;
+                _lastBlipColor = charColor;
+                _hasBlipColor = true;
+            }
 
             if (!_isPlayerInGarage)
             {
@@ -535,10 +536,100 @@ namespace ALLIN1
         //  Garage Enter / Leave                                               //
         // ------------------------------------------------------------------ //
 
+        private static bool BeginTransition(string name)
+        {
+            if (_transitionInProgress)
+            {
+                Log($"{name}: ignored because another garage transition is active");
+                return false;
+            }
+            _transitionInProgress = true;
+            Log($"{name}: transition lock acquired");
+            return true;
+        }
+
+        private static void RecoverTransition(string name, Vector3 fallback, float heading)
+        {
+            try
+            {
+                Ped player = Game.Player.Character;
+                if (player != null && player.Exists())
+                {
+                    Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, player);
+                    Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
+                    player.IsPositionFrozen = false;
+                    Function.Call(Hash.SET_ENTITY_COORDS, player,
+                        fallback.X, fallback.Y, fallback.Z,
+                        false, false, false, true);
+                    Function.Call(Hash.SET_ENTITY_HEADING, player, heading);
+                }
+            }
+            catch (Exception recoveryEx)
+            {
+                LogException($"{name}.Recovery", recoveryEx);
+            }
+            finally
+            {
+                _isPlayerInGarage = false;
+                _isPlayerInFloorGarage = false;
+                _elevatorMenuActive = false;
+                _exitCooldownFrames = 120;
+                _floorGarageExitCooldownFrames = 120;
+                try
+                {
+                    Function.Call(Hash.DO_SCREEN_FADE_IN, 0);
+                }
+                catch (Exception fadeEx)
+                {
+                    LogException($"{name}.RecoveryFade", fadeEx);
+                }
+            }
+        }
+
+        private static void EndTransition(string name)
+        {
+            try
+            {
+                Ped player = Game.Player.Character;
+                if (player != null && player.Exists())
+                {
+                    Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
+                    player.IsPositionFrozen = false;
+                }
+                Function.Call(Hash.DO_SCREEN_FADE_IN, 250);
+            }
+            catch (Exception ex)
+            {
+                LogException($"{name}.End", ex);
+            }
+            _transitionInProgress = false;
+            Log($"{name}: transition lock released");
+        }
+
         private static void EnterGarage()
+        {
+            if (!BeginTransition("EnterGarage")) return;
+            try
+            {
+                using (ClientLog.Time("Garage", "enter_garage")) EnterGarageCore();
+            }
+            catch (Exception ex)
+            {
+                LogException("EnterGarage", ex);
+                RecoverTransition("EnterGarage", PED_EXIT_DEST, PED_EXIT_DEST_HEADING);
+                GTA.UI.Screen.ShowSubtitle("~r~Garage entry failed safely. See ALLIN1_gbay.log.", 4000);
+            }
+            finally
+            {
+                EndTransition("EnterGarage");
+            }
+        }
+
+        private static void EnterGarageCore()
         {
             Log("EnterGarage: START");
             Ped player = Game.Player.Character;
+            Vehicle rideInToDelete = null;
 
             // If player is in a vehicle, store it in the garage (if space),
             // then pull them out and delete the outside instance.
@@ -620,7 +711,7 @@ namespace ALLIN1
                     // Delete the outside vehicle (teleporting the player
                     // out via SET_ENTITY_COORDS below handles extraction)
                     rideIn.IsPersistent = true;
-                    rideIn.Delete();
+                    rideInToDelete = rideIn;
                 }
             }
 
@@ -648,6 +739,11 @@ namespace ALLIN1
             Function.Call(Hash.SET_ENTITY_HEADING, player, PED_EXIT_HEADING);
             Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, player);
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, true);
+            if (rideInToDelete != null && rideInToDelete.Exists())
+            {
+                rideInToDelete.Delete();
+                Log("EnterGarage: deleted drive-in vehicle after player extraction");
+            }
             Log("EnterGarage: teleported, spawning vehicles");
 
             // Pre-load all vehicle models before spawning
@@ -734,6 +830,25 @@ namespace ALLIN1
         }
 
         private static void LeaveGarage()
+        {
+            if (!BeginTransition("LeaveGarage")) return;
+            try
+            {
+                using (ClientLog.Time("Garage", "leave_garage")) LeaveGarageCore();
+            }
+            catch (Exception ex)
+            {
+                LogException("LeaveGarage", ex);
+                RecoverTransition("LeaveGarage", PED_EXIT_DEST, PED_EXIT_DEST_HEADING);
+                GTA.UI.Screen.ShowSubtitle("~r~Garage exit recovered safely. See ALLIN1_gbay.log.", 4000);
+            }
+            finally
+            {
+                EndTransition("LeaveGarage");
+            }
+        }
+
+        private static void LeaveGarageCore()
         {
             Log("LeaveGarage: START");
             // Save all vehicle states before leaving
@@ -962,18 +1077,42 @@ namespace ALLIN1
 
         private static void Load()
         {
-            if (!File.Exists(SAVE_PATH))
+            string loadPath = File.Exists(SAVE_PATH) ? SAVE_PATH : SAVE_PATH + ".bak";
+            if (!File.Exists(loadPath))
                 return;
 
             try
             {
-                string json = File.ReadAllText(SAVE_PATH);
+                string json = File.ReadAllText(loadPath);
+                if (!IsCompleteJson(json))
+                    throw new InvalidDataException($"Incomplete garage save: {loadPath}");
                 ParseJson(json);
                 MigrateModelNames();
+                if (loadPath.EndsWith(".bak", StringComparison.OrdinalIgnoreCase))
+                {
+                    Log("Load: recovered garage state from backup");
+                    Save();
+                }
             }
             catch (Exception ex)
             {
                 LogException("Load", ex);
+                string backup = SAVE_PATH + ".bak";
+                if (loadPath == SAVE_PATH && File.Exists(backup))
+                {
+                    try
+                    {
+                        string json = File.ReadAllText(backup);
+                        if (!IsCompleteJson(json))
+                            throw new InvalidDataException("Incomplete garage backup");
+                        ParseJson(json);
+                        Log("Load: primary save failed; recovered from backup");
+                    }
+                    catch (Exception backupEx)
+                    {
+                        LogException("Load.Backup", backupEx);
+                    }
+                }
             }
         }
 
@@ -1026,11 +1165,7 @@ namespace ALLIN1
             try
             {
                 string json = BuildJson();
-                string tmp = SAVE_PATH + ".tmp";
-                File.WriteAllText(tmp, json);
-                if (File.Exists(SAVE_PATH))
-                    File.Delete(SAVE_PATH);
-                File.Move(tmp, SAVE_PATH);
+                AtomicWriteText(SAVE_PATH, json);
             }
             catch (Exception ex)
             {
@@ -1038,10 +1173,50 @@ namespace ALLIN1
             }
         }
 
+        private static bool IsCompleteJson(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return false;
+            string trimmed = json.Trim();
+            return trimmed.StartsWith("{") && trimmed.EndsWith("}");
+        }
+
+        private static void AtomicWriteText(string path, string content)
+        {
+            string tmp = path + ".tmp";
+            string backup = path + ".bak";
+            File.WriteAllText(tmp, content);
+
+            if (File.Exists(path))
+            {
+                try
+                {
+                    File.Replace(tmp, path, backup, true);
+                    return;
+                }
+                catch (PlatformNotSupportedException)
+                {
+                    // Fall through to the portable rename sequence.
+                }
+                catch (IOException)
+                {
+                    // Some filesystems do not support replacement semantics.
+                    // Fall through to the portable backup/rename sequence.
+                }
+            }
+
+            if (File.Exists(path))
+            {
+                File.Copy(path, backup, true);
+                File.Delete(path);
+            }
+            File.Move(tmp, path);
+        }
+
         private static string BuildJson()
         {
             var sb = new StringBuilder();
             sb.AppendLine("{");
+            sb.AppendLine("  \"_schema_v2\": [],");
 
             string[] keys = { KEY_MICHAEL, KEY_FRANKLIN, KEY_TREVOR };
             for (int k = 0; k < keys.Length; k++)
@@ -1765,6 +1940,8 @@ namespace ALLIN1
         private static Blip _floorGarageEntranceBlip;
         private static Blip _floorGaragePedBlip;
         private static bool _floorGarageInitialized;
+        private static BlipColor _lastFloorBlipColor;
+        private static bool _hasFloorBlipColor;
 
         // ------------------------------------------------------------------ //
         //  Floor Garage Public API                                                  //
@@ -1992,6 +2169,7 @@ namespace ALLIN1
         internal static void OnFloorGarageTick()
         {
             if (!_floorGarageInitialized) return;
+            if (_transitionInProgress) return;
 
             if (_floorGarageExitCooldownFrames > 0)
             {
@@ -2006,10 +2184,15 @@ namespace ALLIN1
             if (_isPlayerInGarage) return;
 
             BlipColor charColor = CharacterBlipColor();
-            if (_floorGarageEntranceBlip != null && _floorGarageEntranceBlip.Exists())
-                _floorGarageEntranceBlip.Color = charColor;
-            if (_floorGaragePedBlip != null && _floorGaragePedBlip.Exists())
-                _floorGaragePedBlip.Color = charColor;
+            if (!_hasFloorBlipColor || charColor != _lastFloorBlipColor)
+            {
+                if (_floorGarageEntranceBlip != null && _floorGarageEntranceBlip.Exists())
+                    _floorGarageEntranceBlip.Color = charColor;
+                if (_floorGaragePedBlip != null && _floorGaragePedBlip.Exists())
+                    _floorGaragePedBlip.Color = charColor;
+                _lastFloorBlipColor = charColor;
+                _hasFloorBlipColor = true;
+            }
 
             if (!_isPlayerInFloorGarage)
             {
@@ -2217,8 +2400,29 @@ namespace ALLIN1
 
         private static void EnterFloorGarage()
         {
+            if (!BeginTransition("EnterFloorGarage")) return;
+            try
+            {
+                using (ClientLog.Time("Garage", "enter_floor_garage")) EnterFloorGarageCore();
+            }
+            catch (Exception ex)
+            {
+                LogException("EnterFloorGarage", ex);
+                RecoverTransition("EnterFloorGarage", FLOOR_GARAGE_PED_EXIT_DEST,
+                    FLOOR_GARAGE_PED_EXIT_DEST_HEADING);
+                GTA.UI.Screen.ShowSubtitle("~r~Floor garage entry failed safely. See ALLIN1_gbay.log.", 4000);
+            }
+            finally
+            {
+                EndTransition("EnterFloorGarage");
+            }
+        }
+
+        private static void EnterFloorGarageCore()
+        {
             Log("EnterFloorGarage: START");
             Ped player = Game.Player.Character;
+            Vehicle rideInToDelete = null;
 
             // Drive-in: store the vehicle
             if (player.IsInVehicle())
@@ -2281,7 +2485,7 @@ namespace ALLIN1
                     Log($"EnterFloorGarage: stored drive-in vehicle {modelName} -> slot {slotIndex} (floor {floor})");
 
                     rideIn.IsPersistent = true;
-                    rideIn.Delete();
+                    rideInToDelete = rideIn;
                 }
             }
 
@@ -2315,6 +2519,11 @@ namespace ALLIN1
             Function.Call(Hash.SET_ENTITY_HEADING, player, FLOOR_GARAGE_INTERIOR_PED_HEADING);
             Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, player);
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, true);
+            if (rideInToDelete != null && rideInToDelete.Exists())
+            {
+                rideInToDelete.Delete();
+                Log("EnterFloorGarage: deleted drive-in vehicle after player extraction");
+            }
             Log("EnterFloorGarage: teleported, spawning vehicles");
 
             // Spawn vehicles for the current floor only
@@ -2332,6 +2541,26 @@ namespace ALLIN1
         }
 
         private static void LeaveFloorGarage()
+        {
+            if (!BeginTransition("LeaveFloorGarage")) return;
+            try
+            {
+                using (ClientLog.Time("Garage", "leave_floor_garage")) LeaveFloorGarageCore();
+            }
+            catch (Exception ex)
+            {
+                LogException("LeaveFloorGarage", ex);
+                RecoverTransition("LeaveFloorGarage", FLOOR_GARAGE_PED_EXIT_DEST,
+                    FLOOR_GARAGE_PED_EXIT_DEST_HEADING);
+                GTA.UI.Screen.ShowSubtitle("~r~Floor garage exit recovered safely. See ALLIN1_gbay.log.", 4000);
+            }
+            finally
+            {
+                EndTransition("LeaveFloorGarage");
+            }
+        }
+
+        private static void LeaveFloorGarageCore()
         {
             Log("LeaveFloorGarage: START");
             FloorGarageUpdateStoredFromLive();
@@ -2651,16 +2880,41 @@ namespace ALLIN1
 
         private static void FloorGarageLoad()
         {
-            if (!File.Exists(FLOOR_GARAGE_SAVE_PATH))
+            string loadPath = File.Exists(FLOOR_GARAGE_SAVE_PATH)
+                ? FLOOR_GARAGE_SAVE_PATH : FLOOR_GARAGE_SAVE_PATH + ".bak";
+            if (!File.Exists(loadPath))
                 return;
             try
             {
-                string json = File.ReadAllText(FLOOR_GARAGE_SAVE_PATH);
+                string json = File.ReadAllText(loadPath);
+                if (!IsCompleteJson(json))
+                    throw new InvalidDataException($"Incomplete floor garage save: {loadPath}");
                 FloorGarageParseJson(json);
+                if (loadPath.EndsWith(".bak", StringComparison.OrdinalIgnoreCase))
+                {
+                    Log("FloorGarageLoad: recovered from backup");
+                    FloorGarageSave();
+                }
             }
             catch (Exception ex)
             {
                 LogException("FloorGarageLoad", ex);
+                string backup = FLOOR_GARAGE_SAVE_PATH + ".bak";
+                if (loadPath == FLOOR_GARAGE_SAVE_PATH && File.Exists(backup))
+                {
+                    try
+                    {
+                        string json = File.ReadAllText(backup);
+                        if (!IsCompleteJson(json))
+                            throw new InvalidDataException("Incomplete floor garage backup");
+                        FloorGarageParseJson(json);
+                        Log("FloorGarageLoad: primary save failed; recovered from backup");
+                    }
+                    catch (Exception backupEx)
+                    {
+                        LogException("FloorGarageLoad.Backup", backupEx);
+                    }
+                }
             }
         }
 
@@ -2669,11 +2923,7 @@ namespace ALLIN1
             try
             {
                 string json = FloorGarageBuildJson();
-                string tmp = FLOOR_GARAGE_SAVE_PATH + ".tmp";
-                File.WriteAllText(tmp, json);
-                if (File.Exists(FLOOR_GARAGE_SAVE_PATH))
-                    File.Delete(FLOOR_GARAGE_SAVE_PATH);
-                File.Move(tmp, FLOOR_GARAGE_SAVE_PATH);
+                AtomicWriteText(FLOOR_GARAGE_SAVE_PATH, json);
             }
             catch (Exception ex)
             {
@@ -2753,11 +3003,7 @@ namespace ALLIN1
                 }
                 sb.AppendLine("}");
 
-                string tmp = FLOOR_GARAGE_THEMES_PATH + ".tmp";
-                File.WriteAllText(tmp, sb.ToString());
-                if (File.Exists(FLOOR_GARAGE_THEMES_PATH))
-                    File.Delete(FLOOR_GARAGE_THEMES_PATH);
-                File.Move(tmp, FLOOR_GARAGE_THEMES_PATH);
+                AtomicWriteText(FLOOR_GARAGE_THEMES_PATH, sb.ToString());
             }
             catch (Exception ex)
             {
@@ -2769,6 +3015,7 @@ namespace ALLIN1
         {
             var sb = new StringBuilder();
             sb.AppendLine("{");
+            sb.AppendLine("  \"_schema_v2\": [],");
 
             string[] keys = { KEY_MICHAEL_FG, KEY_FRANKLIN_FG, KEY_TREVOR_FG };
             for (int k = 0; k < keys.Length; k++)

@@ -26,6 +26,15 @@ class GeneralConfig:
 class TrafficConfig:
     enabled: bool = True
     rich_areas_only_supers: bool = True
+    max_driven: int = 20
+    spawn_distance_min: float = 80.0
+    spawn_distance_max: float = 200.0
+    cleanup_distance: float = 350.0
+    driven_cooldown_ms: int = 5000
+    scan_cooldown_ms: int = 3000
+    scan_radius: float = 200.0
+    minimum_replace_distance: float = 50.0
+    replacement_chance: float = 0.30
 
 
 @dataclass
@@ -39,6 +48,10 @@ class VehiclesConfig:
 class ScriptConfig:
     enable_logging: bool = False
     enable_dlc_police: bool = False
+    gbay_key: str = "F9"
+    night_vision_key: str = "N"
+    preview_capture_key: str = "F10"
+    seat_selector_enabled: bool = True
 
 
 @dataclass
@@ -80,6 +93,7 @@ class Config:
 
     def save(self, path: Path) -> None:
         """Write the configuration as TOML without requiring a TOML writer."""
+        self.validate()
         def quote(value: str) -> str:
             escaped = value.replace("\\", "\\\\").replace('"', '\\"')
             return f'"{escaped}"'
@@ -98,7 +112,16 @@ class Config:
             "[traffic]\n"
             f"enabled = {boolean(self.traffic.enabled)}\n"
             "rich_areas_only_supers = "
-            f"{boolean(self.traffic.rich_areas_only_supers)}\n\n"
+            f"{boolean(self.traffic.rich_areas_only_supers)}\n"
+            f"max_driven = {self.traffic.max_driven}\n"
+            f"spawn_distance_min = {self.traffic.spawn_distance_min}\n"
+            f"spawn_distance_max = {self.traffic.spawn_distance_max}\n"
+            f"cleanup_distance = {self.traffic.cleanup_distance}\n"
+            f"driven_cooldown_ms = {self.traffic.driven_cooldown_ms}\n"
+            f"scan_cooldown_ms = {self.traffic.scan_cooldown_ms}\n"
+            f"scan_radius = {self.traffic.scan_radius}\n"
+            f"minimum_replace_distance = {self.traffic.minimum_replace_distance}\n"
+            f"replacement_chance = {self.traffic.replacement_chance}\n\n"
             "[vehicles]\n"
             f"enable_all = {boolean(self.vehicles.enable_all)}\n"
             f"disabled_classes = {string_list(self.vehicles.disabled_classes)}\n"
@@ -106,9 +129,47 @@ class Config:
             "[script]\n"
             f"enable_logging = {boolean(self.script.enable_logging)}\n"
             f"enable_dlc_police = {boolean(self.script.enable_dlc_police)}\n"
+            f"gbay_key = {quote(self.script.gbay_key)}\n"
+            f"night_vision_key = {quote(self.script.night_vision_key)}\n"
+            f"preview_capture_key = {quote(self.script.preview_capture_key)}\n"
+            f"seat_selector_enabled = {boolean(self.script.seat_selector_enabled)}\n"
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
+
+    def validate(self) -> None:
+        """Reject invalid or conflicting launcher-controlled key bindings."""
+        keys = {
+            "gbay_key": self.script.gbay_key,
+            "night_vision_key": self.script.night_vision_key,
+            "preview_capture_key": self.script.preview_capture_key,
+        }
+        allowed = ({f"F{i}" for i in range(1, 13)} |
+                   {chr(i) for i in range(ord("A"), ord("Z") + 1)} |
+                   {f"NUMPAD{i}" for i in range(10)})
+        normalized: dict[str, str] = {}
+        for setting, value in keys.items():
+            key = value.strip().upper()
+            if key not in allowed:
+                raise ValueError(f"Unsupported {setting}: {value!r}")
+            if key in normalized:
+                raise ValueError(
+                    f"Key {key} is assigned to both {normalized[key]} and {setting}"
+                )
+            normalized[key] = setting
+        traffic = self.traffic
+        if not 0 <= traffic.max_driven <= 100:
+            raise ValueError("traffic.max_driven must be between 0 and 100")
+        if traffic.spawn_distance_min < 20 or traffic.spawn_distance_max <= traffic.spawn_distance_min:
+            raise ValueError("traffic spawn distances must be ordered and at least 20 metres")
+        if traffic.cleanup_distance <= traffic.spawn_distance_max:
+            raise ValueError("traffic.cleanup_distance must exceed spawn_distance_max")
+        if not 0 <= traffic.replacement_chance <= 1:
+            raise ValueError("traffic.replacement_chance must be between 0 and 1")
+        if min(traffic.driven_cooldown_ms, traffic.scan_cooldown_ms) < 250:
+            raise ValueError("traffic cooldowns must be at least 250 ms")
+        if traffic.scan_radius <= traffic.minimum_replace_distance:
+            raise ValueError("traffic.scan_radius must exceed minimum_replace_distance")
 
 
 def load_prices(path: Path) -> dict[str, int]:

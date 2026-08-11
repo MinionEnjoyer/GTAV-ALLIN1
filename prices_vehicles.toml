@@ -369,9 +369,11 @@ tug = 345000
 [helicopters]
 akula = 350000
 annihilator2 = 410000
+cargobob5 = 455000
 conada = 512000
 havok = 577500
 hunter = 661500
+maverick2 = 185000
 savage = 805000
 supervolito = 838000
 supervolito2 = 938000
@@ -384,6 +386,7 @@ alkonost = 281500
 alphaz1 = 298000
 avenger = 346000
 bombushka = 475000
+duster2 = 165000
 howard = 534000
 hydra = 628000
 luxor2 = 617000
@@ -397,6 +400,7 @@ rogue = 1049500
 seabreeze = 1120500
 starling = 1257500
 strikeforce = 1295500
+titan2 = 925000
 tula = 1414500
 velum2 = 1408000
 volatol = 1443500
@@ -448,6 +452,7 @@ speedo4 = 64500
 surfer3 = 70500
 youga2 = 87500
 youga3 = 95000
+youga5 = 112500
 
 [emergency]
 polbuffalo = 0
@@ -460,6 +465,11 @@ police5 = 0
 policeb2 = 0
 policet3 = 0
 polterminus = 0
+poldominator10 = 0
+poldorado = 0
+polgreenwood = 0
+polimpaler5 = 0
+polimpaler6 = 0
 riot2 = 0
 
 [cycles]
@@ -473,6 +483,7 @@ pizzaboy = 46000
 slamtruck = 55000
 towtruck4 = 71000
 wastelander = 81500
+vivanite2 = 94500
 
 [special]
 deluxo = 350000
@@ -486,3 +497,12 @@ toreador = 843500
 vigilante = 901500
 voltic2 = 950000
 
+[kortz_vehicles]
+veleno = 2995000
+caracara3 = 0
+merula = 1394000
+laufer = 1250000
+lrcgt = 3200000
+cartuccia = 2395000
+estride = 1425000
+polignus = 5835000

@@ -15,6 +15,7 @@ namespace ALLIN1
     internal enum BrowserState
     {
         Closed,
+        Loading,
         TopMenu,
         VehicleBrowser,
         VehiclePreview,
@@ -165,6 +166,10 @@ namespace ALLIN1
 
         private readonly GbayShop _shop;
         private BrowserState _state = BrowserState.Closed;
+        private BrowserState _lastDrawState = BrowserState.Closed;
+        private int _stateStartedAt;
+        private const int LOADING_DURATION_MS = 850;
+        private const int TRANSITION_DURATION_MS = 180;
 
         // Top menu
         private int _topMenuIndex;
@@ -243,7 +248,8 @@ namespace ALLIN1
         {
             if (_state == BrowserState.Closed)
             {
-                _state = BrowserState.TopMenu;
+                _state = BrowserState.Loading;
+                _stateStartedAt = Game.GameTime;
                 _topMenuIndex = 0;
                 GbayRenderer.EnsureTextures();
                 GbayRenderer.RequestDict("allin1_logo");
@@ -283,6 +289,15 @@ namespace ALLIN1
             var input = GbayInput.Poll();
             GbayInput.DisableGameControls();
 
+            if (_state != _lastDrawState)
+            {
+                _lastDrawState = _state;
+                _stateStartedAt = Game.GameTime;
+                ClientLog.Info("GBAY", "screen_transition", new Dictionary<string, object> {
+                    { "screen", _state.ToString() }
+                });
+            }
+
             // Preview and delivery states handle their own background
             if (_state != BrowserState.VehiclePreview &&
                 _state != BrowserState.DeliveryConfirm ||
@@ -293,6 +308,9 @@ namespace ALLIN1
 
             switch (_state)
             {
+                case BrowserState.Loading:
+                    DrawLoading();
+                    break;
                 case BrowserState.TopMenu:
                     DrawTopMenu(input);
                     break;
@@ -320,25 +338,30 @@ namespace ALLIN1
                     break;
             }
 
-            GbayRenderer.DrawCursor();
+            DrawTransition();
+            if (_state != BrowserState.Loading) GbayRenderer.DrawCursor();
+        }
 
-            // DEBUG: show texture dict loading status
-            if (_state == BrowserState.VehicleBrowser)
-            {
-                int loaded = 0;
-                string firstDict = null;
-                foreach (string d in _activeDicts)
-                {
-                    if (firstDict == null) firstDict = d;
-                    if (GbayRenderer.IsDictLoaded(d)) loaded++;
-                }
-                bool logoLoaded = GbayRenderer.IsDictLoaded("allin1_logo");
-                bool logoReq = GbayRenderer.IsDictRequested("allin1_logo");
-                bool firstReq = firstDict != null && GbayRenderer.IsDictRequested(firstDict);
-                GTA.UI.Screen.ShowSubtitle(
-                    $"~y~D:{loaded}/{_activeDicts.Count} logo:r={logoReq},l={logoLoaded} 1st={firstDict ?? "?"}:r={firstReq} PD={VehicleList.PreviewDict.Count}",
-                    100);
-            }
+        private void DrawLoading()
+        {
+            GbayRenderer.DrawRect(0.5f, 0.5f, 1f, 1f, Color.FromArgb(255, 15, 25, 20));
+            float pulse = 0.17f + 0.012f * (float)Math.Sin(Game.GameTime / 110.0);
+            GbayRenderer.DrawLogo(0.5f, 0.43f, pulse);
+            GbayRenderer.DrawText("LOADING GBAY", 0.5f, 0.57f, 0.42f,
+                GbayRenderer.TextWhite, GbayRenderer.FONT_CONDENSED, true);
+            float progress = Math.Min(1f, (Game.GameTime - _stateStartedAt) / (float)LOADING_DURATION_MS);
+            GbayRenderer.DrawRect(0.5f, 0.63f, 0.30f, 0.008f, Color.FromArgb(100, 255, 255, 255));
+            GbayRenderer.DrawRect(0.35f + 0.15f * progress, 0.63f, 0.30f * progress, 0.008f,
+                GbayRenderer.BtnGreen);
+            if (progress >= 1f) _state = BrowserState.TopMenu;
+        }
+
+        private void DrawTransition()
+        {
+            int elapsed = Game.GameTime - _stateStartedAt;
+            if (_state == BrowserState.Loading || elapsed >= TRANSITION_DURATION_MS) return;
+            int alpha = (int)(150f * (1f - elapsed / (float)TRANSITION_DURATION_MS));
+            GbayRenderer.DrawRect(0.5f, 0.5f, 1f, 1f, Color.FromArgb(Math.Max(0, alpha), 8, 20, 13));
         }
 
         // ------------------------------------------------------------------ //
@@ -1620,7 +1643,7 @@ namespace ALLIN1
                     ? WeaponList.CategoryNames[weaponName] : "";
 
                 // Check if player already owns this weapon
-                Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
+                Hash weaponHash = (Hash)CharacterInventory.GetWeaponHash(weaponName);
                 bool owned = Function.Call<bool>(
                     (Hash)0x8DECB02F88F428BC, player, weaponHash, false);  // HAS_PED_GOT_WEAPON
 
