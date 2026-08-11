@@ -95,3 +95,23 @@ def test_default_config():
     assert config.general.gta_path == "auto"
     assert config.traffic.enabled is True
     assert config.vehicles.enable_all is True
+
+
+def test_save_round_trip_preserves_all_fields(tmp_path):
+    config = Config.default()
+    config.general.gta_path = r'C:\Games\Grand "Theft" Auto V'
+    config.general.free_mode = True
+    config.general.backup = False
+    config.traffic.enabled = False
+    config.traffic.rich_areas_only_supers = False
+    config.vehicles.enable_all = False
+    config.vehicles.disabled_classes = ["military", "emergency"]
+    config.vehicles.disabled_vehicles = ["oppressor2"]
+    config.script.enable_logging = True
+    config.script.enable_dlc_police = True
+    path = tmp_path / "nested" / "config.toml"
+
+    config.save(path)
+    loaded = Config.load(path)
+
+    assert loaded == config

@@ -13,8 +13,6 @@
 
   <ItemGroup>
     <Compile Remove="tools\**" />
-    <Compile Include="tools\HeightChecker.cs" />
-    <Compile Include="tools\InteriorScout.cs" />
   </ItemGroup>
 
   <ItemGroup>

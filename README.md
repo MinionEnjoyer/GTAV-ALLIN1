@@ -4,6 +4,30 @@ ALLIN1 is a mod installer that ports Online content into SP mode for GTA V.
  - Requires ScriptHookV and ScriptHookDotNetEnhanced.
  - Drop the ScriptHook files into the directory with your GTA.exe and then run the ALLIN1 installer.  It will automatically detect your game directory and install.
 
+## Desktop manager
+
+Run `install.bat` once to create the virtual environment, then double-click
+`manager.bat`. You can also launch it from a terminal with:
+
+```bat
+.venv\Scripts\allin1-gui.exe
+```
+
+The manager detects the game edition and prerequisites, edits the common options,
+and provides Install/Repair and Uninstall actions with an activity log. Use ALLIN1
+only in Story Mode; the installer configures GTA V to launch without BattlEye.
+
+## Testing
+
+The automated harness covers Python units and commands, mocked game-file operations,
+Steam/platform detection, generator pipelines, data/catalog consistency, release
+artifact contracts, the C# script build, and the native ASI build.
+
+On Windows, run `powershell -ExecutionPolicy Bypass -File test-all.ps1`. On Linux or
+macOS, run `sh test-all.sh`. Native GTA behavior still requires the manual in-game
+smoke checklist in `tests/IN_GAME_CHECKLIST.md` because ScriptHook APIs need a running
+game process.
+
 ## Features
 
 - A traffic spawn sytstem to integrate DLC content around Los Santos.

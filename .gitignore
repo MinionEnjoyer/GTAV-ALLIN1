@@ -24,6 +24,8 @@ config.toml
 allin1.log
 .gta_path
 .gh_token
+.coverage
+htmlcov/
 
 # Build artifacts (keep dist/ folders tracked for pre-built binaries)
 asi/build/
