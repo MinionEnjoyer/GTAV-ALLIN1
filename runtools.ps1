@@ -84,12 +84,21 @@ if (Test-Path $YtdtoolDest) {
     if (-not (Test-Path $VsWhere)) {
         throw "vswhere.exe not found. Install Visual Studio 2022."
     }
-    $VsInstall = & $VsWhere -latest -property installationPath 2>$null
+    # Select the newest installation that actually contains the C++ workload.
+    # GitHub-hosted runners can expose multiple VS installations; selecting
+    # "latest" first previously chose one without C++ and launched the Visual
+    # Studio installer in CI, leaving this job stuck until its timeout.
+    $VsInstall = & $VsWhere -products * -latest -requires Microsoft.VisualStudio.Workload.NativeDesktop -property installationPath 2>$null
+    if (-not $VsInstall) {
+        $VsInstall = & $VsWhere -products * -latest -property installationPath 2>$null
+    }
     if (-not $VsInstall) { throw "No Visual Studio installation found." }
 
-    # Check if C++ desktop workload is installed
-    $HasCpp = & $VsWhere -latest -requires Microsoft.VisualStudio.Workload.NativeDesktop -property installationPath 2>$null
+    $HasCpp = & $VsWhere -products * -latest -requires Microsoft.VisualStudio.Workload.NativeDesktop -property installationPath 2>$null
     if (-not $HasCpp) {
+        if ($env:CI -eq "true") {
+            throw "Visual Studio C++ desktop workload is unavailable on this CI runner; refusing to modify the hosted runner."
+        }
         Write-Host "  C++ desktop workload not found. Installing..." -ForegroundColor Yellow
         $VsInstaller = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vs_installer.exe"
         if (-not (Test-Path $VsInstaller)) {

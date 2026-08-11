@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: build-allin1-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-script:
     runs-on: windows-latest
@@ -42,6 +46,10 @@ jobs:
             script/dist/LemonUI.SHVDN3.dll
 
       - name: Commit pre-built binaries
+        # Feature branches receive the artifact above. Committing generated
+        # binaries there caused another complete Tests workflow, including the
+        # expensive real Windows toolchain job.
+        if: github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
