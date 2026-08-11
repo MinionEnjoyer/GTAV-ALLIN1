@@ -1,0 +1,87 @@
+"""Testable application service used by the CLI and desktop UI."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable
+
+from allin1.config import Config
+from allin1.detector import detect_gta_path, validate_gta_path
+from allin1.installer import InstallResult, install, uninstall
+from allin1.vehicles.database import VehicleDatabase
+
+
+@dataclass(frozen=True)
+class InstallationStatus:
+    gta_path: Path | None
+    valid_game: bool
+    edition: str
+    mod_installed: bool
+    scripthookv_installed: bool
+    shvdn_installed: bool
+    openrpf_installed: bool
+
+
+class ModManager:
+    """Coordinates configuration and install operations for front ends."""
+
+    def __init__(
+        self,
+        project_root: Path,
+        *,
+        install_fn: Callable[[Config, VehicleDatabase], InstallResult] = install,
+        uninstall_fn: Callable[[Config], list[Path]] = uninstall,
+    ) -> None:
+        self.project_root = project_root
+        self.config_path = project_root / "config.toml"
+        self.database_path = project_root / "data" / "vehicles.toml"
+        self._install = install_fn
+        self._uninstall = uninstall_fn
+
+    def load_config(self) -> Config:
+        if self.config_path.exists():
+            return Config.load(self.config_path)
+        example = self.project_root / "config.example.toml"
+        return Config.load(example) if example.exists() else Config.default()
+
+    def save_config(self, config: Config) -> None:
+        config.save(self.config_path)
+
+    def resolve_path(self, config: Config) -> Path | None:
+        if config.general.gta_path != "auto":
+            try:
+                return validate_gta_path(config.general.gta_path)
+            except (FileNotFoundError, ValueError):
+                return Path(config.general.gta_path).expanduser()
+        return detect_gta_path()
+
+    def status(self, config: Config | None = None) -> InstallationStatus:
+        config = config or self.load_config()
+        gta_path = self.resolve_path(config)
+        if gta_path is None:
+            return InstallationStatus(None, False, "Unknown", False, False, False, False)
+
+        legacy_exe = gta_path / "GTA5.exe"
+        enhanced_exe = gta_path / "GTA5_Enhanced.exe"
+        valid = legacy_exe.exists() or enhanced_exe.exists()
+        edition = "Enhanced" if enhanced_exe.exists() else "Legacy" if legacy_exe.exists() else "Unknown"
+        scripts = gta_path / "scripts"
+        return InstallationStatus(
+            gta_path=gta_path,
+            valid_game=valid,
+            edition=edition,
+            mod_installed=(scripts / "ALLIN1.dll").exists(),
+            scripthookv_installed=(gta_path / "ScriptHookV.dll").exists(),
+            shvdn_installed=(gta_path / "ScriptHookVDotNet.asi").exists(),
+            openrpf_installed=(gta_path / "OpenRPF.asi").exists()
+            or (gta_path / "OpenIV.asi").exists(),
+        )
+
+    def install(self, config: Config) -> InstallResult:
+        self.save_config(config)
+        database = VehicleDatabase.load(self.database_path)
+        return self._install(config, database)
+
+    def uninstall(self, config: Config) -> list[Path]:
+        return self._uninstall(config)

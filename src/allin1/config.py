@@ -78,6 +78,38 @@ class Config:
             script=ScriptConfig(),
         )
 
+    def save(self, path: Path) -> None:
+        """Write the configuration as TOML without requiring a TOML writer."""
+        def quote(value: str) -> str:
+            escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+            return f'"{escaped}"'
+
+        def boolean(value: bool) -> str:
+            return "true" if value else "false"
+
+        def string_list(values: list[str]) -> str:
+            return "[" + ", ".join(quote(value) for value in values) + "]"
+
+        text = (
+            "[general]\n"
+            f"gta_path = {quote(self.general.gta_path)}\n"
+            f"free_mode = {boolean(self.general.free_mode)}\n"
+            f"backup = {boolean(self.general.backup)}\n\n"
+            "[traffic]\n"
+            f"enabled = {boolean(self.traffic.enabled)}\n"
+            "rich_areas_only_supers = "
+            f"{boolean(self.traffic.rich_areas_only_supers)}\n\n"
+            "[vehicles]\n"
+            f"enable_all = {boolean(self.vehicles.enable_all)}\n"
+            f"disabled_classes = {string_list(self.vehicles.disabled_classes)}\n"
+            f"disabled_vehicles = {string_list(self.vehicles.disabled_vehicles)}\n\n"
+            "[script]\n"
+            f"enable_logging = {boolean(self.script.enable_logging)}\n"
+            f"enable_dlc_police = {boolean(self.script.enable_dlc_police)}\n"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
 
 def load_prices(path: Path) -> dict[str, int]:
     """Load a prices TOML file. Returns a dict of name -> price."""
