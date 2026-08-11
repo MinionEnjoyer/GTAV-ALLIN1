@@ -63,6 +63,7 @@ preview_capture_key = "F10"
 
 # Hold the game's enter/exit control to choose a specific vehicle seat.
 seat_selector_enabled = true
+seat_selector_key = "L"
 safe_mode = false
 ui_scale = 1.0
 reduced_motion = false

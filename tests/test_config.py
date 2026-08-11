@@ -99,6 +99,7 @@ def test_default_config():
     assert config.vehicles.enable_all is True
     assert config.traffic.adaptive_performance is True
     assert config.script.ui_scale == 1.0
+    assert config.script.seat_selector_key == "L"
 
 
 def test_save_round_trip_preserves_all_fields(tmp_path):
@@ -117,6 +118,10 @@ def test_save_round_trip_preserves_all_fields(tmp_path):
     config.script.night_vision_key = "V"
     config.script.preview_capture_key = "F11"
     config.script.seat_selector_enabled = False
+    config.script.seat_selector_key = "G"
+    config.script.gbay_free_mode = True
+    config.script.spawner_debug = True
+    config.script.garage_debug = True
     path = tmp_path / "nested" / "config.toml"
 
     config.save(path)
@@ -129,6 +134,7 @@ def test_save_round_trip_preserves_all_fields(tmp_path):
     ("gbay_key", "", "Unsupported"),
     ("night_vision_key", "Space", "Unsupported"),
     ("preview_capture_key", "F13", "Unsupported"),
+    ("seat_selector_key", "Space", "Unsupported"),
 ])
 def test_keybind_validation_rejects_unsupported_values(field, value, match):
     config = Config.default()

@@ -1,0 +1,14 @@
+schema_version = 1
+id = "example-rpf"
+name = "Example RPF Add-on"
+version = "1.0.0"
+type = "rpf"
+description = "Template for an OpenRPF-compatible archive."
+editions = ["legacy", "enhanced"]
+dependencies = ["openrpf"]
+conflicts = []
+
+[[files]]
+source = "payload/dlc.rpf"
+destination = "mods/update/x64/dlcpacks/example/dlc.rpf"
+

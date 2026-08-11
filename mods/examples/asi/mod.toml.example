@@ -1,0 +1,15 @@
+schema_version = 1
+id = "example-asi"
+name = "Example ASI Plugin"
+version = "1.0.0"
+type = "asi"
+description = "Template for a root-level ASI plugin."
+editions = ["legacy", "enhanced"]
+dependencies = ["scripthookv"]
+conflicts = []
+
+[[files]]
+source = "payload/Example.asi"
+destination = "Example.asi"
+# sha256 = "replace-with-the-payload-sha256"
+
