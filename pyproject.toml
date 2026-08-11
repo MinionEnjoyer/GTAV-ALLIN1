@@ -17,6 +17,8 @@ dependencies = [
 
 [project.scripts]
 allin1 = "allin1.cli:main"
+
+[project.gui-scripts]
 allin1-gui = "allin1.gui:main"
 
 [project.optional-dependencies]

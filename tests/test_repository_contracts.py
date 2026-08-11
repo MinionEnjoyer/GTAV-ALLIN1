@@ -121,9 +121,10 @@ def test_preview_capture_and_seat_selector_contracts():
     seat = (ROOT / "script/src/SeatSelector.cs").read_text()
     assert 'gta_path / SCRIPTS_DIR / "previews"' in installer
     assert "models = sorted(v.model" in installer
-    assert "IsEnterExitHeld" in seat
+    assert "IsSelectorHeld" in seat
     assert "That seat is no longer available" in seat
     assert "seat_selector_enabled" in seat
+    assert "seat_selector_key" in seat
 
 
 def test_client_logging_is_structured_rotating_and_shared():
@@ -167,6 +168,22 @@ def test_runtime_hot_paths_are_throttled_and_cached():
     assert "charColor != _lastFloorBlipColor" in garage
 
 
+def test_issue_five_playtest_regressions_are_guarded():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    renderer = (ROOT / "script/src/GbayRenderer.cs").read_text()
+    traffic = (ROOT / "script/src/TrafficSpawner.cs").read_text()
+    customize = (ROOT / "script/src/GbayBrowserCustomize.cs").read_text()
+    inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()
+    assert "GbayRenderer.TextDark" in browser and "GBAY artwork:" in browser
+    assert "vector placeholders enabled" in renderer and "OpenRpfStatus" in renderer
+    for guard in ("GET_MISSION_FLAG", "WantedLevel", "GET_INTERIOR_FROM_ENTITY",
+                  "IS_POINT_ON_ROAD", "IS_ANY_VEHICLE_NEAR_POINT", "IS_SPHERE_VISIBLE"):
+        assert guard in traffic
+    assert "floorCount = GarageManager.IsPlayerInFloorGarage ? 3 : 1" in customize
+    assert "GarageSellConfirm" in browser and "CONFIRM VEHICLE SALE" in browser
+    assert "progress_applied" in inventory and "STAT_SET_INT" in inventory
+
+
 def test_runtime_save_files_emit_backward_compatible_schema_markers():
     garage = (ROOT / "script/src/GarageManager.cs").read_text()
     inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()
@@ -204,3 +221,10 @@ def test_windows_toolchain_ci_is_cached_bounded_and_non_mutating():
     assert '$RpfPublishDir = Join-Path $TempDir "rpfpatcher_publish"' in tools_script
     assert '-o $RpfPublishDir' in tools_script
     assert '-o $RpfPatcherDir' not in tools_script
+
+
+def test_launcher_uses_gui_entry_point_without_console_window():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert "[project.gui-scripts]" in pyproject
+    gui_section = pyproject.split("[project.gui-scripts]", 1)[1]
+    assert 'allin1-gui = "allin1.gui:main"' in gui_section

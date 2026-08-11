@@ -38,3 +38,12 @@ game process.
 - DLC spawner for emergency vehicles. (Enable in config file).
 
 ## If you found this project useful, consider supporting me here: https://buymeacoffee.com/minionenjoyer Thank you!
+
+## Optional mod packages
+
+The desktop launcher's **Mods** tab can install, update, enable, disable, and
+uninstall local ASI, ScriptHookVDotNet script, RPF, and config/data packages.
+Packages use a small `mod.toml` manifest so the launcher can validate editions,
+loader dependencies, conflicts, destination paths, and optional SHA-256 hashes.
+Replaced files are backed up and restored on uninstall. See
+[`mods/README.md`](mods/README.md) for the package format and inert examples.

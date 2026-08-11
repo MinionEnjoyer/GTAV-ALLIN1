@@ -6,7 +6,8 @@ from allin1.health import scan_installation, sha256_file
 def _game(tmp_path, enhanced=False):
     (tmp_path / ("GTA5_Enhanced.exe" if enhanced else "GTA5.exe")).touch()
     (tmp_path / "ScriptHookV.dll").touch(); (tmp_path / "ScriptHookVDotNet.asi").touch()
-    (tmp_path / ("OpenRPF.asi" if enhanced else "OpenIV.asi")).touch()
+    (tmp_path / ("OpenRPF.asi" if enhanced else "OpenIV.asi")).write_bytes(b"asi")
+    (tmp_path / ("xinput1_4.dll" if enhanced else "dinput8.dll")).write_bytes(b"loader")
     scripts = tmp_path / "scripts"; scripts.mkdir()
     (scripts / "ALLIN1.dll").write_bytes(b"dll")
     (scripts / "ALLIN1.version").write_text("0.2.0\n")
@@ -37,3 +38,22 @@ def test_health_unknown_empty_directory(tmp_path):
     report = scan_installation(tmp_path)
     assert report.edition == "unknown" and not report.launch_safe
     assert sum(issue.code == "dependency_missing" for issue in report.issues) == 2
+
+
+def test_health_blocks_enhanced_openrpf_conflicts_and_legacy_preview_pack(tmp_path):
+    _game(tmp_path, enhanced=True)
+    (tmp_path / "OpenIV.asi").write_bytes(b"legacy")
+    legacy = tmp_path / "mods/update/x64/dlcpacks/allin1_previews"
+    legacy.mkdir(parents=True)
+    report = scan_installation(tmp_path)
+    codes = {issue.code for issue in report.issues}
+    assert {"rpf_loader_conflict", "legacy_preview_dlc"} <= codes
+    assert not report.launch_safe
+
+
+def test_health_rejects_empty_openrpf_and_missing_asi_loader(tmp_path):
+    _game(tmp_path, enhanced=True)
+    (tmp_path / "OpenRPF.asi").write_bytes(b"")
+    (tmp_path / "xinput1_4.dll").unlink()
+    codes = {issue.code for issue in scan_installation(tmp_path).issues}
+    assert {"rpf_loader_corrupt", "asi_loader_missing"} <= codes

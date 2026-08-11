@@ -1,0 +1,17 @@
+schema_version = 1
+id = "example-script"
+name = "Example Script Mod"
+version = "1.0.0"
+type = "script"
+description = "Template for a ScriptHookVDotNet script."
+editions = ["legacy", "enhanced"]
+dependencies = ["shvdn"]
+conflicts = []
+
+[[files]]
+source = "payload/ExampleScript.dll"
+destination = "scripts/ExampleScript.dll"
+
+[[files]]
+source = "payload/ExampleScript.ini"
+destination = "scripts/ExampleScript.ini"

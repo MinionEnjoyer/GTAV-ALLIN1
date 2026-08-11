@@ -485,13 +485,13 @@ namespace ALLIN1
         /// <summary>
         /// Remove a stored vehicle by its index in the stored list.
         /// </summary>
-        internal static void RemoveVehicle(int listIndex)
+        internal static bool RemoveVehicle(int listIndex)
         {
             string key = CharacterKey();
             if (!_stored.TryGetValue(key, out var list))
-                return;
+                return false;
             if (listIndex < 0 || listIndex >= list.Count)
-                return;
+                return false;
 
             StoredVehicle sv = list[listIndex];
             int slotIndex = sv.Slot;
@@ -510,7 +510,13 @@ namespace ALLIN1
 
             Log($"RemoveVehicle: {sv.Model} from slot {slotIndex}");
             list.RemoveAt(listIndex);
-            Save();
+            if (!Save())
+            {
+                list.Insert(listIndex, sv);
+                Log($"RemoveVehicle: persistence failed; restored {sv.Model}");
+                return false;
+            }
+            return true;
         }
 
         /// <summary>
@@ -1202,16 +1208,18 @@ namespace ALLIN1
                 Save();
         }
 
-        private static void Save()
+        private static bool Save()
         {
             try
             {
                 string json = BuildJson();
                 AtomicWriteText(SAVE_PATH, json);
+                return true;
             }
             catch (Exception ex)
             {
                 LogException("Save", ex);
+                return false;
             }
         }
 

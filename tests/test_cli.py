@@ -110,7 +110,7 @@ def test_install_command_reports_all_missing_prerequisites(tmp_path, monkeypatch
     assert "ALLIN1.dll not found" in output
     assert "ScriptHookV not found" in output
     assert "ScriptHookVDotNet not found" in output
-    assert "OpenIV.asi not found" in output
+    assert "OpenIV.asi not detected" in output
 
 
 def test_status_reports_filters_and_import_previews(tmp_path, monkeypatch):

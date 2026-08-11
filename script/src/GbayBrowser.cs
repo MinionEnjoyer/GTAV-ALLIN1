@@ -21,6 +21,7 @@ namespace ALLIN1
         VehiclePreview,
         DeliveryConfirm,
         GarageView,
+        GarageSellConfirm,
         GarageCustomize,
         WeaponBrowser,
         Diagnostics,
@@ -93,6 +94,9 @@ namespace ALLIN1
         // Delivery modal
         private const float MODAL_W        = 0.45f;
         private const float MODAL_ITEM_H   = 0.055f;
+
+        private int _pendingSellIndex = -1;
+        private string _pendingSellModel = "";
 
         // ------------------------------------------------------------------ //
         //  Category Definitions                                               //
@@ -339,6 +343,9 @@ namespace ALLIN1
                 case BrowserState.GarageView:
                     DrawGarageView(input);
                     break;
+                case BrowserState.GarageSellConfirm:
+                    DrawGarageSellConfirm(input);
+                    break;
                 case BrowserState.GarageCustomize:
                     DrawGarageCustomize(input);
                     break;
@@ -502,12 +509,12 @@ namespace ALLIN1
             GbayRenderer.DrawRect(BROWSER_CX, 0.5f, 0.64f, 0.72f, GbayRenderer.ModalBg);
             GbayRenderer.DrawLogo(BROWSER_CX, 0.20f, 0.10f);
             GbayRenderer.DrawText(title, BROWSER_CX, 0.275f, 0.55f,
-                GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED, true);
+                GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED, true);
             float y = 0.35f;
             foreach (string line in lines)
             {
                 GbayRenderer.DrawText(line, BROWSER_CX, y, 0.37f,
-                    GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
+                    GbayRenderer.TextDark, GbayRenderer.FONT_CHALET, true);
                 y += 0.055f;
             }
             GbayRenderer.DrawText("BACK  Return to GBAY", BROWSER_CX, 0.80f, 0.32f,
@@ -530,6 +537,8 @@ namespace ALLIN1
                     Math.Round(TrafficSpawner.SmoothedFps) + " FPS" +
                     (TrafficSpawner.IsThrottled ? " (adaptive throttle)" : ""),
                 "Safe mode: " + (ClientWatchdog.SafeMode ? "ACTIVE" : "off"),
+                "GBAY artwork: " + GbayRenderer.PreviewDiagnostics,
+                "OpenRPF loader: " + GbayRenderer.OpenRpfStatus,
                 "Detailed events are written to ALLIN1_client.log",
                 "Use the desktop manager to export a redacted support bundle."
             }, input);
@@ -1217,7 +1226,7 @@ namespace ALLIN1
                     GbayRenderer.DrawText(name, BROWSER_LEFT + 0.10f, itemY + 0.012f,
                         0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
 
-                    // Remove button
+                    // Sell button
                     float removeBtnX = BROWSER_RIGHT - 0.08f;
                     bool removeHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
                         removeBtnX, itemCY, 0.08f, itemH);
@@ -1227,16 +1236,14 @@ namespace ALLIN1
                         : Color.FromArgb(255, 180, 80, 80);
                     GbayRenderer.DrawRect(removeBtnX, itemCY, 0.07f, itemH - 0.01f,
                         removeBg);
-                    GbayRenderer.DrawText("Remove", removeBtnX, itemY + 0.012f,
+                    int sellPrice = _shop.GetSellPrice(sv.Model);
+                    string sellLabel = sellPrice > 0 ? $"Sell ${sellPrice:N0}" : "Remove";
+                    GbayRenderer.DrawText(sellLabel, removeBtnX, itemY + 0.012f,
                         0.25f, GbayRenderer.TextWhite, GbayRenderer.FONT_CONDENSED, true);
 
                     if (removeHover && input.MouseClick)
                     {
-                        GarageManager.RemoveVehicle(i);
-                        GbayRenderer.PlaySelect();
-                        GTA.UI.Screen.ShowSubtitle(
-                            $"~y~{name}~w~ removed from garage.", 3000);
-                        _garageVehicleIdx = Math.Max(0, _garageVehicleIdx - 1);
+                        BeginSell(sv.Model, i);
                         return;
                     }
                 }
@@ -1259,14 +1266,8 @@ namespace ALLIN1
             // Keyboard remove
             if (input.Accept && vehicles.Count > 0 && _garageVehicleIdx < vehicles.Count)
             {
-                var sv = vehicles[_garageVehicleIdx];
-                string name = VehicleList.DisplayNames.ContainsKey(sv.Model)
-                    ? VehicleList.DisplayNames[sv.Model] : sv.Model;
-                GarageManager.RemoveVehicle(_garageVehicleIdx);
-                GbayRenderer.PlaySelect();
-                GTA.UI.Screen.ShowSubtitle(
-                    $"~y~{name}~w~ removed from garage.", 3000);
-                _garageVehicleIdx = Math.Max(0, _garageVehicleIdx - 1);
+                BeginSell(vehicles[_garageVehicleIdx].Model, _garageVehicleIdx);
+                return;
             }
 
             // Open customization (Q key)
@@ -1299,7 +1300,7 @@ namespace ALLIN1
             GbayRenderer.DrawRect(BROWSER_CX, FOOTER_CY, BROWSER_W, FOOTER_H,
                 GbayRenderer.FooterBg);
 
-            // Customize Floors button (right side of footer)
+            // Eclipse Towers is a single 10-car garage.
             float custBtnX = BROWSER_RIGHT - 0.10f;
             float custBtnW = 0.16f;
             bool custHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
@@ -1308,7 +1309,7 @@ namespace ALLIN1
                 ? GbayRenderer.BtnGreenHover
                 : GbayRenderer.BtnGreen;
             GbayRenderer.DrawRect(custBtnX, FOOTER_CY, custBtnW, FOOTER_H - 0.01f, custBg);
-            GbayRenderer.DrawText("Customize Floors", custBtnX, FOOTER_Y + 0.012f,
+            GbayRenderer.DrawText("Customize Garage", custBtnX, FOOTER_Y + 0.012f,
                 0.26f, GbayRenderer.TextWhite, GbayRenderer.FONT_CONDENSED, true);
 
             if (custHover && input.MouseClick)
@@ -1320,9 +1321,58 @@ namespace ALLIN1
                 return;
             }
 
-            GbayRenderer.DrawText("[Enter] Remove   [Q] Customize   [Y] Recover   [Esc] Back",
+            GbayRenderer.DrawText("[Enter] Sell   [Q] Customize   [Y] Recover   [Esc] Back",
                 BROWSER_LEFT + 0.02f, FOOTER_Y + 0.012f, 0.24f, GbayRenderer.TextDim,
                 GbayRenderer.FONT_CONDENSED);
+        }
+
+        private void BeginSell(string model, int index)
+        {
+            if (!VehicleList.Prices.ContainsKey(model))
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~This vehicle cannot be sold.", 3000);
+                ClientLog.Warn("GBAY", "vehicle_sale_rejected", new Dictionary<string, object> {
+                    { "model", model }, { "reason", "unknown_or_temporary" }
+                });
+                return;
+            }
+            _pendingSellModel = model;
+            _pendingSellIndex = index;
+            _state = BrowserState.GarageSellConfirm;
+            GbayRenderer.PlaySelect();
+        }
+
+        private void DrawGarageSellConfirm(FrameInput input)
+        {
+            DrawGarageView(new FrameInput());
+            GbayRenderer.DrawRect(BROWSER_CX, 0.5f, 1f, 1f, GbayRenderer.ModalScrim);
+            GbayRenderer.DrawRect(BROWSER_CX, 0.5f, MODAL_W, 0.30f, GbayRenderer.ModalBg);
+            string name = VehicleList.DisplayNames.ContainsKey(_pendingSellModel)
+                ? VehicleList.DisplayNames[_pendingSellModel] : _pendingSellModel;
+            int value = _shop.GetSellPrice(_pendingSellModel);
+            GbayRenderer.DrawText("CONFIRM VEHICLE SALE", BROWSER_CX, 0.39f, 0.45f,
+                GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED, true);
+            GbayRenderer.DrawText(name, BROWSER_CX, 0.46f, 0.38f,
+                GbayRenderer.TextDark, GbayRenderer.FONT_CHALET, true);
+            GbayRenderer.DrawText(value > 0 ? $"Sale value: ${value:N0}" : "Remove from garage (no credit)",
+                BROWSER_CX, 0.52f, 0.34f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET, true);
+            GbayRenderer.DrawText("[Enter] Confirm   [Esc] Cancel", BROWSER_CX, 0.60f, 0.30f,
+                GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
+            if (input.Accept)
+            {
+                _shop.ExecuteSellVehicle(_pendingSellModel, _pendingSellIndex);
+                _garageVehicleIdx = Math.Max(0, _pendingSellIndex - 1);
+                _pendingSellIndex = -1;
+                _pendingSellModel = "";
+                _state = BrowserState.GarageView;
+            }
+            else if (input.Back || input.MouseRightClick)
+            {
+                _pendingSellIndex = -1;
+                _pendingSellModel = "";
+                _state = BrowserState.GarageView;
+                GbayRenderer.PlayBack();
+            }
         }
 
         // ------------------------------------------------------------------ //
