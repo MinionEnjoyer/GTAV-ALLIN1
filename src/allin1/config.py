@@ -20,6 +20,7 @@ class GeneralConfig:
     gta_path: str = "auto"
     free_mode: bool = False
     backup: bool = True
+    enable_rpf_previews: bool = False
 
 
 @dataclass
@@ -115,7 +116,8 @@ class Config:
             "[general]\n"
             f"gta_path = {quote(self.general.gta_path)}\n"
             f"free_mode = {boolean(self.general.free_mode)}\n"
-            f"backup = {boolean(self.general.backup)}\n\n"
+            f"backup = {boolean(self.general.backup)}\n"
+            f"enable_rpf_previews = {boolean(self.general.enable_rpf_previews)}\n\n"
             "[traffic]\n"
             f"enabled = {boolean(self.traffic.enabled)}\n"
             "rich_areas_only_supers = "

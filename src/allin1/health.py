@@ -55,6 +55,23 @@ def scan_installation(gta_path: Path, *, expected_hashes: dict[str, str] | None 
     loader = "OpenRPF.asi" if edition == "enhanced" else "OpenIV.asi"
     if edition != "unknown" and not (gta_path / loader).is_file():
         issues.append(HealthIssue("rpf_loader_missing", "warning", f"{loader} is missing; previews may not load.", str(gta_path / loader)))
+    elif edition != "unknown" and (gta_path / loader).stat().st_size == 0:
+        issues.append(HealthIssue("rpf_loader_corrupt", "error", f"{loader} is empty or corrupt.", str(gta_path / loader)))
+    if edition == "enhanced" and (gta_path / "OpenRPF.asi").exists():
+        if (gta_path / "OpenIV.asi").exists():
+            issues.append(HealthIssue("rpf_loader_conflict", "error",
+                                      "OpenIV.asi cannot be loaded alongside OpenRPF on Enhanced.",
+                                      str(gta_path / "OpenIV.asi")))
+        if not any((gta_path / name).exists() for name in
+                   ("dsound.dll", "xinput1_4.dll", "dinput8.dll")):
+            issues.append(HealthIssue("asi_loader_missing", "error",
+                                      "OpenRPF is installed but no ASI loader was detected.",
+                                      str(gta_path)))
+    legacy_preview = gta_path / "mods/update/x64/dlcpacks/allin1_previews"
+    if legacy_preview.exists():
+        issues.append(HealthIssue("legacy_preview_dlc", "error",
+                                  "Obsolete ALLIN1 preview DLC can cause a startup crash; run Install / Repair.",
+                                  str(legacy_preview)))
 
     scripts = gta_path / "scripts"
     dll = scripts / "ALLIN1.dll"

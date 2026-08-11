@@ -20,6 +20,7 @@ def _window():
     window.config = Config.default()
     window.path = Variable(" /game ")
     window.free_mode = Variable(True)
+    window.rpf_previews = Variable(True)
     window.traffic = Variable(False)
     window.police = Variable(True)
     window.logging_enabled = Variable(True)
@@ -39,6 +40,7 @@ def test_current_config_collects_all_launcher_fields():
     config = _window()._current_config()
     assert config.general.gta_path == "/game"
     assert config.general.free_mode is True
+    assert config.general.enable_rpf_previews is True
     assert config.traffic.enabled is False
     assert config.script.gbay_key == "F8"
     assert config.script.night_vision_key == "V"

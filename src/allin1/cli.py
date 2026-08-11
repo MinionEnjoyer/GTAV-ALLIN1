@@ -95,15 +95,16 @@ def install_cmd(ctx: click.Context) -> None:
     if not result.openrpf_found:
         click.echo()
         if result.is_enhanced:
-            click.echo("WARNING: OpenRPF could not be installed automatically.")
-            click.echo("Download it manually and place OpenRPF.asi in your GTA V folder:")
+            click.echo("OpenRPF not detected. This is optional; GBAY will use safe placeholders.")
+            click.echo("For experimental RPF previews, install it manually from:")
         else:
-            click.echo("WARNING: OpenIV.asi not found in your GTA V folder.")
-            click.echo("ALLIN1 requires OpenIV for vehicle preview textures:")
+            click.echo("OpenIV.asi not detected. This is optional for vehicle artwork:")
         click.echo("  https://www.gta5-mods.com/tools/openrpf-openiv-asi-for-gta-v-enhanced")
     else:
         asi_name = "OpenRPF" if result.is_enhanced else "OpenIV.asi"
-        click.echo(f"{asi_name} installed.")
+        click.echo(f"{asi_name} detected (optional artwork loader).")
+    if result.rpf_previews_deployed:
+        click.echo("GBAY RPF preview textures deployed.")
 
     click.echo()
     click.echo("To play: launch GTA V normally. DLC vehicles will appear in traffic.")

@@ -11,20 +11,17 @@ File placement:
 Prerequisites (installed separately by the user):
 - ScriptHookV (dinput8.dll + ScriptHookV.dll)
 - ScriptHookVDotNet Enhanced (ScriptHookVDotNet.asi + ScriptHookVDotNet3.dll)
-- OpenRPF (Enhanced) or OpenIV.asi (Legacy) — needed for mods folder support
+- OpenRPF (Enhanced) or OpenIV.asi (Legacy) — optional, for GBAY artwork only
 """
 
 from __future__ import annotations
 
-import io
 import logging
 import shutil
 import subprocess
 import tempfile
-import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.request import urlopen, Request
 
 from allin1 import asi_loader
 from allin1.config import Config
@@ -77,6 +74,7 @@ class InstallResult:
     scripthookv_found: bool = False
     shvdn_found: bool = False
     openrpf_found: bool = False
+    rpf_previews_deployed: bool = False
     battleye_status: str = ""
     warnings: list[str] = field(default_factory=list)
 
@@ -119,16 +117,28 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
     # --- Check for ScriptHookVDotNet ---
     result.shvdn_found = _check_shvdn(gta_path)
 
-    # --- Install OpenRPF / check OpenIV.asi (mods folder support) ---
+    # --- Detect optional RPF loader; never install third-party executable code ---
     result.openrpf_found = _check_openrpf(gta_path, enhanced)
 
-    # --- Build and deploy preview texture DLC pack ---
-    try:
-        _deploy_preview_dlc(gta_path, result)
-        _patch_dlclist_rpf(gta_path, result)
-    except Exception as exc:
-        log.error("Preview DLC pack failed: %s", exc, exc_info=True)
-        result.warnings.append(f"Preview DLC pack failed: {exc}")
+    # Remove ALLIN1's obsolete custom DLC registration. A stale or malformed
+    # boot-time pack can crash GTA before the script client starts.
+    _remove_legacy_preview_pack(gta_path)
+    _unpatch_dlclist_rpf(gta_path)
+
+    if config.general.enable_rpf_previews:
+        if not result.openrpf_found:
+            result.warnings.append(
+                "RPF previews requested but no compatible OpenRPF/OpenIV loader was detected; "
+                "safe GBAY placeholders will be used."
+            )
+        else:
+            try:
+                result.rpf_previews_deployed = _deploy_preview_dlc(gta_path, result)
+            except Exception as exc:
+                log.error("Preview texture injection failed: %s", exc, exc_info=True)
+                result.warnings.append(f"Preview texture injection failed: {exc}")
+    else:
+        log.info("RPF previews disabled; using crash-safe GBAY placeholders")
 
     # --- Write -nobattleye to commandline.txt (belt-and-suspenders) ---
     result.battleye_status = asi_loader.ensure_nobattleye(gta_path, enhanced)
@@ -188,12 +198,7 @@ def uninstall(config: Config) -> list[Path]:
         log.info("Removed PHAT.png")
 
     # Remove preview DLC pack (legacy — DLC approach replaced by script_txds.rpf)
-    for base in ("mods/update", "update"):
-        dlc_dir = gta_path / base / "x64" / "dlcpacks" / "allin1_previews"
-        if dlc_dir.exists():
-            shutil.rmtree(dlc_dir)
-            removed.append(dlc_dir)
-            log.info("Removed legacy preview DLC pack at %s", dlc_dir)
+    removed.extend(_remove_legacy_preview_pack(gta_path))
 
     # Unpatch dlclist.xml in mods/update/update.rpf (legacy cleanup)
     _unpatch_dlclist_rpf(gta_path)
@@ -306,13 +311,14 @@ def _check_shvdn(gta_path: Path) -> bool:
     return (gta_path / "ScriptHookVDotNet.asi").exists()
 
 
-_OPENRPF_URL = "https://gta5mod.net/download-mod/247100"
-
-
 def _check_openrpf(gta_path: Path, enhanced: bool) -> bool:
-    """Check for OpenRPF/OpenIV.asi; auto-install OpenRPF for Enhanced."""
+    """Detect a user-installed RPF loader without downloading executable code."""
     if not enhanced:
-        found = (gta_path / "OpenIV.asi").exists()
+        asi_path = gta_path / "OpenIV.asi"
+        found = asi_path.exists() and asi_path.stat().st_size > 0
+        if found and not (gta_path / "dinput8.dll").exists():
+            log.warning("OpenIV.asi exists but dinput8.dll ASI loader is missing")
+            found = False
         if found:
             log.info("OpenIV.asi found — mods folder support available")
         else:
@@ -322,53 +328,29 @@ def _check_openrpf(gta_path: Path, enhanced: bool) -> bool:
             )
         return found
 
-    # Enhanced edition — check for OpenRPF.asi
+    # OpenIV.asi is a Legacy binary; loading it alongside OpenRPF on Enhanced
+    # is an invalid configuration.
     asi_path = gta_path / "OpenRPF.asi"
-    if asi_path.exists():
-        log.info("OpenRPF.asi found — mods folder support available")
-        return True
-
-    # Auto-download OpenRPF.asi
-    log.info("OpenRPF.asi not found — downloading...")
-    try:
-        req = Request(_OPENRPF_URL, headers={"User-Agent": "ALLIN1-Installer"})
-        with urlopen(req, timeout=30) as resp:
-            data = resp.read()
-        with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            # Extract OpenRPF.asi to GTA V root
-            for name in zf.namelist():
-                if name.lower().endswith(".asi"):
-                    dest = gta_path / Path(name).name
-                    dest.write_bytes(zf.read(name))
-                    log.info("Installed %s -> %s", name, dest)
-        if asi_path.exists():
-            log.info("OpenRPF.asi installed successfully")
-            return True
-        log.warning("OpenRPF.asi not found in downloaded archive")
+    if not asi_path.exists():
+        log.warning("OpenRPF.asi not found; optional artwork will use placeholders")
         return False
-    except Exception as exc:
-        log.warning("Failed to download OpenRPF: %s", exc)
-        log.warning(
-            "Download OpenRPF manually from gta5-mods.com and place "
-            "OpenRPF.asi in your GTA V folder."
-        )
+    if (gta_path / "OpenIV.asi").exists():
+        log.error("Both OpenRPF.asi and OpenIV.asi are installed on Enhanced")
         return False
+    if asi_path.stat().st_size == 0:
+        log.warning("OpenRPF.asi is empty or corrupt")
+        return False
+    asi_loaders = ("dsound.dll", "xinput1_4.dll", "dinput8.dll")
+    if not any((gta_path / name).exists() for name in asi_loaders):
+        log.warning("OpenRPF.asi exists but no compatible ASI loader was detected")
+        return False
+    log.info("User-installed OpenRPF.asi and ASI loader detected")
+    return True
 
 
-def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
-    """Build .ytd texture dicts from preview PNGs and deploy as a DLC pack.
-
-    Creates a standalone DLC pack at
-    ``mods/update/x64/dlcpacks/allin1_previews/dlc.rpf`` containing the
-    .ytd files inside a nested ``textures.rpf``.  The DLC's ``content.xml``
-    registers the nested RPF as an ``RPF_FILE`` so the game's streaming
-    system indexes the texture dictionaries at boot, making them available
-    via ``REQUEST_STREAMED_TEXTURE_DICT`` / ``DRAW_SPRITE``.
-
-    The companion ``_patch_dlclist_rpf()`` adds the DLC to ``dlclist.xml``
-    so the game discovers it.
-    """
-    from allin1.generators import dlc_previews, ytd_builder
+def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
+    """Build YTDs and inject them into the standard script texture archive."""
+    from allin1.generators import ytd_builder
     from allin1.preview_assets import merge_previews
 
     previews_src = _SCRIPT_DIST_DIR / "previews"
@@ -378,21 +360,21 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
         log.warning("No previews/ directory found — skipping preview build")
         result.warnings.append("Preview images not found; vehicle thumbnails "
                                "will show colored placeholders.")
-        return
+        return False
 
     ytdtoolio = _TOOLS_DIR / "YTDToolio.exe"
     if not ytdtoolio.exists():
         log.warning("YTDToolio.exe not found — skipping preview build. "
                      "Run runtools.ps1 first.")
         result.warnings.append("YTDToolio.exe missing; run runtools.ps1 first.")
-        return
+        return False
 
     rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
     if not rpf_patcher.exists():
         log.warning("RpfPatcher.exe not found — skipping preview build. "
                      "Run runtools.ps1 first.")
         result.warnings.append("RpfPatcher.exe missing; run runtools.ps1 first.")
-        return
+        return False
 
     # Dictionary assignment is generated from the complete sorted catalog.
     # Never derive it from the set of successful captures: one missing image
@@ -416,7 +398,7 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
         if merged.copied == 0:
             log.warning("No valid PNG preview files found")
             result.warnings.append("No valid vehicle previews were found.")
-            return
+            return False
         if merged.rejected:
             result.warnings.append(
                 f"Ignored {len(merged.rejected)} invalid preview capture(s)."
@@ -438,7 +420,7 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
         if not ytd_files:
             log.warning("No .ytd files were built")
             result.warnings.append("Failed to build preview textures.")
-            return
+            return False
 
         # Step 1b: Convert .ytd files to Enhanced (gen9) format if needed
         if result.is_enhanced:
@@ -455,37 +437,56 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> None:
                 raise RuntimeError(f"RpfPatcher convert-gen9 failed: {error_msg}")
             log.info("Gen9 conversion complete.")
 
-        # Step 2: Create DLC pack structure (content.xml + setup2.xml + staged .ytd files)
-        log.info("Creating DLC pack structure...")
-        dlc_root, ytd_staging = dlc_previews.create_dlc_pack(ytd_files, tmp_path)
-
-        # Step 3: Build dlc.rpf with nested textures.rpf
-        dlc_rpf_path = tmp_path / "dlc.rpf"
-        log.info("Building dlc.rpf with %d .ytd files...", len(ytd_files))
-        proc = subprocess.run(
-            [
-                str(rpf_patcher), "build-dlc",
-                str(dlc_root),
-                str(dlc_rpf_path),
-                "--embed-rpf", str(ytd_staging), "x64/textures/textures.rpf",
-            ],
-            capture_output=True, text=True, timeout=300,
-        )
+        # Injecting into the game's existing script texture archive avoids a
+        # custom boot-time DLC registration solely for UI artwork.
+        log.info("Injecting %d preview dictionaries into script_txds.rpf...", len(ytd_files))
+        mods_rpf = gta_path / "mods" / "update" / "update.rpf"
+        backup_rpf = mods_rpf.with_name("update.rpf.allin1-previews.bak")
+        existed_before = mods_rpf.exists()
+        if existed_before:
+            backup_rpf.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(mods_rpf, backup_rpf)
+            log.info("Backed up mods update.rpf before preview injection")
+        try:
+            proc = subprocess.run(
+                [str(rpf_patcher), "inject-ytd", str(gta_path), str(ytd_out)],
+                capture_output=True, text=True, timeout=300,
+            )
+        except Exception:
+            _restore_preview_archive(mods_rpf, backup_rpf, existed_before)
+            raise
         if proc.stdout:
             for line in proc.stdout.strip().splitlines():
                 log.info("RpfPatcher: %s", line)
         if proc.returncode != 0:
+            _restore_preview_archive(mods_rpf, backup_rpf, existed_before)
             error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
-            raise RuntimeError(f"RpfPatcher build-dlc failed: {error_msg}")
+            raise RuntimeError(f"RpfPatcher inject-ytd failed: {error_msg}")
+        if not mods_rpf.exists() or mods_rpf.stat().st_size == 0:
+            _restore_preview_archive(mods_rpf, backup_rpf, existed_before)
+            raise RuntimeError("RpfPatcher inject-ytd did not produce a valid mods/update/update.rpf")
+        log.info("Preview texture injection completed")
+        return True
 
-        if not dlc_rpf_path.exists():
-            raise RuntimeError("RpfPatcher build-dlc succeeded but dlc.rpf not found")
 
-        log.info("Built dlc.rpf (%d bytes)", dlc_rpf_path.stat().st_size)
+def _restore_preview_archive(mods_rpf: Path, backup_rpf: Path, existed_before: bool) -> None:
+    """Restore the exact pre-injection archive state after a tool failure."""
+    if existed_before and backup_rpf.exists():
+        shutil.copy2(backup_rpf, mods_rpf)
+    elif not existed_before:
+        mods_rpf.unlink(missing_ok=True)
 
-        # Step 4: Deploy dlc.rpf to mods/update/x64/dlcpacks/allin1_previews/
-        dest_dir = dlc_previews.deploy_dlc_rpf(dlc_rpf_path, gta_path)
-        log.info("Preview DLC deployed to %s", dest_dir)
+
+def _remove_legacy_preview_pack(gta_path: Path) -> list[Path]:
+    """Remove only obsolete ALLIN1-owned preview DLC directories."""
+    removed: list[Path] = []
+    for base in ("mods/update", "update"):
+        dlc_dir = gta_path / base / "x64" / "dlcpacks" / "allin1_previews"
+        if dlc_dir.exists():
+            shutil.rmtree(dlc_dir)
+            removed.append(dlc_dir)
+            log.info("Removed obsolete preview DLC pack at %s", dlc_dir)
+    return removed
 
 
 def _patch_dlclist_rpf(gta_path: Path, result: InstallResult) -> None:

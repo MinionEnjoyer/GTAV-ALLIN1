@@ -12,6 +12,11 @@ free_mode = false
 # Create backups of original game files before modifying.
 backup = true
 
+# Experimental: inject GBAY thumbnails through OpenRPF/OpenIV. Leave this
+# disabled if Enhanced crashes at startup. Gameplay and placeholders work
+# without an RPF loader.
+enable_rpf_previews = false
+
 [traffic]
 # Add GTA Online vehicles to ambient traffic so they appear naturally.
 enabled = true

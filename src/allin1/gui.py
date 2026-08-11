@@ -45,6 +45,7 @@ class ManagerWindow:
 
         self.path = tk.StringVar(value=self.config.general.gta_path)
         self.free_mode = tk.BooleanVar(value=self.config.general.free_mode)
+        self.rpf_previews = tk.BooleanVar(value=self.config.general.enable_rpf_previews)
         self.traffic = tk.BooleanVar(value=self.config.traffic.enabled)
         self.police = tk.BooleanVar(value=self.config.script.enable_dlc_police)
         self.logging_enabled = tk.BooleanVar(value=self.config.script.enable_logging)
@@ -100,6 +101,9 @@ class ManagerWindow:
         ttk.Label(options, text="UI text scale").grid(row=3, column=1, sticky="w", pady=(8, 0))
         ttk.Spinbox(options, from_=0.75, to=1.5, increment=0.05, textvariable=self.ui_scale,
                     width=6).grid(row=3, column=1, sticky="e", pady=(8, 0))
+        ttk.Checkbutton(options, text="Experimental RPF artwork (may affect startup)",
+                        variable=self.rpf_previews).grid(row=4, column=0, columnspan=2,
+                                                         sticky="w", pady=(8, 0))
 
         controls = ttk.LabelFrame(outer, text="Mod controls", padding=10)
         controls.pack(fill="x", pady=(0, 12))
@@ -160,6 +164,7 @@ class ManagerWindow:
     def _current_config(self) -> Config:
         self.config.general.gta_path = self.path.get().strip() or "auto"
         self.config.general.free_mode = self.free_mode.get()
+        self.config.general.enable_rpf_previews = self.rpf_previews.get()
         self.config.traffic.enabled = self.traffic.get()
         self.config.script.enable_dlc_police = self.police.get()
         self.config.script.enable_logging = self.logging_enabled.get()
@@ -194,6 +199,7 @@ class ManagerWindow:
             self.config = self.profiles.load(self.profile_name.get())
             self.path.set(self.config.general.gta_path)
             self.free_mode.set(self.config.general.free_mode)
+            self.rpf_previews.set(self.config.general.enable_rpf_previews)
             self.traffic.set(self.config.traffic.enabled)
             self.police.set(self.config.script.enable_dlc_police)
             self.logging_enabled.set(self.config.script.enable_logging)
