@@ -6,11 +6,16 @@ import hashlib
 import json
 import re
 import shutil
-import tomllib
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 SUPPORTED_MOD_TYPES = frozenset({"asi", "script", "rpf", "config"})
 SUPPORTED_EDITIONS = frozenset({"legacy", "enhanced"})
