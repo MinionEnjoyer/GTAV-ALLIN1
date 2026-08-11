@@ -73,7 +73,6 @@ class ManagerWindow:
         root.minsize(780, 620)
 
         self.path = tk.StringVar(value=self.config.general.gta_path)
-        self.free_mode = tk.BooleanVar(value=self.config.general.free_mode)
         self.backup_enabled = tk.BooleanVar(value=self.config.general.backup)
         self.traffic = tk.BooleanVar(value=self.config.traffic.enabled)
         self.rich_areas_only = tk.BooleanVar(value=self.config.traffic.rich_areas_only_supers)
@@ -175,12 +174,12 @@ class ManagerWindow:
         options.pack(fill="x", pady=12)
         options.columnconfigure(0, weight=1)
         options.columnconfigure(1, weight=1)
-        ttk.Checkbutton(options, text="Free purchases", variable=self.free_mode).grid(row=0, column=0, sticky="w", padx=(0, 30))
+        ttk.Checkbutton(options, text="Free GBAY purchases (no sale payouts)", variable=self.gbay_free_mode).grid(row=0, column=0, sticky="w", padx=(0, 30))
         ttk.Checkbutton(options, text="DLC traffic", variable=self.traffic).grid(row=0, column=1, sticky="w", padx=(0, 30))
         ttk.Checkbutton(options, text="DLC police", variable=self.police).grid(row=1, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Detailed script logging", variable=self.logging_enabled).grid(row=1, column=1, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Force safe mode", variable=self.safe_mode).grid(row=2, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Reduced motion", variable=self.reduced_motion).grid(row=2, column=1, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(options, text="Safe mode (disable traffic and floor garages)", variable=self.safe_mode).grid(row=2, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(options, text="Disable GBAY page-transition fades", variable=self.reduced_motion).grid(row=2, column=1, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Colorblind-safe palette", variable=self.colorblind_mode).grid(row=3, column=0, sticky="w", pady=(8, 0))
         ttk.Label(options, text="UI text scale").grid(row=3, column=1, sticky="w", pady=(8, 0))
         ttk.Spinbox(options, from_=0.75, to=1.5, increment=0.05, textvariable=self.ui_scale,
@@ -189,9 +188,8 @@ class ManagerWindow:
         ttk.Checkbutton(options, text="Supercars only in wealthy areas", variable=self.rich_areas_only).grid(row=4, column=1, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Adaptive traffic performance", variable=self.adaptive_performance).grid(row=5, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Enable every DLC vehicle", variable=self.enable_all_vehicles).grid(row=5, column=1, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="GBAY free mode", variable=self.gbay_free_mode).grid(row=6, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Spawner debug messages", variable=self.spawner_debug).grid(row=6, column=1, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Garage debug markers", variable=self.garage_debug).grid(row=7, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(options, text="Spawner debug messages (developer)", variable=self.spawner_debug).grid(row=6, column=1, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(options, text="Garage debug markers (developer)", variable=self.garage_debug).grid(row=7, column=0, sticky="w", pady=(8, 0))
 
         controls = ttk.LabelFrame(controls_page, text="KEYBINDS & VEHICLE FILTERS", padding=14)
         controls.pack(fill="x", pady=(0, 12))
@@ -337,7 +335,7 @@ class ManagerWindow:
 
     def _current_config(self) -> Config:
         self.config.general.gta_path = self.path.get().strip() or "auto"
-        self.config.general.free_mode = self.free_mode.get()
+        self.config.general.free_mode = self.gbay_free_mode.get()
         self.config.general.backup = self.backup_enabled.get()
         self.config.traffic.enabled = self.traffic.get()
         self.config.traffic.rich_areas_only_supers = self.rich_areas_only.get()
@@ -385,7 +383,6 @@ class ManagerWindow:
         try:
             self.config = self.profiles.load(self.profile_name.get())
             self.path.set(self.config.general.gta_path)
-            self.free_mode.set(self.config.general.free_mode)
             self.backup_enabled.set(self.config.general.backup)
             self.traffic.set(self.config.traffic.enabled)
             self.rich_areas_only.set(self.config.traffic.rich_areas_only_supers)
@@ -428,12 +425,13 @@ class ManagerWindow:
             return
         selected = self._selected_mod_id()
         self.mod_tree.delete(*self.mod_tree.get_children())
+        catalog_error: str | None = None
         try:
             manifests = self.mod_catalog.discover()
             self.mod_manifests = {manifest.mod_id: manifest for manifest in manifests}
         except (OSError, ValueError) as exc:
             self.mod_manifests = {}
-            self.mod_details.set(f"Catalog error: {exc}")
+            catalog_error = str(exc)
 
         installed = {}
         try:
@@ -454,6 +452,8 @@ class ManagerWindow:
         if selected and self.mod_tree.exists(selected):
             self.mod_tree.selection_set(selected)
             self.mod_tree.focus(selected)
+        elif catalog_error:
+            self.mod_details.set(f"Catalog error: {catalog_error}")
         elif not mod_ids:
             self.mod_details.set(
                 "No optional mods installed or present in the local catalog. Import a package to begin."
@@ -490,7 +490,9 @@ class ManagerWindow:
         if not manifest_path:
             return
         try:
-            manifest = ModManifest.load(manifest_path)
+            # Payload checks and hashing run in the install worker so a large RPF
+            # cannot block the Tk event loop.
+            manifest = ModManifest.load(manifest_path, validate_payload=False)
         except (OSError, ValueError) as exc:
             messagebox.showerror("Invalid mod package", str(exc))
             return
@@ -514,7 +516,12 @@ class ManagerWindow:
             "Only continue if you trust this package and its source.",
         ):
             return
-        self._run(f"Installing {manifest.name}", lambda: self._mod_service().install(manifest))
+        try:
+            service = self._mod_service()
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Game not found", str(exc))
+            return
+        self._run(f"Installing {manifest.name}", lambda: service.install(manifest))
 
     def toggle_selected_mod(self, enabled: bool) -> None:
         mod_id = self._selected_mod_id()
@@ -524,8 +531,13 @@ class ManagerWindow:
         if mod_id not in self.installed_mod_ids:
             messagebox.showinfo("Optional mods", "Install the selected package first.")
             return
+        try:
+            service = self._mod_service()
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Game not found", str(exc))
+            return
         verb = "Enabling" if enabled else "Disabling"
-        self._run(f"{verb} {mod_id}", lambda: self._mod_service().set_enabled(mod_id, enabled))
+        self._run(f"{verb} {mod_id}", lambda: service.set_enabled(mod_id, enabled))
 
     def uninstall_selected_mod(self) -> None:
         mod_id = self._selected_mod_id()
@@ -540,7 +552,12 @@ class ManagerWindow:
             f"Remove {mod_id} and restore any files it replaced?",
         ):
             return
-        self._run(f"Uninstalling {mod_id}", lambda: self._mod_service().uninstall(mod_id))
+        try:
+            service = self._mod_service()
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Game not found", str(exc))
+            return
+        self._run(f"Uninstalling {mod_id}", lambda: service.uninstall(mod_id))
 
     def _show_status(self, status: InstallationStatus) -> None:
         path = str(status.gta_path) if status.gta_path else "Not detected"

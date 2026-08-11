@@ -179,7 +179,7 @@ def status(ctx: click.Context) -> None:
     click.echo("Configuration:")
     click.echo(f"  Config file: {ctx.obj['config_path']}")
     click.echo(f"  GTA path: {config.general.gta_path}")
-    click.echo(f"  Free mode: {config.general.free_mode}")
+    click.echo(f"  Free GBAY purchases: {config.script.gbay_free_mode}")
     click.echo(f"  Traffic: {'enabled' if config.traffic.enabled else 'disabled'}")
     click.echo(f"  Enable all: {config.vehicles.enable_all}")
 

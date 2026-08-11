@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,7 @@ def _package(
     conflicts: tuple[str, ...] = (),
     editions: tuple[str, ...] = ("legacy", "enhanced"),
     checksum: bool = True,
+    version: str = "1.2.3",
 ) -> Path:
     package = tmp_path / mod_id
     package.mkdir(parents=True)
@@ -44,7 +46,7 @@ def _package(
         "schema_version = 1\n"
         f'id = "{mod_id}"\n'
         f'name = "Synthetic {mod_type.upper()}"\n'
-        'version = "1.2.3"\n'
+        f'version = "{version}"\n'
         f'type = "{mod_type}"\n'
         'description = "Generated only for tests"\n'
         f"editions = [{edition_text}]\n"
@@ -129,6 +131,35 @@ def test_reinstall_same_mod_updates_payload(tmp_path: Path):
     )
     service.install(ModManifest.load(package))
     assert (game / "scripts" / "Updated.dll").read_bytes() == b"v2"
+
+
+def test_failed_update_restores_previous_installed_version(tmp_path: Path, monkeypatch):
+    game = _game(tmp_path)
+    old_package = _package(
+        tmp_path / "old", "rollback-script", "script", "scripts/Rollback.dll",
+        payload=b"v1", version="1.0.0"
+    )
+    new_package = _package(
+        tmp_path / "new", "rollback-script", "script", "scripts/Rollback.dll",
+        payload=b"v2", version="2.0.0"
+    )
+    service = ModIntegrationService(game)
+    service.install(ModManifest.load(old_package))
+    real_copy = shutil.copy2
+    new_payload = (new_package / "payload.bin").resolve()
+
+    def fail_new_payload(source, destination, *args, **kwargs):
+        if Path(source).resolve() == new_payload:
+            raise OSError("synthetic update failure")
+        return real_copy(source, destination, *args, **kwargs)
+
+    monkeypatch.setattr("allin1.mods.shutil.copy2", fail_new_payload)
+    with pytest.raises(OSError, match="synthetic update failure"):
+        service.install(ModManifest.load(new_package))
+
+    target = game / "scripts" / "Rollback.dll"
+    assert target.read_bytes() == b"v1"
+    assert service.list_installed()[0].version == "1.0.0"
 
 
 def test_catalog_discovers_sorted_packages(tmp_path: Path):

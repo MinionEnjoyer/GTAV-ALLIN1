@@ -47,6 +47,26 @@ def test_load_minimal_config(tmp_path):
     assert config.vehicles.enable_all is True
 
 
+def test_legacy_free_mode_migrates_to_gbay_setting(tmp_path):
+    path = _write_toml(tmp_path, """
+[general]
+free_mode = true
+""")
+    config = Config.load(path)
+    assert config.script.gbay_free_mode is True
+
+
+def test_explicit_gbay_free_mode_overrides_legacy_alias(tmp_path):
+    path = _write_toml(tmp_path, """
+[general]
+free_mode = true
+[script]
+gbay_free_mode = false
+""")
+    config = Config.load(path)
+    assert config.script.gbay_free_mode is False
+
+
 def test_backwards_compat_density_ignored(tmp_path):
     """Old configs with density should load without error."""
     path = _write_toml(tmp_path, """

@@ -90,6 +90,8 @@ class Config:
         script_raw = raw.get("script", {})
         script_fields = {f.name for f in ScriptConfig.__dataclass_fields__.values()}
         script = ScriptConfig(**{k: v for k, v in script_raw.items() if k in script_fields})
+        if "gbay_free_mode" not in script_raw:
+            script.gbay_free_mode = general.free_mode
 
         return cls(general=general, traffic=traffic, vehicles=vehicles, script=script)
 

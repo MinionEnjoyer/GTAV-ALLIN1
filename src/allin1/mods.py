@@ -94,7 +94,9 @@ class ModManifest:
         return self.manifest_path.parent
 
     @classmethod
-    def load(cls, manifest_path: str | Path) -> "ModManifest":
+    def load(
+        cls, manifest_path: str | Path, *, validate_payload: bool = True
+    ) -> "ModManifest":
         path = Path(manifest_path).resolve()
         if path.is_dir():
             path = path / "mod.toml"
@@ -124,6 +126,8 @@ class ModManifest:
         if unknown_dependencies:
             raise ValueError(f"Unsupported dependencies: {', '.join(sorted(unknown_dependencies))}")
         conflicts = _string_list(data.get("conflicts"), "conflicts")
+        if mod_id in conflicts:
+            raise ValueError("A mod package may not conflict with itself")
 
         raw_files = data.get("files")
         if not isinstance(raw_files, list) or not raw_files:
@@ -164,7 +168,8 @@ class ModManifest:
             conflicts,
             tuple(files),
         )
-        manifest.validate_payload()
+        if validate_payload:
+            manifest.validate_payload()
         return manifest
 
     @staticmethod
@@ -219,7 +224,9 @@ class ModCatalog:
             return []
         manifests: list[ModManifest] = []
         for path in sorted(self.root.glob("*/mod.toml"), key=lambda value: str(value).lower()):
-            manifests.append(ModManifest.load(path))
+            # Defer payload existence and checksum work until installation. RPF
+            # archives can be large enough that hashing them would freeze refresh.
+            manifests.append(ModManifest.load(path, validate_payload=False))
         return manifests
 
 
@@ -260,6 +267,13 @@ class ModIntegrationService:
             raise ValueError(f"Invalid install receipt for '{mod_id}'")
         return data
 
+    def _write_receipt(self, receipt: dict[str, Any]) -> None:
+        self.state_root.mkdir(parents=True, exist_ok=True)
+        receipt_path = self._receipt_path(str(receipt["id"]))
+        temporary = receipt_path.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
+        temporary.replace(receipt_path)
+
     def list_installed(self) -> list[ModStatus]:
         if not self.state_root.is_dir():
             return []
@@ -295,9 +309,12 @@ class ModIntegrationService:
             raise ValueError(f"Missing required loader(s): {', '.join(missing)}")
 
     def _check_conflicts(self, manifest: ModManifest) -> None:
-        installed = {status.mod_id for status in self.list_installed()}
+        installed_statuses = self.list_installed()
+        installed = {status.mod_id for status in installed_statuses}
         conflicts = installed.intersection(manifest.conflicts)
-        for status in self.list_installed():
+        for status in installed_statuses:
+            if status.mod_id == manifest.mod_id:
+                continue
             try:
                 receipt = self._read_receipt(status.mod_id)
             except (OSError, ValueError):
@@ -308,7 +325,7 @@ class ModIntegrationService:
             raise ValueError(f"Conflicts with installed mod(s): {', '.join(sorted(conflicts))}")
 
         owned_destinations: dict[str, str] = {}
-        for status in self.list_installed():
+        for status in installed_statuses:
             if status.mod_id == manifest.mod_id:
                 continue
             receipt = self._read_receipt(status.mod_id)
@@ -328,13 +345,29 @@ class ModIntegrationService:
             raise ValueError(f"{manifest.name} does not support GTA V {self.edition.title()}")
         self._check_dependencies(manifest)
         self._check_conflicts(manifest)
-        if self._receipt_path(manifest.mod_id).exists():
-            self.uninstall(manifest.mod_id)
-
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
         backup_dir = self.backup_root / manifest.mod_id / timestamp
+        previous_receipt: dict[str, Any] | None = None
+        previous_payloads: list[tuple[Path, str]] = []
         records: list[dict[str, Any]] = []
         try:
+            if self._receipt_path(manifest.mod_id).exists():
+                previous_receipt = self._read_receipt(manifest.mod_id)
+                snapshot_root = backup_dir / ".update-rollback"
+                previous_enabled = bool(previous_receipt.get("enabled", True))
+                for old_item in previous_receipt["files"]:
+                    target = _contained_path(self.gta_path, old_item["destination"])
+                    current = target if previous_enabled else target.with_name(
+                        target.name + ".disabled"
+                    )
+                    if not current.is_file():
+                        raise FileNotFoundError(f"Managed mod file is missing: {current}")
+                    snapshot = _contained_path(snapshot_root, old_item["destination"])
+                    snapshot.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(current, snapshot)
+                    previous_payloads.append((snapshot, str(old_item["destination"])))
+                self.uninstall(manifest.mod_id)
+
             for item in manifest.files:
                 source = _contained_path(manifest.package_root, item.source)
                 target = _contained_path(self.gta_path, item.destination)
@@ -368,13 +401,20 @@ class ModIntegrationService:
                 "conflicts": list(manifest.conflicts),
                 "files": records,
             }
-            self.state_root.mkdir(parents=True, exist_ok=True)
-            receipt_path = self._receipt_path(manifest.mod_id)
-            temporary_receipt = receipt_path.with_suffix(".json.tmp")
-            temporary_receipt.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
-            temporary_receipt.replace(receipt_path)
+            self._write_receipt(receipt)
         except Exception:
             self._rollback_records(records)
+            if previous_receipt is not None:
+                previous_enabled = bool(previous_receipt.get("enabled", True))
+                for snapshot, destination in previous_payloads:
+                    target = _contained_path(self.gta_path, destination)
+                    disabled = target.with_name(target.name + ".disabled")
+                    target.unlink(missing_ok=True)
+                    disabled.unlink(missing_ok=True)
+                    restored = target if previous_enabled else disabled
+                    restored.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(snapshot, restored)
+                self._write_receipt(previous_receipt)
             raise
 
         return ModStatus(
@@ -412,10 +452,7 @@ class ModIntegrationService:
                 source.replace(destination)
                 moves.append((destination, source))
             receipt["enabled"] = enabled
-            receipt_path = self._receipt_path(mod_id)
-            temporary_receipt = receipt_path.with_suffix(".json.tmp")
-            temporary_receipt.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
-            temporary_receipt.replace(receipt_path)
+            self._write_receipt(receipt)
         except Exception:
             for destination, source in reversed(moves):
                 if destination.exists() and not source.exists():

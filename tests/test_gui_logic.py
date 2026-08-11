@@ -19,7 +19,6 @@ def _window():
     window = ManagerWindow.__new__(ManagerWindow)
     window.config = Config.default()
     window.path = Variable(" /game ")
-    window.free_mode = Variable(True)
     window.backup_enabled = Variable(False)
     window.traffic = Variable(False)
     window.rich_areas_only = Variable(False)

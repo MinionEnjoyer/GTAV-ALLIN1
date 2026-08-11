@@ -108,7 +108,7 @@ Configuration is stored in `config.toml` (copied to `scripts/ALLIN1.toml` during
 | Key | Default | Description |
 |-----|---------|-------------|
 | `gta_path` | `"auto"` | GTA V installation path. Set to `"auto"` for auto-detection. |
-| `free_mode` | `false` | When true, all vehicles are free in-game. |
+| `free_mode` | `false` | Deprecated compatibility alias for `script.gbay_free_mode`. |
 | `backup` | `true` | Create backups of original game files before modifying. |
 
 ### [traffic]
@@ -144,7 +144,7 @@ Available classes: `compacts`, `coupes`, `sedans`, `suvs`, `muscle`, `sports`, `
 | `night_vision_key` | `"N"` | Toggle purchased night vision. |
 | `preview_capture_key` | `"F10"` | Start/stop the developer preview capture tool. |
 | `seat_selector_enabled` | `true` | Enable hold-to-select vehicle seats. |
-| `gbay_free_mode` | `false` | All GBAY purchases are free regardless of prices. |
+| `gbay_free_mode` | `false` | All GBAY purchases are free; vehicle sales have no payout. |
 | `enable_logging` | `false` | Write debug info to `scripts/ALLIN1.log`. |
 | `enable_dlc_police` | `false` | Replace vanilla police cars with DLC police vehicles. |
 | `spawner_debug` | `false` | Show vehicle spawn debug notifications. |
@@ -728,7 +728,7 @@ Model names are stored as spawn names (e.g., `"zentorno"` not GXT labels). A mig
 
 ### Vehicles are free / wrong prices
 
-- Check `free_mode` and `gbay_free_mode` settings in config
+- Check the `gbay_free_mode` setting in config (`free_mode` is its legacy alias)
 - Edit `prices_vehicles.toml`, `prices_weapons.toml`, or `prices_gear.toml` to adjust prices
 - Re-run `allin1 generate-vehiclelist` and `allin1 install` after changing vehicle/weapon prices
 - Gear prices reload automatically on script init
