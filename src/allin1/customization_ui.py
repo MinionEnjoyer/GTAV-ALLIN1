@@ -147,7 +147,7 @@ class CharacterCustomizationDialog(tk.Toplevel):
             messagebox.showerror("Unknown vehicle", model); return
         used = {item["slot"] for item in self.garages[self.character.get()]}
         slot = next((value for value in range(10) if value not in used), None)
-        if slot is None: messagebox.showerror("Garage full", "This garage has 10 vehicles."); return
+        if slot is None: messagebox.showerror("Garage full", "This garage is full (10 vehicles)."); return
         self.garages[self.character.get()].append({"model": model, "slot": slot, "color1": 0, "color2": 0})
         self._refresh_garage()
 

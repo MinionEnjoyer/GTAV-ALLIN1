@@ -1,49 +1,212 @@
+<p align="center">
+  <img src="src/allin1/assets/ALLIN1.png" alt="GTA V ALLIN1" width="120" height="120" />
+</p>
+
 # GTA V ALLIN1
-ALLIN1 is a mod installer that ports Online content into SP mode for GTA V.
 
- - Requires ScriptHookV and ScriptHookDotNetEnhanced.
- - Drop the ScriptHook files into the directory with your GTA.exe and then run the ALLIN1 installer.  It will automatically detect your game directory and install.
+A Windows mod manager and Story Mode expansion for bringing GTA Online vehicles, weapons, and
+supporting systems into Grand Theft Auto V single-player. ALLIN1 combines a desktop control center,
+an in-game storefront called **GBAY**, persistent garages, DLC-aware traffic, character editing,
+and a general-purpose local mod-package manager in one project.
 
-## Desktop manager
+ALLIN1 supports both GTA V Legacy and GTA V Enhanced. It is designed exclusively for **Story
+Mode**; the installer configures the game to launch without BattlEye and should never be used in
+GTA Online.
 
-Run `install.bat` once to create the virtual environment, then double-click
-`manager.bat`. You can also launch it from a terminal with:
+> **Current development version:** manager **0.2.0**. ALLIN1 is under active development and the
+> current testing branch receives in-game playtesting before changes are promoted to a release.
 
-```bat
-.venv\Scripts\allin1-gui.exe
-```
+## Support
 
-The manager detects the game edition and prerequisites, edits the common options,
-and provides Install/Repair and Uninstall actions with an activity log. Use ALLIN1
-only in Story Mode; the installer configures GTA V to launch without BattlEye.
-
-## Testing
-
-The automated harness covers Python units and commands, mocked game-file operations,
-Steam/platform detection, generator pipelines, data/catalog consistency, release
-artifact contracts, the C# script build, and the native ASI build.
-
-On Windows, run `powershell -ExecutionPolicy Bypass -File test-all.ps1`. On Linux or
-macOS, run `sh test-all.sh`. Native GTA behavior still requires the manual in-game
-smoke checklist in `tests/IN_GAME_CHECKLIST.md` because ScriptHook APIs need a running
-game process.
+If GTA V ALLIN1 is useful to you, project support is available through
+[Buy Me a Coffee](https://buymeacoffee.com/minionenjoyer).
 
 ## Features
 
-- A traffic spawn sytstem to integrate DLC content around Los Santos.
-- GBAY web portal to purchase/deliver DLC content.  (Can be made free in config.  Prices can be adjusted in prices_vehicles.toml and prices_weapons.toml).
-- Custom garage system.
-- Juggernaut armour from the Paleto heist, nightvision, and equipment equip/unequip options.
-- Vehicle seat system (hold down F and switch using arrow keys).
-- DLC spawner for emergency vehicles. (Enable in config file).
+- **GBAY vehicle marketplace** — browse all 461 supported DLC vehicles by category, search and
+  filter the catalog, favorite listings, inspect streamed preview artwork, preview a vehicle in
+  3D, purchase it, and deliver it to a garage.
+- **Weapons and inventory** — purchase more than 100 weapons, refill owned ammunition, and manage
+  exact per-character weapon and equipment loadouts from the desktop manager.
+- **Persistent garages** — maintain separate Story Mode vehicle collections, drive vehicles into
+  supported interiors, sell stored vehicles, recover from interrupted transitions, and customize
+  garage floors.
+- **DLC traffic integration** — adds Online vehicles to ambient traffic with class-aware
+  replacements, road and visibility checks, mission/interior/wanted-level guards, distance-based
+  cleanup, and adaptive performance throttling.
+- **Animation-first seat selector** — choose a seat with the configurable selector key (default
+  **L**). Accessible seats use native entry and shuffle animations; moving between inaccessible
+  rows or external mounts uses an exit-and-re-enter sequence rather than teleportation.
+- **Character control** — manage Michael, Franklin, and Trevor independently, including money,
+  skill levels, weapons, gear, garage saves, outfit components, props, and named outfit presets.
+- **Desktop control center** — detect the game edition, configure gameplay and accessibility
+  options, install or repair the mod, run health checks, export redacted diagnostics, manage
+  profiles, and launch GTA V without a background console window.
+- **Local mod packages** — install, update, enable, disable, and uninstall user-supplied ASI,
+  ScriptHookVDotNet, RPF, and config/data packages through validated `mod.toml` manifests.
+- **Preview texture pipeline** — validates PNG captures, encodes BC3 textures, builds YTD
+  dictionaries, converts Enhanced resources, packages the registered DLC archive, and verifies
+  every nested resource before deployment.
+- **Recovery-minded operation** — backs up replaced files, preserves garage recovery copies,
+  detects unclean sessions, offers a safe mode, and writes structured client diagnostics.
 
-## If you found this project useful, consider supporting me here: https://buymeacoffee.com/minionenjoyer Thank you!
+## How it fits together
+
+```text
+ALLIN1 desktop manager
+  Settings, profiles, health checks, character editor, mod packages
+  Install / repair and Launch GTA V
+                     |
+                     v
+GTA V Story Mode
+  ScriptHookV + ScriptHookVDotNet Enhanced
+    ALLIN1 client
+      GBAY marketplace and streamed preview artwork
+      Traffic spawner and vehicle helpers
+      Persistent garages and floor customization
+      Character loadouts, progress, outfits, and seat selector
+```
+
+The Python manager owns configuration, installation, backups, RPF packaging, diagnostics, and
+external mod integration. The C# ScriptHookVDotNet client owns the live Story Mode systems and
+persists character and garage state under the game's `scripts` directory.
+
+## Requirements
+
+- Windows 10 or Windows 11.
+- GTA V Legacy or GTA V Enhanced from Steam, Epic Games, or Rockstar Games Launcher.
+- [ScriptHookV](http://www.dev-c.com/gtav/scripthookv/).
+- [ScriptHookVDotNet Enhanced](https://github.com/Chiheb-Bacha/scripthookvdotnetenhanced).
+- Python 3.10 or newer when installing from source.
+- OpenRPF for Enhanced or OpenIV.asi for Legacy when GBAY preview artwork is enabled.
+
+ScriptHookV and ScriptHookVDotNet Enhanced must be installed in the directory containing
+`GTA5.exe` or `GTA5_Enhanced.exe` before ALLIN1 is installed.
+
+## Windows installation
+
+1. Clone or download this repository.
+2. Install ScriptHookV and ScriptHookVDotNet Enhanced into the GTA V root directory.
+3. Run `install.bat` once. It creates the local Python environment and prepares the manager.
+4. Open `manager.bat`.
+5. Confirm the detected GTA V directory, choose the desired settings, and select
+   **Install / Repair**.
+6. Select **Launch GTA V** and remain in Story Mode. Press **F9** to open GBAY.
+
+The installer deploys the ALLIN1 client and configuration under `<GTA V>/scripts`, registers the
+optional preview DLC, creates recoverable backups before replacement, and adds the no-BattlEye
+launch argument required for Story Mode scripting.
+
+## Desktop manager
+
+The launcher is the main configuration surface. Its pages cover:
+
+- core gameplay, traffic, keybind, performance, and accessibility settings;
+- installation status, dependency and RPF-loader health, updates, and rollback-aware repair;
+- per-character skills, money, garages, inventories, outfits, and presets;
+- local third-party mod packages with dependency, conflict, edition, and checksum validation;
+- redacted support bundles and runtime log inspection.
+
+Named profiles can preserve different combinations of traffic, GBAY, input, and accessibility
+settings. The installed `scripts/ALLIN1.toml` remains the runtime source of truth.
+
+## In-game controls
+
+| Input | Action |
+|---|---|
+| `F9` | Open or close GBAY |
+| Arrow keys / D-pad | Navigate menus and listing grids |
+| `Enter` / controller Accept | Select or purchase |
+| `Escape`, right-click / controller Back | Return to the previous page |
+| `LB` / `RB` or mouse wheel | Previous or next listing page |
+| `LT` / `RT` | Previous or next category |
+| `Y` | Cycle ownership and favorites filters |
+| `X` | Search the active catalog |
+| `R3` | Favorite or unfavorite the selected listing |
+| `L` | Open the seat selector by default |
+| `N` | Toggle acquired night vision |
+
+GBAY supports keyboard, mouse, and controller navigation. Page arrows and category-strip arrows
+are also clickable, and directional navigation crosses listing-page boundaries automatically.
+
+## Configuration
+
+`config.example.toml` documents every supported option. The manager writes the active settings to
+`config.toml` and copies them to `scripts/ALLIN1.toml` during installation.
+
+Important groups include:
+
+- `[general]` — game path, backups, and optional RPF preview artwork;
+- `[traffic]` — spawn distances, population limits, replacement behavior, and adaptive FPS guard;
+- `[vehicles]` — global enablement plus class and model exclusions;
+- `[script]` — GBAY, night vision and seat-selector keys, UI scale, reduced motion, colorblind mode,
+  safe mode, free purchases, logging, and development diagnostics.
+
+Vehicle, weapon, and gear pricing is maintained in `prices_vehicles.toml`,
+`prices_weapons.toml`, and `prices_gear.toml`.
 
 ## Optional mod packages
 
-The desktop launcher's **Mods** tab can install, update, enable, disable, and
-uninstall local ASI, ScriptHookVDotNet script, RPF, and config/data packages.
-Packages use a small `mod.toml` manifest so the launcher can validate editions,
-loader dependencies, conflicts, destination paths, and optional SHA-256 hashes.
-Replaced files are backed up and restored on uninstall. See
-[`mods/README.md`](mods/README.md) for the package format and inert examples.
+The manager's **Mods** page accepts local packages containing a `mod.toml` manifest. Supported
+package types include ASI plugins, ScriptHookVDotNet scripts, RPF content, and config/data files.
+The manager validates edition support, loader requirements, conflicts, destination paths, and
+optional SHA-256 hashes before installation. Replaced files are backed up and restored when the
+package is removed.
+
+The format and inert examples are documented in [mods/README.md](mods/README.md). ALLIN1 does not
+ship or download arbitrary third-party mods through this interface.
+
+## Tech stack
+
+- **Desktop manager:** Python 3.10+, Tk/ttk, Click, Pillow, and TOML configuration.
+- **Game client:** C# on .NET Framework 4.8 with ScriptHookVDotNet Enhanced and LemonUI.
+- **RPF and YTD tooling:** .NET, CodeWalker resource libraries, Pillow BC3 encoding, and the
+  repository's `RpfPatcher` utility.
+- **Testing:** pytest for manager, installer, generator, and repository contracts; dotnet builds
+  for the in-game client and native tool integration checks on Windows.
+
+## Repository layout
+
+```text
+src/allin1                 Python manager, installer, diagnostics, and package integration
+script/src                 C# Story Mode client, GBAY, garages, traffic, and character systems
+script/dist                Prebuilt client binaries and runtime artwork
+data                       Vehicle and weapon source catalogs
+catalog                    Generated and curated DLC content metadata
+mods                       Local mod-package format and examples
+tools/RpfPatcher           RPF, YTD, Gen9 conversion, and verification utility
+tests                      Python, build, packaging, and repository contract tests
+documentation.md           Complete configuration, architecture, and troubleshooting reference
+config.example.toml        Commented configuration template
+install.bat / manager.bat  Windows setup and launcher entry points
+```
+
+## Local development and testing
+
+Create the environment and run the complete Windows harness:
+
+```powershell
+.\install.bat
+powershell -ExecutionPolicy Bypass -File .\test-all.ps1
+```
+
+The Python suite can be run directly with:
+
+```powershell
+$env:PYTHONPATH = "src"
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+The harness covers configuration, detection, installation and rollback behavior, mod manifests,
+garage and character persistence, preview generation, RPF contracts, C# compilation, and release
+artifacts. Native gameplay still requires the manual checklist in
+[tests/IN_GAME_CHECKLIST.md](tests/IN_GAME_CHECKLIST.md) because ScriptHook APIs require a running
+game process.
+
+## Documentation
+
+Detailed setup, configuration, GBAY behavior, garages, traffic, the preview DLC pipeline, build
+tools, diagnostics, and troubleshooting are maintained in
+[documentation.md](documentation.md).
+
+GTA V ALLIN1 is licensed under the GNU General Public License v3.0 or later.

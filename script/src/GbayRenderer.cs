@@ -33,33 +33,33 @@ namespace ALLIN1
         // Tab strip
         internal static readonly Color TabBg          = Color.FromArgb(255, 38, 145, 72);
         internal static readonly Color TabActive      = Color.FromArgb(255, 255, 255, 255);
-        internal static readonly Color TabInactive    = Color.FromArgb(255, 180, 210, 190);
+        internal static readonly Color TabInactive    = Color.FromArgb(255, 214, 232, 220);
         internal static readonly Color TabHover       = Color.FromArgb(80, 255, 255, 255);
         internal static readonly Color TabIndicator   = Color.FromArgb(255, 255, 255, 255);
 
         // Body / background
-        internal static readonly Color BodyBg         = Color.FromArgb(245, 248, 250, 252);
+        internal static readonly Color BodyBg         = Color.FromArgb(250, 239, 244, 241);
         internal static readonly Color Scrim          = Color.FromArgb(180, 0, 0, 0);
 
         // Cards
         internal static readonly Color CardBg         = Color.FromArgb(250, 255, 255, 255);
         internal static readonly Color CardHover      = Color.FromArgb(255, 230, 245, 235);
-        internal static readonly Color CardSelected   = Color.FromArgb(255, 210, 240, 220);
+        internal static readonly Color CardSelected   = Color.FromArgb(255, 218, 240, 226);
         internal static readonly Color CardTopDefault = Color.FromArgb(255, 220, 230, 225);
         internal static readonly Color CardTopHover   = Color.FromArgb(255, 200, 225, 210);
-        internal static readonly Color CardBorder     = Color.FromArgb(255, 210, 220, 215);
-        internal static readonly Color CardBorderSel  = Color.FromArgb(255, 45, 156, 80);
+        internal static readonly Color CardBorder     = Color.FromArgb(255, 178, 190, 184);
+        internal static readonly Color CardBorderSel  = Color.FromArgb(255, 20, 112, 55);
 
         // Text
         internal static readonly Color TextDark       = Color.FromArgb(255, 30, 30, 35);
         internal static readonly Color TextMfg        = Color.FromArgb(255, 45, 156, 80);
         internal static readonly Color TextPrice      = Color.FromArgb(255, 35, 130, 65);
         internal static readonly Color TextPriceFree  = Color.FromArgb(255, 100, 100, 100);
-        internal static readonly Color TextDim        = Color.FromArgb(255, 140, 150, 145);
+        internal static readonly Color TextDim        = Color.FromArgb(255, 82, 94, 88);
         internal static readonly Color TextWhite      = Color.FromArgb(255, 255, 255, 255);
 
         // Footer
-        internal static readonly Color FooterBg       = Color.FromArgb(255, 240, 244, 240);
+        internal static readonly Color FooterBg       = Color.FromArgb(255, 225, 233, 228);
 
         // Modal overlay
         internal static readonly Color ModalBg        = Color.FromArgb(250, 255, 255, 255);
@@ -149,17 +149,27 @@ namespace ALLIN1
         private static readonly HashSet<string> _requestedDicts = new HashSet<string>();
         private static readonly HashSet<string> _loadedDicts = new HashSet<string>();
         private static readonly HashSet<string> _failedDicts = new HashSet<string>();
-        private static int _failCheckCounter;
+        private static readonly Dictionary<string, DateTime> _requestStarted =
+            new Dictionary<string, DateTime>();
 
-        /// After this many consecutive IsDictLoaded checks returning false
-        /// (across all dicts), stop polling. Roughly 10s at 60fps.
-        private const int FAIL_CHECK_LIMIT = 600;
+        /// Each dictionary gets its own wall-clock timeout. A shared frame/check
+        /// counter used to expire every requested dictionary after roughly one
+        /// second on an eight-card page because each card incremented it.
+        private static readonly TimeSpan DICT_LOAD_TIMEOUT = TimeSpan.FromSeconds(30);
 
         private const string LOGO_DICT = "allin1_logo";
         private const string LOGO_TEX  = "phat";
+        private const string BRAND_LOGO_TEX = "allin1";
 
-        internal static string PreviewDiagnostics =>
-            $"{_loadedDicts.Count} loaded / {_failedDicts.Count} unavailable; vector placeholders enabled";
+        internal static string PreviewDiagnostics
+        {
+            get
+            {
+                int pending = Math.Max(0, _requestedDicts.Count - _loadedDicts.Count);
+                return $"{_loadedDicts.Count} loaded / {pending} pending / " +
+                    $"{_failedDicts.Count} unavailable; vector placeholders enabled";
+            }
+        }
 
         internal static string OpenRpfStatus
         {
@@ -167,9 +177,31 @@ namespace ALLIN1
             {
                 string scripts = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
                 string root = Directory.GetParent(scripts)?.FullName ?? scripts;
-                return File.Exists(Path.Combine(root, "OpenRPF.asi")) ||
-                       File.Exists(Path.Combine(root, "OpenIV.asi")) ? "detected" : "not detected (fallback active)";
+                string openRpf = Path.Combine(root, "OpenRPF.asi");
+                string openIv = Path.Combine(root, "OpenIV.asi");
+                if (IsUsablePlugin(openRpf) || IsUsablePlugin(openIv))
+                    return "plug-in detected";
+
+                string disabledRoot = Path.Combine(
+                    root, "allin1_backups", "DisabledPlugins");
+                if (File.Exists(Path.Combine(disabledRoot, "OpenRPF.asi.disabled")) ||
+                    File.Exists(Path.Combine(disabledRoot, "OpenIV.asi.disabled")))
+                    return "OpenRPF plug-in disabled (fallback active)";
+
+                bool asiLoader = File.Exists(Path.Combine(root, "dinput8.dll")) ||
+                    File.Exists(Path.Combine(root, "dsound.dll")) ||
+                    File.Exists(Path.Combine(root, "xinput1_4.dll"));
+                return asiLoader
+                    ? "ASI loader detected; OpenRPF plug-in missing"
+                    : "ASI loader and OpenRPF plug-in missing";
             }
+        }
+
+        private static bool IsUsablePlugin(string path)
+        {
+            try { return File.Exists(path) && new FileInfo(path).Length > 0; }
+            catch (IOException) { return false; }
+            catch (UnauthorizedAccessException) { return false; }
         }
 
         /// <summary>Request a texture dictionary for async streaming.</summary>
@@ -179,7 +211,10 @@ namespace ALLIN1
                 return;
             if (_requestedDicts.Add(dict))
             {
+                _requestStarted[dict] = DateTime.UtcNow;
                 Function.Call(Hash.REQUEST_STREAMED_TEXTURE_DICT, dict, false);
+                ClientLog.Info("Preview", "texture_requested",
+                    new Dictionary<string, object> { { "dictionary", dict } });
             }
         }
 
@@ -199,16 +234,24 @@ namespace ALLIN1
             if (Function.Call<bool>(Hash.HAS_STREAMED_TEXTURE_DICT_LOADED, dict))
             {
                 _loadedDicts.Add(dict);
+                _requestStarted.Remove(dict);
                 ClientLog.Info("Preview", "texture_loaded",
                     new Dictionary<string, object> { { "dictionary", dict } });
                 return true;
             }
 
-            _failCheckCounter++;
-            if (_failCheckCounter > FAIL_CHECK_LIMIT)
+            if (_requestStarted.TryGetValue(dict, out DateTime started) &&
+                DateTime.UtcNow - started >= DICT_LOAD_TIMEOUT)
             {
-                _failedDicts.UnionWith(_requestedDicts);
-                _requestedDicts.Clear();
+                _failedDicts.Add(dict);
+                _requestedDicts.Remove(dict);
+                _requestStarted.Remove(dict);
+                ClientLog.Warn("Preview", "texture_unavailable",
+                    new Dictionary<string, object>
+                    {
+                        { "dictionary", dict },
+                        { "timeout_seconds", (int)DICT_LOAD_TIMEOUT.TotalSeconds },
+                    });
             }
 
             return false;
@@ -217,11 +260,12 @@ namespace ALLIN1
         /// <summary>Release a texture dictionary from VRAM.</summary>
         internal static void ReleaseDict(string dict)
         {
-            if (_requestedDicts.Remove(dict))
-            {
+            bool wasRequested = _requestedDicts.Remove(dict);
+            if (wasRequested || _loadedDicts.Contains(dict))
                 Function.Call(Hash.SET_STREAMED_TEXTURE_DICT_AS_NO_LONGER_NEEDED, dict);
-                _loadedDicts.Remove(dict);
-            }
+            _loadedDicts.Remove(dict);
+            _failedDicts.Remove(dict);
+            _requestStarted.Remove(dict);
         }
 
         /// <summary>Check if a preview texture exists for this model.</summary>
@@ -247,19 +291,51 @@ namespace ALLIN1
             return true;
         }
 
-        /// <summary>Draw the PHAT logo from the DLC texture dict.</summary>
+        private static void DrawLogoFallback(float x, float y, float h)
+        {
+            RequestDict(LOGO_DICT);
+            DrawRect(x, y, h * 0.78f, h * 0.72f, HeaderBg);
+            DrawText("GBAY", x, y - h * 0.16f, h * 4.2f, TextWhite,
+                FONT_PRICEDOWN, true);
+        }
+
+        /// <summary>Draw the PHAT loading meme from the DLC texture dictionary.</summary>
         internal static void DrawLogo(float x, float y, float h)
         {
             if (!IsDictLoaded(LOGO_DICT))
             {
-                RequestDict(LOGO_DICT);
-                DrawRect(x, y, h * 0.78f, h * 0.72f, HeaderBg);
-                DrawText("GBAY", x, y - h * 0.16f, h * 4.2f, TextWhite,
-                    FONT_PRICEDOWN, true);
+                DrawLogoFallback(x, y, h);
                 return;
             }
             float w = h * (440f / 559f);
             DrawSprite(LOGO_DICT, LOGO_TEX, x, y, w, h, Color.White);
+        }
+
+        /// <summary>Draw the ALLIN1 brand mark used by the About page.</summary>
+        internal static void DrawBrandLogo(float x, float y, float h)
+        {
+            if (!IsDictLoaded(LOGO_DICT))
+            {
+                DrawLogoFallback(x, y, h);
+                return;
+            }
+            const float sourceAspect = 1.5f;
+            float w = h * sourceAspect;
+            DrawSprite(LOGO_DICT, BRAND_LOGO_TEX, x, y, w, h, Color.White);
+        }
+
+        /// <summary>
+        /// Draw the GBAY wordmark with GTA's Pricedown-style display font.
+        /// PHAT remains exclusive to the loading screen.
+        /// </summary>
+        internal static void DrawGbayWordmark(
+            float x, float y, float scale, bool light = false)
+        {
+            Color foreground = light ? TextWhite : HeaderBg;
+            DrawText("GBAY", x + 0.002f, y + 0.003f, scale,
+                Color.FromArgb(150, 10, 20, 14), FONT_PRICEDOWN, true);
+            DrawText("GBAY", x, y, scale, foreground,
+                FONT_PRICEDOWN, true);
         }
 
         /// <summary>
@@ -306,6 +382,24 @@ namespace ALLIN1
             Function.Call(Hash.BEGIN_TEXT_COMMAND_GET_SCREEN_WIDTH_OF_DISPLAY_TEXT, "STRING");
             Function.Call(Hash.ADD_TEXT_COMPONENT_SUBSTRING_PLAYER_NAME, text);
             return Function.Call<float>(Hash.END_TEXT_COMMAND_GET_SCREEN_WIDTH_OF_DISPLAY_TEXT, true);
+        }
+
+        /// <summary>
+        /// Draw one line while shrinking only as much as required to keep it
+        /// inside the supplied width. This prevents long catalog names and
+        /// diagnostics from running into adjacent controls.
+        /// </summary>
+        internal static void DrawTextFit(
+            string text, float x, float y, float preferredScale,
+            float minimumScale, float maxWidth, Color c,
+            int font = FONT_CHALET, bool centered = false,
+            bool shadow = false, bool rightAlign = false)
+        {
+            float scale = preferredScale;
+            while (scale > minimumScale && GetTextWidth(text, scale, font) > maxWidth)
+                scale -= 0.015f;
+            DrawText(text, x, y, Math.Max(minimumScale, scale), c,
+                font, centered, shadow, rightAlign);
         }
 
         /// <summary>

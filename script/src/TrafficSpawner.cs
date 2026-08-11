@@ -39,8 +39,9 @@ namespace ALLIN1
         private float _smoothedFps = 60f;
         private bool _throttled;
         internal static int ManagedVehicleCount { get; private set; }
-        internal static float SmoothedFps { get; private set; }
+        internal static float SmoothedFps { get; private set; } = 60f;
         internal static bool IsThrottled { get; private set; }
+        internal static string PauseReason { get; private set; } = "starting";
 
         // Road-appropriate vehicle classes used for driven spawns.
         private static readonly string[][] ROAD_CLASSES =
@@ -158,13 +159,29 @@ namespace ALLIN1
 
         private void OnTick(object sender, EventArgs e)
         {
-            if (!_enabled || ClientWatchdog.SafeMode) return;
-            if (Game.IsLoading)
+            UpdatePerformanceSample();
+            ManagedVehicleCount = _spawned.Count;
+
+            if (!_enabled)
+            {
+                PauseReason = "disabled in settings";
                 return;
+            }
+            if (ClientWatchdog.SafeMode)
+            {
+                PauseReason = "30-second recovery mode";
+                return;
+            }
+            if (Game.IsLoading)
+            {
+                PauseReason = "game loading";
+                return;
+            }
 
             string suppression = GetSuppressionReason();
             if (suppression.Length > 0)
             {
+                PauseReason = suppression.Replace('_', ' ');
                 if (suppression != _lastSuppressionReason)
                     ClientLog.Info("Traffic", "spawning_suppressed",
                         new Dictionary<string, object> { { "reason", suppression } });
@@ -172,23 +189,23 @@ namespace ALLIN1
                 return;
             }
             _lastSuppressionReason = "";
+            PauseReason = "";
 
             if (!_initialized)
             {
+                PauseReason = "initializing";
                 Initialize();
                 return;
             }
 
             if (_validModels.Count == 0)
+            {
+                PauseReason = "no valid vehicle models";
                 return;
+            }
 
             int now = Game.GameTime;
-            float frameTime = Function.Call<float>(Hash.GET_FRAME_TIME);
-            if (frameTime > 0.0001f)
-                _smoothedFps = _smoothedFps * 0.92f + (1f / frameTime) * 0.08f;
             _throttled = _adaptivePerformance && _smoothedFps < _minimumFps;
-            ManagedVehicleCount = _spawned.Count;
-            SmoothedFps = _smoothedFps;
             IsThrottled = _throttled;
             if (now - _lastCleanupTime >= 1000)
             {
@@ -213,6 +230,14 @@ namespace ALLIN1
                 ScanAndReplace();
                 _lastScanTime = now;
             }
+        }
+
+        private void UpdatePerformanceSample()
+        {
+            float frameTime = Function.Call<float>(Hash.GET_FRAME_TIME);
+            if (frameTime > 0.0001f)
+                _smoothedFps = _smoothedFps * 0.92f + (1f / frameTime) * 0.08f;
+            SmoothedFps = _smoothedFps;
         }
 
         private static string GetSuppressionReason()

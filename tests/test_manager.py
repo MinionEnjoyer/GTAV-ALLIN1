@@ -22,7 +22,7 @@ def test_status_reports_complete_legacy_install(tmp_path):
     (tmp_path / "GTA5.exe").touch()
     (tmp_path / "ScriptHookV.dll").touch()
     (tmp_path / "ScriptHookVDotNet.asi").touch()
-    (tmp_path / "OpenIV.asi").touch()
+    (tmp_path / "OpenIV.asi").write_bytes(b"asi")
     scripts = tmp_path / "scripts"
     scripts.mkdir()
     (scripts / "ALLIN1.dll").touch()
@@ -38,6 +38,7 @@ def test_status_reports_complete_legacy_install(tmp_path):
     assert status.scripthookv_installed is True
     assert status.shvdn_installed is True
     assert status.openrpf_installed is True
+    assert status.rpf_loader_status == "Installed"
     assert status.installed_version == "0.2.0"
     assert status.manager_version == "0.2.0"
 
@@ -53,6 +54,21 @@ def test_status_reports_invalid_manual_path(tmp_path):
     assert status.valid_game is False
     assert status.edition == "Unknown"
     assert status.mod_installed is False
+
+
+def test_status_distinguishes_disabled_openrpf_from_missing_loader(tmp_path):
+    (tmp_path / "GTA5_Enhanced.exe").touch()
+    (tmp_path / "dinput8.dll").write_bytes(b"loader")
+    disabled = tmp_path / "allin1_backups" / "DisabledPlugins"
+    disabled.mkdir(parents=True)
+    (disabled / "OpenRPF.asi.disabled").write_bytes(b"plugin")
+    config = Config.default()
+    config.general.gta_path = str(tmp_path)
+
+    status = _manager(tmp_path).status(config)
+
+    assert status.openrpf_installed is False
+    assert status.rpf_loader_status == "Disabled"
 
 
 def test_install_saves_config_and_delegates(tmp_path):

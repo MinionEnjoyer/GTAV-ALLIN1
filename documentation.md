@@ -471,8 +471,8 @@ The auto-commit uses `github-actions[bot]` and does `git pull --rebase` before p
 ### Building External Tools
 
 Run `runtools.ps1` on Windows to build:
-- **YTDToolio.exe** — converts PNG images to GTA V `.ytd` texture dictionaries
-- **RpfPatcher.exe** — manipulates RPF archives (build DLC packs, patch dlclist.xml)
+- **RpfPatcher.exe** — builds texture dictionaries, converts Enhanced resources, and safely updates RPF archives
+- **YTDToolio.exe** — retained only as a legacy diagnostic utility; the installer no longer uses its corrupt PNG encoder
 
 Requires Visual Studio 2022 with C++ desktop workload and .NET 6.0+ SDK.
 
@@ -518,32 +518,35 @@ allin1 generate-weaponlist
 
 ---
 
-## DLC Texture Pack
+## GBAY RPF Preview Textures
 
-Vehicle preview images are served to the in-game UI via a custom GTA V DLC pack.
+Vehicle preview images are served to the in-game UI from the registered
+`allin1_previews` DLC pack. Enhanced does not add arbitrary files placed in
+`update2.rpf/textures` to the streamed-texture index; registering the nested RPF
+through `content.xml` and `dlclist.xml` makes the dictionaries discoverable.
 
 ### Structure
 
 ```
 mods/update/x64/dlcpacks/allin1_previews/dlc.rpf
-├── content.xml          # Registers textures.rpf as RPF_FILE
-├── setup2.xml           # DLC metadata (EXTRACONTENT_COMPAT_PACK)
-└── x64/textures/
-    └── textures.rpf     # Contains all .ytd texture dictionaries
-        ├── allin1_logo.ytd
-        ├── allin1_prev_01.ytd
-        ├── allin1_prev_02.ytd
-        └── ...
+├── content.xml
+├── setup2.xml
+└── x64/textures/textures.rpf
+    ├── allin1_logo.ytd
+    ├── allin1_prev_01.ytd
+    ├── allin1_prev_02.ytd
+    └── ...
 ```
 
 ### Build Pipeline
 
 1. **PNG source:** captured preview images in `script/dist/previews/`; models listed in `data/preview_pending.toml` use placeholders
-2. **YTD packing:** `YTDToolio.exe` converts PNGs to `.ytd` files (DXT1 compression, 89 textures per YTD)
-3. **DLC structure:** Python generates `content.xml` and `setup2.xml`
-4. **RPF packing:** `RpfPatcher.exe build-dlc` creates outer `dlc.rpf` with nested `textures.rpf`
-5. **Deployment:** `dlc.rpf` copied to `mods/update/x64/dlcpacks/allin1_previews/`
-6. **Registration:** `RpfPatcher.exe patch` adds entry to `dlclist.xml` in `mods/update/update.rpf`
+2. **Texture encoding:** Pillow converts PNGs to standards-compliant BC3 DDS payloads
+3. **YTD packing:** `RpfPatcher.exe build-ytd` writes Legacy texture dictionaries through CodeWalker (89 textures per YTD)
+4. **Enhanced conversion:** `RpfPatcher.exe convert-gen9` converts the YTD resources for Gen9
+5. **DLC packaging:** `RpfPatcher.exe build-dlc` embeds the YTDs in `x64/textures/textures.rpf`
+6. **Verification:** `RpfPatcher.exe verify-dlc` extracts the nested archive and verifies every expected dictionary before deployment
+7. **Registration:** the installer deploys `dlc.rpf` and patches current `mods/update/update.rpf/common/data/dlclist.xml`
 
 ### Runtime Loading
 
@@ -558,10 +561,14 @@ Textures are loaded on demand per page and pre-fetched one page ahead. Unused di
 
 | Command | Description |
 |---------|-------------|
+| `build-ytd <dds_folder> <output_ytd> [legacy\|gen9]` | Build a YTD from validated DDS payloads |
+| `unpack-ytd <ytd_path> <output_folder> [legacy\|gen9]` | Extract DDS payloads for visual verification |
 | `build-dlc <folder> <output> [--embed-rpf <src> <dest>]` | Pack loose folder into dlc.rpf with optional nested RPF |
+| `verify-dlc <dlc_rpf> <ytd_folder>` | Read back metadata, nested RPF, and every expected YTD |
 | `patch <gta_path>` | Add `allin1_previews` to dlclist.xml |
 | `unpatch <gta_path>` | Remove `allin1_previews` from dlclist.xml |
-| `inject-ytd <gta_path> <ytd_folder>` | Inject YTDs into script_txds.rpf (legacy method) |
+| `inject-ytd <gta_path> <ytd_folder>` | Inject YTDs into `script_txds.rpf` |
+| `verify-ytd <gta_path> <ytd_folder>` | Verify all expected YTDs after injection |
 | `remove-ytd <gta_path> <prefix>` | Remove injected YTDs |
 | `inspect <gta_path> <rpf_path>` | Dump RPF structure for debugging |
 

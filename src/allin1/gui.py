@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import logging
+import os
 import queue
 import threading
 import tkinter as tk
 import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+
+from PIL import Image, ImageTk
 
 from allin1.config import Config
 from allin1.game_launcher import launch_gta
@@ -21,6 +24,15 @@ from allin1.versioning import fetch_latest_release
 from allin1.profiles import ProfileStore
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+ASSET_DIR = Path(__file__).resolve().parent / "assets"
+WINDOWS_APP_ID = "MinionEnjoyer.GTAVALLIN1.Launcher"
+
+
+def _register_windows_app() -> None:
+    """Set taskbar identity before Tk creates the native window."""
+    if os.name == "nt":
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(WINDOWS_APP_ID)
 
 
 class QueueLogHandler(logging.Handler):
@@ -72,6 +84,10 @@ class ManagerWindow:
         root.title("GTA V ALLIN1 Launcher")
         root.geometry("940x820")
         root.minsize(780, 620)
+        self._window_icon: tk.PhotoImage | None = None
+        self._banner_logo: ImageTk.PhotoImage | None = None
+        self._native_icon_handle: int | None = None
+        self._apply_window_branding()
 
         self.path = tk.StringVar(value=self.config.general.gta_path)
         self.rpf_previews = tk.BooleanVar(value=self.config.general.enable_rpf_previews)
@@ -108,6 +124,34 @@ class ManagerWindow:
         self.root.after(100, self._drain_messages)
         self.refresh()
 
+    def _apply_window_branding(self) -> None:
+        """Apply the ALLIN1 logo to the title bar and Windows taskbar."""
+        try:
+            icon_path = ASSET_DIR / "ALLIN1.ico"
+            self._window_icon = tk.PhotoImage(file=str(ASSET_DIR / "ALLIN1-icon.png"))
+            self.root.iconphoto(True, self._window_icon)
+            if os.name == "nt":
+                import ctypes
+                self.root.iconbitmap(str(icon_path))
+                self.root.iconbitmap(default=str(icon_path))
+                self.root.update_idletasks()
+
+                # Tk's iconbitmap can be ignored by Windows taskbar grouping.
+                # Set both native icon slots on the actual HWND as well.
+                user32 = ctypes.windll.user32
+                user32.LoadImageW.restype = ctypes.c_void_p
+                handle = user32.LoadImageW(
+                    None, str(icon_path), 1, 0, 0, 0x10 | 0x40
+                )
+                if handle:
+                    hwnd = self.root.winfo_id()
+                    user32.SendMessageW(hwnd, 0x0080, 0, handle)  # ICON_SMALL
+                    user32.SendMessageW(hwnd, 0x0080, 1, handle)  # ICON_BIG
+                    self._native_icon_handle = handle
+        except (OSError, tk.TclError):
+            # Branding is optional; never prevent the repair tool from opening.
+            self._window_icon = None
+
     def _build(self) -> None:
         green, dark_green, body_bg = "#2d9c50", "#238746", "#f8fafc"
         self.root.configure(background=body_bg)
@@ -133,9 +177,21 @@ class ManagerWindow:
 
         banner = tk.Frame(outer, background=dark_green, padx=18, pady=13)
         banner.pack(fill="x", pady=(0, 14))
-        tk.Label(banner, text="GTA V ALLIN1 LAUNCHER", background=dark_green,
+        try:
+            with Image.open(ASSET_DIR / "ALLIN1.png") as source:
+                logo = source.convert("RGBA")
+                logo.thumbnail((112, 72), Image.Resampling.LANCZOS)
+            self._banner_logo = ImageTk.PhotoImage(logo)
+            tk.Label(banner, image=self._banner_logo, background=dark_green,
+                     borderwidth=0).pack(side="left", padx=(0, 16))
+        except (OSError, tk.TclError):
+            self._banner_logo = None
+
+        banner_text = tk.Frame(banner, background=dark_green)
+        banner_text.pack(side="left", fill="y")
+        tk.Label(banner_text, text="GTA V ALLIN1 LAUNCHER", background=dark_green,
                  foreground="white", font=("Impact", 24)).pack(anchor="w")
-        support = tk.Label(banner, text="A mod by MinionEnjoyer (Support Link!)", background=dark_green,
+        support = tk.Label(banner_text, text="A mod by MinionEnjoyer (Support Link!)", background=dark_green,
                            foreground="#d2ead9", cursor="hand2",
                            font=("Segoe UI Semibold", 9, "underline"))
         support.pack(anchor="w", pady=(3, 0))
@@ -180,7 +236,7 @@ class ManagerWindow:
         ttk.Checkbutton(options, text="DLC traffic", variable=self.traffic).grid(row=0, column=1, sticky="w", padx=(0, 30))
         ttk.Checkbutton(options, text="DLC police", variable=self.police).grid(row=1, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Detailed script logging", variable=self.logging_enabled).grid(row=1, column=1, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Safe mode (disable traffic and floor garages)", variable=self.safe_mode).grid(row=2, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(options, text="Safe mode (disables traffic and three-floor garages)", variable=self.safe_mode).grid(row=2, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Disable GBAY page-transition fades", variable=self.reduced_motion).grid(row=2, column=1, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Colorblind-safe palette", variable=self.colorblind_mode).grid(row=3, column=0, sticky="w", pady=(8, 0))
         ttk.Label(options, text="UI text scale").grid(row=3, column=1, sticky="w", pady=(8, 0))
@@ -576,11 +632,11 @@ class ManagerWindow:
             f"ALLIN1: {mark(status.mod_installed)}    "
             f"ScriptHookV: {mark(status.scripthookv_installed)}    "
             f"ScriptHookVDotNet: {mark(status.shvdn_installed)}    "
-            f"OpenRPF/OpenIV: {mark(status.openrpf_installed)}"
+            f"OpenRPF/OpenIV: {status.rpf_loader_status}"
         )
         installed = status.installed_version or ("unknown" if status.mod_installed else "not installed")
         self.version_text.set(
-            f"Manager {status.manager_version} · Installed client {installed} · latest not checked"
+            f"Manager {status.manager_version} · Installed client {installed} · Update status not checked"
         )
 
     def show_about(self) -> None:
@@ -763,6 +819,7 @@ class ManagerWindow:
 
 def main() -> None:
     setup_logging(PROJECT_ROOT)
+    _register_windows_app()
     root = tk.Tk()
     ManagerWindow(root, ModManager(PROJECT_ROOT))
     root.mainloop()

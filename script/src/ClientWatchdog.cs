@@ -12,7 +12,11 @@ namespace ALLIN1
             AppDomain.CurrentDomain.BaseDirectory, "ALLIN1_session.lock");
         internal static bool PreviousSessionCrashed { get; private set; } = File.Exists(Marker);
         internal static bool ForcedSafeMode { get; private set; }
-        internal static bool SafeMode => PreviousSessionCrashed || ForcedSafeMode;
+        private static readonly DateTime RecoveryEndsUtc =
+            DateTime.UtcNow.AddSeconds(30);
+        private bool _recoveryCompleteLogged;
+        internal static bool SafeMode => ForcedSafeMode ||
+            (PreviousSessionCrashed && DateTime.UtcNow < RecoveryEndsUtc);
 
         public ClientWatchdog()
         {
@@ -30,7 +34,16 @@ namespace ALLIN1
             catch (Exception ex) { ClientLog.Error("Watchdog", "marker_write_failed", ex); }
         }
 
-        private void OnTick(object sender, EventArgs e) { }
+        private void OnTick(object sender, EventArgs e)
+        {
+            if (PreviousSessionCrashed && !ForcedSafeMode &&
+                !SafeMode && !_recoveryCompleteLogged)
+            {
+                _recoveryCompleteLogged = true;
+                ClientLog.Info("Watchdog", "recovery_window_completed_features_resumed",
+                    new Dictionary<string, object> { { "stabilization_seconds", 30 } });
+            }
+        }
 
         private void OnAborted(object sender, EventArgs e)
         {

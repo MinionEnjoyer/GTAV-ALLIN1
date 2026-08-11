@@ -1,9 +1,10 @@
 """Build .ytd texture dictionaries from PNG preview images.
 
-Pipeline: PNG folder -> YTDToolio.exe pack -> .ytd
+Pipeline: PNG folder -> Pillow BC3 DDS -> RpfPatcher/CodeWalker -> .ytd
 
-YTDToolio reads PNG files directly and handles DXT compression internally
-via RageLib.  No intermediate DDS conversion step is needed.
+The old YTDToolio PNG path corrupts scanlines on current Windows systems.
+Pillow provides a standards-compliant BC3 encoder, while CodeWalker writes
+the resource dictionary and performs the later Enhanced conversion.
 
 This module is called at install time on the user's Windows gaming PC.
 """
@@ -14,6 +15,8 @@ import logging
 import shutil
 import subprocess
 from pathlib import Path
+
+from PIL import Image
 
 from allin1.generators.vehiclelist import TEXTURES_PER_YTD, YTD_PREFIX
 
@@ -41,13 +44,31 @@ def _run(cmd: list[str | Path], label: str, cwd: Path | None = None) -> None:
         raise RuntimeError(f"{label} crashed: {result.stderr[:500]}")
 
 
-def _pack_ytd(png_dir: Path, output_path: Path, ytdtool: Path) -> None:
-    """Pack a folder of PNG files into a .ytd using YTDToolio.exe."""
-    _run(
-        [ytdtool, "pack", png_dir, "-d", output_path],
-        f"YTDToolio ({output_path.name})",
-        cwd=ytdtool.parent,  # so FuckDX.dll is found next to the exe
-    )
+def _encode_dds_files(png_dir: Path, dds_dir: Path) -> int:
+    """Encode every PNG as a standards-compliant single-level BC3 DDS."""
+    dds_dir.mkdir(parents=True, exist_ok=True)
+    count = 0
+    for png_path in sorted(png_dir.glob("*.png")):
+        with Image.open(png_path) as source:
+            rgba = source.convert("RGBA")
+            rgba.save(dds_dir / f"{png_path.stem}.dds", pixel_format="DXT5")
+        count += 1
+    return count
+
+
+def _pack_ytd(png_dir: Path, output_path: Path, rpf_patcher: Path) -> None:
+    """Encode a PNG folder and build a Legacy YTD through CodeWalker."""
+    dds_dir = png_dir.with_name(f"{png_dir.name}_dds")
+    try:
+        if _encode_dds_files(png_dir, dds_dir) == 0:
+            raise RuntimeError(f"No PNG images found in {png_dir}")
+        _run(
+            [rpf_patcher, "build-ytd", dds_dir, output_path, "legacy"],
+            f"RpfPatcher build-ytd ({output_path.name})",
+            cwd=rpf_patcher.parent,
+        )
+    finally:
+        shutil.rmtree(dds_dir, ignore_errors=True)
 
 
 def build_ytd_files(
@@ -57,24 +78,26 @@ def build_ytd_files(
     tools_dir: Path,
     models: list[str],
     textures_per_ytd: int = TEXTURES_PER_YTD,
+    brand_logo_path: Path | None = None,
 ) -> list[Path]:
     """Build .ytd files from PNG previews.
 
     Args:
         previews_dir: Directory containing ``<model>.png`` files.
-        logo_path: Path to PHAT.png logo (or None to skip).
+        logo_path: Path to the ALLIN1 brand PNG (or None to skip).
         output_dir: Where to write the .ytd files.
-        tools_dir: Directory containing YTDToolio.exe.
+        tools_dir: Directory containing ``RpfPatcher/RpfPatcher.exe``.
         models: List of model names (will be sorted alphabetically).
         textures_per_ytd: Max textures per .ytd file.
+        brand_logo_path: Optional ALLIN1 logo for the About page.
 
     Returns:
         List of created .ytd file paths.
     """
-    ytdtool = tools_dir / "YTDToolio.exe"
+    rpf_patcher = tools_dir / "RpfPatcher" / "RpfPatcher.exe"
 
-    if not ytdtool.exists():
-        raise FileNotFoundError(f"YTDToolio.exe not found at {ytdtool}")
+    if not rpf_patcher.exists():
+        raise FileNotFoundError(f"RpfPatcher.exe not found at {rpf_patcher}")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     sorted_models = sorted(models)
@@ -103,21 +126,21 @@ def build_ytd_files(
                 copied += 1
 
             # Keep dictionary numbering tied to the complete vehicle catalog,
-            # but do not ask YTDToolio to pack an empty directory.
+            # but do not ask the resource builder to pack an empty directory.
             if copied == 0:
                 log.warning("Skipping empty texture dictionary %s", dict_name)
                 continue
 
             ytd_path = output_dir / f"{dict_name}.ytd"
-            _pack_ytd(png_dir, ytd_path, ytdtool)
+            _pack_ytd(png_dir, ytd_path, rpf_patcher)
             if not ytd_path.exists():
-                log.error("YTDToolio reported success but %s not found", ytd_path)
+                log.error("RpfPatcher reported success but %s not found", ytd_path)
                 # Search for the .ytd file in likely locations
                 search_locations = [
                     Path.cwd() / f"{dict_name}.ytd",
                     png_dir / f"{dict_name}.ytd",
                     png_dir.parent / f"{dict_name}.ytd",
-                    # YTDToolio might name it after the folder
+                    # Historical packers might name it after the folder.
                     output_dir / f"_tmp_{dict_name}.ytd",
                 ]
                 # Also list what's actually in the output directory
@@ -147,11 +170,14 @@ def build_ytd_files(
         logo_dir = output_dir / "_tmp_allin1_logo"
         logo_dir.mkdir(parents=True, exist_ok=True)
         try:
-            # Copy as "phat.png" so the texture name inside .ytd is "phat"
+            # Keep the historical texture key so older clients can use new
+            # branded packs without a coordinated runtime migration.
             shutil.copy2(logo_path, logo_dir / "phat.png")
+            if brand_logo_path and brand_logo_path.exists():
+                shutil.copy2(brand_logo_path, logo_dir / "allin1.png")
 
             ytd_path = output_dir / "allin1_logo.ytd"
-            _pack_ytd(logo_dir, ytd_path, ytdtool)
+            _pack_ytd(logo_dir, ytd_path, rpf_patcher)
             ytd_files.append(ytd_path)
             log.info("Created allin1_logo.ytd")
         finally:

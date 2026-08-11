@@ -165,7 +165,7 @@ def test_install_orchestrates_steps_and_collects_preview_warning(tmp_path, monke
     monkeypatch.setattr(installer, "_check_scripthookv", Mock(return_value=True))
     monkeypatch.setattr(installer, "_check_shvdn", Mock(return_value=False))
     monkeypatch.setattr(installer, "_check_openrpf", Mock(return_value=True))
-    monkeypatch.setattr(installer, "_remove_legacy_preview_pack", Mock(return_value=[]))
+    monkeypatch.setattr(installer, "_remove_preview_pack", Mock(return_value=[]))
     monkeypatch.setattr(installer, "_unpatch_dlclist_rpf", Mock())
     monkeypatch.setattr(installer, "_deploy_preview_dlc", Mock(side_effect=RuntimeError("preview failed")))
     patch = Mock()
@@ -190,7 +190,7 @@ def test_install_only_deploys_rpf_previews_when_explicitly_enabled(tmp_path, mon
     for name, value in (
         ("_clean_legacy_files", None), ("_deploy_script", True),
         ("_check_scripthookv", True), ("_check_shvdn", True),
-        ("_check_openrpf", True), ("_remove_legacy_preview_pack", []),
+        ("_check_openrpf", True), ("_remove_preview_pack", []),
         ("_unpatch_dlclist_rpf", None),
     ):
         monkeypatch.setattr(installer, name, Mock(return_value=value))

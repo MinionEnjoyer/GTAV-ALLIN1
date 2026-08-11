@@ -1,4 +1,5 @@
 import hashlib
+import os
 
 from allin1.health import scan_installation, sha256_file
 
@@ -40,15 +41,24 @@ def test_health_unknown_empty_directory(tmp_path):
     assert sum(issue.code == "dependency_missing" for issue in report.issues) == 2
 
 
-def test_health_blocks_enhanced_openrpf_conflicts_and_legacy_preview_pack(tmp_path):
+def test_health_blocks_enhanced_openrpf_conflicts_and_incomplete_preview_pack(tmp_path):
     _game(tmp_path, enhanced=True)
     (tmp_path / "OpenIV.asi").write_bytes(b"legacy")
-    legacy = tmp_path / "mods/update/x64/dlcpacks/allin1_previews"
-    legacy.mkdir(parents=True)
+    preview = tmp_path / "mods/update/x64/dlcpacks/allin1_previews"
+    preview.mkdir(parents=True)
     report = scan_installation(tmp_path)
     codes = {issue.code for issue in report.issues}
-    assert {"rpf_loader_conflict", "legacy_preview_dlc"} <= codes
+    assert {"rpf_loader_conflict", "preview_dlc_invalid"} <= codes
     assert not report.launch_safe
+
+
+def test_health_accepts_complete_preview_pack(tmp_path):
+    _game(tmp_path, enhanced=True)
+    preview = tmp_path / "mods/update/x64/dlcpacks/allin1_previews"
+    preview.mkdir(parents=True)
+    (preview / "dlc.rpf").write_bytes(b"rpf")
+    codes = {issue.code for issue in scan_installation(tmp_path).issues}
+    assert "preview_dlc_invalid" not in codes
 
 
 def test_health_rejects_empty_openrpf_and_missing_asi_loader(tmp_path):
@@ -57,3 +67,27 @@ def test_health_rejects_empty_openrpf_and_missing_asi_loader(tmp_path):
     (tmp_path / "xinput1_4.dll").unlink()
     codes = {issue.code for issue in scan_installation(tmp_path).issues}
     assert {"rpf_loader_corrupt", "asi_loader_missing"} <= codes
+
+
+def test_health_blocks_rpf_archive_from_older_game_build(tmp_path):
+    _game(tmp_path, enhanced=True)
+    base = tmp_path / "update/update.rpf"
+    mods = tmp_path / "mods/update/update.rpf"
+    base.parent.mkdir(parents=True); mods.parent.mkdir(parents=True)
+    base.write_bytes(b"new"); mods.write_bytes(b"old")
+    os.utime(mods, ns=(1_000_000_000, 1_000_000_000))
+    os.utime(base, ns=(5_000_000_000, 5_000_000_000))
+
+    report = scan_installation(tmp_path)
+    assert "rpf_mod_archive_stale" in {issue.code for issue in report.issues}
+    assert not report.launch_safe
+
+
+def test_health_ignores_allin1_backup_copies(tmp_path):
+    _game(tmp_path)
+    backup = tmp_path / "allin1_backups/Playtests/old/ALLIN1.dll"
+    backup.parent.mkdir(parents=True)
+    backup.write_bytes(b"old")
+
+    report = scan_installation(tmp_path)
+    assert "duplicate_mod" not in {issue.code for issue in report.issues}

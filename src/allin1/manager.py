@@ -25,6 +25,7 @@ class InstallationStatus:
     openrpf_installed: bool
     installed_version: str | None = None
     manager_version: str = __version__
+    rpf_loader_status: str = "Missing"
 
 
 class ModManager:
@@ -80,6 +81,23 @@ class ModManager:
             installed_version = read_installed_version(scripts)
         except (OSError, ValueError):
             installed_version = None
+        rpf_plugin = gta_path / ("OpenRPF.asi" if edition == "Enhanced" else "OpenIV.asi")
+        rpf_installed = rpf_plugin.is_file() and rpf_plugin.stat().st_size > 0
+        disabled_plugin = (
+            gta_path / "allin1_backups" / "DisabledPlugins" /
+            (rpf_plugin.name + ".disabled")
+        )
+        asi_loader = any((gta_path / name).is_file() for name in
+                         ("dinput8.dll", "dsound.dll", "xinput1_4.dll"))
+        if rpf_installed:
+            rpf_status = "Installed"
+        elif disabled_plugin.is_file():
+            rpf_status = "Disabled"
+        elif asi_loader:
+            rpf_status = "Plug-in missing"
+        else:
+            rpf_status = "Missing"
+
         return InstallationStatus(
             gta_path=gta_path,
             valid_game=valid,
@@ -87,9 +105,9 @@ class ModManager:
             mod_installed=(scripts / "ALLIN1.dll").exists(),
             scripthookv_installed=(gta_path / "ScriptHookV.dll").exists(),
             shvdn_installed=(gta_path / "ScriptHookVDotNet.asi").exists(),
-            openrpf_installed=(gta_path / "OpenRPF.asi").exists()
-            or (gta_path / "OpenIV.asi").exists(),
+            openrpf_installed=rpf_installed,
             installed_version=installed_version,
+            rpf_loader_status=rpf_status,
         )
 
     def install(self, config: Config) -> InstallResult:

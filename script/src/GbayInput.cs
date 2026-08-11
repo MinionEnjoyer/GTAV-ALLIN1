@@ -25,6 +25,7 @@ namespace ALLIN1
         internal float MouseY;         // 0.0 - 1.0
         internal bool MouseClick;
         internal bool MouseRightClick;
+        internal int ScrollDelta;       // -1 = up, +1 = down
     }
 
     internal static class GbayInput
@@ -46,6 +47,12 @@ namespace ALLIN1
                 Hash.IS_DISABLED_CONTROL_JUST_PRESSED, 0, (int)Control.CursorAccept);
             input.MouseRightClick = Function.Call<bool>(
                 Hash.IS_DISABLED_CONTROL_JUST_PRESSED, 0, (int)Control.CursorCancel);
+            if (Function.Call<bool>(Hash.IS_DISABLED_CONTROL_JUST_PRESSED,
+                    0, (int)Control.CursorScrollUp))
+                input.ScrollDelta = -1;
+            else if (Function.Call<bool>(Hash.IS_DISABLED_CONTROL_JUST_PRESSED,
+                    0, (int)Control.CursorScrollDown))
+                input.ScrollDelta = 1;
 
             if (Game.IsControlJustPressed(Control.FrontendUp))
                 input.DirY = -1;

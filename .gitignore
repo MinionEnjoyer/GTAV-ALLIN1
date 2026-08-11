@@ -38,3 +38,18 @@ obj/
 
 # Generated output files
 output/
+
+# Locally built external preview tools
+tools/YTDToolio.exe
+tools/FuckDX.dll
+tools/RpfPatcher/*.dll
+tools/RpfPatcher/*.exe
+tools/RpfPatcher/*.pdb
+tools/RpfPatcher/*.json
+tools/RpfPatcher/ShadersGen9Conversion.xml
+tools/RpfPatcher/SharpDX*.dll
+
+# Local investigation and visual QA scratch data
+.artifacts/
+work/
+tools/RpfPatcher/strings.txt
