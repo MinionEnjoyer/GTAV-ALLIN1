@@ -485,13 +485,13 @@ namespace ALLIN1
         /// <summary>
         /// Remove a stored vehicle by its index in the stored list.
         /// </summary>
-        internal static void RemoveVehicle(int listIndex)
+        internal static bool RemoveVehicle(int listIndex)
         {
             string key = CharacterKey();
             if (!_stored.TryGetValue(key, out var list))
-                return;
+                return false;
             if (listIndex < 0 || listIndex >= list.Count)
-                return;
+                return false;
 
             StoredVehicle sv = list[listIndex];
             int slotIndex = sv.Slot;
@@ -510,7 +510,13 @@ namespace ALLIN1
 
             Log($"RemoveVehicle: {sv.Model} from slot {slotIndex}");
             list.RemoveAt(listIndex);
-            Save();
+            if (!Save())
+            {
+                list.Insert(listIndex, sv);
+                Log($"RemoveVehicle: persistence failed; restored {sv.Model}");
+                return false;
+            }
+            return true;
         }
 
         /// <summary>
@@ -672,6 +678,7 @@ namespace ALLIN1
             Log("EnterGarage: START");
             Ped player = Game.Player.Character;
             Vehicle rideInToDelete = null;
+            string storedConfirmation = null;
 
             // If player is in a vehicle, store it in the garage (if space),
             // then pull them out and delete the outside instance.
@@ -713,7 +720,7 @@ namespace ALLIN1
                         string ovName = VehicleList.DisplayNames.ContainsKey(modelName)
                             ? VehicleList.DisplayNames[modelName] : modelName;
                         GTA.UI.Screen.ShowSubtitle(
-                            $"~r~{ovName}~w~ is too large for this garage. Use the 3-Floor Garage.", 3000);
+                            $"~r~{ovName}~w~ is too large for this garage. Use the three-floor garage.", 3000);
                         return;
                     }
 
@@ -728,14 +735,14 @@ namespace ALLIN1
                     if (storedList.Count >= SLOT_COUNT)
                     {
                         GTA.UI.Screen.ShowSubtitle(
-                            $"~r~Garage full.~w~ ({storedList.Count}/{SLOT_COUNT} slots used)", 3000);
+                            $"~r~The garage is full.~w~ ({storedList.Count}/{SLOT_COUNT} spaces used)", 3000);
                         return;
                     }
 
                     int slotIndex = FindEmptySlot(storedList, modelName);
                     if (slotIndex < 0)
                     {
-                        GTA.UI.Screen.ShowSubtitle("~r~Garage full. No empty slots.", 3000);
+                        GTA.UI.Screen.ShowSubtitle("~r~The garage is full; no spaces are available.", 3000);
                         return;
                     }
 
@@ -746,8 +753,9 @@ namespace ALLIN1
 
                     string displayName = VehicleList.DisplayNames.ContainsKey(modelName)
                         ? VehicleList.DisplayNames[modelName] : modelName;
-                    GTA.UI.Screen.ShowSubtitle(
-                        $"~g~{displayName}~w~ stored in garage. (Slot {slotIndex + 1})", 3000);
+                    storedConfirmation =
+                        $"~g~{displayName}~w~ stored in the Eclipse Towers garage " +
+                        $"(slot {slotIndex + 1}).";
                     Log($"EnterGarage: stored drive-in vehicle {modelName} -> slot {slotIndex}");
 
                     // Delete the outside vehicle (teleporting the player
@@ -867,6 +875,9 @@ namespace ALLIN1
             // Fade back in
             Log("EnterGarage: fading in");
             Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+
+            if (!string.IsNullOrEmpty(storedConfirmation))
+                GTA.UI.Screen.ShowSubtitle(storedConfirmation, 4000);
 
             Log($"EnterGarage: COMPLETE, character={key}");
         }
@@ -1202,16 +1213,18 @@ namespace ALLIN1
                 Save();
         }
 
-        private static void Save()
+        private static bool Save()
         {
             try
             {
                 string json = BuildJson();
                 AtomicWriteText(SAVE_PATH, json);
+                return true;
             }
             catch (Exception ex)
             {
                 LogException("Save", ex);
+                return false;
             }
         }
 
@@ -2060,13 +2073,13 @@ namespace ALLIN1
                 _floorGarageEntranceBlip = World.CreateBlip(FLOOR_GARAGE_ENTRANCE_POS);
                 _floorGarageEntranceBlip.Sprite = BlipSprite.Garage;
                 _floorGarageEntranceBlip.Color = CharacterBlipColor();
-                _floorGarageEntranceBlip.Name = "ALLIN1 Floor Garage (Oversized)";
+                _floorGarageEntranceBlip.Name = "ALLIN1 Three-Floor Garage (Vehicle)";
                 _floorGarageEntranceBlip.IsShortRange = true;
 
                 _floorGaragePedBlip = World.CreateBlip(FLOOR_GARAGE_PED_EXIT_DEST);
                 _floorGaragePedBlip.Sprite = BlipSprite.Garage;
                 _floorGaragePedBlip.Color = CharacterBlipColor();
-                _floorGaragePedBlip.Name = "ALLIN1 Floor Garage (Pedestrian)";
+                _floorGaragePedBlip.Name = "ALLIN1 Three-Floor Garage (Pedestrian)";
                 _floorGaragePedBlip.IsShortRange = true;
 
                 Log("Floor Garage initialized (3-floor oversized vehicle storage)");
@@ -2163,13 +2176,13 @@ namespace ALLIN1
             return true;
         }
 
-        internal static void RemoveFloorGarageVehicle(int listIndex)
+        internal static bool RemoveFloorGarageVehicle(int listIndex)
         {
             string key = FloorGarageCharacterKey();
             if (!_floorGarageStored.TryGetValue(key, out var list))
-                return;
+                return false;
             if (listIndex < 0 || listIndex >= list.Count)
-                return;
+                return false;
 
             StoredVehicle sv = list[listIndex];
             int slotIndex = sv.Slot;
@@ -2186,8 +2199,14 @@ namespace ALLIN1
             }
 
             list.RemoveAt(listIndex);
-            FloorGarageSave();
+            if (!FloorGarageSave())
+            {
+                list.Insert(listIndex, sv);
+                Log($"RemoveFloorGarageVehicle: persistence failed; restored {sv.Model}");
+                return false;
+            }
             Log($"RemoveFloorGarageVehicle: {sv.Model} from slot {slotIndex}");
+            return true;
         }
 
         internal static void DetailFloorGarageVehicles()
@@ -2242,18 +2261,19 @@ namespace ALLIN1
 
                 if (inVehicle)
                 {
+                    var markerColor = CharacterMarkerColor();
                     World.DrawMarker(
                         GTA.MarkerType.VerticalCylinder,
                         FLOOR_GARAGE_ENTRANCE_POS - new Vector3(0f, 0f, 1f),
                         Vector3.Zero, Vector3.Zero,
                         new Vector3(3f, 3f, 1.5f),
-                        System.Drawing.Color.FromArgb(128, 200, 100, 0));
+                        markerColor);
 
                     float dist = player.Position.DistanceTo(FLOOR_GARAGE_ENTRANCE_POS);
                     if (dist < ENTER_RADIUS + 1f)
                     {
                         GTA.UI.Screen.ShowHelpTextThisFrame(
-                            "Press ~INPUT_CONTEXT~ to enter the floor garage.");
+                            "Press ~INPUT_CONTEXT~ to enter the three-floor garage.");
                         if (Game.IsControlJustPressed(GTA.Control.Context))
                             EnterFloorGarage();
                     }
@@ -2261,18 +2281,19 @@ namespace ALLIN1
 
                 if (!inVehicle)
                 {
+                    var markerColor = CharacterMarkerColor();
                     World.DrawMarker(
                         GTA.MarkerType.VerticalCylinder,
                         FLOOR_GARAGE_PED_EXIT_DEST - new Vector3(0f, 0f, 1f),
                         Vector3.Zero, Vector3.Zero,
                         new Vector3(2f, 2f, 1.2f),
-                        System.Drawing.Color.FromArgb(128, 200, 100, 0));
+                        markerColor);
 
                     float dist = player.Position.DistanceTo(FLOOR_GARAGE_PED_EXIT_DEST);
                     if (dist < ENTER_RADIUS)
                     {
                         GTA.UI.Screen.ShowHelpTextThisFrame(
-                            "Press ~INPUT_CONTEXT~ to enter the floor garage.");
+                            "Press ~INPUT_CONTEXT~ to enter the three-floor garage.");
                         if (Game.IsControlJustPressed(GTA.Control.Context))
                             EnterFloorGarage();
                     }
@@ -2290,7 +2311,7 @@ namespace ALLIN1
                 if (inVehicle)
                 {
                     GTA.UI.Screen.ShowHelpTextThisFrame(
-                        "Press ~INPUT_CONTEXT~ to leave the floor garage with your vehicle.");
+                        "Press ~INPUT_CONTEXT~ to leave the three-floor garage with your vehicle.");
                     if (Game.IsControlJustPressed(GTA.Control.Context))
                         LeaveFloorGarage();
                 }
@@ -2430,7 +2451,7 @@ namespace ALLIN1
             }
 
             // Hint at bottom
-            GbayRenderer.DrawText("Up/Down to select  Enter to confirm  Esc to close",
+            GbayRenderer.DrawText("Up/Down: Select   Enter: Confirm   Esc: Close",
                 menuX, menuTop + totalH + 0.005f,
                 0.22f, System.Drawing.Color.FromArgb(180, 160, 160, 160),
                 font: 0, centered: true);
@@ -2465,6 +2486,7 @@ namespace ALLIN1
             Log("EnterFloorGarage: START");
             Ped player = Game.Player.Character;
             Vehicle rideInToDelete = null;
+            string storedConfirmation = null;
 
             // Drive-in: store the vehicle
             if (player.IsInVehicle())
@@ -2475,7 +2497,7 @@ namespace ALLIN1
                     if (IsPersonalVehicle(rideIn))
                     {
                         GTA.UI.Screen.ShowSubtitle(
-                            "~r~You cannot bring your personal vehicle into the floor garage.", 3000);
+                            "~r~You cannot bring your personal vehicle into the three-floor garage.", 3000);
                         return;
                     }
 
@@ -2503,14 +2525,16 @@ namespace ALLIN1
                     if (storedList.Count >= FLOOR_GARAGE_SLOT_COUNT)
                     {
                         GTA.UI.Screen.ShowSubtitle(
-                            $"~r~Floor Garage full.~w~ ({storedList.Count}/{FLOOR_GARAGE_SLOT_COUNT} slots used)", 3000);
+                            $"~r~The three-floor garage is full.~w~ " +
+                            $"({storedList.Count}/{FLOOR_GARAGE_SLOT_COUNT} spaces used)", 3000);
                         return;
                     }
 
                     int slotIndex = FindEmptyFloorGarageSlot(storedList);
                     if (slotIndex < 0)
                     {
-                        GTA.UI.Screen.ShowSubtitle("~r~Floor Garage full. No empty slots.", 3000);
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~r~The three-floor garage is full; no spaces are available.", 3000);
                         return;
                     }
 
@@ -2522,8 +2546,9 @@ namespace ALLIN1
                         ? VehicleList.DisplayNames[modelName] : modelName;
                     int floor = slotIndex / FLOOR_GARAGE_SLOTS_PER_FLOOR + 1;
                     int spotOnFloor = slotIndex % FLOOR_GARAGE_SLOTS_PER_FLOOR + 1;
-                    GTA.UI.Screen.ShowSubtitle(
-                        $"~g~{displayName}~w~ stored in floor garage. (Floor {floor}, Spot {spotOnFloor})", 3000);
+                    storedConfirmation =
+                        $"~g~{displayName}~w~ stored in the three-floor garage " +
+                        $"(floor {floor}, space {spotOnFloor}).";
                     Log($"EnterFloorGarage: stored drive-in vehicle {modelName} -> slot {slotIndex} (floor {floor})");
 
                     rideIn.IsPersistent = true;
@@ -2578,6 +2603,9 @@ namespace ALLIN1
             // Fade back in
             Log("EnterFloorGarage: fading in");
             Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+
+            if (!string.IsNullOrEmpty(storedConfirmation))
+                GTA.UI.Screen.ShowSubtitle(storedConfirmation, 4000);
 
             Log($"EnterFloorGarage: COMPLETE, character={FloorGarageCharacterKey()}");
         }
@@ -2960,16 +2988,18 @@ namespace ALLIN1
             }
         }
 
-        private static void FloorGarageSave()
+        private static bool FloorGarageSave()
         {
             try
             {
                 string json = FloorGarageBuildJson();
                 AtomicWriteText(FLOOR_GARAGE_SAVE_PATH, json);
+                return true;
             }
             catch (Exception ex)
             {
                 LogException("FloorGarageSave", ex);
+                return false;
             }
         }
 

@@ -1,7 +1,5 @@
 """End-to-end orchestration tests for preview packaging and helper tools."""
 
-import io
-import zipfile
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -34,15 +32,12 @@ def _layout(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("missing,warning", [
     ("previews", "Preview images not found"),
-    ("ytd", "YTDToolio.exe missing"),
     ("rpf", "RpfPatcher.exe missing"),
 ])
 def test_preview_deploy_reports_missing_inputs(tmp_path, monkeypatch, missing, warning):
     _project, dist, tools = _layout(tmp_path, monkeypatch)
     if missing == "previews":
         (dist / "previews").rename(dist / "gone")
-    elif missing == "ytd":
-        (tools / "YTDToolio.exe").unlink()
     else:
         (tools / "RpfPatcher" / "RpfPatcher.exe").unlink()
     result = installer.InstallResult(tmp_path)
@@ -53,12 +48,12 @@ def test_preview_deploy_reports_missing_inputs(tmp_path, monkeypatch, missing, w
 def test_preview_deploy_builds_and_deploys_with_captured_override(tmp_path, monkeypatch):
     _layout(tmp_path, monkeypatch)
     from allin1 import preview_assets
-    from allin1.generators import dlc_previews, ytd_builder
+    from allin1.generators import ytd_builder
 
     merge = Mock(return_value=PreviewMergeResult(1, ("bad.png",), ()))
     monkeypatch.setattr(preview_assets, "merge_previews", merge)
 
-    def build(_source, _logo, output, _tools, models):
+    def build(_source, _logo, output, _tools, models, **_kwargs):
         output.mkdir(parents=True)
         ytd = output / "allin1_prev_01.ytd"
         ytd.write_bytes(b"ytd")
@@ -66,57 +61,108 @@ def test_preview_deploy_builds_and_deploys_with_captured_override(tmp_path, monk
         return [ytd]
     monkeypatch.setattr(ytd_builder, "build_ytd_files", build)
 
-    create = Mock(return_value=(tmp_path / "dlc-root", tmp_path / "staging"))
-    deploy = Mock()
-    monkeypatch.setattr(dlc_previews, "create_dlc_pack", create)
-    monkeypatch.setattr(dlc_previews, "deploy_dlc_rpf", deploy)
-
+    calls = []
     def run(args, **_kwargs):
+        calls.append(args)
         if "build-dlc" in args:
-            Path(args[3]).write_bytes(b"rpf")
+            Path(args[3]).write_bytes(b"valid-dlc-rpf")
         return Mock(returncode=0, stdout="ok", stderr="")
     monkeypatch.setattr(installer.subprocess, "run", run)
     result = installer.InstallResult(tmp_path, is_enhanced=True)
 
-    installer._deploy_preview_dlc(tmp_path, result)
+    assert installer._deploy_preview_dlc(tmp_path, result) is True
 
     assert "Ignored 1 invalid preview capture(s)." in result.warnings
     assert merge.call_args.args[0][1] == tmp_path / "scripts" / "previews"
-    deploy.assert_called_once()
+    assert any("build-dlc" in args for args in calls)
+    assert any("verify-dlc" in args for args in calls)
+    assert any("patch" in args for args in calls)
+    assert (tmp_path / "mods/update/x64/dlcpacks/allin1_previews/dlc.rpf").exists()
 
 
-@pytest.mark.parametrize("stage", ["convert-gen9", "build-dlc"])
+@pytest.mark.parametrize("stage", ["convert-gen9", "build-dlc", "verify-dlc", "patch"])
 def test_preview_deploy_surfaces_tool_failures(tmp_path, monkeypatch, stage):
     _layout(tmp_path, monkeypatch)
     from allin1 import preview_assets
-    from allin1.generators import dlc_previews, ytd_builder
+    from allin1.generators import ytd_builder
     monkeypatch.setattr(preview_assets, "merge_previews",
                         Mock(return_value=PreviewMergeResult(1, (), ())))
-    monkeypatch.setattr(ytd_builder, "build_ytd_files",
-                        lambda _a, _b, output, _d, _e: [output / "one.ytd"])
-    monkeypatch.setattr(dlc_previews, "create_dlc_pack",
-                        Mock(return_value=(tmp_path / "root", tmp_path / "staging")))
-    monkeypatch.setattr(installer.subprocess, "run",
-                        lambda args, **_kwargs: Mock(returncode=1 if stage in args else 0,
-                                                     stdout="", stderr="boom"))
+    def build(_a, _b, output, _d, _e, **_kwargs):
+        output.mkdir(parents=True, exist_ok=True)
+        ytd = output / "one.ytd"
+        ytd.write_bytes(b"ytd")
+        return [ytd]
+    monkeypatch.setattr(ytd_builder, "build_ytd_files", build)
+    def run(args, **_kwargs):
+        if "build-dlc" in args and stage != "build-dlc":
+            Path(args[3]).write_bytes(b"valid-dlc-rpf")
+        return Mock(returncode=1 if stage in args else 0, stdout="", stderr="boom")
+    monkeypatch.setattr(installer.subprocess, "run", run)
     result = installer.InstallResult(tmp_path, is_enhanced=(stage == "convert-gen9"))
     with pytest.raises(RuntimeError, match=stage):
         installer._deploy_preview_dlc(tmp_path, result)
 
 
-def test_openrpf_download_success_and_failure(tmp_path, monkeypatch):
-    archive = io.BytesIO()
-    with zipfile.ZipFile(archive, "w") as zf:
-        zf.writestr("release/OpenRPF.asi", b"asi")
-    response = Mock()
-    response.__enter__ = Mock(return_value=response)
-    response.__exit__ = Mock(return_value=False)
-    response.read.return_value = archive.getvalue()
-    monkeypatch.setattr(installer, "urlopen", lambda *_a, **_k: response)
-    assert installer._check_openrpf(tmp_path, enhanced=True) is True
-    (tmp_path / "OpenRPF.asi").unlink()
-    monkeypatch.setattr(installer, "urlopen", Mock(side_effect=OSError("offline")))
+def test_openrpf_detection_requires_nonempty_plugin_and_loader(tmp_path):
+    (tmp_path / "OpenRPF.asi").write_bytes(b"asi")
     assert installer._check_openrpf(tmp_path, enhanced=True) is False
+    (tmp_path / "xinput1_4.dll").write_bytes(b"loader")
+    assert installer._check_openrpf(tmp_path, enhanced=True) is True
+    (tmp_path / "OpenIV.asi").write_bytes(b"legacy")
+    assert installer._check_openrpf(tmp_path, enhanced=True) is False
+
+
+def test_remove_preview_pack_only_removes_owned_directories(tmp_path):
+    owned = tmp_path / "mods/update/x64/dlcpacks/allin1_previews"
+    unrelated = tmp_path / "mods/update/x64/dlcpacks/user_pack"
+    owned.mkdir(parents=True); unrelated.mkdir(parents=True)
+    removed = installer._remove_preview_pack(tmp_path)
+    assert removed == [owned]
+    assert not owned.exists() and unrelated.exists()
+
+
+def test_preview_archive_rollback_restores_existing_bytes(tmp_path):
+    archive = tmp_path / "mods/update/update.rpf"
+    backup = tmp_path / "mods/update/update.rpf.allin1-previews.bak"
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(b"damaged"); backup.write_bytes(b"original")
+    installer._restore_preview_archive(archive, backup, True)
+    assert archive.read_bytes() == b"original"
+
+
+def test_preview_archive_rollback_removes_new_partial_archive(tmp_path):
+    archive = tmp_path / "mods/update/update.rpf"
+    archive.parent.mkdir(parents=True); archive.write_bytes(b"partial")
+    installer._restore_preview_archive(archive, archive.with_suffix(".bak"), False)
+    assert not archive.exists()
+
+
+def test_refresh_stale_mods_archive_uses_current_base_transactionally(tmp_path):
+    base = tmp_path / "update/update.rpf"
+    mods = tmp_path / "mods/update/update.rpf"
+    base.parent.mkdir(parents=True); mods.parent.mkdir(parents=True)
+    base.write_bytes(b"current-game-archive")
+    mods.write_bytes(b"old-mod-archive")
+    import os
+    os.utime(mods, ns=(1_000_000_000, 1_000_000_000))
+    os.utime(base, ns=(5_000_000_000, 5_000_000_000))
+
+    assert installer._refresh_stale_mods_archive(tmp_path, mods) is True
+    assert mods.read_bytes() == b"current-game-archive"
+    assert not mods.with_name("update.rpf.allin1-refresh.tmp").exists()
+
+
+def test_refresh_current_mods_archive_leaves_it_untouched(tmp_path):
+    base = tmp_path / "update/update.rpf"
+    mods = tmp_path / "mods/update/update.rpf"
+    base.parent.mkdir(parents=True); mods.parent.mkdir(parents=True)
+    base.write_bytes(b"base"); mods.write_bytes(b"custom-current")
+    import os
+    os.utime(base, ns=(1_000_000_000, 1_000_000_000))
+    os.utime(mods, ns=(5_000_000_000, 5_000_000_000))
+
+    assert installer._refresh_stale_mods_archive(tmp_path, mods) is False
+    assert mods.read_bytes() == b"custom-current"
 
 
 @pytest.mark.parametrize("helper", [

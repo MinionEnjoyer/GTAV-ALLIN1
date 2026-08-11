@@ -20,6 +20,7 @@ class GeneralConfig:
     gta_path: str = "auto"
     free_mode: bool = False
     backup: bool = True
+    enable_rpf_previews: bool = False
 
 
 @dataclass
@@ -54,11 +55,15 @@ class ScriptConfig:
     night_vision_key: str = "N"
     preview_capture_key: str = "F10"
     seat_selector_enabled: bool = True
+    seat_selector_key: str = "L"
     safe_mode: bool = False
     ui_scale: float = 1.0
     reduced_motion: bool = False
     colorblind_mode: bool = False
     hold_duration_ms: int = 350
+    gbay_free_mode: bool = False
+    spawner_debug: bool = False
+    garage_debug: bool = False
 
 
 @dataclass
@@ -86,6 +91,8 @@ class Config:
         script_raw = raw.get("script", {})
         script_fields = {f.name for f in ScriptConfig.__dataclass_fields__.values()}
         script = ScriptConfig(**{k: v for k, v in script_raw.items() if k in script_fields})
+        if "gbay_free_mode" not in script_raw:
+            script.gbay_free_mode = general.free_mode
 
         return cls(general=general, traffic=traffic, vehicles=vehicles, script=script)
 
@@ -115,7 +122,8 @@ class Config:
             "[general]\n"
             f"gta_path = {quote(self.general.gta_path)}\n"
             f"free_mode = {boolean(self.general.free_mode)}\n"
-            f"backup = {boolean(self.general.backup)}\n\n"
+            f"backup = {boolean(self.general.backup)}\n"
+            f"enable_rpf_previews = {boolean(self.general.enable_rpf_previews)}\n\n"
             "[traffic]\n"
             f"enabled = {boolean(self.traffic.enabled)}\n"
             "rich_areas_only_supers = "
@@ -142,11 +150,15 @@ class Config:
             f"night_vision_key = {quote(self.script.night_vision_key)}\n"
             f"preview_capture_key = {quote(self.script.preview_capture_key)}\n"
             f"seat_selector_enabled = {boolean(self.script.seat_selector_enabled)}\n"
+            f"seat_selector_key = {quote(self.script.seat_selector_key)}\n"
             f"safe_mode = {boolean(self.script.safe_mode)}\n"
             f"ui_scale = {self.script.ui_scale}\n"
             f"reduced_motion = {boolean(self.script.reduced_motion)}\n"
             f"colorblind_mode = {boolean(self.script.colorblind_mode)}\n"
             f"hold_duration_ms = {self.script.hold_duration_ms}\n"
+            f"gbay_free_mode = {boolean(self.script.gbay_free_mode)}\n"
+            f"spawner_debug = {boolean(self.script.spawner_debug)}\n"
+            f"garage_debug = {boolean(self.script.garage_debug)}\n"
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
@@ -157,6 +169,7 @@ class Config:
             "gbay_key": self.script.gbay_key,
             "night_vision_key": self.script.night_vision_key,
             "preview_capture_key": self.script.preview_capture_key,
+            "seat_selector_key": self.script.seat_selector_key,
         }
         allowed = ({f"F{i}" for i in range(1, 13)} |
                    {chr(i) for i in range(ord("A"), ord("Z") + 1)} |

@@ -6,6 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 from lxml import etree
+from PIL import Image, ImageChops, ImageStat
 
 from allin1.generators import dlc_previews, vehiclelist, weaponlist, ytd_builder
 from allin1.vehicles.database import Vehicle, VehicleDatabase
@@ -83,6 +84,29 @@ def test_run_handles_success_failure_and_crash(monkeypatch):
         ytd_builder._run(["tool"], "tool")
 
 
+def test_dds_encoder_preserves_complete_png_scanlines(tmp_path):
+    png_dir = tmp_path / "png"
+    dds_dir = tmp_path / "dds"
+    png_dir.mkdir()
+    source = Image.new("RGBA", (32, 20))
+    source.putdata([
+        (x * 8, y * 12, (x + y) * 5, 255)
+        for y in range(source.height)
+        for x in range(source.width)
+    ])
+    source.save(png_dir / "gradient.png")
+
+    assert ytd_builder._encode_dds_files(png_dir, dds_dir) == 1
+    with Image.open(dds_dir / "gradient.dds") as encoded:
+        actual = encoded.convert("RGB")
+    expected = source.convert("RGB")
+    assert actual.size == expected.size
+    assert max(ImageStat.Stat(ImageChops.difference(expected, actual)).mean) < 20
+    # The regression zeroed or striped most rows; verify the last row also
+    # contains encoded image data.
+    assert actual.crop((0, 19, 32, 20)).getbbox() is not None
+
+
 def test_build_ytd_files_chunks_and_cleans_temp(tmp_path, monkeypatch):
     previews = tmp_path / "previews"
     previews.mkdir()
@@ -92,7 +116,8 @@ def test_build_ytd_files_chunks_and_cleans_temp(tmp_path, monkeypatch):
     logo.write_bytes(b"logo")
     tools = tmp_path / "tools"
     tools.mkdir()
-    (tools / "YTDToolio.exe").touch()
+    (tools / "RpfPatcher").mkdir()
+    (tools / "RpfPatcher" / "RpfPatcher.exe").touch()
 
     def fake_pack(_png, output, _tool):
         output.write_bytes(b"ytd")
@@ -104,7 +129,7 @@ def test_build_ytd_files_chunks_and_cleans_temp(tmp_path, monkeypatch):
 
 
 def test_build_ytd_requires_tool(tmp_path):
-    with pytest.raises(FileNotFoundError, match="YTDToolio"):
+    with pytest.raises(FileNotFoundError, match="RpfPatcher"):
         ytd_builder.build_ytd_files(tmp_path, None, tmp_path / "out", tmp_path, [])
 
 
@@ -114,7 +139,8 @@ def test_build_ytd_keeps_catalog_chunk_numbers_when_previews_are_missing(tmp_pat
     (previews / "c.png").write_bytes(b"png")
     tools = tmp_path / "tools"
     tools.mkdir()
-    (tools / "YTDToolio.exe").touch()
+    (tools / "RpfPatcher").mkdir()
+    (tools / "RpfPatcher" / "RpfPatcher.exe").touch()
     monkeypatch.setattr(ytd_builder, "_pack_ytd",
                         lambda _source, output, _tool: output.write_bytes(b"ytd"))
 
@@ -131,7 +157,8 @@ def test_build_ytd_recovers_tool_output_from_alternate_location(tmp_path, monkey
     (previews / "a.png").write_bytes(b"png")
     tools = tmp_path / "tools"
     tools.mkdir()
-    (tools / "YTDToolio.exe").touch()
+    (tools / "RpfPatcher").mkdir()
+    (tools / "RpfPatcher" / "RpfPatcher.exe").touch()
 
     def misplaced(source, _output, _tool):
         (source / "allin1_prev_01.ytd").write_bytes(b"ytd")
@@ -146,7 +173,8 @@ def test_build_ytd_raises_when_tool_reports_success_without_output(tmp_path, mon
     (previews / "a.png").write_bytes(b"png")
     tools = tmp_path / "tools"
     tools.mkdir()
-    (tools / "YTDToolio.exe").touch()
+    (tools / "RpfPatcher").mkdir()
+    (tools / "RpfPatcher" / "RpfPatcher.exe").touch()
     monkeypatch.setattr(ytd_builder, "_pack_ytd", lambda *_args: None)
     with pytest.raises(FileNotFoundError, match="was not created"):
         ytd_builder.build_ytd_files(previews, None, tmp_path / "out", tools, ["a"])

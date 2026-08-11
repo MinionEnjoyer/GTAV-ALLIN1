@@ -5,6 +5,7 @@
 // so GbayBrowser only handles presentation.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Windows.Forms;
 using GTA;
@@ -262,8 +263,8 @@ namespace ALLIN1
                 string name = VehicleList.DisplayNames.ContainsKey(model)
                     ? VehicleList.DisplayNames[model] : model;
                 string msg = _freeMode || price <= 0
-                    ? $"~g~{name}~w~ delivered!"
-                    : $"~g~{name}~w~ purchased for ~g~${price:N0}";
+                    ? $"~g~{name}~w~ delivered."
+                    : $"~g~{name}~w~ purchased for ~g~${price:N0}~w~.";
                 GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
                 Log($"DeliverHere: {model} spawned at player, price=${price}");
@@ -291,7 +292,7 @@ namespace ALLIN1
             {
                 Log($"DeliverToGarage: full ({used}/{cap})");
                 GTA.UI.Screen.ShowSubtitle(
-                    $"~r~Garage full.~w~ ({used}/{cap} slots used)", 3000);
+                    $"~r~The garage is full.~w~ ({used}/{cap} spaces used)", 3000);
                 return;
             }
 
@@ -315,8 +316,8 @@ namespace ALLIN1
                 string name = VehicleList.DisplayNames.ContainsKey(model)
                     ? VehicleList.DisplayNames[model] : model;
                 string msg = _freeMode || price <= 0
-                    ? $"~g~{name}~w~ delivered to garage!"
-                    : $"~g~{name}~w~ delivered to garage for ~g~${price:N0}";
+                    ? $"~g~{name}~w~ delivered to the garage."
+                    : $"~g~{name}~w~ delivered to the garage for ~g~${price:N0}~w~.";
                 GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
                 Log($"DeliverToGarage: {model}, price=${price}");
@@ -337,7 +338,7 @@ namespace ALLIN1
             {
                 Log($"DeliverToFloorGarage: full ({used}/{cap})");
                 GTA.UI.Screen.ShowSubtitle(
-                    $"~r~3-Floor Garage full.~w~ ({used}/{cap} slots used)", 3000);
+                    $"~r~The three-floor garage is full.~w~ ({used}/{cap} spaces used)", 3000);
                 return;
             }
 
@@ -351,7 +352,7 @@ namespace ALLIN1
                 if (!success)
                 {
                     Log($"DeliverToFloorGarage: failed for {model}");
-                    GTA.UI.Screen.ShowSubtitle("~r~Delivery to 3-Floor Garage failed.", 3000);
+                    GTA.UI.Screen.ShowSubtitle("~r~Delivery to the three-floor garage failed.", 3000);
                     return;
                 }
 
@@ -361,8 +362,8 @@ namespace ALLIN1
                 string name = VehicleList.DisplayNames.ContainsKey(model)
                     ? VehicleList.DisplayNames[model] : model;
                 string msg = _freeMode || price <= 0
-                    ? $"~g~{name}~w~ delivered to 3-Floor Garage!"
-                    : $"~g~{name}~w~ delivered to 3-Floor Garage for ~g~${price:N0}";
+                    ? $"~g~{name}~w~ delivered to the three-floor garage."
+                    : $"~g~{name}~w~ delivered to the three-floor garage for ~g~${price:N0}~w~.";
                 GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
                 Log($"DeliverToFloorGarage: {model}, price=${price}");
@@ -370,7 +371,7 @@ namespace ALLIN1
             catch (Exception ex)
             {
                 LogException("DeliverToFloorGarage", ex);
-                GTA.UI.Screen.ShowSubtitle("~r~Delivery to 3-Floor Garage failed.", 3000);
+                GTA.UI.Screen.ShowSubtitle("~r~Delivery to the three-floor garage failed.", 3000);
             }
         }
 
@@ -419,8 +420,8 @@ namespace ALLIN1
             string displayName = WeaponList.DisplayNames.ContainsKey(weaponName)
                 ? WeaponList.DisplayNames[weaponName] : weaponName;
             string msg = _freeMode || price <= 0
-                ? $"~g~{displayName}~w~ added!"
-                : $"~g~{displayName}~w~ purchased for ~g~${price:N0}";
+                ? $"~g~{displayName}~w~ added."
+                : $"~g~{displayName}~w~ purchased for ~g~${price:N0}~w~.";
             GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
             Log($"GiveWeapon: {weaponName}, price=${price}");
@@ -454,7 +455,7 @@ namespace ALLIN1
             int needed = maxAmmo - currentAmmo;
             if (needed <= 0)
             {
-                GTA.UI.Screen.ShowSubtitle("~g~Already fully stocked!", 3000);
+                GTA.UI.Screen.ShowSubtitle("~g~Already fully stocked.", 3000);
                 return -1;
             }
 
@@ -479,8 +480,8 @@ namespace ALLIN1
             string displayName = WeaponList.DisplayNames.ContainsKey(weaponName)
                 ? WeaponList.DisplayNames[weaponName] : weaponName;
             string msg = totalCost > 0
-                ? $"~g~{displayName}~w~ ammo refilled ({needed} rounds) for ~g~${totalCost:N0}"
-                : $"~g~{displayName}~w~ ammo refilled ({needed} rounds)!";
+                ? $"~g~{displayName}~w~ ammo refilled ({needed} rounds) for ~g~${totalCost:N0}~w~."
+                : $"~g~{displayName}~w~ ammo refilled ({needed} rounds).";
             GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
             Log($"RefillAmmo: {weaponName}, {needed} rounds, cost=${totalCost}");
@@ -509,8 +510,8 @@ namespace ALLIN1
                     Game.Player.Money -= price;
                 GTA.UI.Screen.ShowSubtitle(
                     _freeMode || price <= 0
-                        ? "~g~Juggernaut Armor~w~ equipped! Heavy movement active."
-                        : $"~g~Juggernaut Armor~w~ purchased for ~g~${price:N0}~w~. Heavy movement active.",
+                        ? "~g~Juggernaut Armor~w~ equipped. Heavy movement is active."
+                        : $"~g~Juggernaut Armor~w~ purchased for ~g~${price:N0}~w~. Heavy movement is active.",
                     4000);
                 Log($"GiveGear: {gearId}, price=${price}");
                 CharacterInventory.RecordOwned(gearId, true);
@@ -528,8 +529,8 @@ namespace ALLIN1
                 NightVisionOwned = true;
                 GTA.UI.Screen.ShowSubtitle(
                     _freeMode || price <= 0
-                        ? "~g~Night Vision~w~ acquired! Press ~y~N~w~ to toggle."
-                        : $"~g~Night Vision~w~ purchased for ~g~${price:N0}~w~. Press ~y~N~w~ to toggle.",
+                        ? "~g~Night Vision~w~ acquired. Press ~y~N~w~ to toggle it."
+                        : $"~g~Night Vision~w~ purchased for ~g~${price:N0}~w~. Press ~y~N~w~ to toggle it.",
                     4000);
                 if (!_freeMode && price > 0)
                     Game.Player.Money -= price;
@@ -549,8 +550,8 @@ namespace ALLIN1
             string displayName = GearList.DisplayNames.ContainsKey(gearId)
                 ? GearList.DisplayNames[gearId] : gearId;
             string msg = _freeMode || price <= 0
-                ? $"~g~{displayName}~w~ acquired!"
-                : $"~g~{displayName}~w~ purchased for ~g~${price:N0}";
+                ? $"~g~{displayName}~w~ acquired."
+                : $"~g~{displayName}~w~ purchased for ~g~${price:N0}~w~.";
             GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
             Log($"GiveGear: {gearId}, price=${price}");
@@ -570,11 +571,22 @@ namespace ALLIN1
             return (int)(buyPrice * 0.6);
         }
 
-        internal void ExecuteSellVehicle(string model, int listIndex)
+        internal void ExecuteSellVehicle(string model, int listIndex, bool floorGarage = false)
         {
             int sellPrice = GetSellPrice(model);
 
-            GarageManager.RemoveVehicle(listIndex);
+            bool removed = floorGarage
+                ? GarageManager.RemoveFloorGarageVehicle(listIndex)
+                : GarageManager.RemoveVehicle(listIndex);
+            if (!removed)
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~Sale failed; your garage and money were not changed.", 3500);
+                ClientLog.Warn("GBAY", "vehicle_sale_failed", new Dictionary<string, object> {
+                    { "model", model }, { "list_index", listIndex },
+                    { "garage", floorGarage ? "three_floor" : "eclipse" }
+                });
+                return;
+            }
 
             if (!_freeMode && sellPrice > 0)
                 Game.Player.Money += sellPrice;
@@ -582,11 +594,11 @@ namespace ALLIN1
             string displayName = VehicleList.DisplayNames.ContainsKey(model)
                 ? VehicleList.DisplayNames[model] : model;
             string msg = _freeMode || sellPrice <= 0
-                ? $"~y~{displayName}~w~ removed from garage."
+                ? $"~y~{displayName}~w~ removed from the garage."
                 : $"~g~{displayName}~w~ sold for ~g~${sellPrice:N0}";
             GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
-            Log($"SellVehicle: {model}, sellPrice=${sellPrice}");
+            Log($"SellVehicle: {model}, sellPrice=${sellPrice}, floorGarage={floorGarage}");
         }
 
         // ------------------------------------------------------------------ //
@@ -607,7 +619,8 @@ namespace ALLIN1
 
             if (!_freeMode && cost > 0 && Game.Player.Money < cost)
             {
-                GTA.UI.Screen.ShowSubtitle($"~r~Not enough money.~w~ Detailing costs ~g~${cost:N0}", 3000);
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~r~Not enough money.~w~ Detailing costs ~g~${cost:N0}~w~.", 3000);
                 return false;
             }
 
@@ -617,8 +630,8 @@ namespace ALLIN1
                 Game.Player.Money -= cost;
 
             string msg = _freeMode || cost <= 0
-                ? "All vehicles have been ~b~detailed~w~!"
-                : $"All vehicles ~b~detailed~w~ for ~g~${cost:N0}";
+                ? "All vehicles have been ~b~detailed~w~."
+                : $"All vehicles were ~b~detailed~w~ for ~g~${cost:N0}~w~.";
             GTA.UI.Screen.ShowSubtitle(msg, 3000);
             Log($"DetailCars: cost=${cost}");
             return true;
@@ -999,7 +1012,7 @@ namespace ALLIN1
                 {
                     if (GarageManager.IsTransitionInProgress)
                     {
-                        GTA.UI.Screen.ShowSubtitle("~y~Garage transition in progress...", 1500);
+                        GTA.UI.Screen.ShowSubtitle("~y~A garage transition is already in progress.", 1500);
                         return;
                     }
 

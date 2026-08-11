@@ -4,19 +4,23 @@
 // Commands:
 //   RpfPatcher.exe inject-ytd   <gta_path> <ytd_folder>  — inject .ytd files into script_txds.rpf
 //   RpfPatcher.exe remove-ytd   <gta_path> <prefix>      — remove ALLIN1 .ytd files from script_txds.rpf
+//   RpfPatcher.exe verify-ytd   <gta_path> <ytd_folder>  — verify expected .ytd files in script_txds.rpf
 //   RpfPatcher.exe patch        <gta_path>                — add allin1_previews to dlclist.xml
 //   RpfPatcher.exe unpatch      <gta_path>                — remove allin1_previews from dlclist.xml
 //   RpfPatcher.exe build-dlc    <loose_folder> <output_rpf> [--embed-rpf <src_folder> <dest_path>]
+//   RpfPatcher.exe verify-dlc   <dlc_rpf> <ytd_folder>      — verify a preview DLC and its dictionaries
 //   RpfPatcher.exe convert-gen9 <ytd_folder>              — convert .ytd files from Legacy to Enhanced format
 //   RpfPatcher.exe inspect      <gta_path> <rpf_path>    — dump RPF structure + XML contents
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Xml.Linq;
 using CodeWalker.Core.Utils;
 using CodeWalker.GameFiles;
+using CodeWalker.Utils;
 
 namespace RpfPatcher
 {
@@ -32,11 +36,17 @@ namespace RpfPatcher
                     "Usage:\n" +
                     "  RpfPatcher.exe inject-ytd   <gta_path> <ytd_folder>\n" +
                     "  RpfPatcher.exe remove-ytd   <gta_path> <prefix>\n" +
+                    "  RpfPatcher.exe verify-ytd   <gta_path> <ytd_folder>\n" +
                     "  RpfPatcher.exe patch        <gta_path>\n" +
                     "  RpfPatcher.exe unpatch      <gta_path>\n" +
                     "  RpfPatcher.exe build-dlc    <loose_folder> <output_rpf> [--embed-rpf <src> <dest>]\n" +
+                    "  RpfPatcher.exe verify-dlc   <dlc_rpf> <ytd_folder>\n" +
                     "  RpfPatcher.exe convert-gen9 <ytd_folder>\n" +
-                    "  RpfPatcher.exe inspect      <gta_path> <rpf_path>");
+                    "  RpfPatcher.exe inspect      <gta_path> <rpf_path>\n" +
+                    "  RpfPatcher.exe build-ytd    <dds_folder> <output_ytd> [legacy|gen9]\n" +
+                    "  RpfPatcher.exe unpack-ytd   <ytd_path> <output_folder> [legacy|gen9]\n" +
+                    "  RpfPatcher.exe extract-entry <gta_path> <rpf_path> <name> <output>\n" +
+                    "  RpfPatcher.exe dump-ytd      <ytd_path> [legacy|gen9]");
                 return 1;
             }
 
@@ -46,12 +56,24 @@ namespace RpfPatcher
                 return InjectYtd(args);
             if (command == "remove-ytd")
                 return RemoveYtd(args);
+            if (command == "verify-ytd")
+                return VerifyYtd(args);
             if (command == "build-dlc")
                 return BuildDlc(args);
+            if (command == "verify-dlc")
+                return VerifyDlc(args);
             if (command == "convert-gen9")
                 return ConvertGen9(args);
             if (command == "inspect")
                 return InspectRpf(args);
+            if (command == "build-ytd")
+                return BuildYtd(args);
+            if (command == "unpack-ytd")
+                return UnpackYtd(args);
+            if (command == "extract-entry")
+                return ExtractEntry(args);
+            if (command == "dump-ytd")
+                return DumpYtd(args);
             if (command == "patch" || command == "unpatch")
                 return PatchCommand(command, args);
 
@@ -68,7 +90,8 @@ namespace RpfPatcher
         /// open and scan the mods copy, convert to OPEN encryption.
         /// Returns the opened RpfFile or null on failure (error printed).
         /// </summary>
-        static RpfFile OpenModsUpdateRpf(string gtaPath, out int errorCode)
+        static RpfFile OpenModsUpdateRpf(string gtaPath, out int errorCode,
+                                         string archiveName = "update.rpf")
         {
             errorCode = 0;
 
@@ -96,9 +119,9 @@ namespace RpfPatcher
             }
             Console.WriteLine("Encryption keys loaded.");
 
-            string originalRpf = Path.Combine(gtaPath, "update", "update.rpf");
+            string originalRpf = Path.Combine(gtaPath, "update", archiveName);
             string modsDir = Path.Combine(gtaPath, "mods", "update");
-            string modsRpf = Path.Combine(modsDir, "update.rpf");
+            string modsRpf = Path.Combine(modsDir, archiveName);
 
             if (!File.Exists(originalRpf))
             {
@@ -122,6 +145,15 @@ namespace RpfPatcher
             }
             else
             {
+                if (File.GetLastWriteTimeUtc(modsRpf).AddSeconds(1) <
+                    File.GetLastWriteTimeUtc(originalRpf))
+                {
+                    Console.Error.WriteLine(
+                        $"ERROR: mods/update/{archiveName} predates the current game archive. " +
+                        "Refresh it before using the RPF loader.");
+                    errorCode = 6;
+                    return null;
+                }
                 Console.WriteLine("Mods copy of update.rpf already exists.");
             }
 
@@ -168,6 +200,117 @@ namespace RpfPatcher
             return null;
         }
 
+        static RpfDirectoryEntry FindDirectory(
+            RpfDirectoryEntry root, string name)
+        {
+            if (root == null) return null;
+            if (root.Name != null &&
+                root.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                return root;
+            if (root.Directories == null) return null;
+            foreach (var directory in root.Directories)
+            {
+                var found = FindDirectory(directory, name);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Open the edition-specific archive that supplies globally streamed
+        /// script textures. Enhanced moved these resources to update2.rpf's
+        /// root textures directory; Legacy keeps them in nested script_txds.rpf.
+        /// </summary>
+        static RpfDirectoryEntry OpenPreviewTextureDirectory(
+            string gtaPath, out RpfFile archive, out string label, out int errorCode)
+        {
+            bool isGen9 = File.Exists(Path.Combine(gtaPath, "GTA5_Enhanced.exe"))
+                       || File.Exists(Path.Combine(gtaPath, "eboot.bin"));
+            string archiveName = isGen9 ? "update2.rpf" : "update.rpf";
+            archive = OpenModsUpdateRpf(gtaPath, out errorCode, archiveName);
+            label = isGen9 ? "update2.rpf/textures" : "script_txds.rpf";
+            if (archive == null) return null;
+
+            if (isGen9)
+            {
+                return FindDirectory(archive.Root, "textures");
+            }
+
+            return FindScriptTxdsRpf(archive)?.Root;
+        }
+
+        // ================================================================
+        //  verify-ytd: Re-open script_txds.rpf and ensure every expected
+        //  dictionary is actually present after injection.
+        // ================================================================
+
+        static int VerifyYtd(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe verify-ytd <gta_path> <ytd_folder>");
+                return 1;
+            }
+
+            string gtaPath = args[1];
+            string ytdFolder = args[2];
+            if (!Directory.Exists(ytdFolder))
+            {
+                Console.Error.WriteLine($"ERROR: Folder not found: {ytdFolder}");
+                return 4;
+            }
+
+            string[] expected = Directory.GetFiles(ytdFolder, "*.ytd")
+                .Select(Path.GetFileName)
+                .ToArray();
+            if (expected.Length == 0)
+            {
+                Console.Error.WriteLine("ERROR: No .ytd files found in folder.");
+                return 4;
+            }
+
+            try
+            {
+                var target = OpenPreviewTextureDirectory(
+                    gtaPath, out var rpf, out string label, out int err);
+                if (rpf == null) return err;
+                if (target == null)
+                {
+                    Console.Error.WriteLine(
+                        $"ERROR: Preview texture directory not found: {label}");
+                    return 5;
+                }
+
+                var present = target.Files?
+                    .OfType<RpfFileEntry>()
+                    .Where(e => !string.IsNullOrEmpty(e.Name))
+                    .Select(e => e.Name)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase)
+                    ?? new System.Collections.Generic.HashSet<string>(
+                        StringComparer.OrdinalIgnoreCase);
+                string[] missing = expected.Where(name => !present.Contains(name)).ToArray();
+                if (missing.Length > 0)
+                {
+                    foreach (string name in missing)
+                        Console.Error.WriteLine($"MISSING: {name}");
+                    Console.Error.WriteLine(
+                        $"ERROR: {missing.Length}/{expected.Length} preview dictionaries are missing.");
+                    return 7;
+                }
+
+                Console.WriteLine(
+                    $"Verified {expected.Length} preview dictionaries in {label}.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                Console.Error.WriteLine(ex.StackTrace);
+                return 99;
+            }
+        }
+
         // ================================================================
         //  inject-ytd: Add .ytd files into script_txds.rpf inside
         //  mods/update/update.rpf so they're available via
@@ -201,18 +344,17 @@ namespace RpfPatcher
 
             try
             {
-                var rpf = OpenModsUpdateRpf(gtaPath, out int err);
+                var target = OpenPreviewTextureDirectory(
+                    gtaPath, out var rpf, out string label, out int err);
                 if (rpf == null) return err;
-
-                var scriptTxds = FindScriptTxdsRpf(rpf);
-                if (scriptTxds == null)
+                if (target == null)
                 {
                     Console.Error.WriteLine(
-                        "ERROR: script_txds.rpf not found inside update.rpf");
+                        $"ERROR: Preview texture directory not found: {label}");
                     return 5;
                 }
 
-                Console.WriteLine($"Found script_txds.rpf ({scriptTxds.AllEntries?.Count ?? 0} entries)");
+                Console.WriteLine($"Found {label} ({target.Files?.Count ?? 0} files)");
 
                 int injected = 0;
                 foreach (string ytdPath in ytdFiles)
@@ -221,7 +363,7 @@ namespace RpfPatcher
                     byte[] data = File.ReadAllBytes(ytdPath);
 
                     // Check if already exists — overwrite if so
-                    var existing = scriptTxds.AllEntries?
+                    var existing = target.Files?
                         .OfType<RpfFileEntry>()
                         .FirstOrDefault(e => e.Name != null &&
                             e.Name.Equals(fileName, StringComparison.OrdinalIgnoreCase));
@@ -233,13 +375,13 @@ namespace RpfPatcher
                     }
                     else
                     {
-                        RpfFile.CreateFile(scriptTxds.Root, fileName, data, true);
+                        RpfFile.CreateFile(target, fileName, data, true);
                         Console.WriteLine($"  + {fileName} ({data.Length:N0} bytes)");
                     }
                     injected++;
                 }
 
-                Console.WriteLine($"Injected {injected} .ytd files into script_txds.rpf.");
+                Console.WriteLine($"Injected {injected} .ytd files into {label}.");
                 return 0;
             }
             catch (Exception ex)
@@ -270,21 +412,20 @@ namespace RpfPatcher
 
             try
             {
-                var rpf = OpenModsUpdateRpf(gtaPath, out int err);
+                var target = OpenPreviewTextureDirectory(
+                    gtaPath, out var rpf, out string label, out int err);
                 if (rpf == null) return err;
-
-                var scriptTxds = FindScriptTxdsRpf(rpf);
-                if (scriptTxds == null)
+                if (target == null)
                 {
                     Console.Error.WriteLine(
-                        "ERROR: script_txds.rpf not found inside update.rpf");
+                        $"ERROR: Preview texture directory not found: {label}");
                     return 5;
                 }
 
-                Console.WriteLine($"Found script_txds.rpf ({scriptTxds.AllEntries?.Count ?? 0} entries)");
+                Console.WriteLine($"Found {label} ({target.Files?.Count ?? 0} files)");
 
                 // Find matching entries
-                var toRemove = scriptTxds.AllEntries?
+                var toRemove = target.Files?
                     .OfType<RpfFileEntry>()
                     .Where(e => e.Name != null &&
                         e.Name.ToLowerInvariant().StartsWith(prefix) &&
@@ -303,7 +444,7 @@ namespace RpfPatcher
                     Console.WriteLine($"  - {entry.Name}");
                 }
 
-                Console.WriteLine($"Removed {toRemove.Count} .ytd files from script_txds.rpf.");
+                Console.WriteLine($"Removed {toRemove.Count} .ytd files from {label}.");
                 return 0;
             }
             catch (Exception ex)
@@ -479,6 +620,96 @@ namespace RpfPatcher
             }
 
             return count;
+        }
+
+        // ================================================================
+        //  verify-dlc: Ensure metadata, nested RPF and every expected YTD
+        //  can be read back before the archive is placed in the game.
+        // ================================================================
+
+        static int VerifyDlc(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe verify-dlc <dlc_rpf> <ytd_folder>");
+                return 1;
+            }
+
+            string dlcPath = args[1];
+            string ytdFolder = args[2];
+            if (!File.Exists(dlcPath) || !Directory.Exists(ytdFolder))
+            {
+                Console.Error.WriteLine("ERROR: DLC archive or YTD folder not found.");
+                return 4;
+            }
+
+            try
+            {
+                var rpf = new RpfFile(dlcPath, dlcPath);
+                rpf.ScanStructure(null,
+                    err => Console.Error.WriteLine($"RPF scan warning: {err}"));
+                var texturesEntry = FindFileRecursive(rpf, "textures.rpf");
+                if (FindFileRecursive(rpf, "content.xml") == null ||
+                    FindFileRecursive(rpf, "setup2.xml") == null ||
+                    texturesEntry == null)
+                {
+                    Console.Error.WriteLine(
+                        "ERROR: DLC is missing content.xml, setup2.xml, or textures.rpf.");
+                    return 5;
+                }
+
+                string[] expected = Directory.GetFiles(ytdFolder, "*.ytd")
+                    .Select(Path.GetFileName)
+                    .ToArray();
+                if (expected.Length == 0)
+                {
+                    Console.Error.WriteLine("ERROR: No expected YTD files were supplied.");
+                    return 4;
+                }
+
+                // CodeWalker's automatic child-RPF discovery depends on the
+                // archive's surrounding directory. Extract and scan the
+                // embedded file explicitly so verification is path-neutral
+                // and proves the bytes GTA will actually mount.
+                string tempInner = Path.Combine(
+                    Path.GetTempPath(), $"allin1-verify-{Guid.NewGuid():N}.rpf");
+                try
+                {
+                    byte[] innerBytes = texturesEntry.File.ExtractFile(texturesEntry);
+                    if (innerBytes == null || innerBytes.Length == 0)
+                    {
+                        Console.Error.WriteLine("ERROR: Embedded textures.rpf is empty.");
+                        return 5;
+                    }
+                    File.WriteAllBytes(tempInner, innerBytes);
+                    var innerRpf = new RpfFile(tempInner, tempInner);
+                    innerRpf.ScanStructure(null,
+                        err => Console.Error.WriteLine($"Nested RPF scan warning: {err}"));
+                    var missing = expected
+                        .Where(name => FindFileRecursive(innerRpf, name) == null)
+                        .ToArray();
+                    if (missing.Length > 0)
+                    {
+                        Console.Error.WriteLine(
+                            "ERROR: Missing dictionaries: " + string.Join(", ", missing));
+                        return 5;
+                    }
+                }
+                finally
+                {
+                    if (File.Exists(tempInner)) File.Delete(tempInner);
+                }
+
+                Console.WriteLine(
+                    $"Verified preview DLC: {expected.Length} texture dictionaries present.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: DLC verification failed: {ex.Message}");
+                return 7;
+            }
         }
 
         // ================================================================
@@ -726,6 +957,254 @@ namespace RpfPatcher
                             : "?b";
                     Console.WriteLine($"{indent}{file.Name}  [{size}]");
                 }
+            }
+        }
+
+        // Build a texture dictionary from standards-compliant DDS files.
+        // PNG-to-BC3 conversion is intentionally performed by the Python
+        // installer because the historical YTDToolio PNG encoder emits
+        // corrupt scanlines on current Windows systems.
+        static int BuildYtd(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe build-ytd <dds_folder> <output_ytd> [legacy|gen9]");
+                return 1;
+            }
+
+            string ddsFolder = args[1];
+            string outputPath = args[2];
+            bool isGen9 = args.Length >= 4 &&
+                args[3].Equals("gen9", StringComparison.OrdinalIgnoreCase);
+            if (!Directory.Exists(ddsFolder))
+            {
+                Console.Error.WriteLine($"ERROR: Folder not found: {ddsFolder}");
+                return 4;
+            }
+
+            string[] files = Directory.GetFiles(ddsFolder, "*.dds")
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (files.Length == 0)
+            {
+                Console.Error.WriteLine("ERROR: No .dds files found.");
+                return 4;
+            }
+
+            var previous = RpfManager.IsGen9;
+            try
+            {
+                var textures = new List<Texture>();
+                foreach (string file in files)
+                {
+                    var texture = DDSIO.GetTexture(File.ReadAllBytes(file));
+                    if (texture == null)
+                        throw new InvalidDataException($"Unsupported DDS: {file}");
+                    texture.Name = Path.GetFileNameWithoutExtension(file).ToLowerInvariant();
+                    texture.NameHash = JenkHash.GenHash(texture.Name);
+                    texture.Usage = TextureUsage.DIFFUSE;
+                    textures.Add(texture);
+                    Console.WriteLine(
+                        $"  + {texture.Name} ({texture.Width}x{texture.Height}, {texture.Format})");
+                }
+
+                var dictionary = new TextureDictionary();
+                dictionary.BuildFromTextureList(textures);
+                var ytd = new YtdFile { TextureDict = dictionary };
+                RpfManager.IsGen9 = isGen9;
+                byte[] data = ytd.Save();
+                string parent = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+                if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
+                File.WriteAllBytes(outputPath, data);
+                Console.WriteLine(
+                    $"Built {(isGen9 ? "Gen9" : "Legacy")} YTD with {textures.Count} textures: {outputPath}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                Console.Error.WriteLine(ex.StackTrace);
+                return 99;
+            }
+            finally
+            {
+                RpfManager.IsGen9 = previous;
+            }
+        }
+
+        static int UnpackYtd(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe unpack-ytd <ytd_path> <output_folder> [legacy|gen9]");
+                return 1;
+            }
+
+            string ytdPath = args[1];
+            string outputFolder = args[2];
+            bool isGen9 = args.Length < 4 ||
+                !args[3].Equals("legacy", StringComparison.OrdinalIgnoreCase);
+            if (!File.Exists(ytdPath))
+            {
+                Console.Error.WriteLine($"ERROR: File not found: {ytdPath}");
+                return 4;
+            }
+
+            var previous = RpfManager.IsGen9;
+            try
+            {
+                RpfManager.IsGen9 = isGen9;
+                var ytd = new YtdFile();
+                ytd.Load(File.ReadAllBytes(ytdPath));
+                var textures = ytd.TextureDict?.Textures?.data_items ?? Array.Empty<Texture>();
+                Directory.CreateDirectory(outputFolder);
+                foreach (var texture in textures)
+                {
+                    if (texture == null || string.IsNullOrWhiteSpace(texture.Name)) continue;
+                    string output = Path.Combine(outputFolder, texture.Name + ".dds");
+                    File.WriteAllBytes(output, DDSIO.GetDDSFile(texture));
+                    Console.WriteLine($"  + {texture.Name}.dds");
+                }
+                Console.WriteLine($"Unpacked {textures.Length} textures to {outputFolder}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                Console.Error.WriteLine(ex.StackTrace);
+                return 99;
+            }
+            finally
+            {
+                RpfManager.IsGen9 = previous;
+            }
+        }
+
+        // Read-only diagnostics used to compare ALLIN1 resources with native
+        // Enhanced files without requiring a GUI archive editor.
+        static int ExtractEntry(string[] args)
+        {
+            if (args.Length < 5)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe extract-entry <gta_path> <rpf_path> <name> <output>");
+                return 1;
+            }
+
+            string gtaPath = args[1];
+            string rpfPath = args[2];
+            string entryName = args[3];
+            string outputPath = args[4];
+            if (!File.Exists(rpfPath))
+            {
+                Console.Error.WriteLine($"ERROR: File not found: {rpfPath}");
+                return 4;
+            }
+
+            try
+            {
+                bool isGen9 = File.Exists(Path.Combine(gtaPath, "GTA5_Enhanced.exe"))
+                           || File.Exists(Path.Combine(gtaPath, "eboot.bin"));
+                GTA5Keys.LoadFromPath(gtaPath, isGen9, null);
+                var rpf = new RpfFile(rpfPath, rpfPath);
+                rpf.ScanStructure(null,
+                    err => Console.Error.WriteLine($"RPF scan warning: {err}"));
+                var matches = rpf.AllEntries?
+                    .OfType<RpfFileEntry>()
+                    .Where(entry => string.Equals(entry.Name, entryName,
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToArray() ?? Array.Empty<RpfFileEntry>();
+                if (matches.Length == 0)
+                {
+                    Console.Error.WriteLine($"ERROR: Entry not found: {entryName}");
+                    return 5;
+                }
+                if (matches.Length > 1)
+                {
+                    Console.Error.WriteLine(
+                        "ERROR: Entry name is ambiguous: " +
+                        string.Join(", ", matches.Select(entry => entry.Path)));
+                    return 5;
+                }
+
+                byte[] data = matches[0].File.ExtractFile(matches[0]);
+                if (data == null || data.Length == 0)
+                {
+                    Console.Error.WriteLine("ERROR: Extracted entry was empty.");
+                    return 5;
+                }
+                // ExtractFile returns decompressed resource payloads. Re-wrap
+                // them as standalone OpenIV-compatible resource files so the
+                // result can be opened and compared outside its source RPF.
+                if (matches[0] is RpfResourceFileEntry resourceEntry)
+                {
+                    data = ResourceBuilder.AddResourceHeader(
+                        resourceEntry, ResourceBuilder.Compress(data));
+                }
+                string parent = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+                if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
+                File.WriteAllBytes(outputPath, data);
+                Console.WriteLine(
+                    $"Extracted {matches[0].Path} ({data.Length:N0} bytes) to {outputPath}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 99;
+            }
+        }
+
+        static int DumpYtd(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine("Usage: RpfPatcher.exe dump-ytd <ytd_path> [legacy|gen9]");
+                return 1;
+            }
+
+            string ytdPath = args[1];
+            bool isGen9 = args.Length < 3 ||
+                !args[2].Equals("legacy", StringComparison.OrdinalIgnoreCase);
+            if (!File.Exists(ytdPath))
+            {
+                Console.Error.WriteLine($"ERROR: File not found: {ytdPath}");
+                return 4;
+            }
+
+            var previous = RpfManager.IsGen9;
+            try
+            {
+                RpfManager.IsGen9 = isGen9;
+                var ytd = new YtdFile();
+                ytd.Load(File.ReadAllBytes(ytdPath));
+                var textures = ytd.TextureDict?.Textures?.data_items ?? Array.Empty<Texture>();
+                Console.WriteLine(
+                    $"YTD: {ytdPath} mode={(isGen9 ? "gen9" : "legacy")} textures={textures.Length}");
+                foreach (var texture in textures)
+                {
+                    if (texture == null) continue;
+                    Console.WriteLine(
+                        $"  {texture.Name}: {texture.Width}x{texture.Height}x{texture.Depth}, " +
+                        $"levels={texture.Levels}, legacy={texture.Format}, stride={texture.Stride}, " +
+                        $"g9format={texture.G9_Format}, flags=0x{texture.G9_Flags:X8}, " +
+                        $"blocks={texture.G9_BlockCount}, blockStride={texture.G9_BlockStride}, " +
+                        $"tile={texture.G9_TileMode}, data={texture.Data?.FullData?.Length ?? 0}, " +
+                        $"srv={(texture.G9_SRV == null ? "none" : "present")}");
+                }
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                Console.Error.WriteLine(ex.StackTrace);
+                return 99;
+            }
+            finally
+            {
+                RpfManager.IsGen9 = previous;
             }
         }
 

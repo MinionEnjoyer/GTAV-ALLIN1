@@ -121,9 +121,51 @@ def test_preview_capture_and_seat_selector_contracts():
     seat = (ROOT / "script/src/SeatSelector.cs").read_text()
     assert 'gta_path / SCRIPTS_DIR / "previews"' in installer
     assert "models = sorted(v.model" in installer
-    assert "IsEnterExitHeld" in seat
+    assert "IsSelectorHeld" in seat
     assert "That seat is no longer available" in seat
     assert "seat_selector_enabled" in seat
+    assert "seat_selector_key" in seat
+
+
+def test_preview_streaming_uses_per_dictionary_timeout_and_retry():
+    renderer = (ROOT / "script/src/GbayRenderer.cs").read_text(encoding="utf-8")
+    assert "Dictionary<string, DateTime> _requestStarted" in renderer
+    assert "TimeSpan.FromSeconds(30)" in renderer
+    assert "texture_requested" in renderer
+    assert "texture_unavailable" in renderer
+    assert "pending = Math.Max" in renderer
+    assert "_failedDicts.Remove(dict)" in renderer
+    assert "_failCheckCounter" not in renderer
+
+
+def test_watchdog_recovery_and_traffic_diagnostics_are_bounded():
+    watchdog = (ROOT / "script/src/ClientWatchdog.cs").read_text(encoding="utf-8")
+    traffic = (ROOT / "script/src/TrafficSpawner.cs").read_text(encoding="utf-8")
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text(encoding="utf-8")
+    assert "DateTime.UtcNow.AddSeconds(30)" in watchdog
+    assert "recovery_window_completed_features_resumed" in watchdog
+    assert "PreviousSessionCrashed || ForcedSafeMode" not in watchdog
+    assert "SmoothedFps { get; private set; } = 60f" in traffic
+    assert traffic.index("UpdatePerformanceSample();") < traffic.index("if (!_enabled)")
+    assert 'PauseReason = "30-second recovery mode"' in traffic
+    assert "paused: " in browser
+
+
+def test_seat_selector_is_animation_only_and_has_external_route_recovery():
+    seat = (ROOT / "script/src/SeatSelector.cs").read_text()
+    assert "SET_PED_INTO_VEHICLE" not in seat
+    assert "TASK_WARP_PED_INTO_VEHICLE" not in seat
+    assert "WarpIntoVehicle" not in seat
+    assert "CLEAR_PED_TASKS_IMMEDIATELY" not in seat
+    assert "TASK_SHUFFLE_TO_NEXT_VEHICLE_SEAT" in seat
+    assert "TASK_LEAVE_VEHICLE" in seat
+    assert "TASK_ENTER_VEHICLE" in seat
+    assert "NORMAL_ENTER_FLAG = 1" in seat
+    assert "NORMAL_EXIT_FLAG = 0" in seat
+    assert "ExecutionPhase.Exiting" in seat
+    assert "ExecutionPhase.Reentering" in seat
+    assert 'BeginExit(player, "different_row_or_external_seat")' in seat
+    assert "Stop the vehicle before changing rows or using an external seat" in seat
 
 
 def test_client_logging_is_structured_rotating_and_shared():
@@ -167,6 +209,118 @@ def test_runtime_hot_paths_are_throttled_and_cached():
     assert "charColor != _lastFloorBlipColor" in garage
 
 
+def test_issue_five_playtest_regressions_are_guarded():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    renderer = (ROOT / "script/src/GbayRenderer.cs").read_text()
+    traffic = (ROOT / "script/src/TrafficSpawner.cs").read_text()
+    customize = (ROOT / "script/src/GbayBrowserCustomize.cs").read_text()
+    inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()
+    assert "GbayRenderer.TextDark" in browser and "GBAY artwork:" in browser
+    assert "vector placeholders enabled" in renderer and "OpenRpfStatus" in renderer
+    for guard in ("GET_MISSION_FLAG", "WantedLevel", "GET_INTERIOR_FROM_ENTITY",
+                  "IS_POINT_ON_ROAD", "IS_ANY_VEHICLE_NEAR_POINT", "IS_SPHERE_VISIBLE"):
+        assert guard in traffic
+    assert "floorCount = GarageManager.IsPlayerInFloorGarage ? 3 : 1" in customize
+    assert "GarageSellConfirm" in browser and "CONFIRM VEHICLE SALE" in browser
+    assert "progress_applied" in inventory and "STAT_SET_INT" in inventory
+
+
+def test_gbay_information_pages_have_a_clickable_back_action():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    assert "INFO_BACK_W" in browser and "INFO_BACK_H" in browser
+    assert "private bool DrawCenteredBackButton(" in browser
+    assert "return input.MouseClick && hover" in browser
+    assert "input.Back || input.MouseRightClick || backClicked" in browser
+    assert 'DrawInfoPanel("DIAGNOSTICS"' in browser
+    assert 'DrawInfoPanel("ABOUT ALLIN1"' in browser
+    assert "}, input, false);" in browser
+    assert "}, input, true);" in browser
+    assert "if (showLogo)" in browser
+    assert "DrawBrandLogo(BROWSER_CX, 0.165f" in browser
+    assert "input, INFO_BACK_CY, INFO_BACK_W, \"Back\", false" in browser
+    assert "bodyBottom = 0.775f" in browser
+    assert "DrawTextFit(lines[i]" in browser
+    assert '"BACK  Return to GBAY"' not in browser
+
+
+def test_gbay_pages_share_back_navigation_and_visible_focus():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    customize = (ROOT / "script/src/GbayBrowserCustomize.cs").read_text()
+    assert "FocusBorderWidth" in browser and "FocusBorderColor" in browser
+    assert "return 0.003f" in browser
+    assert "return GbayRenderer.CardBorderSel" in browser
+    assert "Math.Sin(Game.GameTime / 170.0)" not in browser
+    assert browser.count("DrawCenteredBackButton(") >= 7
+    assert browser.count("DrawFocusedRect(") >= 7
+    assert "hasKeyboardFocus" in customize
+    assert "HandleGarageCustomizeInput(input, backClicked)" in customize
+
+
+def test_gbay_catalog_is_readable_and_every_listing_is_reachable():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    renderer = (ROOT / "script/src/GbayRenderer.cs").read_text()
+    assert "DrawGbayWordmark(BROWSER_CX, 0.145f" in browser
+    assert browser.count("GbayRenderer.DrawLogo(") == 1  # loading-screen PHAT only
+    assert "internal static void DrawTextFit(" in renderer
+    assert "private void DrawPager(" in browser
+    assert "previousPageClicked" in browser and "nextPageClicked" in browser
+    assert "input.ScrollDelta < 0" in browser
+    assert "input.ScrollDelta > 0" in browser
+    assert "Wheel/LB-RB: Pages" in browser
+    assert "_tabScrollOffset - (MAX_VISIBLE_TABS - 1)" in browser
+    assert "_weaponTabScrollOffset - (MAX_VISIBLE_TABS - 1)" in browser
+    assert "_selectedCard == maxIdx" in browser
+    assert "_weaponSelectedCard == maxIdx" in browser
+    assert "private const float CARD_H         = 0.21f" in browser
+    assert "private const float CARD_GAP_Y     = 0.014f" in browser
+
+
+def test_launcher_packages_and_applies_allin1_branding():
+    gui = (ROOT / "src/allin1/gui.py").read_text()
+    project = (ROOT / "pyproject.toml").read_text()
+    assert (ROOT / "src/allin1/assets/ALLIN1.png").stat().st_size > 0
+    assert (ROOT / "src/allin1/assets/ALLIN1-icon.png").stat().st_size > 0
+    assert (ROOT / "src/allin1/assets/ALLIN1.ico").stat().st_size > 0
+    assert "SetCurrentProcessExplicitAppUserModelID" in gui
+    assert "self.root.iconphoto(True, self._window_icon)" in gui
+    assert "user32.SendMessageW(hwnd, 0x0080, 1, handle)" in gui
+    assert gui.index("_register_windows_app()") < gui.rindex("root = tk.Tk()")
+    assert 'allin1 = ["assets/*.png", "assets/*.ico"]' in project
+
+
+def test_floor_garage_drive_in_is_visible_and_markers_match_character():
+    garage = (ROOT / "script/src/GarageManager.cs").read_text()
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    assert "System.Drawing.Color.FromArgb(128, 200, 100, 0)" not in garage
+    assert garage.count("var markerColor = CharacterMarkerColor();") >= 3
+    assert '"Eclipse Towers", "Three-Floor Garage"' in browser
+    assert "GetFloorGarageStoredVehicles()" in browser
+    assert "visibleGarageRows = 12" in browser
+    assert "input.ScrollDelta" in browser
+    assert "_pendingSellFloorGarage" in browser
+    assert "RemoveFloorGarageVehicle(listIndex)" in shop
+    assert "private static bool FloorGarageSave()" in garage
+    fade = garage.index('Log("EnterFloorGarage: fading in")')
+    confirmation = garage.index("ShowSubtitle(storedConfirmation", fade)
+    assert confirmation > fade
+
+
+def test_rpf_diagnostics_distinguish_plugin_from_asi_host_and_disabled_state():
+    renderer = (ROOT / "script/src/GbayRenderer.cs").read_text()
+    assert '"OpenRPF.asi.disabled"' in renderer
+    assert '"ASI loader detected; OpenRPF plug-in missing"' in renderer
+    assert '"OpenRPF plug-in disabled (fallback active)"' in renderer
+
+
+def test_watchdog_cleans_session_marker_on_all_graceful_shutdown_paths():
+    watchdog = (ROOT / "script/src/ClientWatchdog.cs").read_text()
+    assert "AppDomain.CurrentDomain.ProcessExit += OnProcessExit" in watchdog
+    assert "AppDomain.CurrentDomain.DomainUnload += OnDomainUnload" in watchdog
+    assert "private static void CleanupMarker()" in watchdog
+    assert watchdog.count("CleanupMarker();") >= 3
+
+
 def test_runtime_save_files_emit_backward_compatible_schema_markers():
     garage = (ROOT / "script/src/GarageManager.cs").read_text()
     inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()
@@ -204,3 +358,10 @@ def test_windows_toolchain_ci_is_cached_bounded_and_non_mutating():
     assert '$RpfPublishDir = Join-Path $TempDir "rpfpatcher_publish"' in tools_script
     assert '-o $RpfPublishDir' in tools_script
     assert '-o $RpfPatcherDir' not in tools_script
+
+
+def test_launcher_uses_gui_entry_point_without_console_window():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert "[project.gui-scripts]" in pyproject
+    gui_section = pyproject.split("[project.gui-scripts]", 1)[1]
+    assert 'allin1-gui = "allin1.gui:main"' in gui_section

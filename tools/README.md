@@ -8,7 +8,8 @@ all required tools automatically.
 
 | File | Source | Purpose |
 |------|--------|---------|
-| `YTDToolio.exe` | Built from [ytdtool](https://github.com/kngrektor/ytdtool) source | Packs PNG folders into GTA V `.ytd` texture dictionaries |
+| `RpfPatcher/RpfPatcher.exe` | Built from the bundled CodeWalker.Core project | Builds `.ytd` dictionaries from BC3 DDS files, converts Gen9 resources, and manages RPF archives |
+| `YTDToolio.exe` | Built from [ytdtool](https://github.com/kngrektor/ytdtool) source | Legacy diagnostic utility; its PNG encoder is not used because it corrupts scanlines on current Windows systems |
 | `gtautil.exe` | [gtautil](https://github.com/indilo53/gtautil/releases) v2.2.7 | Creates `.rpf` archives, extracts/rebuilds `update.rpf` |
 
 ## Setup
@@ -19,7 +20,8 @@ From the project root, run:
 .\runtools.ps1
 ```
 
-This will download gtautil and clone + build YTDToolio from source.
+This downloads gtautil and builds RpfPatcher. It also retains YTDToolio for
+legacy diagnostics, but preview generation uses Pillow plus RpfPatcher.
 
 ### Build Requirements (for YTDToolio)
 

@@ -1,8 +1,12 @@
-// SeatSelector.cs — Hold-F seat selection for entering specific vehicle seats.
+// SeatSelector.cs — Hold the configured key to select a specific vehicle seat.
 //
-// Hold F near a vehicle (or inside one) to bring up a seat picker HUD.
-// Arrow keys navigate available seats; release F to confirm entry.
-// Tap F still works normally for default vehicle enter/exit.
+// Hold the selector key near a vehicle (or inside one) to bring up a seat
+// picker HUD. Arrow keys navigate available seats; release the key to confirm.
+//
+// Seat changes are animation-only. The selector never warps the player. A
+// reachable front-seat pair uses GTA's shuffle task; other rows and external
+// positions (including turret mounts) use a normal exit followed by a normal
+// pathfind-and-enter task.
 //
 // Player-only — does not affect NPC behavior.
 
@@ -10,6 +14,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Windows.Forms;
 using GTA;
 using GTA.Math;
 using GTA.Native;
@@ -23,9 +28,16 @@ namespace ALLIN1
         // ------------------------------------------------------------------ //
 
         private int _holdThresholdMs = 350;
+        private Keys _selectorKey = Keys.L;
         private const float NEARBY_RADIUS = 3.5f;
         private const float MAX_DIST_WHILE_SELECTING = 5f;
-        private const int EXECUTE_TIMEOUT_MS = 5000;
+        private const int EXECUTE_TIMEOUT_MS = 25000;
+        private const int ENTER_TIMEOUT_MS = 14000;
+        private const int EXIT_TIMEOUT_MS = 7000;
+        private const int SHUFFLE_TIMEOUT_MS = 4500;
+        private const float MAX_EXTERNAL_SWITCH_SPEED = 1.25f;
+        private const int NORMAL_ENTER_FLAG = 1;
+        private const int NORMAL_EXIT_FLAG = 0;
 
         // F key is Control.Enter on foot (23) and Control.VehicleExit in vehicle (75).
         // We read both via IS_DISABLED_CONTROL_PRESSED and suppress both when selecting.
@@ -60,6 +72,15 @@ namespace ALLIN1
 
         private enum State { Idle, Selecting, Executing }
 
+        private enum ExecutionPhase
+        {
+            None,
+            Entering,
+            Shuffling,
+            Exiting,
+            Reentering,
+        }
+
         private struct SeatInfo
         {
             internal int Index;      // -1 = Driver, 0 = Passenger, 1+ = rear/extra
@@ -87,8 +108,10 @@ namespace ALLIN1
 
         // Executing state
         private int _executeStart;
+        private int _phaseStart;
         private int _targetSeatIdx;
-        private bool _reenterAfterExit;
+        private int _sourceSeatIdx;
+        private ExecutionPhase _executionPhase;
         private bool _enabled = true;
 
         // ------------------------------------------------------------------ //
@@ -150,7 +173,7 @@ namespace ALLIN1
         private void TickIdle(Ped player)
         {
             // F key maps to different controls on foot vs in vehicle — check both
-            bool fHeld = IsEnterExitHeld();
+            bool fHeld = IsSelectorHeld();
 
             if (!fHeld)
             {
@@ -225,7 +248,7 @@ namespace ALLIN1
             }
 
             // Check if F was released → confirm selection
-            bool fHeld = IsEnterExitHeld();
+            bool fHeld = IsSelectorHeld();
 
             if (!fHeld)
             {
@@ -234,7 +257,7 @@ namespace ALLIN1
             }
 
             // Check Esc/Back → cancel
-            if (Game.IsControlJustPressed(Control.FrontendCancel))
+            if (Game.IsControlJustPressed(GTA.Control.FrontendCancel))
             {
                 GbayRenderer.PlayBack();
                 Reset();
@@ -268,14 +291,14 @@ namespace ALLIN1
         {
             int dX = 0, dY = 0;
 
-            if (Game.IsControlJustPressed(Control.FrontendLeft))
+            if (Game.IsControlJustPressed(GTA.Control.FrontendLeft))
                 dX = -1;
-            else if (Game.IsControlJustPressed(Control.FrontendRight))
+            else if (Game.IsControlJustPressed(GTA.Control.FrontendRight))
                 dX = 1;
 
-            if (Game.IsControlJustPressed(Control.FrontendUp))
+            if (Game.IsControlJustPressed(GTA.Control.FrontendUp))
                 dY = -1;
-            else if (Game.IsControlJustPressed(Control.FrontendDown))
+            else if (Game.IsControlJustPressed(GTA.Control.FrontendDown))
                 dY = 1;
 
             if (dX == 0 && dY == 0)
@@ -357,6 +380,7 @@ namespace ALLIN1
 
             _targetSeatIdx = seat.Index;
             _executeStart = Game.GameTime;
+            _sourceSeatIdx = GetPlayerSeatIndex(player);
 
             if (!_playerInVehicle)
             {
@@ -369,27 +393,32 @@ namespace ALLIN1
                     return;
                 }
 
-                // Animated entry into specific seat
-                Function.Call(Hash.TASK_ENTER_VEHICLE,
-                    player.Handle, _targetVeh.Handle, 5000, _targetSeatIdx, 2f, 1, 0);
+                BeginEnter(player, false);
             }
             else
             {
-                // Inside vehicle — shuffle for adjacent front seats,
-                // otherwise warp directly to avoid teleportation appearance
-                int currentSeat = GetPlayerSeatIndex(player);
-                bool adjacentFront = (currentSeat == -1 && seat.Index == 0)
-                                  || (currentSeat == 0 && seat.Index == -1);
-
-                if (adjacentFront)
+                if (_sourceSeatIdx == -2)
                 {
-                    Function.Call(Hash.TASK_SHUFFLE_TO_NEXT_VEHICLE_SEAT, player.Handle);
+                    GbayRenderer.PlayError();
+                    Reset();
+                    return;
                 }
+
+                if (CanShuffleInside(_sourceSeatIdx, _targetSeatIdx))
+                    BeginShuffle(player);
                 else
                 {
-                    // Warp player directly into the target seat (no exit animation)
-                    Function.Call(Hash.SET_PED_INTO_VEHICLE,
-                        player.Handle, _targetVeh.Handle, _targetSeatIdx);
+                    if (!CanBeginExternalRoute())
+                    {
+                        GbayRenderer.PlayError();
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~y~Stop the vehicle before changing rows or using an external seat.",
+                            3000);
+                        Reset();
+                        return;
+                    }
+
+                    BeginExit(player, "different_row_or_external_seat");
                 }
             }
 
@@ -402,41 +431,197 @@ namespace ALLIN1
 
         private void TickExecuting(Ped player)
         {
-            // Check timeout
+            if (Game.IsControlJustPressed(GTA.Control.FrontendCancel))
+            {
+                CancelExecution(player, "cancelled_by_player", true);
+                return;
+            }
+
+            // One overall guard covers the complete exit/walk-around/re-entry
+            // route. Phase-specific guards below provide more useful recovery.
             if (Game.GameTime - _executeStart > EXECUTE_TIMEOUT_MS)
             {
-                Function.Call(Hash.CLEAR_PED_TASKS, player.Handle);
-                GTA.UI.Screen.ShowSubtitle("~y~Seat switch timed out safely.", 2000);
-                Reset();
+                CancelExecution(player, "overall_timeout", true);
                 return;
             }
 
             // Check if vehicle became invalid
             if (_targetVeh == null || !_targetVeh.Exists())
             {
+                ClientLog.Info("SeatSelector", "seat_switch_cancelled",
+                    new Dictionary<string, object> { { "reason", "vehicle_invalid" } });
                 Reset();
                 return;
             }
 
-            // If waiting to re-enter after exiting, queue entry once on foot
-            if (_reenterAfterExit && !player.IsInVehicle())
-            {
-                _reenterAfterExit = false;
-                Function.Call(Hash.TASK_ENTER_VEHICLE,
-                    player.Handle, _targetVeh.Handle, 5000, _targetSeatIdx, 2f, 1, 0);
-                return;
-            }
-
-            // Check if player reached the target seat
-            if (player.IsInVehicle()
-                && player.CurrentVehicle == _targetVeh
-                && GetPlayerSeatIndex(player) == _targetSeatIdx)
+            // Always test success before availability. While the entry animation
+            // finishes, GTA may already report the target seat as occupied.
+            if (HasReachedTarget(player))
             {
                 ClientLog.Info("SeatSelector", "seat_switch_completed",
-                    new Dictionary<string, object> { { "seat", _targetSeatIdx } });
+                    new Dictionary<string, object>
+                    {
+                        { "from_seat", _sourceSeatIdx },
+                        { "seat", _targetSeatIdx },
+                    });
                 Reset();
                 return;
             }
+
+            Ped occupant = _targetVeh.GetPedOnSeat((VehicleSeat)_targetSeatIdx);
+            if (occupant != null && occupant.Exists() && occupant != player)
+            {
+                GTA.UI.Screen.ShowSubtitle("~y~That seat is no longer available.", 2000);
+                CancelExecution(player, "seat_claimed", true);
+                return;
+            }
+
+            int phaseElapsed = Game.GameTime - _phaseStart;
+            switch (_executionPhase)
+            {
+                case ExecutionPhase.Shuffling:
+                    TickShuffle(player, phaseElapsed);
+                    break;
+
+                case ExecutionPhase.Exiting:
+                    if (!player.IsInVehicle())
+                        BeginEnter(player, true);
+                    else if (phaseElapsed > EXIT_TIMEOUT_MS)
+                        CancelExecution(player, "exit_timeout", true);
+                    break;
+
+                case ExecutionPhase.Entering:
+                case ExecutionPhase.Reentering:
+                    if (player.IsInVehicle() && player.CurrentVehicle != _targetVeh)
+                        CancelExecution(player, "entered_different_vehicle", true);
+                    else if (phaseElapsed > ENTER_TIMEOUT_MS)
+                        CancelExecution(player, "entry_timeout", true);
+                    break;
+
+                default:
+                    CancelExecution(player, "invalid_execution_phase", true);
+                    break;
+            }
+        }
+
+        private void TickShuffle(Ped player, int phaseElapsed)
+        {
+            if (!player.IsInVehicle() || player.CurrentVehicle != _targetVeh)
+            {
+                // A shuffle task should never put the player outside. If game
+                // behavior or another script interrupted it, continue with the
+                // normal animated entry route from the player's current position.
+                BeginEnter(player, true);
+                return;
+            }
+
+            if (phaseElapsed <= SHUFFLE_TIMEOUT_MS)
+                return;
+
+            // Some vehicle layouts reject or redirect GTA's generic shuffle.
+            // Recover through the external animation route, never through a warp.
+            if (!CanBeginExternalRoute())
+            {
+                CancelExecution(player, "shuffle_failed_vehicle_moving", true);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~y~Seat shuffle was blocked. Stop the vehicle and try again.", 3000);
+                return;
+            }
+
+            Function.Call(Hash.CLEAR_PED_TASKS, player.Handle);
+            BeginExit(player, "shuffle_fallback");
+        }
+
+        private bool HasReachedTarget(Ped player)
+        {
+            return player.IsInVehicle()
+                && player.CurrentVehicle == _targetVeh
+                && GetPlayerSeatIndex(player) == _targetSeatIdx;
+        }
+
+        private bool CanShuffleInside(int currentSeat, int targetSeat)
+        {
+            // TASK_SHUFFLE_TO_NEXT_VEHICLE_SEAT has no target-seat argument.
+            // Restrict it to the unambiguous front pair. Rear rows, limousines,
+            // jump seats, and weapon/turret positions use the external route.
+            bool frontPair = (currentSeat == -1 && targetSeat == 0)
+                          || (currentSeat == 0 && targetSeat == -1);
+            if (!frontPair || _targetVeh == null || !_targetVeh.Exists())
+                return false;
+
+            int model = _targetVeh.Model.Hash;
+            return !Function.Call<bool>(Hash.IS_THIS_MODEL_A_BIKE, model)
+                && !Function.Call<bool>(Hash.IS_THIS_MODEL_A_BICYCLE, model)
+                && !Function.Call<bool>(Hash.IS_THIS_MODEL_A_BOAT, model)
+                && !Function.Call<bool>(Hash.IS_THIS_MODEL_A_HELI, model)
+                && !Function.Call<bool>(Hash.IS_THIS_MODEL_A_PLANE, model)
+                && !Function.Call<bool>(Hash.IS_THIS_MODEL_A_TRAIN, model);
+        }
+
+        private bool CanBeginExternalRoute()
+        {
+            return _targetVeh != null
+                && _targetVeh.Exists()
+                && Math.Abs(_targetVeh.Speed) <= MAX_EXTERNAL_SWITCH_SPEED;
+        }
+
+        private void BeginShuffle(Ped player)
+        {
+            SetExecutionPhase(ExecutionPhase.Shuffling, "interior_shuffle");
+            Function.Call(Hash.TASK_SHUFFLE_TO_NEXT_VEHICLE_SEAT,
+                player.Handle, _targetVeh.Handle);
+        }
+
+        private void BeginExit(Ped player, string route)
+        {
+            SetExecutionPhase(ExecutionPhase.Exiting, route);
+            Function.Call(Hash.TASK_LEAVE_VEHICLE,
+                player.Handle, _targetVeh.Handle, NORMAL_EXIT_FLAG);
+        }
+
+        private void BeginEnter(Ped player, bool reentry)
+        {
+            SetExecutionPhase(
+                reentry ? ExecutionPhase.Reentering : ExecutionPhase.Entering,
+                reentry ? "external_reentry" : "outside_entry");
+
+            // Flag 1 is GTA's normal animated approach/entry. Do not use flags
+            // 3 or 16: both are documented warp modes.
+            Function.Call(Hash.TASK_ENTER_VEHICLE,
+                player.Handle, _targetVeh.Handle, ENTER_TIMEOUT_MS,
+                _targetSeatIdx, 2f, NORMAL_ENTER_FLAG, 0);
+        }
+
+        private void SetExecutionPhase(ExecutionPhase phase, string route)
+        {
+            _executionPhase = phase;
+            _phaseStart = Game.GameTime;
+            ClientLog.Info("SeatSelector", "seat_switch_phase",
+                new Dictionary<string, object>
+                {
+                    { "phase", phase.ToString() },
+                    { "route", route },
+                    { "from_seat", _sourceSeatIdx },
+                    { "target_seat", _targetSeatIdx },
+                });
+        }
+
+        private void CancelExecution(Ped player, string reason, bool clearTasks)
+        {
+            if (clearTasks && player != null && player.Exists())
+                Function.Call(Hash.CLEAR_PED_TASKS, player.Handle);
+
+            ClientLog.Info("SeatSelector", "seat_switch_cancelled",
+                new Dictionary<string, object>
+                {
+                    { "reason", reason },
+                    { "phase", _executionPhase.ToString() },
+                    { "from_seat", _sourceSeatIdx },
+                    { "target_seat", _targetSeatIdx },
+                });
+            if (reason.EndsWith("timeout", StringComparison.OrdinalIgnoreCase))
+                GTA.UI.Screen.ShowSubtitle("~y~Seat switch timed out safely.", 2000);
+            Reset();
         }
 
         // ------------------------------------------------------------------ //
@@ -610,8 +795,8 @@ namespace ALLIN1
             // Footer
             float footerY = HUD_TOP + TITLE_H + gridH + FOOTER_H / 2;
             string footerText = _playerInVehicle
-                ? "Release F: switch  |  ESC: cancel"
-                : "Release F: enter  |  ESC: cancel";
+                ? $"Release {_selectorKey}: switch  |  ESC: cancel"
+                : $"Release {_selectorKey}: enter  |  ESC: cancel";
             GbayRenderer.DrawText(footerText, panelX, footerY - 0.009f,
                 0.2f, COL_TEXT_DIM, GbayRenderer.FONT_CONDENSED, true);
         }
@@ -622,12 +807,16 @@ namespace ALLIN1
 
         private void SuppressEnterExit()
         {
-            Game.DisableControlThisFrame(Control.Enter);
-            Game.DisableControlThisFrame(Control.VehicleExit);
+            if (_selectorKey != Keys.F)
+                return;
+            Game.DisableControlThisFrame(GTA.Control.Enter);
+            Game.DisableControlThisFrame(GTA.Control.VehicleExit);
         }
 
-        private bool IsEnterExitHeld()
+        private bool IsSelectorHeld()
         {
+            if (_selectorKey != Keys.F)
+                return Game.IsKeyPressed(_selectorKey);
             return Function.Call<bool>(Hash.IS_CONTROL_PRESSED, 0, CONTROL_ENTER)
                 || Function.Call<bool>(Hash.IS_CONTROL_PRESSED, 0, CONTROL_VEHICLE_EXIT)
                 || Function.Call<bool>(Hash.IS_DISABLED_CONTROL_PRESSED, 0, CONTROL_ENTER)
@@ -650,6 +839,12 @@ namespace ALLIN1
                     if (key.Equals("seat_selector_enabled", StringComparison.OrdinalIgnoreCase))
                         _enabled = line.Substring(eq + 1).Trim().Equals(
                             "true", StringComparison.OrdinalIgnoreCase);
+                    else if (key.Equals("seat_selector_key", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string cleaned = value.Trim().Trim('"', '\'');
+                        if (Enum.TryParse(cleaned, true, out Keys parsed))
+                            _selectorKey = parsed;
+                    }
                     else if (key.Equals("hold_duration_ms", StringComparison.OrdinalIgnoreCase)
                         && int.TryParse(value, out int duration))
                         _holdThresholdMs = Math.Max(100, Math.Min(2000, duration));
@@ -669,9 +864,11 @@ namespace ALLIN1
             _seats.Clear();
             _selectedIdx = 0;
             _executeStart = 0;
+            _phaseStart = 0;
             _targetSeatIdx = 0;
+            _sourceSeatIdx = -2;
             _playerInVehicle = false;
-            _reenterAfterExit = false;
+            _executionPhase = ExecutionPhase.None;
         }
 
         private void LogError(string context, Exception ex)

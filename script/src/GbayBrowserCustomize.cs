@@ -28,14 +28,19 @@ namespace ALLIN1
             // Header
             GbayRenderer.DrawRect(BROWSER_CX, HEADER_CY, BROWSER_W, HEADER_H,
                 GbayRenderer.HeaderBg);
-            GbayRenderer.DrawLogo(BROWSER_LEFT + 0.035f, HEADER_CY, HEADER_H * 0.85f);
-            GbayRenderer.DrawText("CUSTOMIZE GARAGE", BROWSER_LEFT + 0.07f, HEADER_Y + 0.018f,
-                0.38f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
+            GbayRenderer.DrawGbayWordmark(
+                BROWSER_LEFT + 0.035f, HEADER_Y + 0.010f, 0.43f, true);
+            GbayRenderer.DrawTextFit("CUSTOMIZE GARAGE", BROWSER_LEFT + 0.085f,
+                HEADER_Y + 0.018f, 0.38f, 0.27f, 0.25f,
+                GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
 
-            // Floor tabs (right side of header)
+            // Eclipse Towers is one garage. Multi-floor tabs are only valid
+            // while the player is inside the dedicated three-floor garage.
+            int floorCount = GarageManager.IsPlayerInFloorGarage ? 3 : 1;
+            if (floorCount == 1) _customFloor = 0;
             float floorTabW = 0.08f;
-            float floorTabStartX = BROWSER_RIGHT - 0.28f;
-            for (int f = 0; f < 3; f++)
+            float floorTabStartX = BROWSER_RIGHT - (floorCount == 1 ? 0.10f : 0.28f);
+            for (int f = 0; f < floorCount; f++)
             {
                 float tabX = floorTabStartX + f * (floorTabW + 0.01f);
                 float tabCX = tabX + floorTabW / 2f;
@@ -46,10 +51,14 @@ namespace ALLIN1
                 Color tabBg = isActive ? GbayRenderer.BtnGreenHover
                             : isHover ? GbayRenderer.TabHover
                             : Color.FromArgb(0, 0, 0, 0);
-                if (isActive || isHover)
-                    GbayRenderer.DrawRect(tabCX, HEADER_CY, floorTabW, HEADER_H - 0.01f, tabBg);
+                if (isActive)
+                    DrawFocusedRect(tabCX, HEADER_CY, floorTabW,
+                        HEADER_H - 0.014f, tabBg);
+                else if (isHover)
+                    GbayRenderer.DrawRect(tabCX, HEADER_CY, floorTabW,
+                        HEADER_H - 0.01f, tabBg);
 
-                GbayRenderer.DrawText($"Floor {f + 1}", tabCX, HEADER_Y + 0.018f,
+                GbayRenderer.DrawText(floorCount == 1 ? "Garage" : $"Floor {f + 1}", tabCX, HEADER_Y + 0.018f,
                     0.32f, isActive ? GbayRenderer.TextWhite : GbayRenderer.HeaderText,
                     GbayRenderer.FONT_CONDENSED, true);
 
@@ -129,11 +138,15 @@ namespace ALLIN1
                         btnText = GbayRenderer.TextDark;
                     }
 
+                    bool hasKeyboardFocus = isCatSelected && isChosen;
                     GbayRenderer.DrawBorderedRect(btnCX, optCY, optBtnW, optBtnH,
-                        btnBg, isChosen ? GbayRenderer.CardBorderSel : GbayRenderer.CardBorder, 0.002f);
-                    GbayRenderer.DrawText(GarageManager.CUSTOM_OPTION_LABELS[cat][opt],
-                        btnCX, optY + 0.01f, 0.28f, btnText,
-                        GbayRenderer.FONT_CONDENSED, true);
+                        btnBg,
+                        hasKeyboardFocus ? FocusBorderColor()
+                            : isChosen ? GbayRenderer.CardBorderSel : GbayRenderer.CardBorder,
+                        hasKeyboardFocus ? FocusBorderWidth() : 0.002f);
+                    GbayRenderer.DrawTextFit(GarageManager.CUSTOM_OPTION_LABELS[cat][opt],
+                        btnCX, optY + 0.01f, 0.28f, 0.20f, optBtnW - 0.016f,
+                        btnText, GbayRenderer.FONT_CONDENSED, true);
 
                     // Mouse click to select
                     if (isOptHover && input.MouseClick && !isChosen)
@@ -144,22 +157,24 @@ namespace ALLIN1
                 }
             }
 
-            // Keyboard input
-            HandleGarageCustomizeInput(input);
-
             // Footer
             GbayRenderer.DrawRect(BROWSER_CX, FOOTER_CY, BROWSER_W, FOOTER_H,
                 GbayRenderer.FooterBg);
+            bool backClicked = DrawCenteredBackButton(input);
 
             string inGarageHint = GarageManager.IsPlayerInFloorGarage
                 ? "  (changes apply live)" : "";
-            GbayRenderer.DrawText(
-                $"[Up/Down] Category   [Left/Right] Option   [Z/X] Floor   [Esc] Back{inGarageHint}",
-                BROWSER_CX, FOOTER_Y + 0.012f, 0.24f, GbayRenderer.TextDim,
-                GbayRenderer.FONT_CONDENSED, true);
+            string floorHint = floorCount > 1 ? "   [Z/X] Floor" : "";
+            GbayRenderer.DrawTextFit(
+                $"[Up/Down] Category   [Left/Right] Option{floorHint}{inGarageHint}",
+                BROWSER_LEFT + 0.02f, FOOTER_Y + 0.012f, 0.20f, 0.16f, 0.33f,
+                GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED);
+
+            // Keyboard input
+            HandleGarageCustomizeInput(input, backClicked);
         }
 
-        private void HandleGarageCustomizeInput(FrameInput input)
+        private void HandleGarageCustomizeInput(FrameInput input, bool backClicked)
         {
             // Navigate categories (Up/Down)
             if (input.DirY != 0)
@@ -185,19 +200,19 @@ namespace ALLIN1
             }
 
             // Switch floor (Z/X)
-            if (input.CategoryPrev && _customFloor > 0)
+            if (GarageManager.IsPlayerInFloorGarage && input.CategoryPrev && _customFloor > 0)
             {
                 _customFloor--;
                 GbayRenderer.PlayNav();
             }
-            else if (input.CategoryNext && _customFloor < 2)
+            else if (GarageManager.IsPlayerInFloorGarage && input.CategoryNext && _customFloor < 2)
             {
                 _customFloor++;
                 GbayRenderer.PlayNav();
             }
 
             // Back
-            if (input.Back || input.MouseRightClick)
+            if (input.Back || input.MouseRightClick || backClicked)
             {
                 GbayRenderer.PlayBack();
                 _state = BrowserState.GarageView;

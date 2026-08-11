@@ -12,7 +12,7 @@ except ModuleNotFoundError:
     import tomli as tomllib
 
 from allin1.config import Config
-from allin1.customization import CHARACTERS, CharacterLoadout, GarageSaveStore, LoadoutStore
+from allin1.customization import CHARACTERS, SKILLS, CharacterLoadout, GarageSaveStore, LoadoutStore
 from allin1.vehicles.database import VehicleDatabase
 
 GEAR = {
@@ -45,7 +45,50 @@ class CharacterCustomizationDialog(tk.Toplevel):
         self._traffic_tab(tabs)
         self._garage_tab(tabs)
         self._inventory_tab(tabs)
+        self._progress_tab(tabs)
         self._outfit_tab(tabs)
+
+    def _progress_tab(self, tabs) -> None:
+        frame = ttk.Frame(tabs, padding=14); tabs.add(frame, text="Stats & Money")
+        self._character_picker(frame, self._refresh_progress)
+        body = ttk.Frame(frame); body.pack(fill="both", expand=True)
+        self.progress_managed = tk.BooleanVar()
+        ttk.Checkbutton(body, text="Manage this character's story stats and money",
+                        variable=self.progress_managed).grid(row=0, column=0, columnspan=2, sticky="w")
+        ttk.Label(body, text="Money").grid(row=1, column=0, sticky="w", pady=4)
+        self.money_var = tk.StringVar()
+        ttk.Entry(body, textvariable=self.money_var, width=18).grid(row=1, column=1, sticky="w")
+        self.skill_vars = {}
+        for row, name in enumerate(SKILLS, start=2):
+            ttk.Label(body, text=name.replace("_", " ").title()).grid(row=row, column=0, sticky="w", pady=4)
+            variable = tk.StringVar(); self.skill_vars[name] = variable
+            ttk.Spinbox(body, from_=0, to=100, textvariable=variable, width=8).grid(row=row, column=1, sticky="w")
+        ttk.Label(body, text="Values apply safely when that Story Mode character becomes active.").grid(
+            row=9, column=0, columnspan=2, sticky="w", pady=(8, 4))
+        ttk.Button(body, text="Apply stats & money", command=self._save_progress).grid(
+            row=10, column=0, sticky="w", pady=8)
+        self._refresh_progress()
+
+    def _refresh_progress(self) -> None:
+        progress = self.loadouts[self.character.get()].progress
+        self.progress_managed.set(progress.managed); self.money_var.set(str(progress.money))
+        for name, variable in self.skill_vars.items(): variable.set(str(progress.skills[name]))
+
+    def _save_progress(self) -> None:
+        progress = self.loadouts[self.character.get()].progress
+        try:
+            money = int(self.money_var.get())
+            skills = {name: int(variable.get()) for name, variable in self.skill_vars.items()}
+            candidate = type(progress)(self.progress_managed.get(), money, skills)
+            self.loadout_store._validate_progress(candidate)
+            if not messagebox.askyesno("Confirm character changes",
+                    f"Apply ${money:,} and the displayed skills to {self.character.get().title()}?"):
+                return
+            self.loadouts[self.character.get()].progress = candidate
+            self.loadout_store.save(self.loadouts)
+            messagebox.showinfo("Character progress", "Saved. Changes apply on the next character activation.")
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Progress save failed", str(exc))
 
     def _traffic_tab(self, tabs) -> None:
         frame = ttk.Frame(tabs, padding=14); tabs.add(frame, text="Traffic Spawner")
@@ -104,7 +147,7 @@ class CharacterCustomizationDialog(tk.Toplevel):
             messagebox.showerror("Unknown vehicle", model); return
         used = {item["slot"] for item in self.garages[self.character.get()]}
         slot = next((value for value in range(10) if value not in used), None)
-        if slot is None: messagebox.showerror("Garage full", "This garage has 10 vehicles."); return
+        if slot is None: messagebox.showerror("Garage full", "This garage is full (10 vehicles)."); return
         self.garages[self.character.get()].append({"model": model, "slot": slot, "color1": 0, "color2": 0})
         self._refresh_garage()
 

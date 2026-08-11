@@ -108,7 +108,7 @@ Configuration is stored in `config.toml` (copied to `scripts/ALLIN1.toml` during
 | Key | Default | Description |
 |-----|---------|-------------|
 | `gta_path` | `"auto"` | GTA V installation path. Set to `"auto"` for auto-detection. |
-| `free_mode` | `false` | When true, all vehicles are free in-game. |
+| `free_mode` | `false` | Deprecated compatibility alias for `script.gbay_free_mode`. |
 | `backup` | `true` | Create backups of original game files before modifying. |
 
 ### [traffic]
@@ -144,7 +144,7 @@ Available classes: `compacts`, `coupes`, `sedans`, `suvs`, `muscle`, `sports`, `
 | `night_vision_key` | `"N"` | Toggle purchased night vision. |
 | `preview_capture_key` | `"F10"` | Start/stop the developer preview capture tool. |
 | `seat_selector_enabled` | `true` | Enable hold-to-select vehicle seats. |
-| `gbay_free_mode` | `false` | All GBAY purchases are free regardless of prices. |
+| `gbay_free_mode` | `false` | All GBAY purchases are free; vehicle sales have no payout. |
 | `enable_logging` | `false` | Write debug info to `scripts/ALLIN1.log`. |
 | `enable_dlc_police` | `false` | Replace vanilla police cars with DLC police vehicles. |
 | `spawner_debug` | `false` | Show vehicle spawn debug notifications. |
@@ -471,8 +471,8 @@ The auto-commit uses `github-actions[bot]` and does `git pull --rebase` before p
 ### Building External Tools
 
 Run `runtools.ps1` on Windows to build:
-- **YTDToolio.exe** — converts PNG images to GTA V `.ytd` texture dictionaries
-- **RpfPatcher.exe** — manipulates RPF archives (build DLC packs, patch dlclist.xml)
+- **RpfPatcher.exe** — builds texture dictionaries, converts Enhanced resources, and safely updates RPF archives
+- **YTDToolio.exe** — retained only as a legacy diagnostic utility; the installer no longer uses its corrupt PNG encoder
 
 Requires Visual Studio 2022 with C++ desktop workload and .NET 6.0+ SDK.
 
@@ -518,32 +518,35 @@ allin1 generate-weaponlist
 
 ---
 
-## DLC Texture Pack
+## GBAY RPF Preview Textures
 
-Vehicle preview images are served to the in-game UI via a custom GTA V DLC pack.
+Vehicle preview images are served to the in-game UI from the registered
+`allin1_previews` DLC pack. Enhanced does not add arbitrary files placed in
+`update2.rpf/textures` to the streamed-texture index; registering the nested RPF
+through `content.xml` and `dlclist.xml` makes the dictionaries discoverable.
 
 ### Structure
 
 ```
 mods/update/x64/dlcpacks/allin1_previews/dlc.rpf
-├── content.xml          # Registers textures.rpf as RPF_FILE
-├── setup2.xml           # DLC metadata (EXTRACONTENT_COMPAT_PACK)
-└── x64/textures/
-    └── textures.rpf     # Contains all .ytd texture dictionaries
-        ├── allin1_logo.ytd
-        ├── allin1_prev_01.ytd
-        ├── allin1_prev_02.ytd
-        └── ...
+├── content.xml
+├── setup2.xml
+└── x64/textures/textures.rpf
+    ├── allin1_logo.ytd
+    ├── allin1_prev_01.ytd
+    ├── allin1_prev_02.ytd
+    └── ...
 ```
 
 ### Build Pipeline
 
 1. **PNG source:** captured preview images in `script/dist/previews/`; models listed in `data/preview_pending.toml` use placeholders
-2. **YTD packing:** `YTDToolio.exe` converts PNGs to `.ytd` files (DXT1 compression, 89 textures per YTD)
-3. **DLC structure:** Python generates `content.xml` and `setup2.xml`
-4. **RPF packing:** `RpfPatcher.exe build-dlc` creates outer `dlc.rpf` with nested `textures.rpf`
-5. **Deployment:** `dlc.rpf` copied to `mods/update/x64/dlcpacks/allin1_previews/`
-6. **Registration:** `RpfPatcher.exe patch` adds entry to `dlclist.xml` in `mods/update/update.rpf`
+2. **Texture encoding:** Pillow converts PNGs to standards-compliant BC3 DDS payloads
+3. **YTD packing:** `RpfPatcher.exe build-ytd` writes Legacy texture dictionaries through CodeWalker (89 textures per YTD)
+4. **Enhanced conversion:** `RpfPatcher.exe convert-gen9` converts the YTD resources for Gen9
+5. **DLC packaging:** `RpfPatcher.exe build-dlc` embeds the YTDs in `x64/textures/textures.rpf`
+6. **Verification:** `RpfPatcher.exe verify-dlc` extracts the nested archive and verifies every expected dictionary before deployment
+7. **Registration:** the installer deploys `dlc.rpf` and patches current `mods/update/update.rpf/common/data/dlclist.xml`
 
 ### Runtime Loading
 
@@ -558,10 +561,14 @@ Textures are loaded on demand per page and pre-fetched one page ahead. Unused di
 
 | Command | Description |
 |---------|-------------|
+| `build-ytd <dds_folder> <output_ytd> [legacy\|gen9]` | Build a YTD from validated DDS payloads |
+| `unpack-ytd <ytd_path> <output_folder> [legacy\|gen9]` | Extract DDS payloads for visual verification |
 | `build-dlc <folder> <output> [--embed-rpf <src> <dest>]` | Pack loose folder into dlc.rpf with optional nested RPF |
+| `verify-dlc <dlc_rpf> <ytd_folder>` | Read back metadata, nested RPF, and every expected YTD |
 | `patch <gta_path>` | Add `allin1_previews` to dlclist.xml |
 | `unpatch <gta_path>` | Remove `allin1_previews` from dlclist.xml |
-| `inject-ytd <gta_path> <ytd_folder>` | Inject YTDs into script_txds.rpf (legacy method) |
+| `inject-ytd <gta_path> <ytd_folder>` | Inject YTDs into `script_txds.rpf` |
+| `verify-ytd <gta_path> <ytd_folder>` | Verify all expected YTDs after injection |
 | `remove-ytd <gta_path> <prefix>` | Remove injected YTDs |
 | `inspect <gta_path> <rpf_path>` | Dump RPF structure for debugging |
 
@@ -728,7 +735,7 @@ Model names are stored as spawn names (e.g., `"zentorno"` not GXT labels). A mig
 
 ### Vehicles are free / wrong prices
 
-- Check `free_mode` and `gbay_free_mode` settings in config
+- Check the `gbay_free_mode` setting in config (`free_mode` is its legacy alias)
 - Edit `prices_vehicles.toml`, `prices_weapons.toml`, or `prices_gear.toml` to adjust prices
 - Re-run `allin1 generate-vehiclelist` and `allin1 install` after changing vehicle/weapon prices
 - Gear prices reload automatically on script init

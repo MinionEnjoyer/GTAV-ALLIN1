@@ -21,6 +21,7 @@ namespace ALLIN1
         VehiclePreview,
         DeliveryConfirm,
         GarageView,
+        GarageSellConfirm,
         GarageCustomize,
         WeaponBrowser,
         Diagnostics,
@@ -80,19 +81,35 @@ namespace ALLIN1
         private const float FOOTER_H       = 0.05f;
         private const float FOOTER_CY      = 0.905f;
 
+        // Shared navigation action. Every full browser page places Back at
+        // the same horizontal position so mouse and controller navigation do
+        // not require relearning the layout from screen to screen.
+        private const float BACK_BTN_W      = 0.14f;
+        private const float BACK_BTN_H      = 0.038f;
+
         // Card dimensions (computed per-frame for aspect ratio)
-        private const float CARD_H         = 0.23f;
+        private const float CARD_H         = 0.21f;
         private const float CARD_GAP_X     = 0.015f;
-        private const float CARD_GAP_Y     = 0.022f;
+        private const float CARD_GAP_Y     = 0.014f;
 
         // Top menu button layout
         private const float TOP_BTN_W      = 0.35f;
         private const float TOP_BTN_H      = 0.08f;
         private const float TOP_BTN_GAP    = 0.025f;
 
+        // Shared informational page action
+        private const float INFO_BACK_W    = 0.28f;
+        private const float INFO_BACK_H    = 0.055f;
+        private const float INFO_BACK_CY   = 0.825f;
+
         // Delivery modal
         private const float MODAL_W        = 0.45f;
         private const float MODAL_ITEM_H   = 0.055f;
+
+        private int _pendingSellIndex = -1;
+        private string _pendingSellModel = "";
+        private bool _pendingSellFloorGarage;
+        private int _garageLocationIndex;
 
         // ------------------------------------------------------------------ //
         //  Category Definitions                                               //
@@ -339,6 +356,9 @@ namespace ALLIN1
                 case BrowserState.GarageView:
                     DrawGarageView(input);
                     break;
+                case BrowserState.GarageSellConfirm:
+                    DrawGarageSellConfirm(input);
+                    break;
                 case BrowserState.GarageCustomize:
                     DrawGarageCustomize(input);
                     break;
@@ -379,6 +399,39 @@ namespace ALLIN1
             GbayRenderer.DrawRect(0.5f, 0.5f, 1f, 1f, Color.FromArgb(Math.Max(0, alpha), 8, 20, 13));
         }
 
+        private static float FocusBorderWidth()
+        {
+            return 0.003f;
+        }
+
+        private static Color FocusBorderColor()
+        {
+            return GbayRenderer.CardBorderSel;
+        }
+
+        private static void DrawFocusedRect(float x, float y, float w, float h, Color fill)
+        {
+            GbayRenderer.DrawBorderedRect(x, y, w, h, fill,
+                FocusBorderColor(), FocusBorderWidth());
+        }
+
+        private bool DrawCenteredBackButton(
+            FrameInput input, float centerY = FOOTER_CY, float width = BACK_BTN_W,
+            string label = "Back", bool focused = false)
+        {
+            bool hover = GbayRenderer.HitTest(
+                input.MouseX, input.MouseY, BROWSER_CX, centerY, width, BACK_BTN_H);
+            Color fill = hover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen;
+            if (focused || hover)
+                DrawFocusedRect(BROWSER_CX, centerY, width, BACK_BTN_H, fill);
+            else
+                GbayRenderer.DrawBorderedRect(BROWSER_CX, centerY, width, BACK_BTN_H,
+                    fill, GbayRenderer.CardBorderSel, 0.002f);
+            GbayRenderer.DrawText(label, BROWSER_CX, centerY - 0.014f, 0.30f,
+                GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
+            return input.MouseClick && hover;
+        }
+
         // ------------------------------------------------------------------ //
         //  Top Menu                                                           //
         // ------------------------------------------------------------------ //
@@ -391,8 +444,10 @@ namespace ALLIN1
             GbayRenderer.DrawRect(BROWSER_CX, 0.5f, panelW, panelH,
                 GbayRenderer.ModalBg);
 
-            // Logo
-            GbayRenderer.DrawLogo(BROWSER_CX, 0.20f, 0.10f);
+            // GTA-style wordmark. PHAT remains on the loading screen only.
+            GbayRenderer.DrawGbayWordmark(BROWSER_CX, 0.145f, 0.82f);
+            GbayRenderer.DrawRect(BROWSER_CX, 0.235f, 0.22f, 0.004f,
+                GbayRenderer.CardBorderSel);
 
             // Buttons
             string[] labels = { "Vehicles", "Weapons", "My Garage", "Diagnostics", "About" };
@@ -430,10 +485,16 @@ namespace ALLIN1
                     text = GbayRenderer.TextWhite;
                 }
 
-                GbayRenderer.DrawRect(BROWSER_CX, btnCY, TOP_BTN_W, TOP_BTN_H, bg);
+                if (isSelected && enabled[i])
+                    DrawFocusedRect(BROWSER_CX, btnCY, TOP_BTN_W, TOP_BTN_H, bg);
+                else
+                    GbayRenderer.DrawRect(BROWSER_CX, btnCY, TOP_BTN_W, TOP_BTN_H, bg);
                 GbayRenderer.DrawText(labels[i], BROWSER_CX, btnY + 0.018f,
                     0.50f, text, GbayRenderer.FONT_CHALET, true);
             }
+
+            bool closeClicked = DrawCenteredBackButton(
+                input, 0.825f, 0.20f, "Close", false);
 
             // Input handling
             if (input.DirY != 0)
@@ -479,6 +540,7 @@ namespace ALLIN1
                 {
                     _state = BrowserState.GarageView;
                     _garageVehicleIdx = 0;
+                    _garageLocationIndex = GarageManager.IsPlayerInFloorGarage ? 1 : 0;
                 }
                 else if (activateIdx == 3)
                 {
@@ -490,29 +552,63 @@ namespace ALLIN1
                 }
             }
 
-            if (input.Back || input.MouseRightClick)
+            if (input.Back || input.MouseRightClick || closeClicked)
             {
                 GbayRenderer.PlayBack();
                 _state = BrowserState.Closed;
             }
         }
 
-        private void DrawInfoPanel(string title, string[] lines, FrameInput input)
+        private void DrawInfoPanel(
+            string title, string[] lines, FrameInput input, bool showLogo)
         {
-            GbayRenderer.DrawRect(BROWSER_CX, 0.5f, 0.64f, 0.72f, GbayRenderer.ModalBg);
-            GbayRenderer.DrawLogo(BROWSER_CX, 0.20f, 0.10f);
-            GbayRenderer.DrawText(title, BROWSER_CX, 0.275f, 0.55f,
-                GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED, true);
-            float y = 0.35f;
-            foreach (string line in lines)
+            const float panelW = 0.68f;
+            const float panelH = 0.80f;
+            GbayRenderer.DrawRect(BROWSER_CX, 0.49f, panelW, panelH,
+                GbayRenderer.ModalBg);
+            if (showLogo)
+                GbayRenderer.DrawBrandLogo(BROWSER_CX, 0.165f, 0.095f);
+            else
+                GbayRenderer.DrawGbayWordmark(BROWSER_CX, 0.115f, 0.58f);
+
+            float titleY = showLogo ? 0.235f : 0.185f;
+            GbayRenderer.DrawText(title, BROWSER_CX, titleY, 0.55f,
+                GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED, true);
+
+            float bodyTop = showLogo ? 0.315f : 0.265f;
+            const float bodyBottom = 0.775f;
+            const float rowGap = 0.006f;
+            float available = bodyBottom - bodyTop - rowGap * Math.Max(0, lines.Length - 1);
+            float rowH = lines.Length > 0
+                ? Math.Min(showLogo ? 0.085f : 0.052f, available / lines.Length)
+                : 0f;
+            float y = bodyTop;
+            for (int i = 0; i < lines.Length; i++)
             {
-                GbayRenderer.DrawText(line, BROWSER_CX, y, 0.37f,
-                    GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
-                y += 0.055f;
+                float rowCY = y + rowH / 2f;
+                Color rowBg = i % 2 == 0
+                    ? Color.FromArgb(255, 241, 246, 243)
+                    : Color.FromArgb(255, 232, 240, 235);
+                GbayRenderer.DrawRect(BROWSER_CX, rowCY, 0.60f, rowH, rowBg);
+                Color textColor = lines[i].StartsWith("buymeacoffee", StringComparison.OrdinalIgnoreCase)
+                    ? GbayRenderer.TextMfg : GbayRenderer.TextDark;
+                if (showLogo)
+                {
+                    GbayRenderer.DrawTextFit(lines[i], BROWSER_CX, rowCY - 0.014f,
+                        0.36f, 0.25f, 0.55f, textColor,
+                        GbayRenderer.FONT_CHALET, true);
+                }
+                else
+                {
+                    GbayRenderer.DrawTextFit(lines[i], BROWSER_LEFT + 0.16f,
+                        rowCY - 0.013f, 0.32f, 0.22f, 0.56f, textColor,
+                        GbayRenderer.FONT_CHALET);
+                }
+                y += rowH + rowGap;
             }
-            GbayRenderer.DrawText("BACK  Return to GBAY", BROWSER_CX, 0.80f, 0.32f,
-                GbayRenderer.TextDim, GbayRenderer.FONT_CHALET, true);
-            if (input.Back || input.MouseRightClick)
+            bool backClicked = DrawCenteredBackButton(
+                input, INFO_BACK_CY, INFO_BACK_W, "Back", false);
+            if (input.Back || input.MouseRightClick || backClicked)
             {
                 GbayRenderer.PlayBack();
                 _state = BrowserState.TopMenu;
@@ -524,15 +620,21 @@ namespace ALLIN1
             string version = typeof(GbayBrowser).Assembly.GetName().Version?.ToString(3) ?? "unknown";
             DrawInfoPanel("DIAGNOSTICS", new[] {
                 "ALLIN1 client " + version,
-                "Session time: " + (Game.GameTime / 1000) + " seconds",
-                "Garage: " + (GarageManager.IsInGarage ? "inside" : "outside"),
-                "Traffic: " + TrafficSpawner.ManagedVehicleCount + " managed / " +
+                "Session duration: " + (Game.GameTime / 1000) + " seconds",
+                "Garage location: " + (GarageManager.IsPlayerInFloorGarage
+                    ? "three-floor garage"
+                    : GarageManager.IsInGarage ? "Eclipse Towers" : "outside"),
+                "Traffic: " + TrafficSpawner.ManagedVehicleCount + " managed, " +
                     Math.Round(TrafficSpawner.SmoothedFps) + " FPS" +
-                    (TrafficSpawner.IsThrottled ? " (adaptive throttle)" : ""),
-                "Safe mode: " + (ClientWatchdog.SafeMode ? "ACTIVE" : "off"),
-                "Detailed events are written to ALLIN1_client.log",
+                    (TrafficSpawner.IsThrottled ? " (adaptive throttle)" : "") +
+                    (string.IsNullOrEmpty(TrafficSpawner.PauseReason) ? "" :
+                        " (paused: " + TrafficSpawner.PauseReason + ")"),
+                "Safe mode: " + (ClientWatchdog.SafeMode ? "active" : "off"),
+                "GBAY artwork: " + GbayRenderer.PreviewDiagnostics,
+                "RPF support: " + GbayRenderer.OpenRpfStatus,
+                "Detailed events are written to ALLIN1_client.log.",
                 "Use the desktop manager to export a redacted support bundle."
-            }, input);
+            }, input, false);
         }
 
         private void DrawAbout(FrameInput input)
@@ -540,10 +642,10 @@ namespace ALLIN1
             string version = typeof(GbayBrowser).Assembly.GetName().Version?.ToString(3) ?? "unknown";
             DrawInfoPanel("ABOUT ALLIN1", new[] {
                 "Version " + version,
-                "GTA Online DLC content in Story Mode, in one click.",
-                "Created and maintained by MinionEnjoyer",
+                "Bring GTA Online DLC content into Story Mode with one click.",
+                "Created and maintained by MinionEnjoyer.",
                 "buymeacoffee.com/minionenjoyer"
-            }, input);
+            }, input, true);
         }
 
         // ------------------------------------------------------------------ //
@@ -572,10 +674,14 @@ namespace ALLIN1
             DrawGrid(input, cardW);
 
             // Footer
-            DrawFooter();
+            bool previousPageClicked;
+            bool nextPageClicked;
+            bool backClicked = DrawFooter(
+                input, out previousPageClicked, out nextPageClicked);
 
             // Handle input
-            HandleBrowserInput(input);
+            HandleBrowserInput(
+                input, backClicked, previousPageClicked, nextPageClicked);
         }
 
         private void DrawHeader()
@@ -583,11 +689,11 @@ namespace ALLIN1
             GbayRenderer.DrawRect(BROWSER_CX, HEADER_CY, BROWSER_W, HEADER_H,
                 GbayRenderer.HeaderBg);
 
-            // Logo (left)
-            GbayRenderer.DrawLogo(BROWSER_LEFT + 0.035f, HEADER_CY, HEADER_H * 0.85f);
+            GbayRenderer.DrawGbayWordmark(
+                BROWSER_LEFT + 0.035f, HEADER_Y + 0.010f, 0.43f, true);
 
             // Section label
-            GbayRenderer.DrawText("VEHICLES", BROWSER_LEFT + 0.07f, HEADER_Y + 0.018f,
+            GbayRenderer.DrawText("VEHICLES", BROWSER_LEFT + 0.085f, HEADER_Y + 0.018f,
                 0.38f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
 
             // Player money (right)
@@ -603,9 +709,10 @@ namespace ALLIN1
                 GbayRenderer.TabBg);
 
             int visibleCount = Math.Min(MAX_VISIBLE_TABS, CATEGORIES.Length - _tabScrollOffset);
-            float tabAreaW = BROWSER_W - 0.04f; // leave room for scroll arrows
+            const float arrowW = 0.032f;
+            float tabAreaW = BROWSER_W - arrowW * 2f - 0.016f;
             float singleTabW = tabAreaW / MAX_VISIBLE_TABS;
-            float tabStartX = BROWSER_LEFT + 0.02f;
+            float tabStartX = BROWSER_LEFT + arrowW + 0.008f;
 
             _hoverTab = -1;
 
@@ -620,8 +727,10 @@ namespace ALLIN1
                 if (isHover)
                     _hoverTab = catIdx;
 
-                // Hover background
-                if (isHover && !isActive)
+                if (isActive)
+                    DrawFocusedRect(tabCX, TAB_CY, singleTabW - 0.006f,
+                        TAB_H - 0.006f, GbayRenderer.BtnGreenHover);
+                else if (isHover)
                     GbayRenderer.DrawRect(tabCX, TAB_CY, singleTabW - 0.004f,
                         TAB_H, GbayRenderer.TabHover);
 
@@ -633,20 +742,47 @@ namespace ALLIN1
                 // Label
                 Color textColor = isActive ? GbayRenderer.TabActive : GbayRenderer.TabInactive;
                 string label = CATEGORIES[catIdx].Label;
-                GbayRenderer.DrawText(label, tabCX, TAB_Y + 0.01f,
-                    0.32f, textColor, GbayRenderer.FONT_CONDENSED, true);
+                GbayRenderer.DrawTextFit(label, tabCX, TAB_Y + 0.01f,
+                    0.32f, 0.22f, singleTabW - 0.012f, textColor,
+                    GbayRenderer.FONT_CONDENSED, true);
             }
 
-            // Scroll arrows if there are more tabs than visible
-            if (_tabScrollOffset > 0)
+            // Mouse-accessible tab paging. The old arrows were decorative,
+            // which made later categories unreachable without a controller.
+            float leftArrowX = BROWSER_LEFT + arrowW / 2f;
+            float rightArrowX = BROWSER_RIGHT - arrowW / 2f;
+            bool canScrollLeft = _tabScrollOffset > 0;
+            bool canScrollRight = _tabScrollOffset + MAX_VISIBLE_TABS < CATEGORIES.Length;
+            bool leftHover = canScrollLeft && GbayRenderer.HitTest(
+                input.MouseX, input.MouseY, leftArrowX, TAB_CY, arrowW, TAB_H);
+            bool rightHover = canScrollRight && GbayRenderer.HitTest(
+                input.MouseX, input.MouseY, rightArrowX, TAB_CY, arrowW, TAB_H);
+            GbayRenderer.DrawRect(leftArrowX, TAB_CY, arrowW, TAB_H,
+                leftHover ? GbayRenderer.BtnGreenHover : GbayRenderer.TabBg);
+            GbayRenderer.DrawRect(rightArrowX, TAB_CY, arrowW, TAB_H,
+                rightHover ? GbayRenderer.BtnGreenHover : GbayRenderer.TabBg);
+            if (canScrollLeft)
             {
-                GbayRenderer.DrawText("<", BROWSER_LEFT + 0.008f, TAB_Y + 0.008f,
-                    0.35f, GbayRenderer.TabActive, GbayRenderer.FONT_CHALET);
+                GbayRenderer.DrawText("<", leftArrowX, TAB_Y + 0.008f,
+                    0.35f, GbayRenderer.TabActive, GbayRenderer.FONT_CHALET, true);
             }
-            if (_tabScrollOffset + MAX_VISIBLE_TABS < CATEGORIES.Length)
+            if (canScrollRight)
             {
-                GbayRenderer.DrawText(">", BROWSER_RIGHT - 0.018f, TAB_Y + 0.008f,
-                    0.35f, GbayRenderer.TabActive, GbayRenderer.FONT_CHALET);
+                GbayRenderer.DrawText(">", rightArrowX, TAB_Y + 0.008f,
+                    0.35f, GbayRenderer.TabActive, GbayRenderer.FONT_CHALET, true);
+            }
+            if (input.MouseClick && leftHover)
+            {
+                _tabScrollOffset = Math.Max(0,
+                    _tabScrollOffset - (MAX_VISIBLE_TABS - 1));
+                GbayRenderer.PlayNav();
+            }
+            else if (input.MouseClick && rightHover)
+            {
+                _tabScrollOffset = Math.Min(
+                    Math.Max(0, CATEGORIES.Length - MAX_VISIBLE_TABS),
+                    _tabScrollOffset + (MAX_VISIBLE_TABS - 1));
+                GbayRenderer.PlayNav();
             }
         }
 
@@ -701,11 +837,11 @@ namespace ALLIN1
             Color bgColor = selected ? GbayRenderer.CardSelected
                           : hovered ? GbayRenderer.CardHover
                           : GbayRenderer.CardBg;
-            Color borderColor = selected ? GbayRenderer.CardBorderSel
+            Color borderColor = selected ? FocusBorderColor()
                               : GbayRenderer.CardBorder;
 
             GbayRenderer.DrawBorderedRect(cx, cy, cardW, CARD_H,
-                bgColor, borderColor, 0.002f);
+                bgColor, borderColor, selected ? FocusBorderWidth() : 0.002f);
 
             // Top area (preview image or category-colored placeholder -- 55% of card height)
             float topAreaH = CARD_H * 0.55f;
@@ -743,12 +879,14 @@ namespace ALLIN1
             float textLeft = left + 0.008f;
 
             // Manufacturer
-            GbayRenderer.DrawText(card.Manufacturer, textLeft, textTop,
-                0.26f, GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED);
+            GbayRenderer.DrawTextFit(card.Manufacturer, textLeft, textTop,
+                0.26f, 0.20f, cardW - 0.016f, GbayRenderer.TextMfg,
+                GbayRenderer.FONT_CONDENSED);
 
             // Vehicle name
-            GbayRenderer.DrawText(card.DisplayName, textLeft, textTop + 0.028f,
-                0.33f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+            GbayRenderer.DrawTextFit(card.DisplayName, textLeft, textTop + 0.028f,
+                0.33f, 0.22f, cardW - 0.016f, GbayRenderer.TextDark,
+                GbayRenderer.FONT_CHALET);
 
             // Price
             string priceText = card.Price <= 0 ? "FREE" : $"${card.Price:N0}";
@@ -758,30 +896,79 @@ namespace ALLIN1
                 0.30f, priceColor, GbayRenderer.FONT_CHALET);
         }
 
-        private void DrawFooter()
+        private void DrawPager(
+            FrameInput input, int page, int totalPages, int itemCount,
+            out bool previousClicked, out bool nextClicked)
+        {
+            int pageCount = Math.Max(1, totalPages);
+            bool canGoBack = page > 0;
+            bool canGoForward = page < pageCount - 1;
+            const float buttonW = 0.034f;
+            const float buttonH = 0.034f;
+            float previousX = BROWSER_LEFT + 0.025f;
+            float nextX = BROWSER_LEFT + 0.315f;
+            float labelX = (previousX + nextX) / 2f;
+            bool previousHover = canGoBack && GbayRenderer.HitTest(
+                input.MouseX, input.MouseY, previousX, FOOTER_CY, buttonW, buttonH);
+            bool nextHover = canGoForward && GbayRenderer.HitTest(
+                input.MouseX, input.MouseY, nextX, FOOTER_CY, buttonW, buttonH);
+
+            Color disabledFill = Color.FromArgb(255, 211, 220, 215);
+            Color enabledFill = GbayRenderer.BtnGreen;
+            GbayRenderer.DrawBorderedRect(previousX, FOOTER_CY, buttonW, buttonH,
+                previousHover ? GbayRenderer.BtnGreenHover
+                    : canGoBack ? enabledFill : disabledFill,
+                canGoBack ? GbayRenderer.CardBorderSel : GbayRenderer.CardBorder, 0.002f);
+            GbayRenderer.DrawBorderedRect(nextX, FOOTER_CY, buttonW, buttonH,
+                nextHover ? GbayRenderer.BtnGreenHover
+                    : canGoForward ? enabledFill : disabledFill,
+                canGoForward ? GbayRenderer.CardBorderSel : GbayRenderer.CardBorder, 0.002f);
+
+            Color previousText = canGoBack ? GbayRenderer.TextWhite : GbayRenderer.TextDim;
+            Color nextText = canGoForward ? GbayRenderer.TextWhite : GbayRenderer.TextDim;
+            GbayRenderer.DrawText("<", previousX, FOOTER_Y + 0.009f,
+                0.30f, previousText, GbayRenderer.FONT_CHALET, true);
+            GbayRenderer.DrawText(">", nextX, FOOTER_Y + 0.009f,
+                0.30f, nextText, GbayRenderer.FONT_CHALET, true);
+
+            string itemLabel = itemCount == 1 ? "item" : "items";
+            string pageText = $"Page {page + 1} / {pageCount}  -  {itemCount} {itemLabel}";
+            GbayRenderer.DrawTextFit(pageText, labelX, FOOTER_Y + 0.011f,
+                0.28f, 0.20f, nextX - previousX - buttonW - 0.012f,
+                GbayRenderer.TextDark, GbayRenderer.FONT_CHALET, true);
+
+            previousClicked = input.MouseClick && previousHover;
+            nextClicked = input.MouseClick && nextHover;
+        }
+
+        private bool DrawFooter(
+            FrameInput input, out bool previousPageClicked, out bool nextPageClicked)
         {
             GbayRenderer.DrawRect(BROWSER_CX, FOOTER_CY, BROWSER_W, FOOTER_H,
                 GbayRenderer.FooterBg);
 
-            // Page indicator
-            string pageText = $"Page {_currentPage + 1}/{Math.Max(1, _totalPages)}";
-            GbayRenderer.DrawText(pageText, BROWSER_LEFT + 0.02f, FOOTER_Y + 0.012f,
-                0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+            DrawPager(input, _currentPage, _totalPages, _filtered.Count,
+                out previousPageClicked, out nextPageClicked);
+
+            bool backClicked = DrawCenteredBackButton(input);
 
             // Control hints
             string filter = _vehicleOwnershipFilter == 1 ? "OWNED"
                 : _vehicleOwnershipFilter == 2 ? "AVAILABLE"
                 : _vehicleOwnershipFilter == 3 ? "FAVORITES" : "ALL";
             string query = _vehicleSearch.Length > 0 ? $" Search: {_vehicleSearch}" : "";
-            string hints = $"[Y] {filter}   [X] Search{query}   [R3] Favorite   [Q/E] Page";
-            GbayRenderer.DrawText(hints, BROWSER_RIGHT - 0.01f, FOOTER_Y + 0.012f,
-                0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED,
-                false, false, true);
+            string hints = $"Y: {filter}   X: Search{query}   R3: Favorite   Wheel/LB-RB: Pages";
+            GbayRenderer.DrawTextFit(hints, BROWSER_RIGHT - 0.01f, FOOTER_Y + 0.012f,
+                0.24f, 0.17f, 0.335f, GbayRenderer.TextDim,
+                GbayRenderer.FONT_CONDENSED, false, false, true);
+            return backClicked;
         }
 
-        private void HandleBrowserInput(FrameInput input)
+        private void HandleBrowserInput(
+            FrameInput input, bool backClicked,
+            bool previousPageClicked, bool nextPageClicked)
         {
-            if (input.Back || input.MouseRightClick)
+            if (input.Back || input.MouseRightClick || backClicked)
             {
                 GbayRenderer.PlayBack();
                 _state = BrowserState.TopMenu;
@@ -841,28 +1028,71 @@ namespace ALLIN1
                 GbayRenderer.PlayNav();
             }
 
-            // Page navigation (Q/E)
-            if (input.PageLeft && _currentPage > 0)
+            // Page navigation: shoulder keys, mouse wheel, or footer buttons.
+            bool previousPage = input.PageLeft || previousPageClicked || input.ScrollDelta < 0;
+            bool nextPage = input.PageRight || nextPageClicked || input.ScrollDelta > 0;
+            if (previousPage && _currentPage > 0)
             {
                 _currentPage--;
                 _selectedCard = Math.Min(_selectedCard, GetPageCount() - 1);
                 UpdateActiveDicts();
                 GbayRenderer.PlayNav();
+                return;
             }
-            else if (input.PageRight && _currentPage < _totalPages - 1)
+            else if (nextPage && _currentPage < _totalPages - 1)
             {
                 _currentPage++;
                 _selectedCard = Math.Min(_selectedCard, GetPageCount() - 1);
                 UpdateActiveDicts();
                 GbayRenderer.PlayNav();
+                return;
             }
 
             // Grid navigation (arrows)
-            if (input.DirX != 0 || input.DirY != 0)
+            if ((input.DirX != 0 || input.DirY != 0) && _filtered.Count > 0)
             {
                 int col = _selectedCard % GRID_COLS;
                 int row = _selectedCard / GRID_COLS;
                 int maxIdx = GetPageCount() - 1;
+
+                // Crossing an outer grid edge advances to the adjacent page.
+                // This lets controller/keyboard users traverse the full catalog
+                // without having to move focus down to a separate pager.
+                if (input.DirX < 0 && _selectedCard == 0 && _currentPage > 0)
+                {
+                    _currentPage--;
+                    _selectedCard = Math.Max(0, GetPageCount() - 1);
+                    UpdateActiveDicts();
+                    GbayRenderer.PlayNav();
+                    return;
+                }
+                if (input.DirX > 0 && _selectedCard == maxIdx &&
+                    _currentPage < _totalPages - 1)
+                {
+                    _currentPage++;
+                    _selectedCard = 0;
+                    UpdateActiveDicts();
+                    GbayRenderer.PlayNav();
+                    return;
+                }
+                if (input.DirY < 0 && row == 0 && _currentPage > 0)
+                {
+                    _currentPage--;
+                    _selectedCard = Math.Min(
+                        (GRID_ROWS - 1) * GRID_COLS + col, GetPageCount() - 1);
+                    UpdateActiveDicts();
+                    GbayRenderer.PlayNav();
+                    return;
+                }
+                if (input.DirY > 0 && _selectedCard + GRID_COLS > maxIdx &&
+                    _currentPage < _totalPages - 1)
+                {
+                    _currentPage++;
+                    _selectedCard = Math.Min(col, GetPageCount() - 1);
+                    UpdateActiveDicts();
+                    GbayRenderer.PlayNav();
+                    return;
+                }
 
                 if (input.DirX != 0)
                     col = Math.Max(0, Math.Min(col + input.DirX, GRID_COLS - 1));
@@ -905,7 +1135,8 @@ namespace ALLIN1
             {
                 GbayRenderer.PlayError();
                 GTA.UI.Screen.ShowSubtitle(
-                    $"~r~Insufficient funds.~w~ Need ~g~${price:N0}~w~ (have ${Game.Player.Money:N0})",
+                    $"~r~Insufficient funds.~w~ You need ~g~${price:N0}~w~; " +
+                    $"your balance is ${Game.Player.Money:N0}.",
                     3000);
                 return;
             }
@@ -952,17 +1183,34 @@ namespace ALLIN1
 
             if (isFull)
             {
-                GbayRenderer.DrawText("Garage is full!", BROWSER_CX, modalTop + 0.125f,
+                GbayRenderer.DrawText("The garage is full.", BROWSER_CX, modalTop + 0.125f,
                     0.28f, Color.FromArgb(255, 200, 80, 80), GbayRenderer.FONT_CONDENSED, true);
             }
 
-            // Footer hint
-            GbayRenderer.DrawText("[Enter] Confirm   [Esc] Cancel",
-                BROWSER_CX, modalTop + 0.17f, 0.24f, GbayRenderer.TextDim,
-                GbayRenderer.FONT_CONDENSED, true);
+            float actionY = modalTop + 0.18f;
+            float actionW = 0.15f;
+            float confirmX = BROWSER_CX - 0.09f;
+            float backX = BROWSER_CX + 0.09f;
+            bool confirmHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
+                confirmX, actionY, actionW, BACK_BTN_H);
+            bool backHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
+                backX, actionY, actionW, BACK_BTN_H);
+            Color confirmFill = isFull ? GbayRenderer.BtnGray
+                : confirmHover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen;
+            GbayRenderer.DrawBorderedRect(confirmX, actionY, actionW, BACK_BTN_H,
+                confirmFill, confirmHover ? FocusBorderColor() : GbayRenderer.CardBorderSel,
+                confirmHover ? FocusBorderWidth() : 0.002f);
+            GbayRenderer.DrawText("Confirm", confirmX, actionY - 0.014f, 0.28f,
+                GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
+            GbayRenderer.DrawBorderedRect(backX, actionY, actionW, BACK_BTN_H,
+                backHover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen,
+                backHover ? FocusBorderColor() : GbayRenderer.CardBorderSel,
+                backHover ? FocusBorderWidth() : 0.002f);
+            GbayRenderer.DrawText("Back", backX, actionY - 0.014f, 0.28f,
+                GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
 
             // Accept
-            if ((input.Accept || input.MouseClick) && !isFull)
+            if ((input.Accept || (input.MouseClick && confirmHover)) && !isFull)
             {
                 GbayRenderer.PlaySelect();
                 _shop.ExecuteDeliverToGarage(_pendingModel, _pendingPrice);
@@ -970,7 +1218,7 @@ namespace ALLIN1
                 _state = BrowserState.VehicleBrowser;
             }
 
-            if (input.Back || input.MouseRightClick)
+            if (input.Back || input.MouseRightClick || (input.MouseClick && backHover))
             {
                 GbayRenderer.PlayBack();
                 _state = _previewVehicle != null
@@ -1103,15 +1351,20 @@ namespace ALLIN1
                 0.42f, GbayRenderer.TextPrice, GbayRenderer.FONT_CHALET,
                 false, false, true);
 
-            // Bottom bar with controls
+            // Bottom bar with controls and the same centered Back action used
+            // throughout GBAY.
             float footerY = 0.93f;
             float footerH = 0.07f;
             GbayRenderer.DrawRect(0.5f, footerY + footerH / 2f, 1f, footerH,
                 Color.FromArgb(180, 0, 0, 0));
             GbayRenderer.DrawText(
-                "[Left/Right] Rotate   [Q/E] Zoom   [Enter] Purchase   [Esc] Back",
-                0.5f, footerY + 0.018f, 0.28f, GbayRenderer.TextWhite,
-                GbayRenderer.FONT_CONDENSED, true);
+                "[Left/Right] Rotate   [Q/E] Zoom", 0.03f, footerY + 0.018f,
+                0.26f, GbayRenderer.TextWhite, GbayRenderer.FONT_CONDENSED);
+            GbayRenderer.DrawText("[Enter] Purchase", 0.97f, footerY + 0.018f,
+                0.26f, GbayRenderer.TextWhite, GbayRenderer.FONT_CONDENSED,
+                false, false, true);
+            bool backClicked = DrawCenteredBackButton(
+                input, footerY + footerH / 2f, 0.14f, "Back", false);
 
             // Input: Buy
             if (input.Accept)
@@ -1120,7 +1373,7 @@ namespace ALLIN1
             }
 
             // Input: Back
-            if (input.Back || input.MouseRightClick)
+            if (input.Back || input.MouseRightClick || backClicked)
             {
                 GbayRenderer.PlayBack();
                 ClosePreview();
@@ -1159,41 +1412,80 @@ namespace ALLIN1
             // Header
             GbayRenderer.DrawRect(BROWSER_CX, HEADER_CY, BROWSER_W, HEADER_H,
                 GbayRenderer.HeaderBg);
-            GbayRenderer.DrawLogo(BROWSER_LEFT + 0.035f, HEADER_CY, HEADER_H * 0.85f);
-            GbayRenderer.DrawText("MY GARAGE", BROWSER_LEFT + 0.07f, HEADER_Y + 0.018f,
+            GbayRenderer.DrawGbayWordmark(
+                BROWSER_LEFT + 0.035f, HEADER_Y + 0.010f, 0.43f, true);
+            GbayRenderer.DrawText("MY GARAGE", BROWSER_LEFT + 0.085f, HEADER_Y + 0.018f,
                 0.38f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
 
+            DrawGarageLocationTabs(input);
+
+            bool floorGarage = _garageLocationIndex == 1;
+
             // Capacity info (right side of header)
-            int used = GarageManager.GetUsedSlots();
-            int cap = GarageManager.GetCapacity();
-            string capText = $"Eclipse Towers ({used}/{cap})";
-            GbayRenderer.DrawText(capText, BROWSER_RIGHT - 0.01f, HEADER_Y + 0.018f,
-                0.32f, GbayRenderer.HeaderText, GbayRenderer.FONT_CHALET,
-                false, false, true);
+            int used = floorGarage
+                ? GarageManager.GetFloorGarageUsedSlots()
+                : GarageManager.GetUsedSlots();
+            int cap = floorGarage
+                ? GarageManager.GetFloorGarageCapacity()
+                : GarageManager.GetCapacity();
+            string capText = floorGarage
+                ? $"Three-Floor Garage ({used}/{cap})"
+                : $"Eclipse Towers ({used}/{cap})";
+            GbayRenderer.DrawTextFit(capText, BROWSER_RIGHT - 0.01f, HEADER_Y + 0.018f,
+                0.32f, 0.23f, 0.25f, GbayRenderer.HeaderText,
+                GbayRenderer.FONT_CHALET, false, false, true);
 
             // Vehicle list
-            var vehicles = GarageManager.GetStoredVehicles();
+            var vehicles = floorGarage
+                ? GarageManager.GetFloorGarageStoredVehicles()
+                : GarageManager.GetStoredVehicles();
 
-            float listTop = TAB_Y + 0.02f;
+            float listTop = TAB_Y + TAB_H + 0.015f;
             float itemH = 0.055f;
+            const int visibleGarageRows = 12;
 
             _garageHoverIdx = -1;
 
+            // Keyboard and mouse-wheel navigation. The three-floor garage can
+            // hold 30 vehicles, so keep the selected row inside a scrolling
+            // 12-row viewport.
+            int move = input.DirY != 0 ? input.DirY : input.ScrollDelta;
+            if (move != 0 && vehicles.Count > 0)
+            {
+                int next = Math.Max(0, Math.Min(
+                    vehicles.Count - 1, _garageVehicleIdx + move));
+                if (next != _garageVehicleIdx)
+                {
+                    _garageVehicleIdx = next;
+                    GbayRenderer.PlayNav();
+                }
+            }
+
+            if (_garageVehicleIdx >= vehicles.Count)
+                _garageVehicleIdx = Math.Max(0, vehicles.Count - 1);
+            int firstVisible = Math.Max(0, _garageVehicleIdx - visibleGarageRows + 1);
+            firstVisible = Math.Min(firstVisible,
+                Math.Max(0, vehicles.Count - visibleGarageRows));
+            int lastVisible = Math.Min(vehicles.Count, firstVisible + visibleGarageRows);
+
             if (vehicles.Count == 0)
             {
-                GbayRenderer.DrawText("No vehicles stored",
+                GbayRenderer.DrawText("No vehicles stored.",
                     BROWSER_CX, listTop + 0.10f, 0.35f, GbayRenderer.TextDim,
                     GbayRenderer.FONT_CHALET, true);
-                GbayRenderer.DrawText("Purchase vehicles from the Vehicles tab to store them here.",
-                    BROWSER_CX, listTop + 0.15f, 0.26f, GbayRenderer.TextDim,
-                    GbayRenderer.FONT_CONDENSED, true);
+                string emptyHint = floorGarage
+                    ? "Drive a vehicle inside or deliver one to the three-floor garage."
+                    : "Purchase a vehicle or drive one inside to store it here.";
+                GbayRenderer.DrawTextFit(emptyHint,
+                    BROWSER_CX, listTop + 0.15f, 0.26f, 0.20f, 0.62f,
+                    GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
             }
             else
             {
-                for (int i = 0; i < vehicles.Count; i++)
+                for (int i = firstVisible; i < lastVisible; i++)
                 {
                     var sv = vehicles[i];
-                    float itemY = listTop + i * itemH;
+                    float itemY = listTop + (i - firstVisible) * itemH;
                     float itemCY = itemY + itemH / 2f;
                     bool isSel = i == _garageVehicleIdx;
                     bool isHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
@@ -1202,7 +1494,11 @@ namespace ALLIN1
                     if (isHover)
                         _garageHoverIdx = i;
 
-                    if (isSel || isHover)
+                    if (isSel)
+                        DrawFocusedRect(BROWSER_CX, itemCY,
+                            BROWSER_W - 0.08f, itemH - 0.006f,
+                            GbayRenderer.CardSelected);
+                    else if (isHover)
                         GbayRenderer.DrawRect(BROWSER_CX, itemCY,
                             BROWSER_W - 0.08f, itemH, GbayRenderer.CardHover);
 
@@ -1210,14 +1506,18 @@ namespace ALLIN1
                         ? VehicleList.DisplayNames[sv.Model] : sv.Model;
 
                     // Slot number
-                    GbayRenderer.DrawText($"#{sv.Slot + 1}", BROWSER_LEFT + 0.06f, itemY + 0.012f,
+                    string slotLabel = floorGarage
+                        ? $"F{sv.Slot / 10 + 1}-{sv.Slot % 10 + 1}"
+                        : $"#{sv.Slot + 1}";
+                    GbayRenderer.DrawText(slotLabel, BROWSER_LEFT + 0.06f, itemY + 0.012f,
                         0.28f, GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED);
 
                     // Vehicle name
-                    GbayRenderer.DrawText(name, BROWSER_LEFT + 0.10f, itemY + 0.012f,
-                        0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+                    GbayRenderer.DrawTextFit(name, BROWSER_LEFT + 0.10f, itemY + 0.012f,
+                        0.32f, 0.22f, 0.58f, GbayRenderer.TextDark,
+                        GbayRenderer.FONT_CHALET);
 
-                    // Remove button
+                    // Sell button
                     float removeBtnX = BROWSER_RIGHT - 0.08f;
                     bool removeHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
                         removeBtnX, itemCY, 0.08f, itemH);
@@ -1227,29 +1527,17 @@ namespace ALLIN1
                         : Color.FromArgb(255, 180, 80, 80);
                     GbayRenderer.DrawRect(removeBtnX, itemCY, 0.07f, itemH - 0.01f,
                         removeBg);
-                    GbayRenderer.DrawText("Remove", removeBtnX, itemY + 0.012f,
-                        0.25f, GbayRenderer.TextWhite, GbayRenderer.FONT_CONDENSED, true);
+                    int sellPrice = _shop.GetSellPrice(sv.Model);
+                    string sellLabel = sellPrice > 0 ? $"Sell ${sellPrice:N0}" : "Remove";
+                    GbayRenderer.DrawTextFit(sellLabel, removeBtnX, itemY + 0.012f,
+                        0.25f, 0.18f, 0.062f, GbayRenderer.TextWhite,
+                        GbayRenderer.FONT_CONDENSED, true);
 
                     if (removeHover && input.MouseClick)
                     {
-                        GarageManager.RemoveVehicle(i);
-                        GbayRenderer.PlaySelect();
-                        GTA.UI.Screen.ShowSubtitle(
-                            $"~y~{name}~w~ removed from garage.", 3000);
-                        _garageVehicleIdx = Math.Max(0, _garageVehicleIdx - 1);
+                        BeginSell(sv.Model, i, floorGarage);
                         return;
                     }
-                }
-            }
-
-            // Keyboard navigation
-            if (input.DirY != 0 && vehicles.Count > 0)
-            {
-                int next = _garageVehicleIdx + input.DirY;
-                if (next >= 0 && next < vehicles.Count)
-                {
-                    _garageVehicleIdx = next;
-                    GbayRenderer.PlayNav();
                 }
             }
 
@@ -1259,14 +1547,8 @@ namespace ALLIN1
             // Keyboard remove
             if (input.Accept && vehicles.Count > 0 && _garageVehicleIdx < vehicles.Count)
             {
-                var sv = vehicles[_garageVehicleIdx];
-                string name = VehicleList.DisplayNames.ContainsKey(sv.Model)
-                    ? VehicleList.DisplayNames[sv.Model] : sv.Model;
-                GarageManager.RemoveVehicle(_garageVehicleIdx);
-                GbayRenderer.PlaySelect();
-                GTA.UI.Screen.ShowSubtitle(
-                    $"~y~{name}~w~ removed from garage.", 3000);
-                _garageVehicleIdx = Math.Max(0, _garageVehicleIdx - 1);
+                BeginSell(vehicles[_garageVehicleIdx].Model, _garageVehicleIdx, floorGarage);
+                return;
             }
 
             // Open customization (Q key)
@@ -1288,18 +1570,12 @@ namespace ALLIN1
                 return;
             }
 
-            // Back
-            if (input.Back || input.MouseRightClick)
-            {
-                GbayRenderer.PlayBack();
-                _state = BrowserState.TopMenu;
-            }
-
             // Footer
             GbayRenderer.DrawRect(BROWSER_CX, FOOTER_CY, BROWSER_W, FOOTER_H,
                 GbayRenderer.FooterBg);
+            bool backClicked = DrawCenteredBackButton(input);
 
-            // Customize Floors button (right side of footer)
+            // Eclipse Towers is a single 10-car garage.
             float custBtnX = BROWSER_RIGHT - 0.10f;
             float custBtnW = 0.16f;
             bool custHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
@@ -1308,8 +1584,9 @@ namespace ALLIN1
                 ? GbayRenderer.BtnGreenHover
                 : GbayRenderer.BtnGreen;
             GbayRenderer.DrawRect(custBtnX, FOOTER_CY, custBtnW, FOOTER_H - 0.01f, custBg);
-            GbayRenderer.DrawText("Customize Floors", custBtnX, FOOTER_Y + 0.012f,
-                0.26f, GbayRenderer.TextWhite, GbayRenderer.FONT_CONDENSED, true);
+            GbayRenderer.DrawTextFit("Customize Garage", custBtnX, FOOTER_Y + 0.012f,
+                0.26f, 0.19f, custBtnW - 0.014f, GbayRenderer.TextWhite,
+                GbayRenderer.FONT_CONDENSED, true);
 
             if (custHover && input.MouseClick)
             {
@@ -1320,9 +1597,134 @@ namespace ALLIN1
                 return;
             }
 
-            GbayRenderer.DrawText("[Enter] Remove   [Q] Customize   [Y] Recover   [Esc] Back",
-                BROWSER_LEFT + 0.02f, FOOTER_Y + 0.012f, 0.24f, GbayRenderer.TextDim,
+            bool compactGarageHints = vehicles.Count > visibleGarageRows;
+            string garageHints = compactGarageHints
+                ? "Up/Down/Wheel: Browse   Left/Right: Garage   Enter: Sell"
+                : "[Left/Right] Garage   [Enter] Sell   [Q] Customize   [Y] Recover";
+            GbayRenderer.DrawText(garageHints,
+                BROWSER_LEFT + 0.02f, FOOTER_Y + 0.012f,
+                compactGarageHints ? 0.18f : 0.20f, GbayRenderer.TextDim,
                 GbayRenderer.FONT_CONDENSED);
+
+            if (input.Back || input.MouseRightClick || backClicked)
+            {
+                GbayRenderer.PlayBack();
+                _state = BrowserState.TopMenu;
+            }
+        }
+
+        private void DrawGarageLocationTabs(FrameInput input)
+        {
+            const float tabW = 0.26f;
+            float[] tabX = { BROWSER_CX - tabW / 2f, BROWSER_CX + tabW / 2f };
+            string[] labels = { "Eclipse Towers", "Three-Floor Garage" };
+
+            for (int i = 0; i < labels.Length; i++)
+            {
+                bool hover = GbayRenderer.HitTest(
+                    input.MouseX, input.MouseY, tabX[i], TAB_CY, tabW, TAB_H);
+                if (i == _garageLocationIndex)
+                    DrawFocusedRect(tabX[i], TAB_CY, tabW - 0.006f,
+                        TAB_H - 0.006f, GbayRenderer.BtnGreenHover);
+                else if (hover)
+                    GbayRenderer.DrawRect(
+                        tabX[i], TAB_CY, tabW - 0.004f, TAB_H, GbayRenderer.TabHover);
+                if (i == _garageLocationIndex)
+                    GbayRenderer.DrawRect(tabX[i], TAB_Y + TAB_H - 0.004f,
+                        tabW - 0.01f, 0.004f, GbayRenderer.TabIndicator);
+                GbayRenderer.DrawText(labels[i], tabX[i], TAB_Y + 0.012f, 0.28f,
+                    i == _garageLocationIndex
+                        ? GbayRenderer.TabActive : GbayRenderer.TabInactive,
+                    GbayRenderer.FONT_CONDENSED, true);
+
+                if (hover && input.MouseClick && i != _garageLocationIndex)
+                    SetGarageLocation(i);
+            }
+
+            if ((input.DirX < 0 || input.CategoryPrev) && _garageLocationIndex > 0)
+                SetGarageLocation(0);
+            else if ((input.DirX > 0 || input.CategoryNext) && _garageLocationIndex < 1)
+                SetGarageLocation(1);
+        }
+
+        private void SetGarageLocation(int location)
+        {
+            _garageLocationIndex = Math.Max(0, Math.Min(1, location));
+            _garageVehicleIdx = 0;
+            _garageHoverIdx = -1;
+            GbayRenderer.PlayNav();
+        }
+
+        private void BeginSell(string model, int index, bool floorGarage)
+        {
+            if (!VehicleList.Prices.ContainsKey(model))
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~This vehicle cannot be sold.", 3000);
+                ClientLog.Warn("GBAY", "vehicle_sale_rejected", new Dictionary<string, object> {
+                    { "model", model }, { "reason", "unknown_or_temporary" }
+                });
+                return;
+            }
+            _pendingSellModel = model;
+            _pendingSellIndex = index;
+            _pendingSellFloorGarage = floorGarage;
+            _state = BrowserState.GarageSellConfirm;
+            GbayRenderer.PlaySelect();
+        }
+
+        private void DrawGarageSellConfirm(FrameInput input)
+        {
+            DrawGarageView(new FrameInput());
+            GbayRenderer.DrawRect(BROWSER_CX, 0.5f, 1f, 1f, GbayRenderer.ModalScrim);
+            GbayRenderer.DrawRect(BROWSER_CX, 0.5f, MODAL_W, 0.30f, GbayRenderer.ModalBg);
+            string name = VehicleList.DisplayNames.ContainsKey(_pendingSellModel)
+                ? VehicleList.DisplayNames[_pendingSellModel] : _pendingSellModel;
+            int value = _shop.GetSellPrice(_pendingSellModel);
+            GbayRenderer.DrawText("CONFIRM VEHICLE SALE", BROWSER_CX, 0.39f, 0.45f,
+                GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED, true);
+            GbayRenderer.DrawText(name, BROWSER_CX, 0.46f, 0.38f,
+                GbayRenderer.TextDark, GbayRenderer.FONT_CHALET, true);
+            GbayRenderer.DrawText(value > 0 ? $"Sale value: ${value:N0}" : "Remove from garage (no credit)",
+                BROWSER_CX, 0.52f, 0.34f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET, true);
+            const float sellActionY = 0.61f;
+            const float sellActionW = 0.15f;
+            float sellConfirmX = BROWSER_CX - 0.09f;
+            float sellBackX = BROWSER_CX + 0.09f;
+            bool sellConfirmHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
+                sellConfirmX, sellActionY, sellActionW, BACK_BTN_H);
+            bool sellBackHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
+                sellBackX, sellActionY, sellActionW, BACK_BTN_H);
+            GbayRenderer.DrawBorderedRect(sellConfirmX, sellActionY, sellActionW, BACK_BTN_H,
+                sellConfirmHover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen,
+                sellConfirmHover ? FocusBorderColor() : GbayRenderer.CardBorderSel,
+                sellConfirmHover ? FocusBorderWidth() : 0.002f);
+            GbayRenderer.DrawText("Confirm", sellConfirmX, sellActionY - 0.014f, 0.28f,
+                GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
+            GbayRenderer.DrawBorderedRect(sellBackX, sellActionY, sellActionW, BACK_BTN_H,
+                sellBackHover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen,
+                sellBackHover ? FocusBorderColor() : GbayRenderer.CardBorderSel,
+                sellBackHover ? FocusBorderWidth() : 0.002f);
+            GbayRenderer.DrawText("Back", sellBackX, sellActionY - 0.014f, 0.28f,
+                GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
+            if (input.Accept || (input.MouseClick && sellConfirmHover))
+            {
+                _shop.ExecuteSellVehicle(
+                    _pendingSellModel, _pendingSellIndex, _pendingSellFloorGarage);
+                _garageVehicleIdx = Math.Max(0, _pendingSellIndex - 1);
+                _pendingSellIndex = -1;
+                _pendingSellModel = "";
+                _pendingSellFloorGarage = false;
+                _state = BrowserState.GarageView;
+            }
+            else if (input.Back || input.MouseRightClick ||
+                     (input.MouseClick && sellBackHover))
+            {
+                _pendingSellIndex = -1;
+                _pendingSellModel = "";
+                _pendingSellFloorGarage = false;
+                _state = BrowserState.GarageView;
+                GbayRenderer.PlayBack();
+            }
         }
 
         // ------------------------------------------------------------------ //
@@ -1351,10 +1753,14 @@ namespace ALLIN1
             DrawWeaponGrid(input, cardW);
 
             // Footer
-            DrawWeaponFooter();
+            bool previousPageClicked;
+            bool nextPageClicked;
+            bool backClicked = DrawWeaponFooter(
+                input, out previousPageClicked, out nextPageClicked);
 
             // Handle input
-            HandleWeaponBrowserInput(input);
+            HandleWeaponBrowserInput(
+                input, backClicked, previousPageClicked, nextPageClicked);
         }
 
         private void DrawWeaponHeader()
@@ -1362,9 +1768,10 @@ namespace ALLIN1
             GbayRenderer.DrawRect(BROWSER_CX, HEADER_CY, BROWSER_W, HEADER_H,
                 GbayRenderer.HeaderBg);
 
-            GbayRenderer.DrawLogo(BROWSER_LEFT + 0.035f, HEADER_CY, HEADER_H * 0.85f);
+            GbayRenderer.DrawGbayWordmark(
+                BROWSER_LEFT + 0.035f, HEADER_Y + 0.010f, 0.43f, true);
 
-            GbayRenderer.DrawText("WEAPONS", BROWSER_LEFT + 0.07f, HEADER_Y + 0.018f,
+            GbayRenderer.DrawText("WEAPONS", BROWSER_LEFT + 0.085f, HEADER_Y + 0.018f,
                 0.38f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
 
             string money = $"${Game.Player.Money:N0}";
@@ -1379,9 +1786,10 @@ namespace ALLIN1
                 GbayRenderer.TabBg);
 
             int visibleCount = Math.Min(MAX_VISIBLE_TABS, WEAPON_CATEGORIES.Length - _weaponTabScrollOffset);
-            float tabAreaW = BROWSER_W - 0.04f;
+            const float arrowW = 0.032f;
+            float tabAreaW = BROWSER_W - arrowW * 2f - 0.016f;
             float singleTabW = tabAreaW / MAX_VISIBLE_TABS;
-            float tabStartX = BROWSER_LEFT + 0.02f;
+            float tabStartX = BROWSER_LEFT + arrowW + 0.008f;
 
             _weaponHoverTab = -1;
 
@@ -1396,7 +1804,10 @@ namespace ALLIN1
                 if (isHover)
                     _weaponHoverTab = catIdx;
 
-                if (isHover && !isActive)
+                if (isActive)
+                    DrawFocusedRect(tabCX, TAB_CY, singleTabW - 0.006f,
+                        TAB_H - 0.006f, GbayRenderer.BtnGreenHover);
+                else if (isHover)
                     GbayRenderer.DrawRect(tabCX, TAB_CY, singleTabW - 0.004f,
                         TAB_H, GbayRenderer.TabHover);
 
@@ -1406,19 +1817,45 @@ namespace ALLIN1
 
                 Color textColor = isActive ? GbayRenderer.TabActive : GbayRenderer.TabInactive;
                 string label = WEAPON_CATEGORIES[catIdx].Label;
-                GbayRenderer.DrawText(label, tabCX, TAB_Y + 0.01f,
-                    0.32f, textColor, GbayRenderer.FONT_CONDENSED, true);
+                GbayRenderer.DrawTextFit(label, tabCX, TAB_Y + 0.01f,
+                    0.32f, 0.22f, singleTabW - 0.012f, textColor,
+                    GbayRenderer.FONT_CONDENSED, true);
             }
 
-            if (_weaponTabScrollOffset > 0)
+            float leftArrowX = BROWSER_LEFT + arrowW / 2f;
+            float rightArrowX = BROWSER_RIGHT - arrowW / 2f;
+            bool canScrollLeft = _weaponTabScrollOffset > 0;
+            bool canScrollRight = _weaponTabScrollOffset + MAX_VISIBLE_TABS < WEAPON_CATEGORIES.Length;
+            bool leftHover = canScrollLeft && GbayRenderer.HitTest(
+                input.MouseX, input.MouseY, leftArrowX, TAB_CY, arrowW, TAB_H);
+            bool rightHover = canScrollRight && GbayRenderer.HitTest(
+                input.MouseX, input.MouseY, rightArrowX, TAB_CY, arrowW, TAB_H);
+            GbayRenderer.DrawRect(leftArrowX, TAB_CY, arrowW, TAB_H,
+                leftHover ? GbayRenderer.BtnGreenHover : GbayRenderer.TabBg);
+            GbayRenderer.DrawRect(rightArrowX, TAB_CY, arrowW, TAB_H,
+                rightHover ? GbayRenderer.BtnGreenHover : GbayRenderer.TabBg);
+            if (canScrollLeft)
             {
-                GbayRenderer.DrawText("<", BROWSER_LEFT + 0.008f, TAB_Y + 0.008f,
-                    0.35f, GbayRenderer.TabActive, GbayRenderer.FONT_CHALET);
+                GbayRenderer.DrawText("<", leftArrowX, TAB_Y + 0.008f,
+                    0.35f, GbayRenderer.TabActive, GbayRenderer.FONT_CHALET, true);
             }
-            if (_weaponTabScrollOffset + MAX_VISIBLE_TABS < WEAPON_CATEGORIES.Length)
+            if (canScrollRight)
             {
-                GbayRenderer.DrawText(">", BROWSER_RIGHT - 0.018f, TAB_Y + 0.008f,
-                    0.35f, GbayRenderer.TabActive, GbayRenderer.FONT_CHALET);
+                GbayRenderer.DrawText(">", rightArrowX, TAB_Y + 0.008f,
+                    0.35f, GbayRenderer.TabActive, GbayRenderer.FONT_CHALET, true);
+            }
+            if (input.MouseClick && leftHover)
+            {
+                _weaponTabScrollOffset = Math.Max(0,
+                    _weaponTabScrollOffset - (MAX_VISIBLE_TABS - 1));
+                GbayRenderer.PlayNav();
+            }
+            else if (input.MouseClick && rightHover)
+            {
+                _weaponTabScrollOffset = Math.Min(
+                    Math.Max(0, WEAPON_CATEGORIES.Length - MAX_VISIBLE_TABS),
+                    _weaponTabScrollOffset + (MAX_VISIBLE_TABS - 1));
+                GbayRenderer.PlayNav();
             }
         }
 
@@ -1470,11 +1907,11 @@ namespace ALLIN1
             Color bgColor = selected ? GbayRenderer.CardSelected
                           : hovered ? GbayRenderer.CardHover
                           : GbayRenderer.CardBg;
-            Color borderColor = selected ? GbayRenderer.CardBorderSel
+            Color borderColor = selected ? FocusBorderColor()
                               : GbayRenderer.CardBorder;
 
             GbayRenderer.DrawBorderedRect(cx, cy, cardW, CARD_H,
-                bgColor, borderColor, 0.002f);
+                bgColor, borderColor, selected ? FocusBorderWidth() : 0.002f);
 
             // Top area: category-colored placeholder (55% of card height)
             float topAreaH = CARD_H * 0.55f;
@@ -1485,16 +1922,18 @@ namespace ALLIN1
                 topColor);
 
             // Category label in the placeholder area
-            GbayRenderer.DrawText(card.Category, cx, top + topAreaH * 0.35f,
-                0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
+            GbayRenderer.DrawTextFit(card.Category, cx, top + topAreaH * 0.35f,
+                0.28f, 0.20f, cardW - 0.018f, GbayRenderer.TextDark,
+                GbayRenderer.FONT_CONDENSED, true);
 
             // Text area below
             float textTop = top + topAreaH + 0.005f;
             float textLeft = left + 0.008f;
 
             // Weapon name
-            GbayRenderer.DrawText(card.DisplayName, textLeft, textTop + 0.005f,
-                0.33f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+            GbayRenderer.DrawTextFit(card.DisplayName, textLeft, textTop + 0.005f,
+                0.33f, 0.22f, cardW - 0.016f, GbayRenderer.TextDark,
+                GbayRenderer.FONT_CHALET);
 
             // Price, OWNED status, or ammo info
             if (card.Owned)
@@ -1512,8 +1951,9 @@ namespace ALLIN1
                     string confirmText = _ammoConfirmCost > 0
                         ? $"REFILL {_ammoConfirmRounds} rnds - ${_ammoConfirmCost:N0}"
                         : $"REFILL {_ammoConfirmRounds} rnds - FREE";
-                    GbayRenderer.DrawText(confirmText, textLeft, textTop + 0.038f,
-                        0.24f, Color.FromArgb(255, 255, 200, 50), GbayRenderer.FONT_CONDENSED);
+                    GbayRenderer.DrawTextFit(confirmText, textLeft, textTop + 0.038f,
+                        0.24f, 0.17f, cardW - 0.016f,
+                        Color.FromArgb(255, 168, 104, 0), GbayRenderer.FONT_CONDENSED);
                 }
                 else
                 {
@@ -1529,16 +1969,18 @@ namespace ALLIN1
                     }
                     else if (cost == 0 && rounds == 0)
                     {
-                        GbayRenderer.DrawText("FULLY STOCKED", textLeft, textTop + 0.038f,
-                            0.26f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CONDENSED);
+                        GbayRenderer.DrawTextFit("FULLY STOCKED", textLeft, textTop + 0.038f,
+                            0.26f, 0.20f, cardW - 0.016f,
+                            GbayRenderer.TextPriceFree, GbayRenderer.FONT_CONDENSED);
                     }
                     else
                     {
                         string ammoText = cost > 0
                             ? $"OWNED - Refill ${cost:N0}"
                             : $"OWNED - Refill {rounds} rnds";
-                        GbayRenderer.DrawText(ammoText, textLeft, textTop + 0.038f,
-                            0.24f, Color.FromArgb(255, 200, 180, 80), GbayRenderer.FONT_CONDENSED);
+                        GbayRenderer.DrawTextFit(ammoText, textLeft, textTop + 0.038f,
+                            0.24f, 0.17f, cardW - 0.016f,
+                            Color.FromArgb(255, 150, 100, 0), GbayRenderer.FONT_CONDENSED);
                     }
                 }
             }
@@ -1552,8 +1994,11 @@ namespace ALLIN1
             }
         }
 
-        private void DrawWeaponFooter()
+        private bool DrawWeaponFooter(
+            FrameInput input, out bool previousPageClicked, out bool nextPageClicked)
         {
+            previousPageClicked = false;
+            nextPageClicked = false;
             GbayRenderer.DrawRect(BROWSER_CX, FOOTER_CY, BROWSER_W, FOOTER_H,
                 _ammoConfirmPending
                     ? Color.FromArgb(230, 60, 50, 20)
@@ -1565,28 +2010,34 @@ namespace ALLIN1
                     ? WeaponList.DisplayNames[_ammoConfirmWeapon] : _ammoConfirmWeapon;
                 string costText = _ammoConfirmCost > 0
                     ? $"${_ammoConfirmCost:N0}" : "FREE";
-                string prompt = $"[Enter] Confirm Ammo Refill: {displayName} ({_ammoConfirmRounds} rounds) for {costText}   [Esc] Cancel";
+                string prompt = $"[Enter] Confirm ammo refill: {displayName} " +
+                    $"({_ammoConfirmRounds} rounds) for {costText}   [Esc] Cancel";
                 GbayRenderer.DrawText(prompt, BROWSER_CX, FOOTER_Y + 0.012f,
                     0.26f, Color.FromArgb(255, 255, 220, 100), GbayRenderer.FONT_CONDENSED, true);
+                return false;
             }
             else
             {
-                string pageText = $"Page {_weaponPage + 1}/{Math.Max(1, _weaponTotalPages)}";
-                GbayRenderer.DrawText(pageText, BROWSER_LEFT + 0.02f, FOOTER_Y + 0.012f,
-                    0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+                DrawPager(input, _weaponPage, _weaponTotalPages, _weaponFiltered.Count,
+                    out previousPageClicked, out nextPageClicked);
+
+                bool backClicked = DrawCenteredBackButton(input);
 
                 string filter = _weaponOwnershipFilter == 1 ? "OWNED"
                     : _weaponOwnershipFilter == 2 ? "AVAILABLE"
                     : _weaponOwnershipFilter == 3 ? "FAVORITES" : "ALL";
                 string query = _weaponSearch.Length > 0 ? $" Search: {_weaponSearch}" : "";
-                string hints = $"[Y] {filter}   [X] Search{query}   [R3] Favorite   [Q/E] Page";
-                GbayRenderer.DrawText(hints, BROWSER_RIGHT - 0.01f, FOOTER_Y + 0.012f,
-                    0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED,
-                    false, false, true);
+                string hints = $"Y: {filter}   X: Search{query}   R3: Favorite   Wheel/LB-RB: Pages";
+                GbayRenderer.DrawTextFit(hints, BROWSER_RIGHT - 0.01f, FOOTER_Y + 0.012f,
+                    0.24f, 0.17f, 0.335f, GbayRenderer.TextDim,
+                    GbayRenderer.FONT_CONDENSED, false, false, true);
+                return backClicked;
             }
         }
 
-        private void HandleWeaponBrowserInput(FrameInput input)
+        private void HandleWeaponBrowserInput(
+            FrameInput input, bool backClicked,
+            bool previousPageClicked, bool nextPageClicked)
         {
             // Handle pending ammo confirm first
             if (_ammoConfirmPending)
@@ -1612,7 +2063,7 @@ namespace ALLIN1
                 return;
             }
 
-            if (input.Back || input.MouseRightClick)
+            if (input.Back || input.MouseRightClick || backClicked)
             {
                 GbayRenderer.PlayBack();
                 _state = BrowserState.TopMenu;
@@ -1672,26 +2123,62 @@ namespace ALLIN1
                 GbayRenderer.PlayNav();
             }
 
-            // Page navigation (Q/E)
-            if (input.PageLeft && _weaponPage > 0)
+            // Page navigation: shoulder keys, mouse wheel, or footer buttons.
+            bool previousPage = input.PageLeft || previousPageClicked || input.ScrollDelta < 0;
+            bool nextPage = input.PageRight || nextPageClicked || input.ScrollDelta > 0;
+            if (previousPage && _weaponPage > 0)
             {
                 _weaponPage--;
                 _weaponSelectedCard = Math.Min(_weaponSelectedCard, GetWeaponPageCount() - 1);
                 GbayRenderer.PlayNav();
+                return;
             }
-            else if (input.PageRight && _weaponPage < _weaponTotalPages - 1)
+            else if (nextPage && _weaponPage < _weaponTotalPages - 1)
             {
                 _weaponPage++;
                 _weaponSelectedCard = Math.Min(_weaponSelectedCard, GetWeaponPageCount() - 1);
                 GbayRenderer.PlayNav();
+                return;
             }
 
             // Grid navigation (arrows)
-            if (input.DirX != 0 || input.DirY != 0)
+            if ((input.DirX != 0 || input.DirY != 0) && _weaponFiltered.Count > 0)
             {
                 int col = _weaponSelectedCard % GRID_COLS;
                 int row = _weaponSelectedCard / GRID_COLS;
                 int maxIdx = GetWeaponPageCount() - 1;
+
+                if (input.DirX < 0 && _weaponSelectedCard == 0 && _weaponPage > 0)
+                {
+                    _weaponPage--;
+                    _weaponSelectedCard = Math.Max(0, GetWeaponPageCount() - 1);
+                    GbayRenderer.PlayNav();
+                    return;
+                }
+                if (input.DirX > 0 && _weaponSelectedCard == maxIdx &&
+                    _weaponPage < _weaponTotalPages - 1)
+                {
+                    _weaponPage++;
+                    _weaponSelectedCard = 0;
+                    GbayRenderer.PlayNav();
+                    return;
+                }
+                if (input.DirY < 0 && row == 0 && _weaponPage > 0)
+                {
+                    _weaponPage--;
+                    _weaponSelectedCard = Math.Min(
+                        (GRID_ROWS - 1) * GRID_COLS + col, GetWeaponPageCount() - 1);
+                    GbayRenderer.PlayNav();
+                    return;
+                }
+                if (input.DirY > 0 && _weaponSelectedCard + GRID_COLS > maxIdx &&
+                    _weaponPage < _weaponTotalPages - 1)
+                {
+                    _weaponPage++;
+                    _weaponSelectedCard = Math.Min(col, GetWeaponPageCount() - 1);
+                    GbayRenderer.PlayNav();
+                    return;
+                }
 
                 if (input.DirX != 0)
                     col = Math.Max(0, Math.Min(col + input.DirX, GRID_COLS - 1));
@@ -1735,7 +2222,7 @@ namespace ALLIN1
                         {
                             // Fully stocked
                             GbayRenderer.PlayError();
-                            GTA.UI.Screen.ShowSubtitle("~g~Already fully stocked!", 3000);
+                            GTA.UI.Screen.ShowSubtitle("~g~Already fully stocked.", 3000);
                         }
                         else
                         {

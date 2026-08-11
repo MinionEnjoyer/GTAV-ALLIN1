@@ -34,9 +34,10 @@ TEXTURES_RPF = "textures.rpf"
 def _build_content_xml() -> bytes:
     """Generate content.xml registering the nested textures.rpf as RPF_FILE.
 
-    Matches the structure of working Rockstar / community DLC packs:
-    each dataFile entry has locked=false, disabled=true, persistent=true,
-    overlay=true, and the contentChangeSet enables them at startup.
+    Matches the current Rockstar Enhanced DLC metadata shape.  Registering
+    the nested RPF is what makes its YTD dictionaries discoverable through
+    REQUEST_STREAMED_TEXTURE_DICT; merely placing YTDs in an arbitrary
+    update2.rpf directory does not add them to the streaming index.
     """
     root = etree.Element("CDataFileMgr__ContentsOfDataFileXml")
 
@@ -56,14 +57,17 @@ def _build_content_xml() -> bytes:
     etree.SubElement(item, "locked").set("value", "false")
     etree.SubElement(item, "disabled").set("value", "true")
     etree.SubElement(item, "persistent").set("value", "true")
-    etree.SubElement(item, "overlay").set("value", "true")
+    etree.SubElement(item, "overlay").set("value", "false")
 
     # Content change set — enable the RPF at startup
     change_sets = etree.SubElement(root, "contentChangeSets")
     cs_item = etree.SubElement(change_sets, "Item")
     etree.SubElement(cs_item, "changeSetName").text = f"{DLC_NAME}_AUTOGEN"
+    etree.SubElement(cs_item, "filesToDisable")
     files_to_enable = etree.SubElement(cs_item, "filesToEnable")
     etree.SubElement(files_to_enable, "Item").text = rpf_path
+    etree.SubElement(cs_item, "txdToLoad")
+    etree.SubElement(cs_item, "txdToUnload")
 
     etree.SubElement(root, "patchFiles")
 
@@ -79,15 +83,18 @@ def _build_setup2_xml() -> bytes:
     etree.SubElement(root, "datFile").text = "content.xml"
     etree.SubElement(root, "timeStamp").text = "01/01/2025 00:00:00"
     etree.SubElement(root, "nameHash").text = DLC_NAME
-    etree.SubElement(root, "type").text = "EXTRACONTENT_COMPAT_PACK"
-    el = etree.SubElement(root, "order")
-    el.set("value", "9")
+    etree.SubElement(root, "contentChangeSets")
 
     groups = etree.SubElement(root, "contentChangeSetGroups")
     group_item = etree.SubElement(groups, "Item")
     etree.SubElement(group_item, "NameHash").text = "GROUP_STARTUP"
     change_sets = etree.SubElement(group_item, "ContentChangeSets")
     etree.SubElement(change_sets, "Item").text = f"{DLC_NAME}_AUTOGEN"
+
+    etree.SubElement(root, "startupScript")
+    etree.SubElement(root, "scriptCallstackSize").set("value", "0")
+    etree.SubElement(root, "type").text = "EXTRACONTENT_COMPAT_PACK"
+    etree.SubElement(root, "order").set("value", "9")
 
     return etree.tostring(root, pretty_print=True, xml_declaration=True,
                           encoding="UTF-8")
