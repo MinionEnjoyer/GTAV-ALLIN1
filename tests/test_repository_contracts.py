@@ -184,3 +184,23 @@ def test_gbay_search_ownership_and_emergency_recovery_contracts():
     assert "EmergencyRecover" in garage
     assert "emergency_recovery_completed" in garage
     assert "FrontendY" in input_source and "FrontendX" in input_source
+
+
+def test_windows_toolchain_ci_is_cached_bounded_and_non_mutating():
+    tests_workflow = (ROOT / ".github/workflows/test.yml").read_text()
+    build_workflow = (ROOT / ".github/workflows/build-asi.yml").read_text()
+    tools_script = (ROOT / "runtools.ps1").read_text()
+    assert "cancel-in-progress: true" in tests_workflow
+    assert "branches: [main]" in tests_workflow
+    assert "github.event.pull_request.number || github.ref" in tests_workflow
+    assert "actions/cache@v4" in tests_workflow
+    assert "windows-real-tools-v2-" in tests_workflow
+    assert "timeout-minutes: 20" in tests_workflow
+    assert "timeout-minutes: 8" in tests_workflow
+    assert "if: github.ref == 'refs/heads/main'" in build_workflow
+    assert '$env:CI -eq "true"' in tools_script
+    assert "refusing to modify the hosted runner" in tools_script
+    assert "-requires Microsoft.VisualStudio.Workload.NativeDesktop" in tools_script
+    assert '$RpfPublishDir = Join-Path $TempDir "rpfpatcher_publish"' in tools_script
+    assert '-o $RpfPublishDir' in tools_script
+    assert '-o $RpfPatcherDir' not in tools_script

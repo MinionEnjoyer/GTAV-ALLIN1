@@ -84,12 +84,21 @@ if (Test-Path $YtdtoolDest) {
     if (-not (Test-Path $VsWhere)) {
         throw "vswhere.exe not found. Install Visual Studio 2022."
     }
-    $VsInstall = & $VsWhere -latest -property installationPath 2>$null
+    # Select the newest installation that actually contains the C++ workload.
+    # GitHub-hosted runners can expose multiple VS installations; selecting
+    # "latest" first previously chose one without C++ and launched the Visual
+    # Studio installer in CI, leaving this job stuck until its timeout.
+    $VsInstall = & $VsWhere -products * -latest -requires Microsoft.VisualStudio.Workload.NativeDesktop -property installationPath 2>$null
+    if (-not $VsInstall) {
+        $VsInstall = & $VsWhere -products * -latest -property installationPath 2>$null
+    }
     if (-not $VsInstall) { throw "No Visual Studio installation found." }
 
-    # Check if C++ desktop workload is installed
-    $HasCpp = & $VsWhere -latest -requires Microsoft.VisualStudio.Workload.NativeDesktop -property installationPath 2>$null
+    $HasCpp = & $VsWhere -products * -latest -requires Microsoft.VisualStudio.Workload.NativeDesktop -property installationPath 2>$null
     if (-not $HasCpp) {
+        if ($env:CI -eq "true") {
+            throw "Visual Studio C++ desktop workload is unavailable on this CI runner; refusing to modify the hosted runner."
+        }
         Write-Host "  C++ desktop workload not found. Installing..." -ForegroundColor Yellow
         $VsInstaller = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vs_installer.exe"
         if (-not (Test-Path $VsInstaller)) {
@@ -284,8 +293,17 @@ if (-not (Test-Path $CwCorePath)) {
 }
 
 Write-Host "  Publishing RpfPatcher (self-contained win-x64)..."
-dotnet publish $RpfPatcherProj -c Release -r win-x64 --self-contained true -o $RpfPatcherDir --nologo
+$RpfPublishDir = Join-Path $TempDir "rpfpatcher_publish"
+if (Test-Path $RpfPublishDir) { Remove-Item -Recurse -Force $RpfPublishDir }
+New-Item -ItemType Directory -Path $RpfPublishDir | Out-Null
+
+# Never publish into the project source directory. When the output path equals
+# the project directory, the SDK adds it to DefaultItemExcludes and can omit
+# Program.cs during evaluation, producing CS5001 (no suitable Main method).
+dotnet publish $RpfPatcherProj -c Release -r win-x64 --self-contained true -o $RpfPublishDir --nologo
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for RpfPatcher" }
+Copy-Item (Join-Path $RpfPublishDir "*") -Destination $RpfPatcherDir -Recurse -Force
+if (-not (Test-Path $RpfPatcherExe)) { throw "RpfPatcher.exe was not created after publish" }
 Write-Host "  Saved to $RpfPatcherDir" -ForegroundColor Green
 
 # ---------------------------------------------------------------------
