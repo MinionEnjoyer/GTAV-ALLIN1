@@ -69,6 +69,34 @@ Run `uninstall.bat` to remove all ALLIN1 files, unpatch `dlclist.xml`, and clean
 
 Run `update.bat` to pull the latest version and redeploy.
 
+The desktop manager also has an **About** page with the project goal, creator
+credit, support link, and an explicit **Check for updates** action backed by
+GitHub Releases. Update checks are never performed silently. Each successful
+install writes `scripts/ALLIN1.version`, allowing the manager to distinguish
+its own version from the deployed mod client. The in-game GBAY About and
+Diagnostics pages display the C# assembly version as well.
+
+Updates can be packaged with a `checksums.json` manifest and applied through
+`allin1 apply-update`. Every declared file is SHA-256 verified in a staging
+directory before deployment; replaced files are retained for
+`allin1 rollback-update`.
+
+### Reliability and profiles
+
+The manager's **Health check** verifies the game executable, ScriptHook
+dependencies, RPF loader, duplicate/legacy ALLIN1 files, installed version,
+and optional file checksums. Named profiles preserve complete traffic,
+keybind, performance, and accessibility configurations.
+
+An unclean game shutdown leaves `ALLIN1_session.lock`. On the next session the
+client enters safe mode, suppressing traffic spawning and the floor-garage
+initializer while leaving GBAY diagnostics available. A clean SHVDN shutdown
+removes the marker. Set `script.safe_mode = true` to force this behavior.
+
+Garage saves can be repaired with `allin1 repair-garage`. Valid vehicles are
+retained, duplicate or invalid slots are reassigned, and rejected records are
+written to a quarantine JSON file instead of being discarded.
+
 ---
 
 ## Configuration
@@ -144,6 +172,11 @@ Opening GBAY now presents an animated PHAT avatar loading screen, followed by
 short cross-fades when moving between shop, garage, weapon, and customization
 screens.
 
+Vehicle and weapon catalogs support **Y** ownership filters (all, owned, or
+available) and **X** text search using GTA's on-screen keyboard. The garage view
+also exposes **Y — Recover**, which saves live vehicle state, clears spawned
+garage entities and transition locks, and safely returns the player outside.
+
 ### Character Customization
 
 The desktop manager's **Character customization** window provides three tabs:
@@ -177,6 +210,16 @@ allin1 diagnostics --scripts-dir "C:\Games\GTAV\scripts" -o diagnostics.zip
 The bundle contains available ALLIN1 configuration, structured logs, managed
 save files, smoke reports, and a checksum manifest. GTA installation paths and
 home-directory usernames are redacted before files enter the archive.
+
+Preview captures can be checked before packaging with:
+
+```text
+allin1 audit-previews "C:\Games\GTAV\scripts\previews"
+```
+
+The audit rejects corrupt, undersized, nearly transparent, blank/low-contrast,
+or badly framed transparent previews. Installation applies the same validation
+before merging captures into the preview DLC.
 
 ### Runtime optimization
 

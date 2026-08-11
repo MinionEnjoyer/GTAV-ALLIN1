@@ -18,6 +18,9 @@ namespace ALLIN1
         internal bool PageRight;
         internal bool CategoryPrev;
         internal bool CategoryNext;
+        internal bool FilterNext;
+        internal bool Search;
+        internal bool Favorite;
         internal float MouseX;         // 0.0 - 1.0
         internal float MouseY;         // 0.0 - 1.0
         internal bool MouseClick;
@@ -68,6 +71,12 @@ namespace ALLIN1
                 input.CategoryPrev = true;
             if (Game.IsControlJustPressed(Control.FrontendRt))
                 input.CategoryNext = true;
+            if (Game.IsControlJustPressed(Control.FrontendY))
+                input.FilterNext = true;
+            if (Game.IsControlJustPressed(Control.FrontendX))
+                input.Search = true;
+            if (Game.IsControlJustPressed(Control.FrontendRdown))
+                input.Favorite = true;
 
             return input;
         }
@@ -99,6 +108,9 @@ namespace ALLIN1
             Game.EnableControlThisFrame(Control.FrontendRb);
             Game.EnableControlThisFrame(Control.FrontendLt);
             Game.EnableControlThisFrame(Control.FrontendRt);
+            Game.EnableControlThisFrame(Control.FrontendY);
+            Game.EnableControlThisFrame(Control.FrontendX);
+            Game.EnableControlThisFrame(Control.FrontendRdown);
 
             // Re-enable cursor controls
             Game.EnableControlThisFrame(Control.CursorX);

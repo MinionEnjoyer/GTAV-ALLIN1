@@ -30,6 +30,7 @@ from allin1 import asi_loader
 from allin1.config import Config
 from allin1.detector import detect_gta_path, validate_gta_path
 from allin1.vehicles.database import VehicleDatabase
+from allin1.versioning import VERSION_FILE, write_installed_version
 
 log = logging.getLogger("allin1.installer")
 
@@ -149,7 +150,9 @@ def uninstall(config: Config) -> list[Path]:
                    "ALLIN1_client.log", "ALLIN1_client.log.1",
                    "ALLIN1_client.log.2", "ALLIN1_client.log.3",
                    "ALLIN1_garage.json", "ALLIN1_garages.json",
-                   "ALLIN1_garages.json.bak", "ALLIN1.ini"):
+                   "ALLIN1_garages.json.bak", "ALLIN1_gbay_preferences.json",
+                   "ALLIN1_gbay_preferences.json.bak", "ALLIN1_session.lock",
+                   "ALLIN1_garage.quarantine.json", VERSION_FILE, "ALLIN1.ini"):
         fpath = scripts_dir / fname
         if fpath.exists():
             fpath.unlink()
@@ -265,6 +268,7 @@ def _deploy_script(gta_path: Path) -> bool:
     scripts_dir.mkdir(exist_ok=True)
     dest = scripts_dir / DLL_FILENAME
     _copy_atomic(src, dest)
+    write_installed_version(scripts_dir)
     log.info("Deployed %s → %s", DLL_FILENAME, dest)
 
     # Deploy LemonUI dependency (required by GBAY menu system)

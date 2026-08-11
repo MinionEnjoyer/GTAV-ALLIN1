@@ -177,6 +177,9 @@ namespace ALLIN1
             _enableLogging = enableLogging;
         }
 
+        internal static bool IsInGarage => _isPlayerInGarage;
+        internal static bool TransitionInProgress => _transitionInProgress;
+
         internal static void Initialize()
         {
             if (_initialized)
@@ -226,6 +229,36 @@ namespace ALLIN1
 
         internal static bool IsPlayerInGarage => _isPlayerInGarage;
         internal static bool IsTransitionInProgress => _transitionInProgress;
+
+        /// <summary>Emergency escape for a stuck interior or transition.</summary>
+        internal static void EmergencyRecover()
+        {
+            try
+            {
+                UpdateStoredFromLive();
+                FloorGarageUpdateStoredFromLive();
+                for (int i = 0; i < _handles.Length; i++)
+                {
+                    if (_handles[i] != null && _handles[i].Exists()) _handles[i].Delete();
+                    _handles[i] = null;
+                }
+                for (int i = 0; i < _floorGarageHandles.Length; i++)
+                {
+                    if (_floorGarageHandles[i] != null && _floorGarageHandles[i].Exists())
+                        _floorGarageHandles[i].Delete();
+                    _floorGarageHandles[i] = null;
+                }
+                RecoverTransition("EmergencyRecover", PED_EXIT_DEST, PED_EXIT_DEST_HEADING);
+                Log("EmergencyRecover: player returned outside and garage state reset");
+                ClientLog.Warn("Garage", "emergency_recovery_completed");
+            }
+            catch (Exception ex)
+            {
+                LogException("EmergencyRecover", ex);
+                RecoverTransition("EmergencyRecover.Fallback", PED_EXIT_DEST, PED_EXIT_DEST_HEADING);
+            }
+            finally { _transitionInProgress = false; }
+        }
 
         /// <summary>
         /// Called every frame from GbayShop.OnTick. Handles entrance/exit
@@ -375,6 +408,15 @@ namespace ALLIN1
             if (_stored.TryGetValue(key, out var list))
                 return list;
             return new List<StoredVehicle>();
+        }
+
+        internal static bool IsVehicleOwned(string model)
+        {
+            foreach (StoredVehicle vehicle in GetStoredVehicles())
+                if (string.Equals(vehicle.Model, model, StringComparison.OrdinalIgnoreCase)) return true;
+            foreach (StoredVehicle vehicle in GetFloorGarageStoredVehicles())
+                if (string.Equals(vehicle.Model, model, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
         }
 
         /// <summary>

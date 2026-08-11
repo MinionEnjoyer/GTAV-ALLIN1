@@ -22,7 +22,7 @@ namespace ALLIN1
         //  Constants                                                          //
         // ------------------------------------------------------------------ //
 
-        private const int HOLD_THRESHOLD_MS = 300;
+        private int _holdThresholdMs = 350;
         private const float NEARBY_RADIUS = 3.5f;
         private const float MAX_DIST_WHILE_SELECTING = 5f;
         private const int EXECUTE_TIMEOUT_MS = 5000;
@@ -164,7 +164,7 @@ namespace ALLIN1
                 _holdStart = now;
 
             int elapsed = now - _holdStart;
-            if (elapsed < HOLD_THRESHOLD_MS)
+            if (elapsed < _holdThresholdMs)
                 return; // Still under threshold — let normal F behavior proceed
 
             // Threshold reached — try to find a vehicle and enter Selecting
@@ -643,12 +643,16 @@ namespace ALLIN1
                 foreach (string raw in File.ReadAllLines(path))
                 {
                     string line = raw.Trim();
-                    if (!line.StartsWith("seat_selector_enabled", StringComparison.OrdinalIgnoreCase))
-                        continue;
                     int eq = line.IndexOf('=');
-                    if (eq >= 0)
+                    if (eq < 0) continue;
+                    string key = line.Substring(0, eq).Trim();
+                    string value = line.Substring(eq + 1).Trim();
+                    if (key.Equals("seat_selector_enabled", StringComparison.OrdinalIgnoreCase))
                         _enabled = line.Substring(eq + 1).Trim().Equals(
                             "true", StringComparison.OrdinalIgnoreCase);
+                    else if (key.Equals("hold_duration_ms", StringComparison.OrdinalIgnoreCase)
+                        && int.TryParse(value, out int duration))
+                        _holdThresholdMs = Math.Max(100, Math.Min(2000, duration));
                 }
             }
             catch (Exception ex)

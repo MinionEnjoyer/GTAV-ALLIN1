@@ -23,6 +23,8 @@ namespace ALLIN1
         GarageView,
         GarageCustomize,
         WeaponBrowser,
+        Diagnostics,
+        About,
     }
 
     internal struct VehicleCard
@@ -170,6 +172,7 @@ namespace ALLIN1
         private int _stateStartedAt;
         private const int LOADING_DURATION_MS = 850;
         private const int TRANSITION_DURATION_MS = 180;
+        internal static bool ReducedMotion;
 
         // Top menu
         private int _topMenuIndex;
@@ -185,6 +188,9 @@ namespace ALLIN1
         private int _hoverTab = -1;
         private readonly List<VehicleCard> _filtered = new List<VehicleCard>();
         private readonly HashSet<string> _activeDicts = new HashSet<string>();
+        private int _vehicleOwnershipFilter;
+        private string _vehicleSearch = "";
+        private bool _vehicleKeyboardActive;
 
         // Delivery confirm
         private string _pendingModel;
@@ -203,6 +209,9 @@ namespace ALLIN1
         private int _weaponTabScrollOffset;
         private int _weaponHoverTab = -1;
         private readonly List<WeaponCard> _weaponFiltered = new List<WeaponCard>();
+        private int _weaponOwnershipFilter; // 0 all, 1 owned, 2 available
+        private string _weaponSearch = "";
+        private bool _weaponKeyboardActive;
 
         // Weapon ammo confirm
         private bool _ammoConfirmPending;
@@ -336,6 +345,12 @@ namespace ALLIN1
                 case BrowserState.WeaponBrowser:
                     DrawWeaponBrowser(input);
                     break;
+                case BrowserState.Diagnostics:
+                    DrawDiagnostics(input);
+                    break;
+                case BrowserState.About:
+                    DrawAbout(input);
+                    break;
             }
 
             DrawTransition();
@@ -359,7 +374,7 @@ namespace ALLIN1
         private void DrawTransition()
         {
             int elapsed = Game.GameTime - _stateStartedAt;
-            if (_state == BrowserState.Loading || elapsed >= TRANSITION_DURATION_MS) return;
+            if (ReducedMotion || _state == BrowserState.Loading || elapsed >= TRANSITION_DURATION_MS) return;
             int alpha = (int)(150f * (1f - elapsed / (float)TRANSITION_DURATION_MS));
             GbayRenderer.DrawRect(0.5f, 0.5f, 1f, 1f, Color.FromArgb(Math.Max(0, alpha), 8, 20, 13));
         }
@@ -372,17 +387,17 @@ namespace ALLIN1
         {
             // Background panel
             float panelW = 0.40f;
-            float panelH = 0.40f;
+            float panelH = 0.72f;
             GbayRenderer.DrawRect(BROWSER_CX, 0.5f, panelW, panelH,
                 GbayRenderer.ModalBg);
 
             // Logo
-            GbayRenderer.DrawLogo(BROWSER_CX, 0.36f, 0.12f);
+            GbayRenderer.DrawLogo(BROWSER_CX, 0.20f, 0.10f);
 
             // Buttons
-            string[] labels = { "Vehicles", "Weapons", "My Garage" };
-            bool[] enabled = { true, true, true };
-            float startY = 0.42f;
+            string[] labels = { "Vehicles", "Weapons", "My Garage", "Diagnostics", "About" };
+            bool[] enabled = { true, true, true, true, true };
+            float startY = 0.27f;
 
             _topMenuHover = -1;
 
@@ -465,6 +480,14 @@ namespace ALLIN1
                     _state = BrowserState.GarageView;
                     _garageVehicleIdx = 0;
                 }
+                else if (activateIdx == 3)
+                {
+                    _state = BrowserState.Diagnostics;
+                }
+                else if (activateIdx == 4)
+                {
+                    _state = BrowserState.About;
+                }
             }
 
             if (input.Back || input.MouseRightClick)
@@ -474,12 +497,62 @@ namespace ALLIN1
             }
         }
 
+        private void DrawInfoPanel(string title, string[] lines, FrameInput input)
+        {
+            GbayRenderer.DrawRect(BROWSER_CX, 0.5f, 0.64f, 0.72f, GbayRenderer.ModalBg);
+            GbayRenderer.DrawLogo(BROWSER_CX, 0.20f, 0.10f);
+            GbayRenderer.DrawText(title, BROWSER_CX, 0.275f, 0.55f,
+                GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED, true);
+            float y = 0.35f;
+            foreach (string line in lines)
+            {
+                GbayRenderer.DrawText(line, BROWSER_CX, y, 0.37f,
+                    GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
+                y += 0.055f;
+            }
+            GbayRenderer.DrawText("BACK  Return to GBAY", BROWSER_CX, 0.80f, 0.32f,
+                GbayRenderer.TextDim, GbayRenderer.FONT_CHALET, true);
+            if (input.Back || input.MouseRightClick)
+            {
+                GbayRenderer.PlayBack();
+                _state = BrowserState.TopMenu;
+            }
+        }
+
+        private void DrawDiagnostics(FrameInput input)
+        {
+            string version = typeof(GbayBrowser).Assembly.GetName().Version?.ToString(3) ?? "unknown";
+            DrawInfoPanel("DIAGNOSTICS", new[] {
+                "ALLIN1 client " + version,
+                "Session time: " + (Game.GameTime / 1000) + " seconds",
+                "Garage: " + (GarageManager.IsInGarage ? "inside" : "outside"),
+                "Traffic: " + TrafficSpawner.ManagedVehicleCount + " managed / " +
+                    Math.Round(TrafficSpawner.SmoothedFps) + " FPS" +
+                    (TrafficSpawner.IsThrottled ? " (adaptive throttle)" : ""),
+                "Safe mode: " + (ClientWatchdog.SafeMode ? "ACTIVE" : "off"),
+                "Detailed events are written to ALLIN1_client.log",
+                "Use the desktop manager to export a redacted support bundle."
+            }, input);
+        }
+
+        private void DrawAbout(FrameInput input)
+        {
+            string version = typeof(GbayBrowser).Assembly.GetName().Version?.ToString(3) ?? "unknown";
+            DrawInfoPanel("ABOUT ALLIN1", new[] {
+                "Version " + version,
+                "GTA Online DLC content in Story Mode, in one click.",
+                "Created and maintained by MinionEnjoyer",
+                "buymeacoffee.com/minionenjoyer"
+            }, input);
+        }
+
         // ------------------------------------------------------------------ //
         //  Vehicle Browser                                                    //
         // ------------------------------------------------------------------ //
 
         private void DrawBrowser(FrameInput input)
         {
+            UpdateVehicleSearchKeyboard();
             float aspect = GbayRenderer.GetAspectRatio();
             float cardW = CARD_H / aspect;
 
@@ -696,7 +769,11 @@ namespace ALLIN1
                 0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
 
             // Control hints
-            string hints = "[Q/E] Page   [Z/X] Category   [Enter] Buy   [Esc] Back";
+            string filter = _vehicleOwnershipFilter == 1 ? "OWNED"
+                : _vehicleOwnershipFilter == 2 ? "AVAILABLE"
+                : _vehicleOwnershipFilter == 3 ? "FAVORITES" : "ALL";
+            string query = _vehicleSearch.Length > 0 ? $" Search: {_vehicleSearch}" : "";
+            string hints = $"[Y] {filter}   [X] Search{query}   [R3] Favorite   [Q/E] Page";
             GbayRenderer.DrawText(hints, BROWSER_RIGHT - 0.01f, FOOTER_Y + 0.012f,
                 0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED,
                 false, false, true);
@@ -708,6 +785,28 @@ namespace ALLIN1
             {
                 GbayRenderer.PlayBack();
                 _state = BrowserState.TopMenu;
+                return;
+            }
+
+            if (input.FilterNext)
+            {
+                _vehicleOwnershipFilter = (_vehicleOwnershipFilter + 1) % 4;
+                _currentPage = 0; _selectedCard = 0;
+                RebuildFilteredList(); GbayRenderer.PlayNav(); return;
+            }
+            if (input.Favorite && _filtered.Count > 0)
+            {
+                int favoriteIdx = _currentPage * PAGE_SIZE + _selectedCard;
+                if (favoriteIdx < _filtered.Count)
+                    GbayPreferences.ToggleVehicle(_filtered[favoriteIdx].Model);
+                if (_vehicleOwnershipFilter == 3) RebuildFilteredList();
+                GbayRenderer.PlayNav(); return;
+            }
+            if (input.Search && !_vehicleKeyboardActive)
+            {
+                Function.Call(Hash.DISPLAY_ONSCREEN_KEYBOARD, 0, "FMMC_KEY_TIP8", "",
+                    _vehicleSearch, "", "", "", 32);
+                _vehicleKeyboardActive = true;
                 return;
             }
 
@@ -887,6 +986,7 @@ namespace ALLIN1
         private void OpenPreview(VehicleCard card)
         {
             GbayRenderer.PlaySelect();
+            GbayPreferences.RecordVehicle(card.Model);
 
             _previewModel = card.Model;
             _previewDisplayName = card.DisplayName;
@@ -1179,6 +1279,15 @@ namespace ALLIN1
                 return;
             }
 
+            if (input.FilterNext)
+            {
+                GarageManager.EmergencyRecover();
+                GbayRenderer.PlaySelect();
+                GTA.UI.Screen.ShowSubtitle("~g~Garage recovery complete. You were moved outside.", 3500);
+                _state = BrowserState.TopMenu;
+                return;
+            }
+
             // Back
             if (input.Back || input.MouseRightClick)
             {
@@ -1211,7 +1320,7 @@ namespace ALLIN1
                 return;
             }
 
-            GbayRenderer.DrawText("[Enter] Remove   [Q] Customize   [Esc] Back",
+            GbayRenderer.DrawText("[Enter] Remove   [Q] Customize   [Y] Recover   [Esc] Back",
                 BROWSER_LEFT + 0.02f, FOOTER_Y + 0.012f, 0.24f, GbayRenderer.TextDim,
                 GbayRenderer.FONT_CONDENSED);
         }
@@ -1222,6 +1331,7 @@ namespace ALLIN1
 
         private void DrawWeaponBrowser(FrameInput input)
         {
+            UpdateWeaponSearchKeyboard();
             float aspect = GbayRenderer.GetAspectRatio();
             float cardW = CARD_H / aspect;
 
@@ -1465,7 +1575,11 @@ namespace ALLIN1
                 GbayRenderer.DrawText(pageText, BROWSER_LEFT + 0.02f, FOOTER_Y + 0.012f,
                     0.32f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
 
-                string hints = "[Q/E] Page   [Z/X] Category   [Enter] Buy   [Esc] Back";
+                string filter = _weaponOwnershipFilter == 1 ? "OWNED"
+                    : _weaponOwnershipFilter == 2 ? "AVAILABLE"
+                    : _weaponOwnershipFilter == 3 ? "FAVORITES" : "ALL";
+                string query = _weaponSearch.Length > 0 ? $" Search: {_weaponSearch}" : "";
+                string hints = $"[Y] {filter}   [X] Search{query}   [R3] Favorite   [Q/E] Page";
                 GbayRenderer.DrawText(hints, BROWSER_RIGHT - 0.01f, FOOTER_Y + 0.012f,
                     0.28f, GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED,
                     false, false, true);
@@ -1502,6 +1616,28 @@ namespace ALLIN1
             {
                 GbayRenderer.PlayBack();
                 _state = BrowserState.TopMenu;
+                return;
+            }
+
+            if (input.FilterNext)
+            {
+                _weaponOwnershipFilter = (_weaponOwnershipFilter + 1) % 4;
+                _weaponPage = 0; _weaponSelectedCard = 0;
+                RebuildWeaponFilteredList(); GbayRenderer.PlayNav(); return;
+            }
+            if (input.Favorite && _weaponFiltered.Count > 0)
+            {
+                int favoriteIdx = _weaponPage * PAGE_SIZE + _weaponSelectedCard;
+                if (favoriteIdx < _weaponFiltered.Count)
+                    GbayPreferences.ToggleWeapon(_weaponFiltered[favoriteIdx].WeaponName);
+                if (_weaponOwnershipFilter == 3) RebuildWeaponFilteredList();
+                GbayRenderer.PlayNav(); return;
+            }
+            if (input.Search && !_weaponKeyboardActive)
+            {
+                Function.Call(Hash.DISPLAY_ONSCREEN_KEYBOARD, 0, "FMMC_KEY_TIP8", "",
+                    _weaponSearch, "", "", "", 32);
+                _weaponKeyboardActive = true;
                 return;
             }
 
@@ -1647,6 +1783,14 @@ namespace ALLIN1
                 bool owned = Function.Call<bool>(
                     (Hash)0x8DECB02F88F428BC, player, weaponHash, false);  // HAS_PED_GOT_WEAPON
 
+                if (_weaponOwnershipFilter == 1 && !owned) continue;
+                if (_weaponOwnershipFilter == 2 && owned) continue;
+                if (_weaponOwnershipFilter == 3 && !GbayPreferences.IsWeaponFavorite(weaponName)) continue;
+                if (_weaponSearch.Length > 0 &&
+                    displayName.IndexOf(_weaponSearch, StringComparison.OrdinalIgnoreCase) < 0 &&
+                    weaponName.IndexOf(_weaponSearch, StringComparison.OrdinalIgnoreCase) < 0)
+                    continue;
+
                 _weaponFiltered.Add(new WeaponCard
                 {
                     WeaponName = weaponName,
@@ -1658,6 +1802,18 @@ namespace ALLIN1
             }
 
             _weaponTotalPages = Math.Max(1, (_weaponFiltered.Count + PAGE_SIZE - 1) / PAGE_SIZE);
+        }
+
+        private void UpdateWeaponSearchKeyboard()
+        {
+            if (!_weaponKeyboardActive) return;
+            int status = Function.Call<int>(Hash.UPDATE_ONSCREEN_KEYBOARD);
+            if (status == 0) return;
+            if (status == 1)
+                _weaponSearch = Function.Call<string>(Hash.GET_ONSCREEN_KEYBOARD_RESULT) ?? "";
+            _weaponKeyboardActive = false;
+            _weaponPage = 0; _weaponSelectedCard = 0;
+            RebuildWeaponFilteredList();
         }
 
         private static Color GetWeaponCategoryColor(string category, bool bright)
@@ -1757,6 +1913,14 @@ namespace ALLIN1
             {
                 string displayName = VehicleList.DisplayNames.ContainsKey(model)
                     ? VehicleList.DisplayNames[model] : model;
+                bool owned = GarageManager.IsVehicleOwned(model);
+                if (_vehicleOwnershipFilter == 1 && !owned) continue;
+                if (_vehicleOwnershipFilter == 2 && owned) continue;
+                if (_vehicleOwnershipFilter == 3 && !GbayPreferences.IsVehicleFavorite(model)) continue;
+                if (_vehicleSearch.Length > 0 &&
+                    displayName.IndexOf(_vehicleSearch, StringComparison.OrdinalIgnoreCase) < 0 &&
+                    model.IndexOf(_vehicleSearch, StringComparison.OrdinalIgnoreCase) < 0)
+                    continue;
 
                 // Split display name into manufacturer and vehicle name
                 string mfg = "";
@@ -1783,6 +1947,18 @@ namespace ALLIN1
 
             _totalPages = Math.Max(1, (_filtered.Count + PAGE_SIZE - 1) / PAGE_SIZE);
             UpdateActiveDicts();
+        }
+
+        private void UpdateVehicleSearchKeyboard()
+        {
+            if (!_vehicleKeyboardActive) return;
+            int status = Function.Call<int>(Hash.UPDATE_ONSCREEN_KEYBOARD);
+            if (status == 0) return;
+            if (status == 1)
+                _vehicleSearch = Function.Call<string>(Hash.GET_ONSCREEN_KEYBOARD_RESULT) ?? "";
+            _vehicleKeyboardActive = false;
+            _currentPage = 0; _selectedCard = 0;
+            RebuildFilteredList();
         }
 
         private void UpdateActiveDicts()

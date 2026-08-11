@@ -1,7 +1,10 @@
 """Whole-repository contracts connecting data, generated code, and releases."""
 
 import json
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 from pathlib import Path
 
 from allin1.config import load_prices
@@ -169,3 +172,15 @@ def test_runtime_save_files_emit_backward_compatible_schema_markers():
     inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()
     assert garage.count('\\"_schema_v2\\": []') >= 2
     assert "presets" in inventory
+
+
+def test_gbay_search_ownership_and_emergency_recovery_contracts():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    garage = (ROOT / "script/src/GarageManager.cs").read_text()
+    input_source = (ROOT / "script/src/GbayInput.cs").read_text()
+    assert "_vehicleOwnershipFilter" in browser and "_weaponOwnershipFilter" in browser
+    assert "DISPLAY_ONSCREEN_KEYBOARD" in browser
+    assert "IsVehicleOwned(model)" in browser
+    assert "EmergencyRecover" in garage
+    assert "emergency_recovery_completed" in garage
+    assert "FrontendY" in input_source and "FrontendX" in input_source

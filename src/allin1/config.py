@@ -35,6 +35,8 @@ class TrafficConfig:
     scan_radius: float = 200.0
     minimum_replace_distance: float = 50.0
     replacement_chance: float = 0.30
+    adaptive_performance: bool = True
+    minimum_fps: int = 40
 
 
 @dataclass
@@ -52,6 +54,11 @@ class ScriptConfig:
     night_vision_key: str = "N"
     preview_capture_key: str = "F10"
     seat_selector_enabled: bool = True
+    safe_mode: bool = False
+    ui_scale: float = 1.0
+    reduced_motion: bool = False
+    colorblind_mode: bool = False
+    hold_duration_ms: int = 350
 
 
 @dataclass
@@ -122,6 +129,8 @@ class Config:
             f"scan_radius = {self.traffic.scan_radius}\n"
             f"minimum_replace_distance = {self.traffic.minimum_replace_distance}\n"
             f"replacement_chance = {self.traffic.replacement_chance}\n\n"
+            f"adaptive_performance = {boolean(self.traffic.adaptive_performance)}\n"
+            f"minimum_fps = {self.traffic.minimum_fps}\n\n"
             "[vehicles]\n"
             f"enable_all = {boolean(self.vehicles.enable_all)}\n"
             f"disabled_classes = {string_list(self.vehicles.disabled_classes)}\n"
@@ -133,6 +142,11 @@ class Config:
             f"night_vision_key = {quote(self.script.night_vision_key)}\n"
             f"preview_capture_key = {quote(self.script.preview_capture_key)}\n"
             f"seat_selector_enabled = {boolean(self.script.seat_selector_enabled)}\n"
+            f"safe_mode = {boolean(self.script.safe_mode)}\n"
+            f"ui_scale = {self.script.ui_scale}\n"
+            f"reduced_motion = {boolean(self.script.reduced_motion)}\n"
+            f"colorblind_mode = {boolean(self.script.colorblind_mode)}\n"
+            f"hold_duration_ms = {self.script.hold_duration_ms}\n"
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
@@ -170,6 +184,12 @@ class Config:
             raise ValueError("traffic cooldowns must be at least 250 ms")
         if traffic.scan_radius <= traffic.minimum_replace_distance:
             raise ValueError("traffic.scan_radius must exceed minimum_replace_distance")
+        if not 20 <= traffic.minimum_fps <= 120:
+            raise ValueError("traffic.minimum_fps must be between 20 and 120")
+        if not 0.75 <= self.script.ui_scale <= 1.5:
+            raise ValueError("script.ui_scale must be between 0.75 and 1.5")
+        if not 100 <= self.script.hold_duration_ms <= 2000:
+            raise ValueError("script.hold_duration_ms must be between 100 and 2000")
 
 
 def load_prices(path: Path) -> dict[str, int]:

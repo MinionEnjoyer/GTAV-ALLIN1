@@ -28,6 +28,10 @@ namespace ALLIN1
         private bool _garageDebug;
         private bool _enableLogging = true;
         private bool _initialized;
+        private bool _safeMode;
+        private bool _reducedMotion;
+        private bool _colorblindMode;
+        private float _uiScale = 1f;
 
         // Night vision state
         internal static bool NightVisionOwned;
@@ -79,6 +83,7 @@ namespace ALLIN1
             _freeMode = false;
             _garageDebug = false;
             _enableLogging = true;
+            _safeMode = false;
 
             if (!File.Exists(CONFIG_PATH))
                 return;
@@ -133,6 +138,22 @@ namespace ALLIN1
                     else if (key == "enable_logging")
                     {
                         _enableLogging = valLower == "true";
+                    }
+                    else if (key == "safe_mode")
+                    {
+                        _safeMode = valLower == "true";
+                    }
+                    else if (key == "reduced_motion")
+                    {
+                        _reducedMotion = valLower == "true";
+                    }
+                    else if (key == "colorblind_mode")
+                    {
+                        _colorblindMode = valLower == "true";
+                    }
+                    else if (key == "ui_scale" && float.TryParse(val, out float scale))
+                    {
+                        _uiScale = Math.Max(0.75f, Math.Min(1.5f, scale));
                     }
                     else if (key == "spawner_debug")
                     {
@@ -190,6 +211,10 @@ namespace ALLIN1
         {
             LoadConfig();
             ClientLog.Configure(_enableLogging);
+            ClientWatchdog.Configure(_safeMode);
+            GbayBrowser.ReducedMotion = _reducedMotion;
+            GbayRenderer.ColorblindMode = _colorblindMode;
+            GbayRenderer.UiScale = _uiScale;
             LoadGearPrices();
             Log($"=== GBAY Initialized: key={_openKey} freeMode={_freeMode} garageDebug={_garageDebug} ===");
 
@@ -197,7 +222,7 @@ namespace ALLIN1
             {
                 GarageManager.Configure(_garageDebug, _enableLogging);
                 GarageManager.Initialize();
-                GarageManager.InitializeFloorGarage();
+                if (!ClientWatchdog.SafeMode) GarageManager.InitializeFloorGarage();
                 Log("GarageManager initialized (garage + floor garage)");
             }
             catch (Exception ex)
@@ -355,6 +380,7 @@ namespace ALLIN1
 
         internal void ExecuteGiveWeapon(string weaponName, int price)
         {
+            GbayPreferences.RecordWeapon(weaponName);
             Ped player = Game.Player.Character;
             Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
 
