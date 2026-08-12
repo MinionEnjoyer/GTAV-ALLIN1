@@ -184,13 +184,13 @@ namespace ALLIN1
                 DavisCustomizationLoad();
                 _davisVehicleBlip = World.CreateBlip(DAVIS_VEHICLE_ENTRANCE_POS);
                 _davisVehicleBlip.Sprite = BlipSprite.Garage;
-                _davisVehicleBlip.Color = BlipColor.Green;
+                _davisVehicleBlip.Color = CharacterBlipColor();
                 _davisVehicleBlip.Name = "ALLIN1 Davis Auto Shop (Vehicle)";
                 _davisVehicleBlip.IsShortRange = true;
 
                 _davisPedBlip = World.CreateBlip(DAVIS_PED_ENTRANCE_POS);
                 _davisPedBlip.Sprite = BlipSprite.Garage;
-                _davisPedBlip.Color = BlipColor.Green;
+                _davisPedBlip.Color = CharacterBlipColor();
                 _davisPedBlip.Name = "ALLIN1 Davis Auto Shop (Pedestrian)";
                 _davisPedBlip.IsShortRange = true;
 
@@ -275,6 +275,7 @@ namespace ALLIN1
             var stored = new StoredVehicle
             {
                 Model = model,
+                ModelHash = Game.GenerateHash(model),
                 Slot = slotIndex,
                 Color1 = color1,
                 Color2 = color2,
@@ -323,7 +324,7 @@ namespace ALLIN1
 
             Ped player = Game.Player.Character;
             if (player == null || player.IsDead) return;
-            Color markerColor = Color.FromArgb(128, 0, 200, 0);
+            Color markerColor = CharacterMarkerColor();
 
             if (!_isPlayerInDavisGarage)
             {
@@ -430,7 +431,7 @@ namespace ALLIN1
                         return;
                     }
                     string modelName = ResolveDavisVehicleName(rideIn);
-                    if (VehicleList.GetSizeTier(modelName) == 2)
+                    if (GetGarageSizeTier(modelName, rideIn.Model.Hash) == 2)
                     {
                         GTA.UI.Screen.ShowSubtitle(
                             "~r~That vehicle is too large for the Auto Shop.", 3000);
@@ -635,7 +636,7 @@ namespace ALLIN1
             try
             {
                 ParkingSlot slot = DavisGarageSlots[stored.Slot];
-                Model model = new Model(stored.Model);
+                Model model = GetStoredModel(stored);
                 model.Request(10000);
                 if (!model.IsLoaded)
                 {
@@ -868,6 +869,7 @@ namespace ALLIN1
         {
             sb.Append("    { ");
             sb.Append($"\"model\": \"{EscapeJson(stored.Model)}\", ");
+            sb.Append($"\"modelHash\": {GetStoredModelHash(stored)}, ");
             sb.Append($"\"slot\": {stored.Slot}, ");
             sb.Append($"\"color1\": {stored.Color1}, ");
             sb.Append($"\"color2\": {stored.Color2}");

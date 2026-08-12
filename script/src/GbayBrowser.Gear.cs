@@ -14,6 +14,7 @@ namespace ALLIN1
         internal string Category;
         internal int Price;
         internal bool Owned;
+        internal bool Equipped;
     }
 
     internal partial class GbayBrowser
@@ -44,6 +45,7 @@ namespace ALLIN1
         private int _gearSelectedCard;
         private int _gearHoverCard = -1;
         private int _gearHoverTab = -1;
+        private int _gearHoverUnequipCard = -1;
 
         private void OpenGearBrowser()
         {
@@ -74,7 +76,7 @@ namespace ALLIN1
             DrawPager(input, _gearPage, _gearTotalPages, _gearFiltered.Count,
                 out previousClicked, out nextClicked);
             bool backClicked = DrawCenteredBackButton(input);
-            DrawControlHint("Z/X CATEGORY   ENTER PURCHASE   LB/RB PAGES");
+            DrawControlHint("ENTER BUY/EQUIP   Y UNEQUIP   LB/RB PAGES");
 
             HandleGearInput(input, previousClicked, nextClicked, backClicked);
         }
@@ -136,6 +138,7 @@ namespace ALLIN1
             int start = _gearPage * PAGE_SIZE;
             int count = Math.Min(PAGE_SIZE, _gearFiltered.Count - start);
             _gearHoverCard = -1;
+            _gearHoverUnequipCard = -1;
 
             for (int i = 0; i < count; i++)
             {
@@ -149,14 +152,21 @@ namespace ALLIN1
                 bool hover = GbayRenderer.HitTest(
                     input.MouseX, input.MouseY, cx, cy, cardW, CARD_H);
                 if (hover) _gearHoverCard = i;
-                DrawGearCard(_gearFiltered[start + i], left, top, cardW,
-                    selected, hover);
+                GearCard card = _gearFiltered[start + i];
+                float unequipX = left + cardW - 0.031f;
+                float unequipY = top + 0.018f;
+                bool unequipHover = card.Equipped && GbayRenderer.HitTest(
+                    input.MouseX, input.MouseY, unequipX, unequipY,
+                    0.054f, 0.026f);
+                if (unequipHover) _gearHoverUnequipCard = i;
+                DrawGearCard(card, left, top, cardW,
+                    selected, hover, unequipHover);
             }
         }
 
         private void DrawGearCard(
             GearCard card, float left, float top, float cardW,
-            bool selected, bool hovered)
+            bool selected, bool hovered, bool unequipHovered)
         {
             float cx = left + cardW / 2f;
             float cy = top + CARD_H / 2f;
@@ -184,12 +194,28 @@ namespace ALLIN1
                     GbayRenderer.FONT_CONDENSED, true);
             }
 
+            // Owned gear keeps its purchase state when removed. The compact
+            // overlay is a direct mouse action while Y provides the same
+            // controller/keyboard action for the selected card.
+            if (card.Equipped)
+            {
+                float unequipX = left + cardW - 0.031f;
+                float unequipY = top + 0.018f;
+                Color actionBg = unequipHovered
+                    ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen;
+                GbayRenderer.DrawBorderedRect(unequipX, unequipY,
+                    0.054f, 0.026f, actionBg, GbayRenderer.TextWhite, 0.0015f);
+                GbayRenderer.DrawText("UNEQUIP", unequipX,
+                    unequipY - 0.009f, 0.215f, GbayRenderer.TextWhite,
+                    GbayRenderer.FONT_CONDENSED, true);
+            }
+
             float textTop = top + previewH + 0.005f;
             float textLeft = left + 0.008f;
             GbayRenderer.DrawTextFit(card.DisplayName, textLeft,
                 textTop + 0.005f, 0.33f, 0.22f, cardW - 0.016f,
                 GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
-            string price = card.Owned ? "OWNED"
+            string price = card.Equipped ? "EQUIPPED" : card.Owned ? "OWNED"
                 : card.Price <= 0 ? "FREE" : $"${card.Price:N0}";
             GbayRenderer.DrawText(price, textLeft, textTop + 0.038f, 0.30f,
                 card.Owned || card.Price <= 0
@@ -256,6 +282,40 @@ namespace ALLIN1
             }
 
             if (_gearHoverCard >= 0) _gearSelectedCard = _gearHoverCard;
+
+            if (input.MouseClick && _gearHoverUnequipCard >= 0)
+            {
+                int unequipIndex = _gearPage * PAGE_SIZE + _gearHoverUnequipCard;
+                if (unequipIndex < _gearFiltered.Count)
+                {
+                    GbayRenderer.PlaySelect();
+                    _shop.ExecuteUnequipGear(_gearFiltered[unequipIndex].GearId);
+                    _gearSelectedCard = _gearHoverUnequipCard;
+                    RebuildGearList();
+                }
+                return;
+            }
+
+            if (input.FilterNext && _gearFiltered.Count > 0)
+            {
+                int unequipIndex = _gearPage * PAGE_SIZE + _gearSelectedCard;
+                if (unequipIndex < _gearFiltered.Count)
+                {
+                    GearCard selected = _gearFiltered[unequipIndex];
+                    if (selected.Equipped)
+                    {
+                        GbayRenderer.PlaySelect();
+                        _shop.ExecuteUnequipGear(selected.GearId);
+                        RebuildGearList();
+                    }
+                    else
+                        GTA.UI.Screen.ShowSubtitle(
+                            selected.Owned ? "~y~That item is already unequipped."
+                                           : "~y~Purchase this item first.", 2500);
+                }
+                return;
+            }
+
             bool accept = input.Accept || (input.MouseClick && _gearHoverCard >= 0);
             if (accept && _gearFiltered.Count > 0)
             {
@@ -264,8 +324,15 @@ namespace ALLIN1
                 {
                     GearCard card = _gearFiltered[index];
                     GbayRenderer.PlaySelect();
-                    if (card.Owned)
-                        GTA.UI.Screen.ShowSubtitle("~y~Already owned.", 3000);
+                    if (card.Equipped)
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~g~Already equipped.~w~ Press ~y~Y~w~ or select Unequip to remove it.",
+                            3000);
+                    else if (card.Owned)
+                    {
+                        _shop.ExecuteEquipGear(card.GearId);
+                        RebuildGearList();
+                    }
                     else
                     {
                         _shop.ExecuteGiveGear(card.GearId, card.Price);
@@ -300,6 +367,7 @@ namespace ALLIN1
                     Price = _shop.FreeMode ? 0
                         : GearList.Prices.TryGetValue(gearId, out int price) ? price : 0,
                     Owned = _shop.IsGearOwned(gearId),
+                    Equipped = _shop.IsGearEquipped(gearId),
                 });
             }
             _gearTotalPages = Math.Max(

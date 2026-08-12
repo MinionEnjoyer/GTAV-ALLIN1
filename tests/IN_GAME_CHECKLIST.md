@@ -15,10 +15,16 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
 - Equip and remove armor, Juggernaut, night vision, weapons, ammo, and throwables.
 - Open Gear from the GBAY top menu, visit All/Protection/Equipment, verify all
   12 cards and previews are reachable, and purchase at least one item from each tab.
-  Reopen the purchased item, confirm its card says **OWNED**, and verify selecting
-  it again does not deduct money. Rapidly double-select one new item and confirm
-  it is still charged only once. Repeat the duplicate check with a weapon.
-- At Davis, verify the green vehicle marker at `204.0661, -1466.4750, 29.1437`
+  Confirm equipped cards say **EQUIPPED**. Press Y and separately click the
+  **UNEQUIP** badge; confirm armor, Juggernaut, parachute, and night vision are
+  physically removed while their cards remain **OWNED**. Select each owned card
+  again, confirm it re-equips without deducting money, and confirm equipping one
+  armor removes the previously active armor. Rapidly double-select one new item
+  and confirm it is still charged only once. Repeat the duplicate check with a weapon.
+- At Eclipse Towers, the three-floor garage, and Davis, switch among Michael,
+  Franklin, and Trevor. Verify every vehicle/pedestrian map blip and every visible
+  world marker changes to blue, green, and orange respectively without a reload.
+- At Davis, verify the vehicle marker at `204.0661, -1466.4750, 29.1437`
   and pedestrian marker at `215.0502, -1461.0250, 29.1847` appear on the map/world.
 - Enter the Davis garage on foot and in a non-personal vehicle. Confirm the Auto
   Shop loads, all ten parking spaces are usable, the driven-in vehicle is stored,
@@ -31,6 +37,10 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
 - Store and sell a valid base-game vehicle that is not in the GBAY catalog (the
   Huntley in the current Davis save is suitable). Confirm it shows a dollar sale
   value instead of **Remove** or **This vehicle cannot be sold**.
+- Store a base-game Furore GT in Eclipse Towers. Confirm it is not incorrectly
+  rejected as oversized, the outside car is deleted only after the save succeeds,
+  it respawns as **Furore GT**, and its garage action is **Sell** rather than
+  **Protected**. Restart once and confirm the same entry still respawns.
 - Open **Customize Auto Shop** for Davis. Cycle every style, tint, lift,
   quarters, work-area, and storage option; confirm changes apply live when
   inside, remain isolated per protagonist, and persist after a script/game restart.

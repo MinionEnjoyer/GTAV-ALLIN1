@@ -256,7 +256,12 @@ change, and the former per-frame GBAY texture-debug overlay has been removed.
 - **Protection** (6 items): Super Light Armor ($500), Light Armor ($1,000), Standard Armor ($1,500), Heavy Armor ($2,000), Super Heavy Armor ($2,500), Juggernaut Armor ($50,000)
 - **Equipment** (6 items): Parachute ($300), Tear Gas ($150), Fire Extinguisher ($100), Jerry Can ($100), Hazardous Jerry Can ($250), Night Vision ($5,000)
 - Juggernaut Armor applies a full ballistic suit outfit, 1000 HP, 80% damage reduction, and heavy movement animation
-- Night Vision adds a toggleable mode (press **N** to toggle once purchased)
+- Night Vision adds a toggleable mode (press **N** while it is equipped)
+- Purchased gear remains owned when unequipped. Press **Y** on the selected
+  card or click its **UNEQUIP** badge to remove it, then select the owned card
+  again to re-equip it without another charge.
+- Protection uses one active equipment slot, so equipping another armor tier
+  replaces normal or Juggernaut armor without removing ownership.
 - Grid-based card layout matching the vehicle and weapon browsers
 
 **Navigation:**
@@ -267,6 +272,7 @@ change, and the former per-frame GBAY texture-debug overlay has been removed.
 | Escape | Back |
 | Q / E | Previous / Next page |
 | Z / X | Previous / Next category |
+| Y | Unequip selected gear |
 | Mouse | Full click and hover support |
 
 ### Traffic Spawner
@@ -327,7 +333,9 @@ it outside the Davis vehicle door.
   lift, personal quarters, work-area fixtures, and storage decor. Choices are
   saved per protagonist in `ALLIN1_davis_customization.json` and apply live
   while the player is inside Davis.
-- Standard green world markers and green garage map blips.
+- World markers and map blips follow the active protagonist: blue for Michael,
+  green for Franklin, and orange for Trevor. Eclipse Towers and the three-floor
+  garage use the same shared color behavior.
 
 **Eclipse features:**
 - 10 parking slots (two rows of 5, heading -105° and 134°)
@@ -358,7 +366,9 @@ Hold **F** for 300ms near a vehicle to open the seat selection UI.
 
 ### Night Vision (N)
 
-After purchasing Night Vision from the Gear shop, press **N** to toggle night vision on/off. State resets on death or game reload.
+After purchasing and equipping Night Vision from the Gear shop, press **N** to
+toggle night vision on/off. Unequipping it disables the effect but keeps the
+item unlocked for later use. Active visual state resets on death or game reload.
 
 ### Juggernaut Armor
 

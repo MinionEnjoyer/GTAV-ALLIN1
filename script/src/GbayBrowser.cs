@@ -110,6 +110,7 @@ namespace ALLIN1
         private int _pendingSellIndex = -1;
         private string _pendingSellModel = "";
         private string _pendingSellPlate = "";
+        private int _pendingSellModelHash;
         private int _pendingSellGarageLocation;
         private int _garageLocationIndex;
         private int _deliveryGarageIndex;
@@ -1594,8 +1595,8 @@ namespace ALLIN1
                         GbayRenderer.DrawRect(BROWSER_CX, itemCY,
                             BROWSER_W - 0.08f, itemH, GbayRenderer.CardHover);
 
-                    string name = VehicleList.DisplayNames.ContainsKey(sv.Model)
-                        ? VehicleList.DisplayNames[sv.Model] : sv.Model;
+                    string name = GarageManager.GetVehicleDisplayName(
+                        sv.Model, sv.ModelHash);
 
                     // Slot number
                     string slotLabel = floorGarage
@@ -1619,9 +1620,11 @@ namespace ALLIN1
                         : Color.FromArgb(255, 180, 80, 80);
                     GbayRenderer.DrawRect(removeBtnX, itemCY, 0.07f, itemH - 0.01f,
                         removeBg);
-                    bool canSell = _shop.CanSellVehicle(sv.Model, sv.PlateText);
-                    int sellPrice = _shop.GetSellPrice(sv.Model, sv.PlateText);
-                    string sellLabel = !canSell ? "Protected"
+                    bool protectedStory = GarageManager.IsProtectedStoryVehicle(
+                        sv.Model, sv.PlateText, sv.ModelHash);
+                    int sellPrice = _shop.GetSellPrice(
+                        sv.Model, sv.PlateText, sv.ModelHash);
+                    string sellLabel = protectedStory ? "Protected"
                         : sellPrice > 0 ? $"Sell ${sellPrice:N0}" : "Remove";
                     GbayRenderer.DrawTextFit(sellLabel, removeBtnX, itemY + 0.012f,
                         0.25f, 0.18f, 0.062f, GbayRenderer.TextWhite,
@@ -1629,7 +1632,8 @@ namespace ALLIN1
 
                     if (removeHover && input.MouseClick)
                     {
-                        BeginSell(sv.Model, sv.PlateText, i, _garageLocationIndex);
+                        BeginSell(sv.Model, sv.PlateText, sv.ModelHash,
+                            i, _garageLocationIndex);
                         return;
                     }
                 }
@@ -1642,8 +1646,8 @@ namespace ALLIN1
             if (input.Accept && vehicles.Count > 0 && _garageVehicleIdx < vehicles.Count)
             {
                 var selected = vehicles[_garageVehicleIdx];
-                BeginSell(selected.Model, selected.PlateText, _garageVehicleIdx,
-                    _garageLocationIndex);
+                BeginSell(selected.Model, selected.PlateText, selected.ModelHash,
+                    _garageVehicleIdx, _garageLocationIndex);
                 return;
             }
 
@@ -1752,19 +1756,22 @@ namespace ALLIN1
             GbayRenderer.PlayNav();
         }
 
-        private void BeginSell(string model, string plateText, int index,
-            int garageLocation)
+        private void BeginSell(string model, string plateText, int modelHash,
+            int index, int garageLocation)
         {
-            if (!_shop.CanSellVehicle(model, plateText))
+            if (GarageManager.IsProtectedStoryVehicle(
+                    model, plateText, modelHash))
             {
-                GTA.UI.Screen.ShowSubtitle("~r~This vehicle cannot be sold.", 3000);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Story-owned personal vehicles cannot be sold.", 3000);
                 ClientLog.Warn("GBAY", "vehicle_sale_rejected", new Dictionary<string, object> {
-                    { "model", model }, { "reason", "unknown_or_temporary" }
+                    { "model", model }, { "reason", "protected_story_vehicle" }
                 });
                 return;
             }
             _pendingSellModel = model;
             _pendingSellPlate = plateText ?? "";
+            _pendingSellModelHash = modelHash;
             _pendingSellIndex = index;
             _pendingSellGarageLocation = garageLocation;
             _state = BrowserState.GarageSellConfirm;
@@ -1776,9 +1783,10 @@ namespace ALLIN1
             DrawGarageView(new FrameInput());
             GbayRenderer.DrawRect(BROWSER_CX, 0.5f, 1f, 1f, GbayRenderer.ModalScrim);
             GbayRenderer.DrawRect(BROWSER_CX, 0.5f, MODAL_W, 0.30f, GbayRenderer.ModalBg);
-            string name = VehicleList.DisplayNames.ContainsKey(_pendingSellModel)
-                ? VehicleList.DisplayNames[_pendingSellModel] : _pendingSellModel;
-            int value = _shop.GetSellPrice(_pendingSellModel, _pendingSellPlate);
+            string name = GarageManager.GetVehicleDisplayName(
+                _pendingSellModel, _pendingSellModelHash);
+            int value = _shop.GetSellPrice(
+                _pendingSellModel, _pendingSellPlate, _pendingSellModelHash);
             GbayRenderer.DrawTitleBadge(
                 "CONFIRM VEHICLE SALE", BROWSER_CX, 0.405f,
                 0.30f, 0.055f, 0.40f);
@@ -1810,11 +1818,12 @@ namespace ALLIN1
             {
                 _shop.ExecuteSellVehicle(
                     _pendingSellModel, _pendingSellIndex, _pendingSellGarageLocation,
-                    _pendingSellPlate);
+                    _pendingSellPlate, _pendingSellModelHash);
                 _garageVehicleIdx = Math.Max(0, _pendingSellIndex - 1);
                 _pendingSellIndex = -1;
                 _pendingSellModel = "";
                 _pendingSellPlate = "";
+                _pendingSellModelHash = 0;
                 _pendingSellGarageLocation = 0;
                 _state = BrowserState.GarageView;
             }
@@ -1824,6 +1833,7 @@ namespace ALLIN1
                 _pendingSellIndex = -1;
                 _pendingSellModel = "";
                 _pendingSellPlate = "";
+                _pendingSellModelHash = 0;
                 _pendingSellGarageLocation = 0;
                 _state = BrowserState.GarageView;
                 GbayRenderer.PlayBack();

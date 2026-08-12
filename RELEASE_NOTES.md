@@ -1,3 +1,39 @@
+# GTA V ALLIN1 0.3.1
+
+Version 0.3.1 is a stabilization release focused on garage data integrity, gear management,
+map-marker consistency, and a clearer desktop launcher.
+
+## Fixes and safeguards
+
+- Garage saves now preserve the vehicle's native model hash instead of relying on its display
+  label. Existing Furore GT entries saved as `furore` migrate to `furoregt`, keeping their plate
+  and customization data, and uncatalogued vehicles no longer become permanently protected.
+- Drive-in storage verifies that the garage save succeeded before removing the outside vehicle.
+- Character gear can be unequipped and re-equipped without another purchase, with owned-state
+  handling for armor, parachutes, night vision, and juggernaut armor.
+- ALLIN1 location markers use the active protagonist's color consistently.
+- Added regression coverage for native vehicle identities, legacy garage migration, gear ownership,
+  marker colors, and duplicate-purchase behavior.
+
+## Launcher improvements
+
+- The current installation state is summarized as ready, update available, missing dependencies,
+  or game folder required, with the next action stated plainly.
+- Launch, repair, save, and refresh controls remain accessible from every page, including at the
+  supported minimum window size.
+- Added unsaved-settings protection, operation progress, keyboard shortcuts, activity-log copy and
+  clear controls, and a shortcut to the diagnostics/log folder.
+- Improved status readability, destructive-action separation, tab navigation, scrolling, and
+  version visibility.
+
+## Qualification
+
+- The Python and repository-contract suite, C# Release build, real Enhanced installation health
+  check, structured in-game smoke report, and public archive verification must all pass before the
+  0.3.1 package is published.
+
+---
+
 # GTA V ALLIN1 0.3.0
 
 Version 0.3.0 is the first public release built around the complete GBAY preview pipeline and the

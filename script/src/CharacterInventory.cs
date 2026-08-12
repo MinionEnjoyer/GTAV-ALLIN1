@@ -24,9 +24,10 @@ namespace ALLIN1
 
         public sealed class Inventory
         {
-            public int schema_version { get; set; } = 3;
+            public int schema_version { get; set; } = 4;
             public List<string> weapons { get; set; } = new List<string>();
             public List<string> gear { get; set; } = new List<string>();
+            public List<string> equipped_gear { get; set; } = new List<string>();
             public bool managed { get; set; }
             public Outfit outfit { get; set; } = new Outfit();
             public Progress progress { get; set; } = new Progress();
@@ -103,6 +104,22 @@ namespace ALLIN1
             }
         }
 
+        internal static bool IsGearEquipped(string item)
+        {
+            if (string.IsNullOrWhiteSpace(item)) return false;
+            string character = CurrentCharacter();
+            if (character.Length == 0) return false;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory)) return false;
+                NormalizeInventory(inventory);
+                foreach (string equipped in inventory.equipped_gear)
+                    if (string.Equals(equipped, item, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                return false;
+            }
+        }
+
         private static void Reload()
         {
             lock (Sync)
@@ -111,7 +128,14 @@ namespace ALLIN1
                 {
                     if (!File.Exists(PathName)) return;
                     var loaded = Json.Deserialize<Dictionary<string, Inventory>>(File.ReadAllText(PathName));
-                    if (loaded != null) _state = loaded;
+                    if (loaded != null)
+                    {
+                        _state = loaded;
+                        bool migrated = false;
+                        foreach (Inventory inventory in _state.Values)
+                            migrated |= NormalizeInventory(inventory);
+                        if (migrated) SaveStateLocked();
+                    }
                     ClientLog.Info("Character", "loadouts_loaded");
                 }
                 catch (Exception ex) { ClientLog.Error("Character", "loadouts_load_failed", ex); }
@@ -131,8 +155,10 @@ namespace ALLIN1
         private static void Apply(string character)
         {
             if (!_state.TryGetValue(character, out Inventory inventory)) return;
+            NormalizeInventory(inventory);
             if (!inventory.managed && !(inventory.outfit?.managed ?? false) &&
-                !(inventory.progress?.managed ?? false)) return;
+                !(inventory.progress?.managed ?? false) &&
+                inventory.equipped_gear.Count == 0) return;
             Ped ped = Game.Player.Character;
             var owned = new HashSet<string>(inventory.weapons ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
             if (inventory.managed)
@@ -143,12 +169,19 @@ namespace ALLIN1
                     if (owned.Contains(entry.Key)) ped.Weapons.Give((WeaponHash)(uint)hash, 9999, false, false);
                     else Function.Call(Hash.REMOVE_WEAPON_FROM_PED, ped.Handle, hash);
                 }
-                foreach (string gear in inventory.gear ?? new List<string>())
+            }
+            foreach (string gear in inventory.equipped_gear)
+            {
+                if (gear == GearList.ARMOR_JUGGERNAUT)
                 {
-                    if (GearList.IsArmor(gear)) ped.Armor = GearList.ArmorValues[gear];
-                    else if (gear == "WEAPON_NIGHTVISION") GbayShop.NightVisionOwned = true;
-                    else ped.Weapons.Give((WeaponHash)Game.GenerateHash(gear), 1, false, false);
+                    if (!GbayShop.JuggernautActive) GbayShop.ApplyJuggernaut(ped);
                 }
+                else if (GearList.IsArmor(gear))
+                    ped.Armor = GearList.ArmorValues[gear];
+                else if (gear == "WEAPON_NIGHTVISION")
+                    GbayShop.NightVisionOwned = true;
+                else
+                    ped.Weapons.Give((WeaponHash)Game.GenerateHash(gear), 1, false, false);
             }
             if (inventory.outfit?.managed ?? false) ApplyOutfit(ped, inventory.outfit);
             if (inventory.progress?.managed ?? false) ApplyProgress(character, inventory.progress);
@@ -236,19 +269,115 @@ namespace ALLIN1
                         break;
                     }
                 if (!alreadyOwned) list.Add(item);
+                if (gear)
+                {
+                    NormalizeInventory(inventory);
+                    SetEquippedInMemory(inventory, item, true);
+                }
                 try
                 {
-                    string temporary = PathName + ".tmp";
-                    File.WriteAllText(temporary, Json.Serialize(_state));
-                    if (File.Exists(PathName)) File.Copy(PathName, PathName + ".bak", true);
-                    if (File.Exists(PathName)) File.Replace(temporary, PathName, null);
-                    else File.Move(temporary, PathName);
+                    SaveStateLocked();
                     ClientLog.Info("Character", "gbay_inventory_synced", new Dictionary<string, object> {
                         { "character", character }, { "item", item }, { "gear", gear }
                     });
                 }
                 catch (Exception ex) { ClientLog.Error("Character", "inventory_save_failed", ex); }
             }
+        }
+
+        internal static void SetGearEquipped(string item, bool equipped)
+        {
+            if (string.IsNullOrWhiteSpace(item)) return;
+            string character = CurrentCharacter();
+            if (character.Length == 0) return;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory)) return;
+                NormalizeInventory(inventory);
+                if (equipped && !ContainsIgnoreCase(inventory.gear, item)) return;
+                SetEquippedInMemory(inventory, item, equipped);
+                try
+                {
+                    SaveStateLocked();
+                    ClientLog.Info("Character", "gear_equipment_synced",
+                        new Dictionary<string, object> {
+                            { "character", character }, { "item", item },
+                            { "equipped", equipped }
+                        });
+                }
+                catch (Exception ex) { ClientLog.Error("Character", "inventory_save_failed", ex); }
+            }
+        }
+
+        private static void SetEquippedInMemory(
+            Inventory inventory, string item, bool equipped)
+        {
+            inventory.equipped_gear.RemoveAll(value =>
+                string.Equals(value, item, StringComparison.OrdinalIgnoreCase));
+            if (!equipped) return;
+
+            // Protection is a single equipment slot: equipping one armor tier
+            // replaces the previous normal or Juggernaut armor.
+            if (GearList.IsArmor(item))
+                inventory.equipped_gear.RemoveAll(GearList.IsArmor);
+            inventory.equipped_gear.Add(item);
+        }
+
+        private static bool NormalizeInventory(Inventory inventory)
+        {
+            bool changed = false;
+            if (inventory.weapons == null) { inventory.weapons = new List<string>(); changed = true; }
+            if (inventory.gear == null) { inventory.gear = new List<string>(); changed = true; }
+
+            if (inventory.schema_version < 4 || inventory.equipped_gear == null)
+            {
+                inventory.equipped_gear = new List<string>(inventory.gear);
+                inventory.schema_version = 4;
+                changed = true;
+            }
+
+            var normalized = new List<string>();
+            string activeArmor = null;
+            foreach (string item in inventory.equipped_gear)
+            {
+                if (!ContainsIgnoreCase(inventory.gear, item)) { changed = true; continue; }
+                if (GearList.IsArmor(item))
+                {
+                    activeArmor = item;
+                    continue;
+                }
+                if (!ContainsIgnoreCase(normalized, item)) normalized.Add(item);
+                else changed = true;
+            }
+            if (activeArmor != null) normalized.Add(activeArmor);
+            if (!ListsEqualIgnoreCase(inventory.equipped_gear, normalized)) changed = true;
+            inventory.equipped_gear = normalized;
+            return changed;
+        }
+
+        private static bool ContainsIgnoreCase(List<string> values, string item)
+        {
+            if (values == null) return false;
+            foreach (string value in values)
+                if (string.Equals(value, item, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        private static bool ListsEqualIgnoreCase(List<string> left, List<string> right)
+        {
+            if (left == null || right == null || left.Count != right.Count) return false;
+            for (int i = 0; i < left.Count; i++)
+                if (!string.Equals(left[i], right[i], StringComparison.OrdinalIgnoreCase)) return false;
+            return true;
+        }
+
+        private static void SaveStateLocked()
+        {
+            string temporary = PathName + ".tmp";
+            File.WriteAllText(temporary, Json.Serialize(_state));
+            if (File.Exists(PathName)) File.Copy(PathName, PathName + ".bak", true);
+            if (File.Exists(PathName)) File.Replace(temporary, PathName, null);
+            else File.Move(temporary, PathName);
         }
     }
 }

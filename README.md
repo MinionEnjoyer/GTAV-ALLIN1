@@ -13,7 +13,7 @@ ALLIN1 supports both GTA V Legacy and GTA V Enhanced. It is designed exclusively
 Mode**; the installer configures the game to launch without BattlEye and should never be used in
 GTA Online.
 
-> **Current public release:** **0.3.0**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
+> **Current public release:** **0.3.1**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
 > highlights and hardening work included in this build.
 
 ## Support
@@ -28,11 +28,12 @@ If GTA V ALLIN1 is useful to you, project support is available through
   artwork, preview a vehicle in 3D, purchase it, and deliver it to a garage.
 - **Weapons and gear** — purchase more than 100 weapons, refill owned ammunition, browse captured
   previews for armor and equipment in GBAY, and manage exact per-character loadouts from the
-  desktop manager.
+  desktop manager. Owned gear can be unequipped and re-equipped without repurchasing it.
 - **Persistent garages** — maintain independent collections at Eclipse Towers, the oversized
   three-floor garage, and a 10-car Davis Auto Shop; drive vehicles in, target delivery locations,
   sell stored vehicles, recover interrupted transitions, customize garage floors, and configure
-  every Davis Auto Shop style, tint, lift, quarters, work-area, and storage option.
+  every Davis Auto Shop style, tint, lift, quarters, work-area, and storage option. Every ALLIN1
+  garage blip and world marker follows the active protagonist's blue, green, or orange color.
 - **DLC traffic integration** — adds Online vehicles to ambient traffic with class-aware
   replacements, road and visibility checks, mission/interior/wanted-level guards, distance-based
   cleanup, and adaptive performance throttling.

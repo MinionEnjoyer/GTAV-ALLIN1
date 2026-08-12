@@ -86,6 +86,8 @@ def test_drive_in_vehicle_is_deleted_after_player_extraction():
     for core_name in ("EnterGarageCore", "EnterFloorGarageCore"):
         start = garage.index(f"private static void {core_name}")
         section = garage[start: garage.index("private static void", start + 30)]
+        save_guard = "if (!Save())" if core_name == "EnterGarageCore" else "if (!FloorGarageSave())"
+        assert section.index(save_guard) < section.index("rideInToDelete = rideIn")
         assert section.index("CLEAR_PED_TASKS_IMMEDIATELY") < section.index("rideInToDelete.Delete()")
 
 
@@ -268,8 +270,9 @@ def test_runtime_hot_paths_are_throttled_and_cached():
     garage = (ROOT / "script/src/GarageManager.cs").read_text()
     assert "Interval = 100" in traffic
     assert "now - _lastCleanupTime >= 1000" in traffic
-    assert "charColor != _lastBlipColor" in garage
-    assert "charColor != _lastFloorBlipColor" in garage
+    assert "UpdateLocationBlipColors();" in garage
+    assert "_hasBlipColor && charColor == _lastBlipColor" in garage
+    assert "_lastFloorBlipColor" not in garage
 
 
 def test_issue_five_playtest_regressions_are_guarded():
@@ -414,9 +417,27 @@ def test_gbay_gear_store_is_reachable_and_uses_captured_previews():
     assert "_shop.ExecuteGiveGear(card.GearId, card.Price)" in gear_browser
     assert "internal void ExecuteGiveGear(string gearId, int price)" in shop
     assert "Owned = _shop.IsGearOwned(gearId)" in gear_browser
+    assert "Equipped = _shop.IsGearEquipped(gearId)" in gear_browser
     assert 'card.Owned ? "OWNED"' in gear_browser
     assert "if (card.Owned)" in gear_browser
     assert "if (IsGearOwned(gearId))" in shop
+    assert "ExecuteEquipGear" in gear_browser
+    assert "ExecuteUnequipGear" in gear_browser
+    assert 'GbayRenderer.DrawText("UNEQUIP"' in gear_browser
+    assert "CharacterInventory.SetGearEquipped" in shop
+
+
+def test_all_garage_locations_share_protagonist_colors():
+    garage = (ROOT / "script/src/GarageManager.cs").read_text()
+    davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
+    for blip in (
+        "_entranceBlip", "_pedEntranceBlip", "_floorGarageEntranceBlip",
+        "_floorGaragePedBlip", "_davisVehicleBlip", "_davisPedBlip",
+    ):
+        assert f"SetBlipColor({blip}, charColor);" in garage
+    assert davis.count("CharacterBlipColor()") >= 2
+    assert "Color markerColor = CharacterMarkerColor();" in davis
+    assert "BlipColor.Green" not in davis
 
 
 def test_gbay_control_legends_are_high_contrast_and_shared_across_pages():
@@ -436,12 +457,30 @@ def test_gbay_control_legends_are_high_contrast_and_shared_across_pages():
 def test_garage_sales_fall_back_to_native_values_for_uncatalogued_vehicles():
     browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
     shop = (ROOT / "script/src/GbayShop.cs").read_text()
-    assert "if (!_shop.CanSellVehicle(model, plateText))" in browser
+    assert "GarageManager.IsProtectedStoryVehicle(" in browser
+    assert "model, plateText, modelHash" in browser
+    assert 'protectedStory ? "Protected"' in browser
+    assert 'sellPrice > 0 ? $"Sell ${sellPrice:N0}" : "Remove"' in browser
     assert "GET_VEHICLE_MODEL_VALUE" in shop
     assert "GET_VEHICLE_CLASS_FROM_NAME" in shop
     assert "GetFallbackVehicleValue" in shop
     assert "IS_MODEL_A_VEHICLE" in shop
     assert "if (!VehicleList.Prices.TryGetValue(model, out buyPrice))" in shop
+
+
+def test_uncatalogued_garage_vehicles_preserve_native_model_identity():
+    manager = (ROOT / "script/src/GarageManager.cs").read_text()
+    davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    assert "internal int ModelHash;" in manager
+    assert 'sb.Append($"\\\"modelHash\\\": {GetStoredModelHash(sv)}, ");' in manager
+    assert 'case "modelHash": sv.ModelHash = val;' in manager
+    assert "ModelHash = veh != null && veh.Exists()" in manager
+    assert manager.count("GetStoredModel(sv)") >= 4
+    assert "GetGarageSizeTier(modelName, modelHash)" in manager
+    assert '{ "furore", "furoregt" }' in manager
+    assert "modelHash" in davis
+    assert "sv.ModelHash" in browser
 
 
 def test_story_owned_vehicles_cannot_enter_garage_persistence_or_sale_flow():
@@ -461,7 +500,7 @@ def test_story_owned_vehicles_cannot_enter_garage_persistence_or_sale_flow():
     assert "IsProtectedStoryVehicle(veh.Model.Hash, plate)" in manager
     assert manager.count("if (IsPersonalVehicle(") >= 2
     assert "if (IsPersonalVehicle(rideIn))" in davis
-    assert "GarageManager.IsProtectedStoryVehicle(model, plateText)" in shop
+    assert "model, plateText, modelHash" in shop
     assert '"protected_story_vehicle"' in shop
 
 

@@ -36,6 +36,10 @@ namespace ALLIN1
         internal class StoredVehicle
         {
             internal string Model;
+            // Preserve the native identity for base-game/add-on vehicles whose
+            // GXT display label is not their spawn name (for example Furore GT:
+            // `furore` vs `furoregt`). Zero means a legacy save entry.
+            internal int ModelHash;
             internal int Slot;
             internal int Color1;
             internal int Color2;
@@ -163,6 +167,16 @@ namespace ALLIN1
 
         // Reverse lookup: model hash -> spawn name (built from VehicleList.All)
         private static Dictionary<int, string> _hashToSpawnName;
+        private static readonly Dictionary<string, string> LegacyModelAliases =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "furore", "furoregt" },
+            };
+        private static readonly Dictionary<string, string> LegacyModelDisplayNames =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "furoregt", "Furore GT" },
+            };
 
         private static bool _enableLogging = true;
         private static bool _initialized;
@@ -298,6 +312,11 @@ namespace ALLIN1
             if (!_initialized)
                 return;
 
+            // Every ALLIN1 location follows the active protagonist. Keep this
+            // before the garage/transition guards so switching characters in
+            // an interior cannot leave another location with a stale color.
+            UpdateLocationBlipColors();
+
             if (_transitionInProgress)
                 return;
 
@@ -315,18 +334,6 @@ namespace ALLIN1
             if (player == null || player.IsDead)
                 return;
 
-            // Update blip colors to match current character
-            BlipColor charColor = CharacterBlipColor();
-            if (!_hasBlipColor || charColor != _lastBlipColor)
-            {
-                if (_entranceBlip != null && _entranceBlip.Exists())
-                    _entranceBlip.Color = charColor;
-                if (_pedEntranceBlip != null && _pedEntranceBlip.Exists())
-                    _pedEntranceBlip.Color = charColor;
-                _lastBlipColor = charColor;
-                _hasBlipColor = true;
-            }
-
             if (!_isPlayerInGarage)
             {
                 bool inVehicle = player.IsInVehicle();
@@ -339,7 +346,7 @@ namespace ALLIN1
                         ENTRANCE_POS - new Vector3(0f, 0f, 1f),
                         Vector3.Zero, Vector3.Zero,
                         new Vector3(2f, 2f, 1.5f),
-                        System.Drawing.Color.FromArgb(128, 0, 200, 0));
+                        CharacterMarkerColor());
 
                     float vehDist = player.Position.DistanceTo(ENTRANCE_POS);
                     if (vehDist < ENTER_RADIUS)
@@ -368,7 +375,7 @@ namespace ALLIN1
                         PED_EXIT_DEST - new Vector3(0f, 0f, 1f),
                         Vector3.Zero, Vector3.Zero,
                         new Vector3(1.5f, 1.5f, 1.2f),
-                        System.Drawing.Color.FromArgb(128, 0, 200, 0));
+                        CharacterMarkerColor());
 
                     float pedDist = player.Position.DistanceTo(PED_EXIT_DEST);
                     if (pedDist < ENTER_RADIUS)
@@ -404,7 +411,7 @@ namespace ALLIN1
                         PED_EXIT - new Vector3(0f, 0f, 1f),
                         Vector3.Zero, Vector3.Zero,
                         new Vector3(1.5f, 1.5f, 1.2f),
-                        System.Drawing.Color.FromArgb(128, 0, 200, 0));
+                        CharacterMarkerColor());
 
                     float pedExitDist = player.Position.DistanceTo(PED_EXIT);
                     if (pedExitDist < EXIT_RADIUS)
@@ -465,7 +472,8 @@ namespace ALLIN1
                 return false;
             }
 
-            int slotIndex = FindEmptySlot(list, model);
+            int modelHash = Game.GenerateHash(model);
+            int slotIndex = FindEmptySlot(list, model, modelHash);
             if (slotIndex < 0)
             {
                 Log($"DeliverVehicle: no empty slot for {model} (sizeTier={VehicleList.GetSizeTier(model)})");
@@ -475,6 +483,7 @@ namespace ALLIN1
             var stored = new StoredVehicle
             {
                 Model = model,
+                ModelHash = modelHash,
                 Slot = slotIndex,
                 Color1 = color1,
                 Color2 = color2,
@@ -709,7 +718,7 @@ namespace ALLIN1
                     }
 
                     // Reject oversized vehicles
-                    if (GetGarageSizeTier(modelName) == 2)
+                    if (GetGarageSizeTier(modelName, modelHash) == 2)
                     {
                         string ovName = VehicleList.DisplayNames.ContainsKey(modelName)
                             ? VehicleList.DisplayNames[modelName] : modelName;
@@ -733,7 +742,7 @@ namespace ALLIN1
                         return;
                     }
 
-                    int slotIndex = FindEmptySlot(storedList, modelName);
+                    int slotIndex = FindEmptySlot(storedList, modelName, modelHash);
                     if (slotIndex < 0)
                     {
                         GTA.UI.Screen.ShowSubtitle("~r~The garage is full; no spaces are available.", 3000);
@@ -743,7 +752,13 @@ namespace ALLIN1
                     // Capture full vehicle state (colors, mods, etc.)
                     StoredVehicle sv = CaptureVehicleState(rideIn, modelName, slotIndex);
                     storedList.Add(sv);
-                    Save();
+                    if (!Save())
+                    {
+                        storedList.Remove(sv);
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~r~The vehicle could not be saved; it was left outside.", 3000);
+                        return;
+                    }
 
                     string displayName = VehicleList.DisplayNames.ContainsKey(modelName)
                         ? VehicleList.DisplayNames[modelName] : modelName;
@@ -798,7 +813,7 @@ namespace ALLIN1
                 Log($"EnterGarage: pre-loading {list.Count} vehicle models");
                 foreach (var sv in list)
                 {
-                    var m = new Model(sv.Model);
+                    var m = GetStoredModel(sv);
                     m.Request();
                     models.Add(m);
                 }
@@ -828,7 +843,7 @@ namespace ALLIN1
                     ParkingSlot slot = Slots[sv.Slot];
                     try
                     {
-                        var model = new Model(sv.Model);
+                        var model = GetStoredModel(sv);
                         Vehicle veh = World.CreateVehicle(model, slot.Position, slot.Heading);
                         model.MarkAsNoLongerNeeded();
 
@@ -1068,10 +1083,13 @@ namespace ALLIN1
         }
 
         /// <summary>Protect story-owned entries already present in older saves.</summary>
-        internal static bool IsProtectedStoryVehicle(string model, string plateText)
+        internal static bool IsProtectedStoryVehicle(
+            string model, string plateText, int modelHash = 0)
         {
-            return !string.IsNullOrWhiteSpace(model) &&
-                IsProtectedStoryVehicle(Game.GenerateHash(model), plateText);
+            int resolvedHash = modelHash != 0 ? modelHash
+                : !string.IsNullOrWhiteSpace(model) ? Game.GenerateHash(model) : 0;
+            return resolvedHash != 0 &&
+                IsProtectedStoryVehicle(resolvedHash, plateText);
         }
 
         /// <summary>
@@ -1112,6 +1130,32 @@ namespace ALLIN1
             return BlipColor.Blue; // Michael
         }
 
+        private static void SetBlipColor(Blip blip, BlipColor color)
+        {
+            if (blip != null && blip.Exists()) blip.Color = color;
+        }
+
+        /// <summary>
+        /// Apply the active protagonist's color to every ALLIN1 map location.
+        /// A single cache prevents the three garage implementations from
+        /// drifting apart or doing redundant native calls every frame.
+        /// </summary>
+        private static void UpdateLocationBlipColors()
+        {
+            BlipColor charColor = CharacterBlipColor();
+            if (_hasBlipColor && charColor == _lastBlipColor) return;
+
+            SetBlipColor(_entranceBlip, charColor);
+            SetBlipColor(_pedEntranceBlip, charColor);
+            SetBlipColor(_floorGarageEntranceBlip, charColor);
+            SetBlipColor(_floorGaragePedBlip, charColor);
+            SetBlipColor(_davisVehicleBlip, charColor);
+            SetBlipColor(_davisPedBlip, charColor);
+
+            _lastBlipColor = charColor;
+            _hasBlipColor = true;
+        }
+
         private static System.Drawing.Color CharacterMarkerColor()
         {
             PedHash ch = GbayShop.GetCurrentCharacter();
@@ -1128,13 +1172,14 @@ namespace ALLIN1
             return KEY_MICHAEL;
         }
 
-        private static int FindEmptySlot(List<StoredVehicle> list, string model = null)
+        private static int FindEmptySlot(
+            List<StoredVehicle> list, string model = null, int modelHash = 0)
         {
             var occupied = new HashSet<int>();
             foreach (var sv in list)
                 occupied.Add(sv.Slot);
 
-            int sizeTier = model != null ? GetGarageSizeTier(model) : 0;
+            int sizeTier = model != null ? GetGarageSizeTier(model, modelHash) : 0;
 
             if (sizeTier >= 1) // large vehicles: left row only (slots 0-4)
             {
@@ -1153,7 +1198,7 @@ namespace ALLIN1
             return -1;
         }
 
-        private static int GetGarageSizeTier(string model)
+        private static int GetGarageSizeTier(string model, int modelHash = 0)
         {
             int configuredTier = VehicleList.GetSizeTier(model);
             if (configuredTier >= 2 || string.IsNullOrWhiteSpace(model))
@@ -1164,7 +1209,7 @@ namespace ALLIN1
             // assigned to Eclipse's tighter right row by accident.
             try
             {
-                int hash = Game.GenerateHash(model);
+                int hash = modelHash != 0 ? modelHash : Game.GenerateHash(model);
                 var minArg = new OutputArgument();
                 var maxArg = new OutputArgument();
                 Function.Call(Hash.GET_MODEL_DIMENSIONS, hash, minArg, maxArg);
@@ -1298,8 +1343,24 @@ namespace ALLIN1
             {
                 foreach (var sv in kvp.Value)
                 {
+                    if (LegacyModelAliases.TryGetValue(sv.Model, out string alias))
+                    {
+                        Log($"Migrate: {sv.Model} -> {alias} (known GXT alias)");
+                        sv.Model = alias;
+                        sv.ModelHash = Game.GenerateHash(alias);
+                        changed = true;
+                        continue;
+                    }
+
                     if (validNames.Contains(sv.Model))
+                    {
+                        if (sv.ModelHash == 0)
+                        {
+                            sv.ModelHash = Game.GenerateHash(sv.Model);
+                            changed = true;
+                        }
                         continue; // already a valid spawn name
+                    }
 
                     // Try to resolve: compute hash of stored name and see if
                     // it maps to a known vehicle (it won't if the GXT label
@@ -1309,6 +1370,7 @@ namespace ALLIN1
                     {
                         Log($"Migrate: {sv.Model} -> {correctName} (hash match)");
                         sv.Model = correctName;
+                        sv.ModelHash = Game.GenerateHash(correctName);
                         changed = true;
                     }
                     else
@@ -1320,6 +1382,30 @@ namespace ALLIN1
 
             if (changed)
                 Save();
+        }
+
+        private static int GetStoredModelHash(StoredVehicle stored)
+        {
+            if (stored == null) return 0;
+            return stored.ModelHash != 0
+                ? stored.ModelHash : Game.GenerateHash(stored.Model);
+        }
+
+        private static Model GetStoredModel(StoredVehicle stored)
+        {
+            return new Model(GetStoredModelHash(stored));
+        }
+
+        internal static string GetVehicleDisplayName(
+            string model, int modelHash = 0)
+        {
+            if (!string.IsNullOrWhiteSpace(model) &&
+                VehicleList.DisplayNames.TryGetValue(model, out string catalogName))
+                return catalogName;
+            if (!string.IsNullOrWhiteSpace(model) &&
+                LegacyModelDisplayNames.TryGetValue(model, out string legacyName))
+                return legacyName;
+            return string.IsNullOrWhiteSpace(model) ? "Unknown vehicle" : model;
         }
 
         private static bool Save()
@@ -1396,6 +1482,7 @@ namespace ALLIN1
                         var sv = list[i];
                         sb.Append("    { ");
                         sb.Append($"\"model\": \"{sv.Model}\", ");
+                        sb.Append($"\"modelHash\": {GetStoredModelHash(sv)}, ");
                         sb.Append($"\"slot\": {sv.Slot}, ");
                         sb.Append($"\"color1\": {sv.Color1}, ");
                         sb.Append($"\"color2\": {sv.Color2}");
@@ -1618,6 +1705,7 @@ namespace ALLIN1
                             switch (key)
                             {
                                 case "slot": slot = val; break;
+                                case "modelHash": sv.ModelHash = val; break;
                                 case "color1": sv.Color1 = val; break;
                                 case "color2": sv.Color2 = val; break;
                                 case "wheelType": sv.WheelType = val; break;
@@ -1698,7 +1786,13 @@ namespace ALLIN1
         /// </summary>
         internal static StoredVehicle CaptureVehicleState(Vehicle veh, string model, int slotIndex)
         {
-            var sv = new StoredVehicle { Model = model, Slot = slotIndex };
+            var sv = new StoredVehicle
+            {
+                Model = model,
+                ModelHash = veh != null && veh.Exists()
+                    ? veh.Model.Hash : Game.GenerateHash(model),
+                Slot = slotIndex,
+            };
 
             try
             {
@@ -1910,6 +2004,7 @@ namespace ALLIN1
 
                 // Re-capture state from the live vehicle
                 var updated = CaptureVehicleState(veh, sv.Model, sv.Slot);
+                sv.ModelHash = updated.ModelHash;
                 sv.Color1 = updated.Color1;
                 sv.Color2 = updated.Color2;
                 sv.Mods = updated.Mods;
@@ -2116,8 +2211,6 @@ namespace ALLIN1
         private static Blip _floorGarageEntranceBlip;
         private static Blip _floorGaragePedBlip;
         private static bool _floorGarageInitialized;
-        private static BlipColor _lastFloorBlipColor;
-        private static bool _hasFloorBlipColor;
 
         // ------------------------------------------------------------------ //
         //  Floor Garage Public API                                                  //
@@ -2248,6 +2341,7 @@ namespace ALLIN1
             var stored = new StoredVehicle
             {
                 Model = model,
+                ModelHash = Game.GenerateHash(model),
                 Slot = slotIndex,
                 Color1 = color1,
                 Color2 = color2,
@@ -2361,17 +2455,6 @@ namespace ALLIN1
 
             // Don't show floor garage markers while in garage (and vice versa)
             if (_isPlayerInGarage || _isPlayerInDavisGarage) return;
-
-            BlipColor charColor = CharacterBlipColor();
-            if (!_hasFloorBlipColor || charColor != _lastFloorBlipColor)
-            {
-                if (_floorGarageEntranceBlip != null && _floorGarageEntranceBlip.Exists())
-                    _floorGarageEntranceBlip.Color = charColor;
-                if (_floorGaragePedBlip != null && _floorGaragePedBlip.Exists())
-                    _floorGaragePedBlip.Color = charColor;
-                _lastFloorBlipColor = charColor;
-                _hasFloorBlipColor = true;
-            }
 
             if (!_isPlayerInFloorGarage)
             {
@@ -2663,7 +2746,13 @@ namespace ALLIN1
 
                     StoredVehicle sv = CaptureVehicleState(rideIn, modelName, slotIndex);
                     storedList.Add(sv);
-                    FloorGarageSave();
+                    if (!FloorGarageSave())
+                    {
+                        storedList.Remove(sv);
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~r~The vehicle could not be saved; it was left outside.", 3000);
+                        return;
+                    }
 
                     string displayName = VehicleList.DisplayNames.ContainsKey(modelName)
                         ? VehicleList.DisplayNames[modelName] : modelName;
@@ -2973,7 +3062,7 @@ namespace ALLIN1
             foreach (var sv in list)
             {
                 if (sv.Slot < startSlot || sv.Slot >= endSlot) continue;
-                var m = new Model(sv.Model);
+                var m = GetStoredModel(sv);
                 m.Request();
                 modelsToLoad.Add(m);
             }
@@ -2998,7 +3087,7 @@ namespace ALLIN1
 
                 try
                 {
-                    var model = new Model(sv.Model);
+                    var model = GetStoredModel(sv);
                     Vehicle veh = World.CreateVehicle(model, slot.Position, slot.Heading);
                     model.MarkAsNoLongerNeeded();
 
@@ -3232,6 +3321,7 @@ namespace ALLIN1
                         var sv = list[i];
                         sb.Append("    { ");
                         sb.Append($"\"model\": \"{sv.Model}\", ");
+                        sb.Append($"\"modelHash\": {GetStoredModelHash(sv)}, ");
                         sb.Append($"\"slot\": {sv.Slot}, ");
                         sb.Append($"\"color1\": {sv.Color1}, ");
                         sb.Append($"\"color2\": {sv.Color2}");
@@ -3349,6 +3439,7 @@ namespace ALLIN1
                 if (veh == null || !veh.Exists()) continue;
 
                 var updated = CaptureVehicleState(veh, sv.Model, sv.Slot);
+                sv.ModelHash = updated.ModelHash;
                 sv.Color1 = updated.Color1;
                 sv.Color2 = updated.Color2;
                 sv.Mods = updated.Mods;

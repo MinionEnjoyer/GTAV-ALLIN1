@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 CHARACTERS = ("michael", "franklin", "trevor")
-LOADOUT_SCHEMA_VERSION = 3
+LOADOUT_SCHEMA_VERSION = 4
 GARAGE_SCHEMA_VERSION = 2
 SKILLS = ("stamina", "strength", "lung_capacity", "driving", "flying", "shooting", "stealth")
 
@@ -62,6 +62,7 @@ class CharacterLoadout:
     managed: bool = False
     outfit: CharacterOutfit = field(default_factory=CharacterOutfit)
     progress: CharacterProgress = field(default_factory=CharacterProgress)
+    equipped_gear: list[str] = field(default_factory=list)
 
 
 class LoadoutStore:
@@ -75,14 +76,26 @@ class LoadoutStore:
         result = {}
         for character in CHARACTERS:
             item = raw.get(character, {})
+            weapons = list(dict.fromkeys(item.get("weapons", [])))
+            gear = list(dict.fromkeys(item.get("gear", [])))
+            schema_version = int(item.get("schema_version", 0))
+            equipped_source = item.get("equipped_gear", []) or []
+            if schema_version < LOADOUT_SCHEMA_VERSION:
+                equipped_source = gear
+            owned_gear = set(gear)
+            equipped_gear = [
+                value
+                for value in dict.fromkeys(equipped_source)
+                if value in owned_gear
+            ]
             outfit_raw = item.get("outfit", {})
             components = [OutfitVariation(int(v.get("drawable", 0)), int(v.get("texture", 0)))
                           for v in outfit_raw.get("components", [])]
             props = [OutfitVariation(int(v.get("drawable", -1)), int(v.get("texture", 0)))
                      for v in outfit_raw.get("props", [])]
             result[character] = CharacterLoadout(
-                list(dict.fromkeys(item.get("weapons", []))),
-                list(dict.fromkeys(item.get("gear", []))),
+                weapons,
+                gear,
                 bool(item.get("managed", False)),
                 CharacterOutfit(
                     bool(outfit_raw.get("managed", False)),
@@ -94,9 +107,12 @@ class LoadoutStore:
                 CharacterProgress(
                     bool(item.get("progress", {}).get("managed", False)),
                     int(item.get("progress", {}).get("money", 0)),
-                    {name: int(item.get("progress", {}).get("skills", {}).get(name, 0))
-                     for name in SKILLS},
+                    {
+                        name: int(item.get("progress", {}).get("skills", {}).get(name, 0))
+                        for name in SKILLS
+                    },
                 ),
+                equipped_gear,
             )
         return result
 
@@ -109,13 +125,16 @@ class LoadoutStore:
             loadout = loadouts.get(character, CharacterLoadout())
             bad_weapons = set(loadout.weapons) - self.valid_weapons
             bad_gear = set(loadout.gear) - self.valid_gear
-            if bad_weapons or bad_gear:
-                raise ValueError(f"Unknown inventory items: {sorted(bad_weapons | bad_gear)}")
+            bad_equipped = set(loadout.equipped_gear) - set(loadout.gear)
+            if bad_weapons or bad_gear or bad_equipped:
+                raise ValueError(f"Unknown inventory items: "
+                                 f"{sorted(bad_weapons | bad_gear | bad_equipped)}")
             self._validate_outfit(loadout.outfit)
             self._validate_progress(loadout.progress)
             output[character] = {
                 "weapons": sorted(set(loadout.weapons)),
                 "gear": sorted(set(loadout.gear)),
+                "equipped_gear": sorted(set(loadout.equipped_gear)),
                 "managed": loadout.managed,
                 "outfit": {
                     "managed": loadout.outfit.managed,

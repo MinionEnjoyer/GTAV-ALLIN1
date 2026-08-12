@@ -561,6 +561,12 @@ namespace ALLIN1
                 player.Handle, itemHash, false);
         }
 
+        internal bool IsGearEquipped(string gearId)
+        {
+            return !string.IsNullOrWhiteSpace(gearId) &&
+                CharacterInventory.IsGearEquipped(gearId);
+        }
+
         internal void ExecuteGiveGear(string gearId, int price)
         {
             Ped player = Game.Player.Character;
@@ -636,16 +642,77 @@ namespace ALLIN1
             CharacterInventory.RecordOwned(gearId, true);
         }
 
+        internal void ExecuteEquipGear(string gearId)
+        {
+            if (!IsGearOwned(gearId))
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~Purchase this item before equipping it.", 3000);
+                return;
+            }
+            if (IsGearEquipped(gearId))
+            {
+                GTA.UI.Screen.ShowSubtitle("~g~Already equipped.", 2500);
+                return;
+            }
+
+            Ped player = Game.Player.Character;
+            if (gearId == GearList.ARMOR_JUGGERNAUT)
+                ApplyJuggernaut(player);
+            else if (GearList.IsArmor(gearId))
+            {
+                if (JuggernautActive) RemoveJuggernaut(player);
+                player.Armor = GearList.ArmorValues[gearId];
+            }
+            else if (gearId == "WEAPON_NIGHTVISION")
+                NightVisionOwned = true;
+            else
+                player.Weapons.Give(
+                    (WeaponHash)Game.GenerateHash(gearId), 1, false, true);
+
+            CharacterInventory.SetGearEquipped(gearId, true);
+            string displayName = GearList.DisplayNames.TryGetValue(
+                gearId, out string name) ? name : gearId;
+            GTA.UI.Screen.ShowSubtitle($"~g~{displayName}~w~ equipped.", 3000);
+            Log($"EquipGear: {gearId}");
+        }
+
+        internal void ExecuteUnequipGear(string gearId)
+        {
+            if (!CharacterInventory.IsGearEquipped(gearId))
+            {
+                GTA.UI.Screen.ShowSubtitle("~y~That item is not equipped.", 2500);
+                return;
+            }
+
+            Ped player = Game.Player.Character;
+            if (GearList.IsArmor(gearId))
+                ExecuteRemoveArmor(gearId);
+            else if (gearId == "WEAPON_NIGHTVISION")
+                ExecuteRemoveNightVision();
+            else
+            {
+                Function.Call(Hash.REMOVE_WEAPON_FROM_PED,
+                    player.Handle, Game.GenerateHash(gearId));
+                string displayName = GearList.DisplayNames.TryGetValue(
+                    gearId, out string name) ? name : gearId;
+                GTA.UI.Screen.ShowSubtitle($"~y~{displayName}~w~ unequipped.", 3000);
+                Log($"UnequipGear: {gearId}");
+            }
+            CharacterInventory.SetGearEquipped(gearId, false);
+        }
+
         // ------------------------------------------------------------------ //
         //  Vehicle Sell (called by GbayBrowser garage tab)                     //
         // ------------------------------------------------------------------ //
 
-        internal bool CanSellVehicle(string model, string plateText = null)
+        internal bool CanSellVehicle(
+            string model, string plateText = null, int modelHash = 0)
         {
             if (string.IsNullOrWhiteSpace(model)) return false;
-            if (GarageManager.IsProtectedStoryVehicle(model, plateText)) return false;
-            int modelHash = Game.GenerateHash(model);
-            return Function.Call<bool>(Hash.IS_MODEL_A_VEHICLE, modelHash);
+            if (GarageManager.IsProtectedStoryVehicle(
+                    model, plateText, modelHash)) return false;
+            int resolvedHash = modelHash != 0 ? modelHash : Game.GenerateHash(model);
+            return Function.Call<bool>(Hash.IS_MODEL_A_VEHICLE, resolvedHash);
         }
 
         private static int GetFallbackVehicleValue(int vehicleClass)
@@ -665,20 +732,21 @@ namespace ALLIN1
         /// Get the sell price for a vehicle (60% of catalog/native value).
         /// Stored base-game vehicles are sellable even when GBAY does not list them.
         /// </summary>
-        internal int GetSellPrice(string model, string plateText = null)
+        internal int GetSellPrice(
+            string model, string plateText = null, int modelHash = 0)
         {
             if (_freeMode) return 0;
-            if (!CanSellVehicle(model, plateText)) return 0;
+            if (!CanSellVehicle(model, plateText, modelHash)) return 0;
 
             int buyPrice;
             if (!VehicleList.Prices.TryGetValue(model, out buyPrice))
             {
-                int modelHash = Game.GenerateHash(model);
-                buyPrice = Function.Call<int>(Hash.GET_VEHICLE_MODEL_VALUE, modelHash);
+                int resolvedHash = modelHash != 0 ? modelHash : Game.GenerateHash(model);
+                buyPrice = Function.Call<int>(Hash.GET_VEHICLE_MODEL_VALUE, resolvedHash);
                 if (buyPrice <= 0)
                 {
                     int vehicleClass = Function.Call<int>(
-                        Hash.GET_VEHICLE_CLASS_FROM_NAME, modelHash);
+                        Hash.GET_VEHICLE_CLASS_FROM_NAME, resolvedHash);
                     buyPrice = GetFallbackVehicleValue(vehicleClass);
                 }
             }
@@ -686,9 +754,10 @@ namespace ALLIN1
         }
 
         internal void ExecuteSellVehicle(string model, int listIndex,
-            int garageLocation = 0, string plateText = null)
+            int garageLocation = 0, string plateText = null, int modelHash = 0)
         {
-            if (GarageManager.IsProtectedStoryVehicle(model, plateText))
+            if (GarageManager.IsProtectedStoryVehicle(
+                    model, plateText, modelHash))
             {
                 GTA.UI.Screen.ShowSubtitle(
                     "~r~Story-owned personal vehicles cannot be sold.", 3500);
@@ -699,7 +768,7 @@ namespace ALLIN1
                 return;
             }
 
-            int sellPrice = GetSellPrice(model, plateText);
+            int sellPrice = GetSellPrice(model, plateText, modelHash);
 
             bool removed = garageLocation == 1
                 ? GarageManager.RemoveFloorGarageVehicle(listIndex)
@@ -847,7 +916,7 @@ namespace ALLIN1
         private static int _savedEarPropDrawable;
         private static int _savedEarPropTexture;
 
-        private void ApplyJuggernaut(Ped player)
+        internal static void ApplyJuggernaut(Ped player)
         {
             // Save current outfit so we can restore later
             _savedComponents = new int[12];
@@ -897,7 +966,7 @@ namespace ALLIN1
                 BALLISTIC_CLIPSET, 0.25f);
 
             JuggernautActive = true;
-            Log("Juggernaut armor applied");
+            ClientLog.Info("GBAY", "Juggernaut armor applied");
         }
 
         internal static void RemoveJuggernaut(Ped player)

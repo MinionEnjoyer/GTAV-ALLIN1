@@ -39,11 +39,13 @@ def test_atomic_json_creates_and_backs_up(tmp_path):
 
 def test_loadout_round_trip_normalizes_all_characters(tmp_path):
     store = LoadoutStore(tmp_path / "loadouts.json", {"WEAPON_A"}, {"GEAR_A"})
-    store.save({"michael": CharacterLoadout(["WEAPON_A", "WEAPON_A"], ["GEAR_A"])})
+    store.save({"michael": CharacterLoadout(
+        ["WEAPON_A", "WEAPON_A"], ["GEAR_A"], equipped_gear=["GEAR_A"])})
     loaded = store.load()
-    assert loaded["michael"] == CharacterLoadout(["WEAPON_A"], ["GEAR_A"], False)
+    assert loaded["michael"] == CharacterLoadout(
+        ["WEAPON_A"], ["GEAR_A"], False, equipped_gear=["GEAR_A"])
     assert loaded["franklin"] == CharacterLoadout()
-    assert json.loads((tmp_path / "loadouts.json").read_text())["michael"]["schema_version"] == 3
+    assert json.loads((tmp_path / "loadouts.json").read_text())["michael"]["schema_version"] == 4
 
 
 @pytest.mark.parametrize("loadouts", [
@@ -60,7 +62,24 @@ def test_loadout_load_deduplicates_external_file(tmp_path):
     path = tmp_path / "x.json"
     path.write_text('{"trevor":{"weapons":["A","A"],"gear":["G","G"]}}')
     loaded = LoadoutStore(path, {"A"}, {"G"}).load()
-    assert loaded["trevor"] == CharacterLoadout(["A"], ["G"], False)
+    assert loaded["trevor"] == CharacterLoadout(
+        ["A"], ["G"], False, equipped_gear=["G"])
+
+
+def test_loadout_preserves_unequipped_owned_gear(tmp_path):
+    store = LoadoutStore(tmp_path / "loadouts.json", set(), {"ARMOR", "PARACHUTE"})
+    loadout = CharacterLoadout(
+        gear=["ARMOR", "PARACHUTE"], equipped_gear=["PARACHUTE"])
+    store.save({"franklin": loadout})
+    loaded = store.load()["franklin"]
+    assert loaded.gear == ["ARMOR", "PARACHUTE"]
+    assert loaded.equipped_gear == ["PARACHUTE"]
+
+
+def test_loadout_rejects_equipped_gear_that_is_not_owned(tmp_path):
+    store = LoadoutStore(tmp_path / "loadouts.json", set(), {"ARMOR"})
+    with pytest.raises(ValueError, match="ARMOR"):
+        store.save({"michael": CharacterLoadout(equipped_gear=["ARMOR"])})
 
 
 def test_outfit_round_trip(tmp_path):
