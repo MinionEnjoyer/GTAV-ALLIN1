@@ -132,6 +132,37 @@ namespace ALLIN1
         }
 
         /// <summary>
+        /// Draw a filled rounded rectangle without depending on an external
+        /// texture. Horizontal bands approximate circular corners while
+        /// compensating for the screen aspect ratio.
+        /// </summary>
+        internal static void DrawRoundedRect(
+            float x, float y, float w, float h, float radius, Color c)
+        {
+            const int slices = 32;
+            float aspect = Math.Max(1f, GetAspectRatio());
+            float r = Math.Max(0f, Math.Min(radius, h * 0.5f));
+            float rx = Math.Min(w * 0.5f, r / aspect);
+            if (r <= 0f || rx <= 0f)
+            {
+                DrawRect(x, y, w, h, c);
+                return;
+            }
+
+            float coreW = Math.Max(0f, w - rx * 2f);
+            float bandH = h / slices;
+            for (int i = 0; i < slices; i++)
+            {
+                float offset = -h * 0.5f + (i + 0.5f) * bandH;
+                float cornerY = Math.Max(0f, Math.Abs(offset) - (h * 0.5f - r));
+                float normalized = Math.Min(1f, cornerY / r);
+                float capW = rx * (float)Math.Sqrt(1f - normalized * normalized);
+                DrawRect(x, y + offset, coreW + capW * 2f,
+                    bandH + 0.0006f, c);
+            }
+        }
+
+        /// <summary>
         /// Draw a sprite from a built-in texture dictionary.
         /// </summary>
         internal static void DrawSprite(string dict, string name,
@@ -157,8 +188,9 @@ namespace ALLIN1
         /// second on an eight-card page because each card incremented it.
         private static readonly TimeSpan DICT_LOAD_TIMEOUT = TimeSpan.FromSeconds(30);
 
-        private const string LOGO_DICT = "allin1_logo";
-        private const string LOGO_TEX  = "phat";
+        private const string PHAT_LOGO_DICT = "phat_logo";
+        private const string PHAT_LOGO_TEX  = "phat";
+        private const string BRAND_LOGO_DICT = "allin1_logo";
         private const string BRAND_LOGO_TEX = "allin1";
 
         internal static string PreviewDiagnostics
@@ -291,37 +323,92 @@ namespace ALLIN1
             return true;
         }
 
-        private static void DrawLogoFallback(float x, float y, float h)
+        private static bool DrawCatalogPreviewTexture(
+            string itemId, Dictionary<string, string> previewDict,
+            float x, float y, float w, float h)
         {
-            RequestDict(LOGO_DICT);
+            if (!previewDict.TryGetValue(itemId, out string dict))
+                return false;
+            if (!IsDictLoaded(dict))
+            {
+                RequestDict(dict);
+                return false;
+            }
+            DrawSprite(dict, itemId.ToLowerInvariant(), x, y, w, h, Color.White);
+            return true;
+        }
+
+        /// <summary>Draw a captured Ammu-Nation weapon preview when available.</summary>
+        internal static bool DrawWeaponPreviewTexture(
+            string weaponName, float x, float y, float w, float h)
+        {
+            return DrawCatalogPreviewTexture(
+                weaponName, WeaponList.PreviewDict, x, y, w, h);
+        }
+
+        /// <summary>Draw a captured equipment preview when available.</summary>
+        internal static bool DrawEquipmentPreviewTexture(
+            string gearId, float x, float y, float w, float h)
+        {
+            return DrawCatalogPreviewTexture(
+                gearId, GearList.PreviewDict, x, y, w, h);
+        }
+
+        private static void DrawLogoFallback(
+            string dictionary, float x, float y, float h)
+        {
+            RequestDict(dictionary);
             DrawRect(x, y, h * 0.78f, h * 0.72f, HeaderBg);
             DrawText("GBAY", x, y - h * 0.16f, h * 4.2f, TextWhite,
                 FONT_PRICEDOWN, true);
         }
 
+        /// <summary>
+        /// Fit a source image inside a normalized screen-space box while
+        /// compensating for widescreen coordinates. This preserves the
+        /// texture's pixel aspect ratio at every game resolution.
+        /// </summary>
+        private static void ContainSprite(
+            float sourceWidth, float sourceHeight, float maxW, float maxH,
+            out float width, out float height)
+        {
+            float screenAspect = Math.Max(1f, GetAspectRatio());
+            float sourceAspect = sourceWidth / sourceHeight;
+            height = maxH;
+            width = height * sourceAspect / screenAspect;
+            if (width > maxW)
+            {
+                width = maxW;
+                height = width * screenAspect / sourceAspect;
+            }
+        }
+
         /// <summary>Draw the PHAT loading meme from the DLC texture dictionary.</summary>
         internal static void DrawLogo(float x, float y, float h)
         {
-            if (!IsDictLoaded(LOGO_DICT))
+            if (!IsDictLoaded(PHAT_LOGO_DICT))
             {
-                DrawLogoFallback(x, y, h);
+                DrawLogoFallback(PHAT_LOGO_DICT, x, y, h);
                 return;
             }
-            float w = h * (440f / 559f);
-            DrawSprite(LOGO_DICT, LOGO_TEX, x, y, w, h, Color.White);
+            ContainSprite(440f, 559f, h, h, out float w, out float fittedH);
+            DrawSprite(PHAT_LOGO_DICT, PHAT_LOGO_TEX,
+                x, y, w, fittedH, Color.White);
         }
 
-        /// <summary>Draw the ALLIN1 brand mark used by the About page.</summary>
-        internal static void DrawBrandLogo(float x, float y, float h)
+        /// <summary>Contain-fit the ALLIN1 brand mark on the About page.</summary>
+        internal static void DrawBrandLogo(
+            float x, float y, float maxW, float maxH)
         {
-            if (!IsDictLoaded(LOGO_DICT))
+            if (!IsDictLoaded(BRAND_LOGO_DICT))
             {
-                DrawLogoFallback(x, y, h);
+                DrawLogoFallback(BRAND_LOGO_DICT, x, y, maxH);
                 return;
             }
-            const float sourceAspect = 1.5f;
-            float w = h * sourceAspect;
-            DrawSprite(LOGO_DICT, BRAND_LOGO_TEX, x, y, w, h, Color.White);
+            ContainSprite(1536f, 1024f, maxW, maxH,
+                out float width, out float height);
+            DrawSprite(BRAND_LOGO_DICT, BRAND_LOGO_TEX,
+                x, y, width, height, Color.White);
         }
 
         /// <summary>
@@ -336,6 +423,47 @@ namespace ALLIN1
                 Color.FromArgb(150, 10, 20, 14), FONT_PRICEDOWN, true);
             DrawText("GBAY", x, y, scale, foreground,
                 FONT_PRICEDOWN, true);
+        }
+
+        /// <summary>Draw the main-menu GBAY title on a clean rounded panel.</summary>
+        internal static void DrawGbayHeader(
+            float x, float centerY, float w, float h)
+        {
+            Color shadow = Color.FromArgb(100, 6, 28, 15);
+            Color border = Color.FromArgb(255, 20, 111, 55);
+            Color face = Color.FromArgb(255, 39, 154, 78);
+            float radius = h * 0.23f;
+
+            DrawRoundedRect(x, centerY + 0.005f, w, h, radius, shadow);
+            DrawRoundedRect(x, centerY, w, h, radius, border);
+            DrawRoundedRect(x, centerY, w - 0.006f, h - 0.008f,
+                Math.Max(0f, radius - 0.004f), face);
+
+            float textY = centerY - h * 0.31f;
+            DrawText("GBAY", x + 0.001f, textY + 0.002f, 0.70f,
+                Color.FromArgb(105, 5, 30, 15), FONT_PRICEDOWN, true);
+            DrawText("GBAY", x, textY, 0.70f, TextWhite,
+                FONT_PRICEDOWN, true);
+        }
+
+        /// <summary>
+        /// Draw a consistent rounded green title badge with fitted white text.
+        /// Used by every GBAY screen and modal title outside the main wordmark.
+        /// </summary>
+        internal static void DrawTitleBadge(
+            string text, float x, float centerY, float w, float h,
+            float scale = 0.38f, int font = FONT_CONDENSED)
+        {
+            float radius = h * 0.24f;
+            DrawRoundedRect(x, centerY + 0.003f, w, h, radius,
+                Color.FromArgb(85, 3, 22, 10));
+            DrawRoundedRect(x, centerY, w, h, radius,
+                Color.FromArgb(255, 18, 105, 51));
+            DrawRoundedRect(x, centerY, w - 0.004f, h - 0.005f,
+                Math.Max(0f, radius - 0.002f), BtnGreen);
+            DrawTextFit(text, x, centerY - h * 0.30f, scale,
+                Math.Min(0.20f, scale), w - 0.018f, TextWhite,
+                font, true);
         }
 
         /// <summary>

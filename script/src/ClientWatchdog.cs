@@ -18,6 +18,9 @@ namespace ALLIN1
         internal static bool SafeMode => ForcedSafeMode ||
             (PreviousSessionCrashed && DateTime.UtcNow < RecoveryEndsUtc);
 
+        internal static string SafeModeReason => ForcedSafeMode
+            ? "forced safe mode" : "30-second recovery mode";
+
         public ClientWatchdog()
         {
             Tick += OnTick;

@@ -41,13 +41,6 @@ jobs:
       - run: dotnet restore script/ALLIN1.csproj
       - run: dotnet build script/ALLIN1.csproj -c Release --no-restore
 
-  asi-build:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: cmake -S asi -B asi/build -A x64
-      - run: cmake --build asi/build --config Release
-
   windows-real-toolchain:
     runs-on: windows-latest
     timeout-minutes: 30
@@ -81,3 +74,20 @@ jobs:
         env:
           ALLIN1_RUN_TOOL_INTEGRATION: "1"
         run: python -m pytest tests/test_windows_toolchain_integration.py -m windows_integration -v
+      - name: Rebuild packaged client binaries
+        shell: powershell
+        run: |
+          dotnet restore script/ALLIN1.csproj
+          dotnet build script/ALLIN1.csproj -c Release --no-restore
+          Copy-Item script/bin/Release/ALLIN1.dll script/dist/ALLIN1.dll -Force
+      - name: Build and verify public release contract
+        shell: powershell
+        run: |
+          python -m allin1.cli build-release --output output/GTAV-ALLIN1-windows.zip
+          python -m allin1.cli verify-release output/GTAV-ALLIN1-windows.zip
+      - name: Upload qualified release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: GTAV-ALLIN1-windows
+          path: output/GTAV-ALLIN1-windows.zip
+          if-no-files-found: error

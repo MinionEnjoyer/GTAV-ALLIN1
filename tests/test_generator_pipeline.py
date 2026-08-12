@@ -112,19 +112,37 @@ def test_build_ytd_files_chunks_and_cleans_temp(tmp_path, monkeypatch):
     previews.mkdir()
     for model in ("a", "b", "c"):
         (previews / f"{model}.png").write_bytes(b"png")
-    logo = tmp_path / "logo.png"
-    logo.write_bytes(b"logo")
+    logo = tmp_path / "phat.png"
+    Image.new("RGBA", (440, 559), "green").save(logo)
+    brand_logo = tmp_path / "allin1.png"
+    Image.new("RGBA", (1536, 1024), "white").save(brand_logo)
     tools = tmp_path / "tools"
     tools.mkdir()
     (tools / "RpfPatcher").mkdir()
     (tools / "RpfPatcher" / "RpfPatcher.exe").touch()
 
-    def fake_pack(_png, output, _tool):
+    packed_dimensions = {}
+
+    def fake_pack(png_dir, output, _tool):
+        images = list(png_dir.glob("*.png"))
+        if output.name in {"phat_logo.ytd", "allin1_logo.ytd"}:
+            with Image.open(images[0]) as image:
+                packed_dimensions[output.name] = image.size
         output.write_bytes(b"ytd")
     monkeypatch.setattr(ytd_builder, "_pack_ytd", fake_pack)
     output = tmp_path / "out"
-    files = ytd_builder.build_ytd_files(previews, logo, output, tools, ["c", "a", "b"], 2)
-    assert [p.name for p in files] == ["allin1_prev_01.ytd", "allin1_prev_02.ytd", "allin1_logo.ytd"]
+    files = ytd_builder.build_ytd_files(
+        previews, logo, output, tools, ["c", "a", "b"], 2,
+        brand_logo_path=brand_logo,
+    )
+    assert [p.name for p in files] == [
+        "allin1_prev_01.ytd", "allin1_prev_02.ytd",
+        "phat_logo.ytd", "allin1_logo.ytd",
+    ]
+    assert packed_dimensions == {
+        "phat_logo.ytd": (440, 559),
+        "allin1_logo.ytd": (1536, 1024),
+    }
     assert not list(output.glob("_tmp_*"))
 
 
@@ -149,6 +167,37 @@ def test_build_ytd_keeps_catalog_chunk_numbers_when_previews_are_missing(tmp_pat
     )
 
     assert [path.name for path in files] == ["allin1_prev_02.ytd"]
+
+
+def test_build_ytd_adds_weapon_and_equipment_catalogs(tmp_path, monkeypatch):
+    previews = tmp_path / "previews"
+    weapons = tmp_path / "weapon_previews"
+    equipment = tmp_path / "equipment_previews"
+    for directory, item_id in (
+        (previews, "car"), (weapons, "WEAPON_TEST"),
+        (equipment, "ARMOR_LIGHT"),
+    ):
+        directory.mkdir()
+        (directory / f"{item_id.lower()}.png").write_bytes(b"png")
+    tools = tmp_path / "tools"
+    (tools / "RpfPatcher").mkdir(parents=True)
+    (tools / "RpfPatcher" / "RpfPatcher.exe").touch()
+    monkeypatch.setattr(
+        ytd_builder, "_pack_ytd",
+        lambda _source, output, _tool: output.write_bytes(b"ytd"),
+    )
+
+    files = ytd_builder.build_ytd_files(
+        previews, None, tmp_path / "out", tools, ["car"],
+        preview_groups=[
+            ("allin1_weapon", weapons, ["WEAPON_TEST"]),
+            ("allin1_gear", equipment, ["ARMOR_LIGHT"]),
+        ],
+    )
+
+    assert [path.name for path in files] == [
+        "allin1_prev_01.ytd", "allin1_weapon_01.ytd", "allin1_gear_01.ytd",
+    ]
 
 
 def test_build_ytd_recovers_tool_output_from_alternate_location(tmp_path, monkeypatch):

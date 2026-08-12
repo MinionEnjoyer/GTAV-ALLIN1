@@ -118,6 +118,7 @@ def test_default_config():
     assert config.traffic.replacement_chance == 0.30
     assert config.vehicles.enable_all is True
     assert config.traffic.adaptive_performance is True
+    assert config.general.enable_rpf_previews is True
     assert config.script.ui_scale == 1.0
     assert config.script.seat_selector_key == "L"
 
@@ -136,12 +137,10 @@ def test_save_round_trip_preserves_all_fields(tmp_path):
     config.script.enable_dlc_police = True
     config.script.gbay_key = "F8"
     config.script.night_vision_key = "V"
-    config.script.preview_capture_key = "F11"
+    config.script.world_vector_key = "F11"
     config.script.seat_selector_enabled = False
     config.script.seat_selector_key = "G"
     config.script.gbay_free_mode = True
-    config.script.spawner_debug = True
-    config.script.garage_debug = True
     path = tmp_path / "nested" / "config.toml"
 
     config.save(path)
@@ -153,7 +152,7 @@ def test_save_round_trip_preserves_all_fields(tmp_path):
 @pytest.mark.parametrize("field,value,match", [
     ("gbay_key", "", "Unsupported"),
     ("night_vision_key", "Space", "Unsupported"),
-    ("preview_capture_key", "F13", "Unsupported"),
+    ("world_vector_key", "F13", "Unsupported"),
     ("seat_selector_key", "Space", "Unsupported"),
 ])
 def test_keybind_validation_rejects_unsupported_values(field, value, match):
@@ -166,11 +165,20 @@ def test_keybind_validation_rejects_unsupported_values(field, value, match):
 def test_keybind_validation_rejects_conflicts_and_normalizes_case():
     config = Config.default()
     config.script.gbay_key = "f9"
-    config.script.preview_capture_key = "F9"
+    config.script.world_vector_key = "F9"
     with pytest.raises(ValueError, match="both"):
         config.validate()
-    config.script.preview_capture_key = "NumPad9"
+    config.script.world_vector_key = "NumPad9"
     config.validate()
+
+
+def test_legacy_preview_capture_key_loads_as_world_vector_key(tmp_path):
+    path = tmp_path / "legacy.toml"
+    path.write_text('[script]\npreview_capture_key = "F11"\n')
+
+    config = Config.load(path)
+
+    assert config.script.world_vector_key == "F11"
 
 
 @pytest.mark.parametrize("field,value", [

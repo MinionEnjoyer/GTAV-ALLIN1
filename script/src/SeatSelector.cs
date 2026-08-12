@@ -4,9 +4,9 @@
 // picker HUD. Arrow keys navigate available seats; release the key to confirm.
 //
 // Seat changes are animation-only. The selector never warps the player. A
-// reachable front-seat pair uses GTA's shuffle task; other rows and external
-// positions (including turret mounts) use a normal exit followed by a normal
-// pathfind-and-enter task.
+// reachable front and rear seat pairs use GTA's shuffle task; changes between
+// rows and external positions (including turret mounts) use a normal exit
+// followed by a normal pathfind-and-enter task.
 //
 // Player-only — does not affect NPC behavior.
 
@@ -518,18 +518,12 @@ namespace ALLIN1
             if (phaseElapsed <= SHUFFLE_TIMEOUT_MS)
                 return;
 
-            // Some vehicle layouts reject or redirect GTA's generic shuffle.
-            // Recover through the external animation route, never through a warp.
-            if (!CanBeginExternalRoute())
-            {
-                CancelExecution(player, "shuffle_failed_vehicle_moving", true);
-                GTA.UI.Screen.ShowSubtitle(
-                    "~y~Seat shuffle was blocked. Stop the vehicle and try again.", 3000);
-                return;
-            }
-
-            Function.Call(Hash.CLEAR_PED_TASKS, player.Handle);
-            BeginExit(player, "shuffle_fallback");
+            // A same-row seat remains internally accessible. If a particular
+            // layout rejects GTA's shuffle task, stop safely instead of opening
+            // a door and converting the request into an external route.
+            CancelExecution(player, "same_row_shuffle_timeout", true);
+            GTA.UI.Screen.ShowSubtitle(
+                "~y~This vehicle blocked the interior seat shuffle.", 3000);
         }
 
         private bool HasReachedTarget(Ped player)
@@ -541,12 +535,15 @@ namespace ALLIN1
 
         private bool CanShuffleInside(int currentSeat, int targetSeat)
         {
-            // TASK_SHUFFLE_TO_NEXT_VEHICLE_SEAT has no target-seat argument.
-            // Restrict it to the unambiguous front pair. Rear rows, limousines,
-            // jump seats, and weapon/turret positions use the external route.
-            bool frontPair = (currentSeat == -1 && targetSeat == 0)
-                          || (currentSeat == 0 && targetSeat == -1);
-            if (!frontPair || _targetVeh == null || !_targetVeh.Exists())
+            // TASK_SHUFFLE_TO_NEXT_VEHICLE_SEAT has no target-seat argument, so
+            // use it only for unambiguous two-seat cabin rows. GTA's standard
+            // four-door topology numbers the front pair -1/0 and rear pair 1/2.
+            // Higher indices remain conservative because they include jump,
+            // limousine, cargo, and externally mounted turret positions.
+            bool frontPair = IsSeatPair(currentSeat, targetSeat, -1, 0);
+            bool rearPair = IsSeatPair(currentSeat, targetSeat, 1, 2);
+            if ((!frontPair && !rearPair) ||
+                _targetVeh == null || !_targetVeh.Exists())
                 return false;
 
             int model = _targetVeh.Model.Hash;
@@ -556,6 +553,13 @@ namespace ALLIN1
                 && !Function.Call<bool>(Hash.IS_THIS_MODEL_A_HELI, model)
                 && !Function.Call<bool>(Hash.IS_THIS_MODEL_A_PLANE, model)
                 && !Function.Call<bool>(Hash.IS_THIS_MODEL_A_TRAIN, model);
+        }
+
+        private static bool IsSeatPair(
+            int currentSeat, int targetSeat, int first, int second)
+        {
+            return (currentSeat == first && targetSeat == second)
+                || (currentSeat == second && targetSeat == first);
         }
 
         private bool CanBeginExternalRoute()

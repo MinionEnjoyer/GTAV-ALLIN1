@@ -6,6 +6,7 @@ Produces a C# static class with:
 - DisplayNames dictionary (weapon name -> display label)
 - Prices dictionary (weapon name -> price in dollars)
 - CategoryNames dictionary (weapon name -> category display name)
+- PreviewDict dictionary (weapon name -> YTD texture dictionary)
 """
 
 from __future__ import annotations
@@ -47,6 +48,19 @@ AMMO_COST_PER_ROUND: dict[str, int] = {
     "melee":       0,
     "misc":        0,
 }
+
+TEXTURES_PER_YTD = 89
+YTD_PREFIX = "allin1_weapon"
+
+
+def build_preview_dict(
+    weapons: list[str], textures_per_ytd: int = TEXTURES_PER_YTD
+) -> dict[str, str]:
+    """Map stable weapon IDs to their streamed preview dictionaries."""
+    return {
+        weapon: f"{YTD_PREFIX}_{idx // textures_per_ytd + 1:02d}"
+        for idx, weapon in enumerate(sorted(weapons))
+    }
 
 
 def generate(weapons_path: Path, prices: dict[str, int]) -> str:
@@ -127,6 +141,15 @@ def generate(weapons_path: Path, prices: dict[str, int]) -> str:
     for w in weapons:
         cost = AMMO_COST_PER_ROUND.get(w["category"], 0)
         a(f'            {{ "{w["name"]}", {cost} }},')
+    a("        };")
+    a("")
+
+    # --- PreviewDict dictionary (weapon name -> YTD texture dict name) ---
+    preview_mapping = build_preview_dict([w["name"] for w in weapons])
+    a("        internal static readonly Dictionary<string, string> PreviewDict = new Dictionary<string, string>")
+    a("        {")
+    for weapon, dict_name in sorted(preview_mapping.items()):
+        a(f'            {{ "{weapon}", "{dict_name}" }},')
     a("        };")
 
     a("    }")

@@ -138,5 +138,23 @@ namespace ALLIN1
             { "WEAPON_HAZARDCAN",          "Equipment" },
             { "WEAPON_NIGHTVISION",        "Equipment" },
         };
+
+        // Equipment previews are packed into one small streamed dictionary.
+        internal static readonly Dictionary<string, string> PreviewDict =
+            new Dictionary<string, string>
+        {
+            { ARMOR_SUPER_LIGHT,            "allin1_gear_01" },
+            { ARMOR_LIGHT,                  "allin1_gear_01" },
+            { ARMOR_STANDARD,               "allin1_gear_01" },
+            { ARMOR_HEAVY,                  "allin1_gear_01" },
+            { ARMOR_SUPER_HEAVY,            "allin1_gear_01" },
+            { ARMOR_JUGGERNAUT,             "allin1_gear_01" },
+            { "GADGET_PARACHUTE",          "allin1_gear_01" },
+            { "WEAPON_SMOKEGRENADE",       "allin1_gear_01" },
+            { "WEAPON_FIREEXTINGUISHER",   "allin1_gear_01" },
+            { "WEAPON_PETROLCAN",          "allin1_gear_01" },
+            { "WEAPON_HAZARDCAN",          "allin1_gear_01" },
+            { "WEAPON_NIGHTVISION",        "allin1_gear_01" },
+        };
     }
 }

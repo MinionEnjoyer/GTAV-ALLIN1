@@ -13,8 +13,8 @@ ALLIN1 supports both GTA V Legacy and GTA V Enhanced. It is designed exclusively
 Mode**; the installer configures the game to launch without BattlEye and should never be used in
 GTA Online.
 
-> **Current development version:** manager **0.2.0**. ALLIN1 is under active development and the
-> current testing branch receives in-game playtesting before changes are promoted to a release.
+> **Current public release:** **0.3.0**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
+> highlights and hardening work included in this build.
 
 ## Support
 
@@ -24,13 +24,15 @@ If GTA V ALLIN1 is useful to you, project support is available through
 ## Features
 
 - **GBAY vehicle marketplace** — browse all 461 supported DLC vehicles by category, search and
-  filter the catalog, favorite listings, inspect streamed preview artwork, preview a vehicle in
-  3D, purchase it, and deliver it to a garage.
-- **Weapons and inventory** — purchase more than 100 weapons, refill owned ammunition, and manage
-  exact per-character weapon and equipment loadouts from the desktop manager.
-- **Persistent garages** — maintain separate Story Mode vehicle collections, drive vehicles into
-  supported interiors, sell stored vehicles, recover from interrupted transitions, and customize
-  garage floors.
+  filter the catalog, collect listings in a dedicated Favorites tab, inspect streamed preview
+  artwork, preview a vehicle in 3D, purchase it, and deliver it to a garage.
+- **Weapons and gear** — purchase more than 100 weapons, refill owned ammunition, browse captured
+  previews for armor and equipment in GBAY, and manage exact per-character loadouts from the
+  desktop manager.
+- **Persistent garages** — maintain independent collections at Eclipse Towers, the oversized
+  three-floor garage, and a 10-car Davis Auto Shop; drive vehicles in, target delivery locations,
+  sell stored vehicles, recover interrupted transitions, customize garage floors, and configure
+  every Davis Auto Shop style, tint, lift, quarters, work-area, and storage option.
 - **DLC traffic integration** — adds Online vehicles to ambient traffic with class-aware
   replacements, road and visibility checks, mission/interior/wanted-level guards, distance-based
   cleanup, and adaptive performance throttling.
@@ -90,7 +92,7 @@ ScriptHookV and ScriptHookVDotNet Enhanced must be installed in the directory co
 6. Select **Launch GTA V** and remain in Story Mode. Press **F9** to open GBAY.
 
 The installer deploys the ALLIN1 client and configuration under `<GTA V>/scripts`, registers the
-optional preview DLC, creates recoverable backups before replacement, and adds the no-BattlEye
+GBAY preview DLC when artwork is enabled, creates recoverable backups before replacement, and adds the no-BattlEye
 launch argument required for Story Mode scripting.
 
 ## Desktop manager
@@ -116,11 +118,12 @@ settings. The installed `scripts/ALLIN1.toml` remains the runtime source of trut
 | `Escape`, right-click / controller Back | Return to the previous page |
 | `LB` / `RB` or mouse wheel | Previous or next listing page |
 | `LT` / `RT` | Previous or next category |
-| `Y` | Cycle ownership and favorites filters |
+| `Y` | Cycle ownership filters: all, owned, or available |
 | `X` | Search the active catalog |
 | `R3` | Favorite or unfavorite the selected listing |
 | `L` | Open the seat selector by default |
 | `N` | Toggle acquired night vision |
+| `F10` | Toggle the developer world-vector overlay |
 
 GBAY supports keyboard, mouse, and controller navigation. Page arrows and category-strip arrows
 are also clickable, and directional navigation crosses listing-page boundaries automatically.
@@ -132,11 +135,11 @@ are also clickable, and directional navigation crosses listing-page boundaries a
 
 Important groups include:
 
-- `[general]` — game path, backups, and optional RPF preview artwork;
+- `[general]` — game path, backups, and RPF preview artwork;
 - `[traffic]` — spawn distances, population limits, replacement behavior, and adaptive FPS guard;
 - `[vehicles]` — global enablement plus class and model exclusions;
 - `[script]` — GBAY, night vision and seat-selector keys, UI scale, reduced motion, colorblind mode,
-  safe mode, free purchases, logging, and development diagnostics.
+  safe mode, free purchases, support logging, and the F10 world-vector overlay.
 
 Vehicle, weapon, and gear pricing is maintained in `prices_vehicles.toml`,
 `prices_weapons.toml`, and `prices_gear.toml`.

@@ -24,6 +24,7 @@ namespace ALLIN1
         GarageSellConfirm,
         GarageCustomize,
         WeaponBrowser,
+        GearBrowser,
         Diagnostics,
         About,
     }
@@ -94,8 +95,8 @@ namespace ALLIN1
 
         // Top menu button layout
         private const float TOP_BTN_W      = 0.35f;
-        private const float TOP_BTN_H      = 0.08f;
-        private const float TOP_BTN_GAP    = 0.025f;
+        private const float TOP_BTN_H      = 0.065f;
+        private const float TOP_BTN_GAP    = 0.015f;
 
         // Shared informational page action
         private const float INFO_BACK_W    = 0.28f;
@@ -108,8 +109,10 @@ namespace ALLIN1
 
         private int _pendingSellIndex = -1;
         private string _pendingSellModel = "";
-        private bool _pendingSellFloorGarage;
+        private string _pendingSellPlate = "";
+        private int _pendingSellGarageLocation;
         private int _garageLocationIndex;
+        private int _deliveryGarageIndex;
 
         // ------------------------------------------------------------------ //
         //  Category Definitions                                               //
@@ -119,17 +122,20 @@ namespace ALLIN1
         {
             internal string Label;
             internal string[] Models;
+            internal bool FavoritesOnly;
 
-            internal Category(string label, string[] models)
+            internal Category(string label, string[] models, bool favoritesOnly = false)
             {
                 Label = label;
                 Models = models;
+                FavoritesOnly = favoritesOnly;
             }
         }
 
         private static readonly Category[] CATEGORIES =
         {
             new Category("All",             VehicleList.All),
+            new Category("Favorites",       VehicleList.All, true),
             new Category("Compacts",        VehicleList.Compacts),
             new Category("Coupes",          VehicleList.Coupes),
             new Category("Sedans",          VehicleList.Sedans),
@@ -156,17 +162,21 @@ namespace ALLIN1
         {
             internal string Label;
             internal string[] Weapons;
+            internal bool FavoritesOnly;
 
-            internal WeaponCategory(string label, string[] weapons)
+            internal WeaponCategory(
+                string label, string[] weapons, bool favoritesOnly = false)
             {
                 Label = label;
                 Weapons = weapons;
+                FavoritesOnly = favoritesOnly;
             }
         }
 
         private static readonly WeaponCategory[] WEAPON_CATEGORIES =
         {
             new WeaponCategory("All",             WeaponList.All),
+            new WeaponCategory("Favorites",       WeaponList.All, true),
             new WeaponCategory("Pistols",         WeaponList.Pistols),
             new WeaponCategory("SMGs",            WeaponList.Smgs),
             new WeaponCategory("Shotguns",        WeaponList.Shotguns),
@@ -278,7 +288,7 @@ namespace ALLIN1
                 _stateStartedAt = Game.GameTime;
                 _topMenuIndex = 0;
                 GbayRenderer.EnsureTextures();
-                GbayRenderer.RequestDict("allin1_logo");
+                GbayRenderer.RequestDict("phat_logo");
             }
             else
             {
@@ -365,6 +375,9 @@ namespace ALLIN1
                 case BrowserState.WeaponBrowser:
                     DrawWeaponBrowser(input);
                     break;
+                case BrowserState.GearBrowser:
+                    DrawGearBrowser(input);
+                    break;
                 case BrowserState.Diagnostics:
                     DrawDiagnostics(input);
                     break;
@@ -382,8 +395,8 @@ namespace ALLIN1
             GbayRenderer.DrawRect(0.5f, 0.5f, 1f, 1f, Color.FromArgb(255, 15, 25, 20));
             float pulse = 0.17f + 0.012f * (float)Math.Sin(Game.GameTime / 110.0);
             GbayRenderer.DrawLogo(0.5f, 0.43f, pulse);
-            GbayRenderer.DrawText("LOADING GBAY", 0.5f, 0.57f, 0.42f,
-                GbayRenderer.TextWhite, GbayRenderer.FONT_CONDENSED, true);
+            GbayRenderer.DrawTitleBadge(
+                "LOADING GBAY", 0.5f, 0.585f, 0.25f, 0.055f, 0.40f);
             float progress = Math.Min(1f, (Game.GameTime - _stateStartedAt) / (float)LOADING_DURATION_MS);
             GbayRenderer.DrawRect(0.5f, 0.63f, 0.30f, 0.008f, Color.FromArgb(100, 255, 255, 255));
             GbayRenderer.DrawRect(0.35f + 0.15f * progress, 0.63f, 0.30f * progress, 0.008f,
@@ -432,6 +445,24 @@ namespace ALLIN1
             return input.MouseClick && hover;
         }
 
+        /// <summary>
+        /// Draw the shared high-contrast control legend used by GBAY pages.
+        /// The explicit green field prevents the hint from disappearing into
+        /// the pale footer or the game world behind full-screen previews.
+        /// </summary>
+        private static void DrawControlHint(
+            string text, float rightEdge = BROWSER_RIGHT - 0.01f,
+            float centerY = FOOTER_CY, float width = 0.325f,
+            float height = 0.038f)
+        {
+            float centerX = rightEdge - width / 2f;
+            GbayRenderer.DrawBorderedRect(centerX, centerY, width, height,
+                GbayRenderer.BtnGreen, Color.FromArgb(255, 18, 105, 51), 0.002f);
+            GbayRenderer.DrawTextFit(text, centerX, centerY - height * 0.31f,
+                0.31f, 0.235f, width - 0.018f, GbayRenderer.TextWhite,
+                GbayRenderer.FONT_CONDENSED, true, true);
+        }
+
         // ------------------------------------------------------------------ //
         //  Top Menu                                                           //
         // ------------------------------------------------------------------ //
@@ -444,15 +475,13 @@ namespace ALLIN1
             GbayRenderer.DrawRect(BROWSER_CX, 0.5f, panelW, panelH,
                 GbayRenderer.ModalBg);
 
-            // GTA-style wordmark. PHAT remains on the loading screen only.
-            GbayRenderer.DrawGbayWordmark(BROWSER_CX, 0.145f, 0.82f);
-            GbayRenderer.DrawRect(BROWSER_CX, 0.235f, 0.22f, 0.004f,
-                GbayRenderer.CardBorderSel);
+            // Clean GBAY panel. PHAT remains on the loading screen only.
+            GbayRenderer.DrawGbayHeader(BROWSER_CX, 0.18f, 0.22f, 0.075f);
 
             // Buttons
-            string[] labels = { "Vehicles", "Weapons", "My Garage", "Diagnostics", "About" };
-            bool[] enabled = { true, true, true, true, true };
-            float startY = 0.27f;
+            string[] labels = { "Vehicles", "Weapons", "Gear", "My Garage", "Diagnostics", "About" };
+            bool[] enabled = { true, true, true, true, true, true };
+            float startY = 0.245f;
 
             _topMenuHover = -1;
 
@@ -536,17 +565,22 @@ namespace ALLIN1
                     _weaponTabScrollOffset = 0;
                     RebuildWeaponFilteredList();
                 }
-                else if (activateIdx == 2) // My Garage
+                else if (activateIdx == 2) // Gear
+                {
+                    OpenGearBrowser();
+                }
+                else if (activateIdx == 3) // My Garage
                 {
                     _state = BrowserState.GarageView;
                     _garageVehicleIdx = 0;
-                    _garageLocationIndex = GarageManager.IsPlayerInFloorGarage ? 1 : 0;
+                    _garageLocationIndex = GarageManager.IsPlayerInFloorGarage ? 1
+                        : GarageManager.IsPlayerInDavisGarage ? 2 : 0;
                 }
-                else if (activateIdx == 3)
+                else if (activateIdx == 4)
                 {
                     _state = BrowserState.Diagnostics;
                 }
-                else if (activateIdx == 4)
+                else if (activateIdx == 5)
                 {
                     _state = BrowserState.About;
                 }
@@ -567,13 +601,14 @@ namespace ALLIN1
             GbayRenderer.DrawRect(BROWSER_CX, 0.49f, panelW, panelH,
                 GbayRenderer.ModalBg);
             if (showLogo)
-                GbayRenderer.DrawBrandLogo(BROWSER_CX, 0.165f, 0.095f);
+                GbayRenderer.DrawBrandLogo(
+                    BROWSER_CX, 0.165f, 0.24f, 0.115f);
             else
                 GbayRenderer.DrawGbayWordmark(BROWSER_CX, 0.115f, 0.58f);
 
-            float titleY = showLogo ? 0.235f : 0.185f;
-            GbayRenderer.DrawText(title, BROWSER_CX, titleY, 0.55f,
-                GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED, true);
+            float titleY = showLogo ? 0.255f : 0.205f;
+            GbayRenderer.DrawTitleBadge(
+                title, BROWSER_CX, titleY, 0.30f, 0.055f, 0.48f);
 
             float bodyTop = showLogo ? 0.315f : 0.265f;
             const float bodyBottom = 0.775f;
@@ -623,6 +658,7 @@ namespace ALLIN1
                 "Session duration: " + (Game.GameTime / 1000) + " seconds",
                 "Garage location: " + (GarageManager.IsPlayerInFloorGarage
                     ? "three-floor garage"
+                    : GarageManager.IsPlayerInDavisGarage ? "Davis Auto Shop"
                     : GarageManager.IsInGarage ? "Eclipse Towers" : "outside"),
                 "Traffic: " + TrafficSpawner.ManagedVehicleCount + " managed, " +
                     Math.Round(TrafficSpawner.SmoothedFps) + " FPS" +
@@ -693,8 +729,9 @@ namespace ALLIN1
                 BROWSER_LEFT + 0.035f, HEADER_Y + 0.010f, 0.43f, true);
 
             // Section label
-            GbayRenderer.DrawText("VEHICLES", BROWSER_LEFT + 0.085f, HEADER_Y + 0.018f,
-                0.38f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
+            GbayRenderer.DrawTitleBadge(
+                "VEHICLES", BROWSER_LEFT + 0.18f, HEADER_CY,
+                0.17f, 0.044f, 0.35f);
 
             // Player money (right)
             string money = $"${Game.Player.Money:N0}";
@@ -954,13 +991,10 @@ namespace ALLIN1
 
             // Control hints
             string filter = _vehicleOwnershipFilter == 1 ? "OWNED"
-                : _vehicleOwnershipFilter == 2 ? "AVAILABLE"
-                : _vehicleOwnershipFilter == 3 ? "FAVORITES" : "ALL";
-            string query = _vehicleSearch.Length > 0 ? $" Search: {_vehicleSearch}" : "";
-            string hints = $"Y: {filter}   X: Search{query}   R3: Favorite   Wheel/LB-RB: Pages";
-            GbayRenderer.DrawTextFit(hints, BROWSER_RIGHT - 0.01f, FOOTER_Y + 0.012f,
-                0.24f, 0.17f, 0.335f, GbayRenderer.TextDim,
-                GbayRenderer.FONT_CONDENSED, false, false, true);
+                : _vehicleOwnershipFilter == 2 ? "AVAILABLE" : "ALL";
+            string search = _vehicleSearch.Length > 0 ? "SEARCH ON" : "SEARCH";
+            string hints = $"Y {filter}   X {search}   R3 FAVORITE   LB/RB PAGES";
+            DrawControlHint(hints);
             return backClicked;
         }
 
@@ -977,7 +1011,7 @@ namespace ALLIN1
 
             if (input.FilterNext)
             {
-                _vehicleOwnershipFilter = (_vehicleOwnershipFilter + 1) % 4;
+                _vehicleOwnershipFilter = (_vehicleOwnershipFilter + 1) % 3;
                 _currentPage = 0; _selectedCard = 0;
                 RebuildFilteredList(); GbayRenderer.PlayNav(); return;
             }
@@ -986,7 +1020,14 @@ namespace ALLIN1
                 int favoriteIdx = _currentPage * PAGE_SIZE + _selectedCard;
                 if (favoriteIdx < _filtered.Count)
                     GbayPreferences.ToggleVehicle(_filtered[favoriteIdx].Model);
-                if (_vehicleOwnershipFilter == 3) RebuildFilteredList();
+                if (CATEGORIES[_activeCategoryIndex].FavoritesOnly)
+                {
+                    RebuildFilteredList();
+                    _currentPage = Math.Min(_currentPage, _totalPages - 1);
+                    _selectedCard = Math.Max(0,
+                        Math.Min(_selectedCard, GetPageCount() - 1));
+                    UpdateActiveDicts();
+                }
                 GbayRenderer.PlayNav(); return;
             }
             if (input.Search && !_vehicleKeyboardActive)
@@ -1143,6 +1184,7 @@ namespace ALLIN1
 
             _pendingModel = model;
             _pendingPrice = price;
+            _deliveryGarageIndex = GarageManager.IsPlayerInDavisGarage ? 1 : 0;
 
             GbayRenderer.PlaySelect();
             _state = BrowserState.DeliveryConfirm;
@@ -1154,7 +1196,7 @@ namespace ALLIN1
             GbayRenderer.DrawRect(0.5f, 0.5f, 1f, 1f, GbayRenderer.ModalScrim);
 
             // Modal panel
-            float modalH = 0.22f;
+            float modalH = 0.26f;
             float modalTop = 0.5f - modalH / 2f;
 
             GbayRenderer.DrawBorderedRect(BROWSER_CX, 0.5f, MODAL_W, modalH,
@@ -1163,31 +1205,76 @@ namespace ALLIN1
             // Title
             string displayName = VehicleList.DisplayNames.ContainsKey(_pendingModel)
                 ? VehicleList.DisplayNames[_pendingModel] : _pendingModel;
-            GbayRenderer.DrawText(displayName, BROWSER_CX, modalTop + 0.015f,
-                0.38f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET, true);
+            GbayRenderer.DrawTitleBadge(displayName, BROWSER_CX,
+                modalTop + 0.029f, 0.32f, 0.045f, 0.35f,
+                GbayRenderer.FONT_CHALET);
 
             // Price
             string priceText = _shop.FreeMode || _pendingPrice <= 0
                 ? "FREE" : $"${_pendingPrice:N0}";
-            GbayRenderer.DrawText(priceText, BROWSER_CX, modalTop + 0.05f,
+            GbayRenderer.DrawText(priceText, BROWSER_CX, modalTop + 0.06f,
                 0.30f, GbayRenderer.TextPrice, GbayRenderer.FONT_CHALET, true);
 
-            // Garage info
-            int used = GarageManager.GetUsedSlots();
-            int cap = GarageManager.GetCapacity();
+            bool oversized = VehicleList.GetSizeTier(_pendingModel) == 2;
+            float garageArrowY = modalTop + 0.105f;
+            float garageLeftX = BROWSER_CX - 0.19f;
+            float garageRightX = BROWSER_CX + 0.19f;
+            bool garageLeftHover = !oversized && GbayRenderer.HitTest(
+                input.MouseX, input.MouseY, garageLeftX, garageArrowY, 0.035f, 0.035f);
+            bool garageRightHover = !oversized && GbayRenderer.HitTest(
+                input.MouseX, input.MouseY, garageRightX, garageArrowY, 0.035f, 0.035f);
+            if (!oversized && (input.DirX != 0 || input.CategoryPrev ||
+                input.CategoryNext || input.MouseClick &&
+                (garageLeftHover || garageRightHover)))
+            {
+                _deliveryGarageIndex = 1 - _deliveryGarageIndex;
+                GbayRenderer.PlayNav();
+            }
+
+            // Standard vehicles can be delivered to either ten-car garage.
+            // Oversized vehicles continue to route to the three-floor garage.
+            int used = oversized ? GarageManager.GetFloorGarageUsedSlots()
+                : _deliveryGarageIndex == 1
+                    ? GarageManager.GetDavisGarageUsedSlots()
+                    : GarageManager.GetUsedSlots();
+            int cap = oversized ? GarageManager.GetFloorGarageCapacity()
+                : _deliveryGarageIndex == 1
+                    ? GarageManager.GetDavisGarageCapacity()
+                    : GarageManager.GetCapacity();
             bool isFull = used >= cap;
-            string garageInfo = $"Eclipse Towers Garage ({used}/{cap})";
+            string garageName = oversized ? "Three-Floor Garage"
+                : _deliveryGarageIndex == 1 ? "Davis Auto Shop" : "Eclipse Towers";
+            string garageInfo = $"{garageName} ({used}/{cap})";
             Color garageColor = isFull ? GbayRenderer.TextDim : GbayRenderer.TextDark;
             GbayRenderer.DrawText(garageInfo, BROWSER_CX, modalTop + 0.09f,
                 0.32f, garageColor, GbayRenderer.FONT_CHALET, true);
 
+            if (!oversized)
+            {
+                GbayRenderer.DrawBorderedRect(garageLeftX, garageArrowY,
+                    0.035f, 0.035f,
+                    garageLeftHover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen,
+                    GbayRenderer.CardBorderSel, 0.002f);
+                GbayRenderer.DrawBorderedRect(garageRightX, garageArrowY,
+                    0.035f, 0.035f,
+                    garageRightHover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen,
+                    GbayRenderer.CardBorderSel, 0.002f);
+                GbayRenderer.DrawText("<", garageLeftX, garageArrowY - 0.013f,
+                    0.28f, GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
+                GbayRenderer.DrawText(">", garageRightX, garageArrowY - 0.013f,
+                    0.28f, GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
+                GbayRenderer.DrawText("Left/Right or Z/X: Choose garage",
+                    BROWSER_CX, modalTop + 0.125f, 0.24f,
+                    GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
+            }
+
             if (isFull)
             {
-                GbayRenderer.DrawText("The garage is full.", BROWSER_CX, modalTop + 0.125f,
+                GbayRenderer.DrawText("The garage is full.", BROWSER_CX, modalTop + 0.155f,
                     0.28f, Color.FromArgb(255, 200, 80, 80), GbayRenderer.FONT_CONDENSED, true);
             }
 
-            float actionY = modalTop + 0.18f;
+            float actionY = modalTop + 0.215f;
             float actionW = 0.15f;
             float confirmX = BROWSER_CX - 0.09f;
             float backX = BROWSER_CX + 0.09f;
@@ -1213,7 +1300,10 @@ namespace ALLIN1
             if ((input.Accept || (input.MouseClick && confirmHover)) && !isFull)
             {
                 GbayRenderer.PlaySelect();
-                _shop.ExecuteDeliverToGarage(_pendingModel, _pendingPrice);
+                if (!oversized && _deliveryGarageIndex == 1)
+                    _shop.ExecuteDeliverToDavisGarage(_pendingModel, _pendingPrice);
+                else
+                    _shop.ExecuteDeliverToGarage(_pendingModel, _pendingPrice);
                 ClosePreview();
                 _state = BrowserState.VehicleBrowser;
             }
@@ -1338,12 +1428,12 @@ namespace ALLIN1
                 Color.FromArgb(180, 0, 0, 0));
 
             // Manufacturer (small, above name)
-            GbayRenderer.DrawText(_previewManufacturer, 0.5f, 0.008f,
-                0.30f, GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED, true);
+            GbayRenderer.DrawText(_previewManufacturer, 0.04f, 0.026f,
+                0.30f, GbayRenderer.TextWhite, GbayRenderer.FONT_CONDENSED);
 
             // Vehicle name
-            GbayRenderer.DrawText(_previewDisplayName, 0.5f, 0.032f,
-                0.52f, GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
+            GbayRenderer.DrawTitleBadge(_previewDisplayName, 0.5f, 0.045f,
+                0.40f, 0.064f, 0.48f, GbayRenderer.FONT_CHALET);
 
             // Price (right side)
             string priceText = _previewPrice <= 0 ? "FREE" : $"${_previewPrice:N0}";
@@ -1357,12 +1447,10 @@ namespace ALLIN1
             float footerH = 0.07f;
             GbayRenderer.DrawRect(0.5f, footerY + footerH / 2f, 1f, footerH,
                 Color.FromArgb(180, 0, 0, 0));
-            GbayRenderer.DrawText(
-                "[Left/Right] Rotate   [Q/E] Zoom", 0.03f, footerY + 0.018f,
-                0.26f, GbayRenderer.TextWhite, GbayRenderer.FONT_CONDENSED);
-            GbayRenderer.DrawText("[Enter] Purchase", 0.97f, footerY + 0.018f,
-                0.26f, GbayRenderer.TextWhite, GbayRenderer.FONT_CONDENSED,
-                false, false, true);
+            DrawControlHint("LEFT/RIGHT ROTATE   Q/E ZOOM",
+                0.40f, footerY + footerH / 2f, 0.35f, 0.042f);
+            DrawControlHint("ENTER PURCHASE",
+                0.97f, footerY + footerH / 2f, 0.22f, 0.042f);
             bool backClicked = DrawCenteredBackButton(
                 input, footerY + footerH / 2f, 0.14f, "Back", false);
 
@@ -1414,30 +1502,32 @@ namespace ALLIN1
                 GbayRenderer.HeaderBg);
             GbayRenderer.DrawGbayWordmark(
                 BROWSER_LEFT + 0.035f, HEADER_Y + 0.010f, 0.43f, true);
-            GbayRenderer.DrawText("MY GARAGE", BROWSER_LEFT + 0.085f, HEADER_Y + 0.018f,
-                0.38f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
+            GbayRenderer.DrawTitleBadge(
+                "MY GARAGE", BROWSER_LEFT + 0.19f, HEADER_CY,
+                0.19f, 0.044f, 0.35f);
 
             DrawGarageLocationTabs(input);
 
             bool floorGarage = _garageLocationIndex == 1;
+            bool davisGarage = _garageLocationIndex == 2;
 
             // Capacity info (right side of header)
-            int used = floorGarage
-                ? GarageManager.GetFloorGarageUsedSlots()
+            int used = floorGarage ? GarageManager.GetFloorGarageUsedSlots()
+                : davisGarage ? GarageManager.GetDavisGarageUsedSlots()
                 : GarageManager.GetUsedSlots();
-            int cap = floorGarage
-                ? GarageManager.GetFloorGarageCapacity()
+            int cap = floorGarage ? GarageManager.GetFloorGarageCapacity()
+                : davisGarage ? GarageManager.GetDavisGarageCapacity()
                 : GarageManager.GetCapacity();
-            string capText = floorGarage
-                ? $"Three-Floor Garage ({used}/{cap})"
+            string capText = floorGarage ? $"Three-Floor Garage ({used}/{cap})"
+                : davisGarage ? $"Davis Auto Shop ({used}/{cap})"
                 : $"Eclipse Towers ({used}/{cap})";
             GbayRenderer.DrawTextFit(capText, BROWSER_RIGHT - 0.01f, HEADER_Y + 0.018f,
                 0.32f, 0.23f, 0.25f, GbayRenderer.HeaderText,
                 GbayRenderer.FONT_CHALET, false, false, true);
 
             // Vehicle list
-            var vehicles = floorGarage
-                ? GarageManager.GetFloorGarageStoredVehicles()
+            var vehicles = floorGarage ? GarageManager.GetFloorGarageStoredVehicles()
+                : davisGarage ? GarageManager.GetDavisGarageStoredVehicles()
                 : GarageManager.GetStoredVehicles();
 
             float listTop = TAB_Y + TAB_H + 0.015f;
@@ -1447,7 +1537,7 @@ namespace ALLIN1
             _garageHoverIdx = -1;
 
             // Keyboard and mouse-wheel navigation. The three-floor garage can
-            // hold 30 vehicles, so keep the selected row inside a scrolling
+            // hold 15 vehicles, so keep the selected row inside a scrolling
             // 12-row viewport.
             int move = input.DirY != 0 ? input.DirY : input.ScrollDelta;
             if (move != 0 && vehicles.Count > 0)
@@ -1475,6 +1565,8 @@ namespace ALLIN1
                     GbayRenderer.FONT_CHALET, true);
                 string emptyHint = floorGarage
                     ? "Drive a vehicle inside or deliver one to the three-floor garage."
+                    : davisGarage
+                        ? "Drive a vehicle inside or choose Davis during GBAY delivery."
                     : "Purchase a vehicle or drive one inside to store it here.";
                 GbayRenderer.DrawTextFit(emptyHint,
                     BROWSER_CX, listTop + 0.15f, 0.26f, 0.20f, 0.62f,
@@ -1507,7 +1599,7 @@ namespace ALLIN1
 
                     // Slot number
                     string slotLabel = floorGarage
-                        ? $"F{sv.Slot / 10 + 1}-{sv.Slot % 10 + 1}"
+                        ? $"F{sv.Slot / 5 + 1}-{sv.Slot % 5 + 1}"
                         : $"#{sv.Slot + 1}";
                     GbayRenderer.DrawText(slotLabel, BROWSER_LEFT + 0.06f, itemY + 0.012f,
                         0.28f, GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED);
@@ -1527,15 +1619,17 @@ namespace ALLIN1
                         : Color.FromArgb(255, 180, 80, 80);
                     GbayRenderer.DrawRect(removeBtnX, itemCY, 0.07f, itemH - 0.01f,
                         removeBg);
-                    int sellPrice = _shop.GetSellPrice(sv.Model);
-                    string sellLabel = sellPrice > 0 ? $"Sell ${sellPrice:N0}" : "Remove";
+                    bool canSell = _shop.CanSellVehicle(sv.Model, sv.PlateText);
+                    int sellPrice = _shop.GetSellPrice(sv.Model, sv.PlateText);
+                    string sellLabel = !canSell ? "Protected"
+                        : sellPrice > 0 ? $"Sell ${sellPrice:N0}" : "Remove";
                     GbayRenderer.DrawTextFit(sellLabel, removeBtnX, itemY + 0.012f,
                         0.25f, 0.18f, 0.062f, GbayRenderer.TextWhite,
                         GbayRenderer.FONT_CONDENSED, true);
 
                     if (removeHover && input.MouseClick)
                     {
-                        BeginSell(sv.Model, i, floorGarage);
+                        BeginSell(sv.Model, sv.PlateText, i, _garageLocationIndex);
                         return;
                     }
                 }
@@ -1547,12 +1641,16 @@ namespace ALLIN1
             // Keyboard remove
             if (input.Accept && vehicles.Count > 0 && _garageVehicleIdx < vehicles.Count)
             {
-                BeginSell(vehicles[_garageVehicleIdx].Model, _garageVehicleIdx, floorGarage);
+                var selected = vehicles[_garageVehicleIdx];
+                BeginSell(selected.Model, selected.PlateText, _garageVehicleIdx,
+                    _garageLocationIndex);
                 return;
             }
 
-            // Open customization (Q key)
-            if (input.PageLeft)
+            // Eclipse Towers uses a fixed Story Mode interior. The DLC
+            // three-floor garage and Davis Auto Shop expose real entity sets.
+            bool customizationAvailable = floorGarage || davisGarage;
+            if (input.PageLeft && customizationAvailable)
             {
                 GbayRenderer.PlaySelect();
                 _customFloor = GarageManager.IsPlayerInFloorGarage ? GarageManager.CurrentFloor : 0;
@@ -1575,17 +1673,22 @@ namespace ALLIN1
                 GbayRenderer.FooterBg);
             bool backClicked = DrawCenteredBackButton(input);
 
-            // Eclipse Towers is a single 10-car garage.
-            float custBtnX = BROWSER_RIGHT - 0.10f;
+            // Keep the action on the left so every page can reserve the lower
+            // right for its consistent high-contrast control legend.
+            float custBtnX = BROWSER_LEFT + 0.10f;
             float custBtnW = 0.16f;
-            bool custHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
+            bool custHover = customizationAvailable && GbayRenderer.HitTest(input.MouseX, input.MouseY,
                 custBtnX, FOOTER_CY, custBtnW, FOOTER_H);
-            Color custBg = custHover
-                ? GbayRenderer.BtnGreenHover
-                : GbayRenderer.BtnGreen;
+            Color custBg = !customizationAvailable
+                ? GbayRenderer.CardBorder
+                : custHover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen;
             GbayRenderer.DrawRect(custBtnX, FOOTER_CY, custBtnW, FOOTER_H - 0.01f, custBg);
-            GbayRenderer.DrawTextFit("Customize Garage", custBtnX, FOOTER_Y + 0.012f,
-                0.26f, 0.19f, custBtnW - 0.014f, GbayRenderer.TextWhite,
+            string customizeLabel = !customizationAvailable ? "Fixed Interior"
+                : davisGarage ? "Customize Auto Shop" : "Customize Three Floors";
+            GbayRenderer.DrawTextFit(customizeLabel,
+                custBtnX, FOOTER_Y + 0.012f,
+                0.26f, 0.19f, custBtnW - 0.014f,
+                customizationAvailable ? GbayRenderer.TextWhite : GbayRenderer.TextDim,
                 GbayRenderer.FONT_CONDENSED, true);
 
             if (custHover && input.MouseClick)
@@ -1597,14 +1700,8 @@ namespace ALLIN1
                 return;
             }
 
-            bool compactGarageHints = vehicles.Count > visibleGarageRows;
-            string garageHints = compactGarageHints
-                ? "Up/Down/Wheel: Browse   Left/Right: Garage   Enter: Sell"
-                : "[Left/Right] Garage   [Enter] Sell   [Q] Customize   [Y] Recover";
-            GbayRenderer.DrawText(garageHints,
-                BROWSER_LEFT + 0.02f, FOOTER_Y + 0.012f,
-                compactGarageHints ? 0.18f : 0.20f, GbayRenderer.TextDim,
-                GbayRenderer.FONT_CONDENSED);
+            DrawControlHint(
+                "ARROWS BROWSE/GARAGE   ENTER SELL   Y RECOVER");
 
             if (input.Back || input.MouseRightClick || backClicked)
             {
@@ -1615,9 +1712,9 @@ namespace ALLIN1
 
         private void DrawGarageLocationTabs(FrameInput input)
         {
-            const float tabW = 0.26f;
-            float[] tabX = { BROWSER_CX - tabW / 2f, BROWSER_CX + tabW / 2f };
-            string[] labels = { "Eclipse Towers", "Three-Floor Garage" };
+            const float tabW = 0.22f;
+            float[] tabX = { BROWSER_CX - tabW, BROWSER_CX, BROWSER_CX + tabW };
+            string[] labels = { "Eclipse Towers", "Three-Floor Garage", "Davis Auto Shop" };
 
             for (int i = 0; i < labels.Length; i++)
             {
@@ -1642,22 +1739,23 @@ namespace ALLIN1
             }
 
             if ((input.DirX < 0 || input.CategoryPrev) && _garageLocationIndex > 0)
-                SetGarageLocation(0);
-            else if ((input.DirX > 0 || input.CategoryNext) && _garageLocationIndex < 1)
-                SetGarageLocation(1);
+                SetGarageLocation(_garageLocationIndex - 1);
+            else if ((input.DirX > 0 || input.CategoryNext) && _garageLocationIndex < 2)
+                SetGarageLocation(_garageLocationIndex + 1);
         }
 
         private void SetGarageLocation(int location)
         {
-            _garageLocationIndex = Math.Max(0, Math.Min(1, location));
+            _garageLocationIndex = Math.Max(0, Math.Min(2, location));
             _garageVehicleIdx = 0;
             _garageHoverIdx = -1;
             GbayRenderer.PlayNav();
         }
 
-        private void BeginSell(string model, int index, bool floorGarage)
+        private void BeginSell(string model, string plateText, int index,
+            int garageLocation)
         {
-            if (!VehicleList.Prices.ContainsKey(model))
+            if (!_shop.CanSellVehicle(model, plateText))
             {
                 GTA.UI.Screen.ShowSubtitle("~r~This vehicle cannot be sold.", 3000);
                 ClientLog.Warn("GBAY", "vehicle_sale_rejected", new Dictionary<string, object> {
@@ -1666,8 +1764,9 @@ namespace ALLIN1
                 return;
             }
             _pendingSellModel = model;
+            _pendingSellPlate = plateText ?? "";
             _pendingSellIndex = index;
-            _pendingSellFloorGarage = floorGarage;
+            _pendingSellGarageLocation = garageLocation;
             _state = BrowserState.GarageSellConfirm;
             GbayRenderer.PlaySelect();
         }
@@ -1679,9 +1778,10 @@ namespace ALLIN1
             GbayRenderer.DrawRect(BROWSER_CX, 0.5f, MODAL_W, 0.30f, GbayRenderer.ModalBg);
             string name = VehicleList.DisplayNames.ContainsKey(_pendingSellModel)
                 ? VehicleList.DisplayNames[_pendingSellModel] : _pendingSellModel;
-            int value = _shop.GetSellPrice(_pendingSellModel);
-            GbayRenderer.DrawText("CONFIRM VEHICLE SALE", BROWSER_CX, 0.39f, 0.45f,
-                GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED, true);
+            int value = _shop.GetSellPrice(_pendingSellModel, _pendingSellPlate);
+            GbayRenderer.DrawTitleBadge(
+                "CONFIRM VEHICLE SALE", BROWSER_CX, 0.405f,
+                0.30f, 0.055f, 0.40f);
             GbayRenderer.DrawText(name, BROWSER_CX, 0.46f, 0.38f,
                 GbayRenderer.TextDark, GbayRenderer.FONT_CHALET, true);
             GbayRenderer.DrawText(value > 0 ? $"Sale value: ${value:N0}" : "Remove from garage (no credit)",
@@ -1709,11 +1809,13 @@ namespace ALLIN1
             if (input.Accept || (input.MouseClick && sellConfirmHover))
             {
                 _shop.ExecuteSellVehicle(
-                    _pendingSellModel, _pendingSellIndex, _pendingSellFloorGarage);
+                    _pendingSellModel, _pendingSellIndex, _pendingSellGarageLocation,
+                    _pendingSellPlate);
                 _garageVehicleIdx = Math.Max(0, _pendingSellIndex - 1);
                 _pendingSellIndex = -1;
                 _pendingSellModel = "";
-                _pendingSellFloorGarage = false;
+                _pendingSellPlate = "";
+                _pendingSellGarageLocation = 0;
                 _state = BrowserState.GarageView;
             }
             else if (input.Back || input.MouseRightClick ||
@@ -1721,7 +1823,8 @@ namespace ALLIN1
             {
                 _pendingSellIndex = -1;
                 _pendingSellModel = "";
-                _pendingSellFloorGarage = false;
+                _pendingSellPlate = "";
+                _pendingSellGarageLocation = 0;
                 _state = BrowserState.GarageView;
                 GbayRenderer.PlayBack();
             }
@@ -1771,8 +1874,9 @@ namespace ALLIN1
             GbayRenderer.DrawGbayWordmark(
                 BROWSER_LEFT + 0.035f, HEADER_Y + 0.010f, 0.43f, true);
 
-            GbayRenderer.DrawText("WEAPONS", BROWSER_LEFT + 0.085f, HEADER_Y + 0.018f,
-                0.38f, GbayRenderer.TabActive, GbayRenderer.FONT_CONDENSED);
+            GbayRenderer.DrawTitleBadge(
+                "WEAPONS", BROWSER_LEFT + 0.18f, HEADER_CY,
+                0.17f, 0.044f, 0.35f);
 
             string money = $"${Game.Player.Money:N0}";
             GbayRenderer.DrawText(money, BROWSER_RIGHT - 0.01f, HEADER_Y + 0.018f,
@@ -1917,14 +2021,21 @@ namespace ALLIN1
             float topAreaH = CARD_H * 0.55f;
             float topAreaCY = top + topAreaH / 2f;
 
-            Color topColor = GetWeaponCategoryColor(card.Category, hovered || selected);
             GbayRenderer.DrawRect(cx, topAreaCY, cardW - 0.004f, topAreaH - 0.004f,
-                topColor);
+                Color.FromArgb(255, 30, 35, 32));
+            bool previewDrawn = GbayRenderer.DrawWeaponPreviewTexture(
+                card.WeaponName, cx, topAreaCY, cardW - 0.004f, topAreaH - 0.004f);
+            if (!previewDrawn)
+            {
+                Color topColor = GetWeaponCategoryColor(card.Category, hovered || selected);
+                GbayRenderer.DrawRect(cx, topAreaCY, cardW - 0.004f, topAreaH - 0.004f,
+                    topColor);
 
-            // Category label in the placeholder area
-            GbayRenderer.DrawTextFit(card.Category, cx, top + topAreaH * 0.35f,
-                0.28f, 0.20f, cardW - 0.018f, GbayRenderer.TextDark,
-                GbayRenderer.FONT_CONDENSED, true);
+                // Readable category fallback while a capture is unavailable.
+                GbayRenderer.DrawTextFit(card.Category, cx, top + topAreaH * 0.35f,
+                    0.28f, 0.20f, cardW - 0.018f, GbayRenderer.TextDark,
+                    GbayRenderer.FONT_CONDENSED, true);
+            }
 
             // Text area below
             float textTop = top + topAreaH + 0.005f;
@@ -2010,10 +2121,10 @@ namespace ALLIN1
                     ? WeaponList.DisplayNames[_ammoConfirmWeapon] : _ammoConfirmWeapon;
                 string costText = _ammoConfirmCost > 0
                     ? $"${_ammoConfirmCost:N0}" : "FREE";
-                string prompt = $"[Enter] Confirm ammo refill: {displayName} " +
-                    $"({_ammoConfirmRounds} rounds) for {costText}   [Esc] Cancel";
-                GbayRenderer.DrawText(prompt, BROWSER_CX, FOOTER_Y + 0.012f,
-                    0.26f, Color.FromArgb(255, 255, 220, 100), GbayRenderer.FONT_CONDENSED, true);
+                string prompt = $"ENTER CONFIRM {displayName} " +
+                    $"({_ammoConfirmRounds}) {costText}   ESC CANCEL";
+                DrawControlHint(prompt, BROWSER_RIGHT - 0.01f,
+                    FOOTER_CY, 0.52f, 0.038f);
                 return false;
             }
             else
@@ -2024,13 +2135,10 @@ namespace ALLIN1
                 bool backClicked = DrawCenteredBackButton(input);
 
                 string filter = _weaponOwnershipFilter == 1 ? "OWNED"
-                    : _weaponOwnershipFilter == 2 ? "AVAILABLE"
-                    : _weaponOwnershipFilter == 3 ? "FAVORITES" : "ALL";
-                string query = _weaponSearch.Length > 0 ? $" Search: {_weaponSearch}" : "";
-                string hints = $"Y: {filter}   X: Search{query}   R3: Favorite   Wheel/LB-RB: Pages";
-                GbayRenderer.DrawTextFit(hints, BROWSER_RIGHT - 0.01f, FOOTER_Y + 0.012f,
-                    0.24f, 0.17f, 0.335f, GbayRenderer.TextDim,
-                    GbayRenderer.FONT_CONDENSED, false, false, true);
+                    : _weaponOwnershipFilter == 2 ? "AVAILABLE" : "ALL";
+                string search = _weaponSearch.Length > 0 ? "SEARCH ON" : "SEARCH";
+                string hints = $"Y {filter}   X {search}   R3 FAVORITE   LB/RB PAGES";
+                DrawControlHint(hints);
                 return backClicked;
             }
         }
@@ -2072,7 +2180,7 @@ namespace ALLIN1
 
             if (input.FilterNext)
             {
-                _weaponOwnershipFilter = (_weaponOwnershipFilter + 1) % 4;
+                _weaponOwnershipFilter = (_weaponOwnershipFilter + 1) % 3;
                 _weaponPage = 0; _weaponSelectedCard = 0;
                 RebuildWeaponFilteredList(); GbayRenderer.PlayNav(); return;
             }
@@ -2081,7 +2189,13 @@ namespace ALLIN1
                 int favoriteIdx = _weaponPage * PAGE_SIZE + _weaponSelectedCard;
                 if (favoriteIdx < _weaponFiltered.Count)
                     GbayPreferences.ToggleWeapon(_weaponFiltered[favoriteIdx].WeaponName);
-                if (_weaponOwnershipFilter == 3) RebuildWeaponFilteredList();
+                if (WEAPON_CATEGORIES[_weaponCategoryIndex].FavoritesOnly)
+                {
+                    RebuildWeaponFilteredList();
+                    _weaponPage = Math.Min(_weaponPage, _weaponTotalPages - 1);
+                    _weaponSelectedCard = Math.Max(0,
+                        Math.Min(_weaponSelectedCard, GetWeaponPageCount() - 1));
+                }
                 GbayRenderer.PlayNav(); return;
             }
             if (input.Search && !_weaponKeyboardActive)
@@ -2251,7 +2365,8 @@ namespace ALLIN1
             _weaponFiltered.Clear();
 
             Ped player = Game.Player.Character;
-            string[] weapons = WEAPON_CATEGORIES[_weaponCategoryIndex].Weapons;
+            WeaponCategory activeCategory = WEAPON_CATEGORIES[_weaponCategoryIndex];
+            string[] weapons = activeCategory.Weapons;
 
             foreach (string weaponName in weapons)
             {
@@ -2268,11 +2383,13 @@ namespace ALLIN1
                 // Check if player already owns this weapon
                 Hash weaponHash = (Hash)CharacterInventory.GetWeaponHash(weaponName);
                 bool owned = Function.Call<bool>(
-                    (Hash)0x8DECB02F88F428BC, player, weaponHash, false);  // HAS_PED_GOT_WEAPON
+                    (Hash)0x8DECB02F88F428BC, player, weaponHash, false) ||
+                    CharacterInventory.IsOwned(weaponName, false);  // HAS_PED_GOT_WEAPON
 
                 if (_weaponOwnershipFilter == 1 && !owned) continue;
                 if (_weaponOwnershipFilter == 2 && owned) continue;
-                if (_weaponOwnershipFilter == 3 && !GbayPreferences.IsWeaponFavorite(weaponName)) continue;
+                if (activeCategory.FavoritesOnly &&
+                    !GbayPreferences.IsWeaponFavorite(weaponName)) continue;
                 if (_weaponSearch.Length > 0 &&
                     displayName.IndexOf(_weaponSearch, StringComparison.OrdinalIgnoreCase) < 0 &&
                     weaponName.IndexOf(_weaponSearch, StringComparison.OrdinalIgnoreCase) < 0)
@@ -2395,7 +2512,8 @@ namespace ALLIN1
         {
             _filtered.Clear();
 
-            string[] models = CATEGORIES[_activeCategoryIndex].Models;
+            Category activeCategory = CATEGORIES[_activeCategoryIndex];
+            string[] models = activeCategory.Models;
             foreach (string model in models)
             {
                 string displayName = VehicleList.DisplayNames.ContainsKey(model)
@@ -2403,7 +2521,8 @@ namespace ALLIN1
                 bool owned = GarageManager.IsVehicleOwned(model);
                 if (_vehicleOwnershipFilter == 1 && !owned) continue;
                 if (_vehicleOwnershipFilter == 2 && owned) continue;
-                if (_vehicleOwnershipFilter == 3 && !GbayPreferences.IsVehicleFavorite(model)) continue;
+                if (activeCategory.FavoritesOnly &&
+                    !GbayPreferences.IsVehicleFavorite(model)) continue;
                 if (_vehicleSearch.Length > 0 &&
                     displayName.IndexOf(_vehicleSearch, StringComparison.OrdinalIgnoreCase) < 0 &&
                     model.IndexOf(_vehicleSearch, StringComparison.OrdinalIgnoreCase) < 0)
@@ -2483,6 +2602,8 @@ namespace ALLIN1
             foreach (string d in _activeDicts)
                 GbayRenderer.ReleaseDict(d);
             _activeDicts.Clear();
+            GbayRenderer.ReleaseDict("allin1_gear_01");
+            GbayRenderer.ReleaseDict("phat_logo");
             GbayRenderer.ReleaseDict("allin1_logo");
         }
 

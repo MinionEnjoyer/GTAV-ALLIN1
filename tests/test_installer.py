@@ -54,7 +54,7 @@ def test_deploy_script_copies_binaries_and_config(tmp_path, monkeypatch):
     assert (scripts / "ALLIN1.dll").read_bytes() == b"mod"
     assert (scripts / "LemonUI.SHVDN3.dll").read_bytes() == b"ui"
     assert (scripts / "ALLIN1.toml").exists()
-    assert (scripts / "ALLIN1.version").read_text().strip() == "0.2.0"
+    assert (scripts / "ALLIN1.version").read_text().strip() == "0.3.0"
     assert not (scripts / "ALLIN1.ini").exists()
 
 
@@ -178,15 +178,14 @@ def test_install_orchestrates_steps_and_collects_preview_warning(tmp_path, monke
     assert result.dll_deployed is True
     assert result.shvdn_found is False
     assert result.battleye_status == "set"
-    assert result.warnings == []
+    assert result.warnings == ["Preview texture injection failed: preview failed"]
     patch.assert_not_called()
 
 
-def test_install_only_deploys_rpf_previews_when_explicitly_enabled(tmp_path, monkeypatch):
+def test_install_deploys_default_enabled_rpf_previews(tmp_path, monkeypatch):
     game = _game(tmp_path, enhanced=True)
     config = Config.default()
     config.general.gta_path = str(game)
-    config.general.enable_rpf_previews = True
     for name, value in (
         ("_clean_legacy_files", None), ("_deploy_script", True),
         ("_check_scripthookv", True), ("_check_shvdn", True),

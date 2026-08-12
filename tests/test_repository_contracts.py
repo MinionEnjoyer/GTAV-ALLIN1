@@ -44,16 +44,24 @@ def test_generated_csharp_contains_every_data_model():
         assert f'"{vehicle.model}"' in source
 
 
-def test_production_project_excludes_developer_scripts():
+def test_production_project_includes_only_supported_capture_tool():
     project = (ROOT / "script/ALLIN1.csproj").read_text()
     assert '<Compile Remove="tools\\**" />' in project
-    assert '<Compile Include="tools\\' not in project
+    assert '<Compile Include="tools\\WorldVectorTool.cs" />' in project
+    assert project.count('<Compile Include="tools\\') == 1
 
 
 def test_prebuilt_runtime_artifacts_are_present_and_nonempty():
-    for relative in ("script/dist/ALLIN1.dll", "script/dist/LemonUI.SHVDN3.dll", "asi/dist/ALLIN1.asi"):
+    for relative in ("script/dist/ALLIN1.dll", "script/dist/LemonUI.SHVDN3.dll"):
         artifact = ROOT / relative
         assert artifact.stat().st_size > 1024
+
+
+def test_retired_native_asi_is_not_shipped_or_built():
+    assert not (ROOT / "asi").exists()
+    workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+    assert "asi-build" not in workflow
+    assert "cmake -S asi" not in workflow
 
 
 def test_required_user_entrypoints_exist():
@@ -116,11 +124,26 @@ def test_current_online_weapons_are_generated_and_safely_granted():
     assert "HAS_PED_GOT_WEAPON" in shop
 
 
-def test_preview_capture_and_seat_selector_contracts():
+def test_world_vector_and_seat_selector_contracts():
     installer = (ROOT / "src/allin1/installer.py").read_text()
+    vector = (ROOT / "script/tools/WorldVectorTool.cs").read_text()
     seat = (ROOT / "script/src/SeatSelector.cs").read_text()
-    assert 'gta_path / SCRIPTS_DIR / "previews"' in installer
+    assert "Package" in installer and "reviewed repository assets" in installer
     assert "models = sorted(v.model" in installer
+    assert '"weapon_previews"' in installer
+    assert '"equipment_previews"' in installer
+    assert 'scripts_dir / "ALLIN1_preview_pending.toml"' in installer
+    assert "Removed retired preview capture manifest" in installer
+    assert "WORLD VECTOR" in vector
+    assert "world_vector_key" in vector
+    assert "preview_capture_key" in vector  # legacy config compatibility
+    assert "position.X:F4" in vector
+    assert "position.Y:F4" in vector
+    assert "position.Z:F4" in vector
+    assert "Heading {heading:F2}" in vector
+    assert "CaptureMode" not in vector
+    assert "CaptureScreenshot" not in vector
+    assert "Vehicle previews" not in vector
     assert "IsSelectorHeld" in seat
     assert "That seat is no longer available" in seat
     assert "seat_selector_enabled" in seat
@@ -145,10 +168,40 @@ def test_watchdog_recovery_and_traffic_diagnostics_are_bounded():
     assert "DateTime.UtcNow.AddSeconds(30)" in watchdog
     assert "recovery_window_completed_features_resumed" in watchdog
     assert "PreviousSessionCrashed || ForcedSafeMode" not in watchdog
+    assert "PreviewCaptureActive" not in watchdog
+    assert "preview capture safe mode" not in watchdog
     assert "SmoothedFps { get; private set; } = 60f" in traffic
     assert traffic.index("UpdatePerformanceSample();") < traffic.index("if (!_enabled)")
-    assert 'PauseReason = "30-second recovery mode"' in traffic
+    assert "PauseReason = ClientWatchdog.SafeModeReason" in traffic
+    assert "RemoveManagedTrafficForCapture()" not in traffic
     assert "paused: " in browser
+
+
+def test_floor_garage_initializes_after_temporary_safe_mode_expires():
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    garage = (ROOT / "script/src/GarageManager.cs").read_text()
+    assert "IsFloorGarageInitialized => _floorGarageInitialized" in garage
+    assert "Floor garage initialization deferred:" in shop
+    assert "!GarageManager.IsFloorGarageInitialized" in shop
+    assert 'Log("Floor garage initialized after safe-mode recovery")' in shop
+    recovery = shop.index("!GarageManager.IsFloorGarageInitialized")
+    floor_tick = shop.index("GarageManager.OnFloorGarageTick();", recovery)
+    assert recovery < floor_tick
+
+
+def test_gbay_favorites_tabs_and_weapon_previews_are_integrated():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    renderer = (ROOT / "script/src/GbayRenderer.cs").read_text()
+    generated = (ROOT / "script/src/WeaponList.cs").read_text()
+    assert 'new Category("Favorites",' in browser
+    assert 'new WeaponCategory("Favorites",' in browser
+    assert browser.count("FavoritesOnly") >= 6
+    assert "(_vehicleOwnershipFilter + 1) % 3" in browser
+    assert "(_weaponOwnershipFilter + 1) % 3" in browser
+    assert "DrawWeaponPreviewTexture(" in browser
+    assert "DrawWeaponPreviewTexture(" in renderer
+    assert "DrawEquipmentPreviewTexture(" in renderer
+    assert '"allin1_weapon_' in generated
 
 
 def test_seat_selector_is_animation_only_and_has_external_route_recovery():
@@ -166,6 +219,10 @@ def test_seat_selector_is_animation_only_and_has_external_route_recovery():
     assert "ExecutionPhase.Reentering" in seat
     assert 'BeginExit(player, "different_row_or_external_seat")' in seat
     assert "Stop the vehicle before changing rows or using an external seat" in seat
+    assert "IsSeatPair(currentSeat, targetSeat, -1, 0)" in seat
+    assert "IsSeatPair(currentSeat, targetSeat, 1, 2)" in seat
+    assert 'CancelExecution(player, "same_row_shuffle_timeout", true)' in seat
+    assert 'BeginExit(player, "shuffle_fallback")' not in seat
 
 
 def test_client_logging_is_structured_rotating_and_shared():
@@ -198,6 +255,12 @@ def test_character_customization_is_shared_with_gbay_and_has_animated_loading():
     assert "outfit_applied" in inventory
     assert "DEBUG: show texture dict loading status" not in browser
     assert "WeaponHashes" in inventory
+    assert "internal static bool IsOwned(string item, bool gear)" in inventory
+    record_owned = inventory[inventory.index("internal static void RecordOwned"):]
+    assert "if (!File.Exists(PathName)) return;" not in record_owned
+    assert "StringComparison.OrdinalIgnoreCase" in inventory
+    assert "duplicate purchase blocked" in shop
+    assert "CharacterInventory.IsOwned(weaponName, false)" in shop
 
 
 def test_runtime_hot_paths_are_throttled_and_cached():
@@ -220,7 +283,7 @@ def test_issue_five_playtest_regressions_are_guarded():
     for guard in ("GET_MISSION_FLAG", "WantedLevel", "GET_INTERIOR_FROM_ENTITY",
                   "IS_POINT_ON_ROAD", "IS_ANY_VEHICLE_NEAR_POINT", "IS_SPHERE_VISIBLE"):
         assert guard in traffic
-    assert "floorCount = GarageManager.IsPlayerInFloorGarage ? 3 : 1" in customize
+    assert "int floorCount = floorGarage ? 3 : 1" in customize
     assert "GarageSellConfirm" in browser and "CONFIRM VEHICLE SALE" in browser
     assert "progress_applied" in inventory and "STAT_SET_INT" in inventory
 
@@ -236,7 +299,8 @@ def test_gbay_information_pages_have_a_clickable_back_action():
     assert "}, input, false);" in browser
     assert "}, input, true);" in browser
     assert "if (showLogo)" in browser
-    assert "DrawBrandLogo(BROWSER_CX, 0.165f" in browser
+    assert "GbayRenderer.DrawBrandLogo(" in browser
+    assert "BROWSER_CX, 0.165f, 0.24f, 0.115f" in browser
     assert "input, INFO_BACK_CY, INFO_BACK_W, \"Back\", false" in browser
     assert "bodyBottom = 0.775f" in browser
     assert "DrawTextFit(lines[i]" in browser
@@ -253,26 +317,58 @@ def test_gbay_pages_share_back_navigation_and_visible_focus():
     assert browser.count("DrawCenteredBackButton(") >= 7
     assert browser.count("DrawFocusedRect(") >= 7
     assert "hasKeyboardFocus" in customize
-    assert "HandleGarageCustomizeInput(input, backClicked)" in customize
+    assert "HandleGarageCustomizeInput(input, backClicked, davisGarage" in customize
 
 
 def test_gbay_catalog_is_readable_and_every_listing_is_reachable():
     browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
     renderer = (ROOT / "script/src/GbayRenderer.cs").read_text()
-    assert "DrawGbayWordmark(BROWSER_CX, 0.145f" in browser
+    assert "DrawGbayHeader(BROWSER_CX, 0.18f, 0.22f, 0.075f)" in browser
     assert browser.count("GbayRenderer.DrawLogo(") == 1  # loading-screen PHAT only
     assert "internal static void DrawTextFit(" in renderer
     assert "private void DrawPager(" in browser
     assert "previousPageClicked" in browser and "nextPageClicked" in browser
     assert "input.ScrollDelta < 0" in browser
     assert "input.ScrollDelta > 0" in browser
-    assert "Wheel/LB-RB: Pages" in browser
+    assert "LB/RB PAGES" in browser
     assert "_tabScrollOffset - (MAX_VISIBLE_TABS - 1)" in browser
     assert "_weaponTabScrollOffset - (MAX_VISIBLE_TABS - 1)" in browser
     assert "_selectedCard == maxIdx" in browser
     assert "_weaponSelectedCard == maxIdx" in browser
     assert "private const float CARD_H         = 0.21f" in browser
     assert "private const float CARD_GAP_Y     = 0.014f" in browser
+
+
+def test_gbay_main_menu_uses_clean_rounded_green_header():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    renderer = (ROOT / "script/src/GbayRenderer.cs").read_text()
+    assert "DrawGbayHeader(BROWSER_CX, 0.18f, 0.22f, 0.075f)" in browser
+    assert "internal static void DrawRoundedRect(" in renderer
+    assert "internal static void DrawGbayHeader(" in renderer
+    assert "const int slices = 32" in renderer
+    assert "Color highlight" not in renderer
+    assert 'DrawText("GBAY"' in renderer
+    assert "TextWhite" in renderer
+
+
+def test_every_gbay_screen_uses_the_shared_green_title_badge():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    gear = (ROOT / "script/src/GbayBrowser.Gear.cs").read_text()
+    customize = (ROOT / "script/src/GbayBrowserCustomize.cs").read_text()
+    renderer = (ROOT / "script/src/GbayRenderer.cs").read_text()
+    assert "internal static void DrawTitleBadge(" in renderer
+    title_badge = renderer[renderer.index("internal static void DrawTitleBadge("):]
+    assert "BtnGreen" in title_badge
+    assert "TextWhite" in title_badge
+    for title in (
+        '"LOADING GBAY"', '"VEHICLES"', '"MY GARAGE"',
+        '"CONFIRM VEHICLE SALE"', '"WEAPONS"',
+    ):
+        assert f"DrawTitleBadge(\n                {title}" in browser
+    assert "DrawTitleBadge(displayName" in browser
+    assert "DrawTitleBadge(_previewDisplayName" in browser
+    assert 'DrawTitleBadge(\n                "GEAR"' in gear
+    assert 'davisGarage ? "CUSTOMIZE AUTO SHOP" : "CUSTOMIZE THREE FLOORS"' in customize
 
 
 def test_launcher_packages_and_applies_allin1_branding():
@@ -298,12 +394,141 @@ def test_floor_garage_drive_in_is_visible_and_markers_match_character():
     assert "GetFloorGarageStoredVehicles()" in browser
     assert "visibleGarageRows = 12" in browser
     assert "input.ScrollDelta" in browser
-    assert "_pendingSellFloorGarage" in browser
+    assert "_pendingSellGarageLocation" in browser
     assert "RemoveFloorGarageVehicle(listIndex)" in shop
     assert "private static bool FloorGarageSave()" in garage
     fade = garage.index('Log("EnterFloorGarage: fading in")')
     confirmation = garage.index("ShowSubtitle(storedConfirmation", fade)
     assert confirmation > fade
+
+
+def test_gbay_gear_store_is_reachable_and_uses_captured_previews():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    gear_browser = (ROOT / "script/src/GbayBrowser.Gear.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    assert '"Vehicles", "Weapons", "Gear", "My Garage"' in browser
+    assert "case BrowserState.GearBrowser:" in browser
+    assert "new GearCategory(\"Protection\", GearList.Protection)" in gear_browser
+    assert "new GearCategory(\"Equipment\", GearList.Equipment)" in gear_browser
+    assert "DrawEquipmentPreviewTexture(" in gear_browser
+    assert "_shop.ExecuteGiveGear(card.GearId, card.Price)" in gear_browser
+    assert "internal void ExecuteGiveGear(string gearId, int price)" in shop
+    assert "Owned = _shop.IsGearOwned(gearId)" in gear_browser
+    assert 'card.Owned ? "OWNED"' in gear_browser
+    assert "if (card.Owned)" in gear_browser
+    assert "if (IsGearOwned(gearId))" in shop
+
+
+def test_gbay_control_legends_are_high_contrast_and_shared_across_pages():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    gear_browser = (ROOT / "script/src/GbayBrowser.Gear.cs").read_text()
+    customize = (ROOT / "script/src/GbayBrowserCustomize.cs").read_text()
+    assert "private static void DrawControlHint(" in browser
+    assert "GbayRenderer.BtnGreen" in browser
+    assert "GbayRenderer.TextWhite" in browser
+    assert "0.31f, 0.235f" in browser
+    assert browser.count("DrawControlHint(") >= 6
+    assert "DrawControlHint(" in gear_browser
+    assert "DrawControlHint(" in customize
+    assert "BROWSER_LEFT + 0.10f" in browser
+
+
+def test_garage_sales_fall_back_to_native_values_for_uncatalogued_vehicles():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    assert "if (!_shop.CanSellVehicle(model, plateText))" in browser
+    assert "GET_VEHICLE_MODEL_VALUE" in shop
+    assert "GET_VEHICLE_CLASS_FROM_NAME" in shop
+    assert "GetFallbackVehicleValue" in shop
+    assert "IS_MODEL_A_VEHICLE" in shop
+    assert "if (!VehicleList.Prices.TryGetValue(model, out buyPrice))" in shop
+
+
+def test_story_owned_vehicles_cannot_enter_garage_persistence_or_sale_flow():
+    manager = (ROOT / "script/src/GarageManager.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
+    for model in (
+        "buffalo2", "bagger", "bodhi2", "tailgater", "premier",
+        "sentinel2", "issi2", "bjxl",
+    ):
+        assert f'Game.GenerateHash("{model}")' in manager
+    for plate in (
+        "FC1988", "FC88", "BETTY32", "5MDS003", "880HS955", "KRYST4L",
+        "P3RSEUS", "57EIG117",
+    ):
+        assert f'"{plate}"' in manager
+    assert "IsProtectedStoryVehicle(veh.Model.Hash, plate)" in manager
+    assert manager.count("if (IsPersonalVehicle(") >= 2
+    assert "if (IsPersonalVehicle(rideIn))" in davis
+    assert "GarageManager.IsProtectedStoryVehicle(model, plateText)" in shop
+    assert '"protected_story_vehicle"' in shop
+
+
+def test_davis_auto_shop_is_a_separate_persistent_ten_car_garage():
+    garage = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
+    manager = (ROOT / "script/src/GarageManager.cs").read_text()
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    assert "new Vector3(204.0661f, -1466.4750f, 29.1437f)" in garage
+    assert "new Vector3(215.0502f, -1461.0250f, 29.1847f)" in garage
+    assert "new Vector3(-1357.6240f, 153.2929f, -99.1942f)" in garage
+    assert "DAVIS_INTERIOR_PED_HEADING = 0f" in garage
+    assert '"tr_tuner_shop_rancho"' in garage
+    assert '"entity_set_style_9"' in garage
+    assert garage.count('"entity_set_style_9"') >= 2
+    assert "private const int DAVIS_SLOT_COUNT = 10" in garage
+    assert garage.count("new ParkingSlot(") == 10
+    assert '"ALLIN1_davis_garage.json"' in garage
+    assert '"ALLIN1_davis_customization.json"' in garage
+    assert "DAVIS_CUSTOM_CATEGORY_NAMES" in garage
+    assert "GetDavisCustomizationChoice" in garage
+    assert "SetDavisCustomizationChoice" in garage
+    assert "ApplyDavisAutoShopCustomization" in garage
+    assert "0xC1F1920BAF281317" in garage
+    assert "Customize Auto Shop" in browser
+    assert "Fixed Auto Shop Interior" not in browser
+    assert "DavisUpdateStoredFromLive();" in manager
+    assert '"Eclipse Towers", "Three-Floor Garage", "Davis Auto Shop"' in browser
+    assert "GetDavisGarageStoredVehicles()" in browser
+    assert "ExecuteDeliverToDavisGarage" in shop
+    assert "RemoveDavisGarageVehicle(listIndex)" in shop
+    assert "CenterVehicleInParkingSpace" in manager
+    assert "GET_MODEL_DIMENSIONS" in manager
+    assert "maxCorrection = 1.25f" in manager
+
+
+def test_legacy_garages_use_real_customization_sets_and_model_aware_placement():
+    manager = (ROOT / "script/src/GarageManager.cs").read_text()
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    customize = (ROOT / "script/src/GbayBrowserCustomize.cs").read_text()
+    assert manager.count("CenterVehicleInParkingSpace(") >= 5
+    assert '"Eclipse"' in manager and '"ThreeFloor", 2.0f' in manager
+    assert "GetGarageSizeTier" in manager
+    assert "width > 3.4f || length > 8.5f" in manager
+    assert "GET_MODEL_DIMENSIONS" in manager
+    assert 'new[] { "Int02_ba_floor01", "Int02_ba_floor02", "Int02_ba_floor03",' in manager
+    assert '"Int02_ba_floor04", "Int02_ba_floor05"' in manager
+    assert '"Int02_ba_sec_upgrade_grg"' in manager
+    assert '"Int02_ba_equipment_upgrade"' in manager
+    assert '"Int02_ba_sec_desks_L1", "Int02_ba_sec_desks_L2345"' in manager
+    assert '"Int02_ba_clutterstuff"' in manager
+    assert manager.count('ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_sec_upgrade_grg"') == 0
+    for invalid_set in (
+        "Int02_ba_Style01", "Int02_ba_walls_01",
+        "Int02_ba_decor_01", "Int02_ba_trad_lights",
+    ):
+        assert invalid_set not in manager
+    apply_sets = manager[manager.index("private static void ApplyFloorEntitySets"):]
+    assert apply_sets.index("DEACTIVATE_INTERIOR_ENTITY_SET") < apply_sets.index(
+        "ACTIVATE_INTERIOR_ENTITY_SET")
+    assert "GetFloorCustomizationOptionCount" in manager
+    assert "DrawFloorCustomizationCarousel" in customize
+    assert 'F{sv.Slot / 5 + 1}-{sv.Slot % 5 + 1}' in browser
+    assert '"Fixed Interior"' in browser
+    assert "bool customizationAvailable = floorGarage || davisGarage" in browser
+    assert manager.count("new ParkingSlot(-1517.0f") == 20
+    assert manager.count("-80.0f, 90f)") == 20
 
 
 def test_rpf_diagnostics_distinguish_plugin_from_asi_host_and_disabled_state():

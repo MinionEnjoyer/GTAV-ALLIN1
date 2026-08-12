@@ -86,6 +86,23 @@ namespace ALLIN1
         internal static int GetWeaponHash(string weapon) => WeaponHashes.TryGetValue(
             weapon, out int hash) ? hash : Game.GenerateHash(weapon);
 
+        internal static bool IsOwned(string item, bool gear)
+        {
+            if (string.IsNullOrWhiteSpace(item)) return false;
+            string character = CurrentCharacter();
+            if (character.Length == 0) return false;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory)) return false;
+                List<string> list = gear ? inventory.gear : inventory.weapons;
+                if (list == null) return false;
+                foreach (string owned in list)
+                    if (string.Equals(owned, item, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                return false;
+            }
+        }
+
         private static void Reload()
         {
             lock (Sync)
@@ -197,7 +214,7 @@ namespace ALLIN1
 
         internal static void RecordOwned(string item, bool gear)
         {
-            if (!File.Exists(PathName)) return;
+            if (string.IsNullOrWhiteSpace(item)) return;
             string character = CurrentCharacter();
             if (character.Length == 0) return;
             lock (Sync)
@@ -205,7 +222,20 @@ namespace ALLIN1
                 if (!_state.TryGetValue(character, out Inventory inventory))
                     _state[character] = inventory = new Inventory();
                 List<string> list = gear ? inventory.gear : inventory.weapons;
-                if (!list.Contains(item)) list.Add(item);
+                if (list == null)
+                {
+                    list = new List<string>();
+                    if (gear) inventory.gear = list;
+                    else inventory.weapons = list;
+                }
+                bool alreadyOwned = false;
+                foreach (string owned in list)
+                    if (string.Equals(owned, item, StringComparison.OrdinalIgnoreCase))
+                    {
+                        alreadyOwned = true;
+                        break;
+                    }
+                if (!alreadyOwned) list.Add(item);
                 try
                 {
                     string temporary = PathName + ".tmp";

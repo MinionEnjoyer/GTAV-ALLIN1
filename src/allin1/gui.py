@@ -102,7 +102,7 @@ class ManagerWindow:
         self.logging_enabled = tk.BooleanVar(value=self.config.script.enable_logging)
         self.gbay_key = tk.StringVar(value=self.config.script.gbay_key)
         self.night_vision_key = tk.StringVar(value=self.config.script.night_vision_key)
-        self.preview_capture_key = tk.StringVar(value=self.config.script.preview_capture_key)
+        self.world_vector_key = tk.StringVar(value=self.config.script.world_vector_key)
         self.seat_selector_enabled = tk.BooleanVar(value=self.config.script.seat_selector_enabled)
         self.seat_selector_key = tk.StringVar(value=self.config.script.seat_selector_key)
         self.safe_mode = tk.BooleanVar(value=self.config.script.safe_mode)
@@ -111,8 +111,6 @@ class ManagerWindow:
         self.ui_scale = tk.DoubleVar(value=self.config.script.ui_scale)
         self.hold_duration_ms = tk.IntVar(value=self.config.script.hold_duration_ms)
         self.gbay_free_mode = tk.BooleanVar(value=self.config.script.gbay_free_mode)
-        self.spawner_debug = tk.BooleanVar(value=self.config.script.spawner_debug)
-        self.garage_debug = tk.BooleanVar(value=self.config.script.garage_debug)
         self.status_text = tk.StringVar(value="Checking installation…")
         self.version_text = tk.StringVar(value=f"Manager {__version__} · latest not checked")
         self.profile_name = tk.StringVar(value="Full ALLIN1")
@@ -246,10 +244,8 @@ class ManagerWindow:
         ttk.Checkbutton(options, text="Supercars only in wealthy areas", variable=self.rich_areas_only).grid(row=4, column=1, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Adaptive traffic performance", variable=self.adaptive_performance).grid(row=5, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Enable every DLC vehicle", variable=self.enable_all_vehicles).grid(row=5, column=1, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Spawner debug messages (developer)", variable=self.spawner_debug).grid(row=6, column=1, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Garage debug markers (developer)", variable=self.garage_debug).grid(row=7, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Experimental RPF artwork (may affect startup)",
-                        variable=self.rpf_previews).grid(row=7, column=1,
+        ttk.Checkbutton(options, text="GBAY preview artwork (requires OpenRPF/OpenIV)",
+                        variable=self.rpf_previews).grid(row=6, column=0,
                                                          sticky="w", pady=(8, 0))
 
         controls = ttk.LabelFrame(controls_page, text="KEYBINDS & VEHICLE FILTERS", padding=14)
@@ -262,7 +258,7 @@ class ManagerWindow:
         for row, (label, variable) in enumerate((
             ("Open GBAY", self.gbay_key),
             ("Night vision", self.night_vision_key),
-            ("Preview capture (developer)", self.preview_capture_key),
+            ("World-vector overlay", self.world_vector_key),
             ("Seat selector", self.seat_selector_key),
         )):
             ttk.Label(controls, text=label).grid(row=row, column=0, sticky="w", pady=3)
@@ -411,7 +407,7 @@ class ManagerWindow:
         self.config.script.enable_logging = self.logging_enabled.get()
         self.config.script.gbay_key = self.gbay_key.get()
         self.config.script.night_vision_key = self.night_vision_key.get()
-        self.config.script.preview_capture_key = self.preview_capture_key.get()
+        self.config.script.world_vector_key = self.world_vector_key.get()
         self.config.script.seat_selector_enabled = self.seat_selector_enabled.get()
         self.config.script.seat_selector_key = self.seat_selector_key.get()
         self.config.script.safe_mode = self.safe_mode.get()
@@ -420,8 +416,6 @@ class ManagerWindow:
         self.config.script.ui_scale = self.ui_scale.get()
         self.config.script.hold_duration_ms = self.hold_duration_ms.get()
         self.config.script.gbay_free_mode = self.gbay_free_mode.get()
-        self.config.script.spawner_debug = self.spawner_debug.get()
-        self.config.script.garage_debug = self.garage_debug.get()
         return self.config
 
     @staticmethod
@@ -459,7 +453,7 @@ class ManagerWindow:
             self.logging_enabled.set(self.config.script.enable_logging)
             self.gbay_key.set(self.config.script.gbay_key)
             self.night_vision_key.set(self.config.script.night_vision_key)
-            self.preview_capture_key.set(self.config.script.preview_capture_key)
+            self.world_vector_key.set(self.config.script.world_vector_key)
             self.seat_selector_enabled.set(self.config.script.seat_selector_enabled)
             self.seat_selector_key.set(self.config.script.seat_selector_key)
             self.safe_mode.set(self.config.script.safe_mode)
@@ -468,8 +462,6 @@ class ManagerWindow:
             self.ui_scale.set(self.config.script.ui_scale)
             self.hold_duration_ms.set(self.config.script.hold_duration_ms)
             self.gbay_free_mode.set(self.config.script.gbay_free_mode)
-            self.spawner_debug.set(self.config.script.spawner_debug)
-            self.garage_debug.set(self.config.script.garage_debug)
             self.refresh()
         except (OSError, ValueError) as exc:
             messagebox.showerror("Could not load profile", str(exc))

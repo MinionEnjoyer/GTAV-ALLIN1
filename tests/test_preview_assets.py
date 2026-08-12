@@ -43,7 +43,7 @@ def test_merge_previews_filters_unknown_and_invalid_and_overrides(tmp_path):
     result = merge_previews([bundled, captured], output, ["alpha", "beta", "gamma"])
 
     assert result.copied == 1
-    assert png_dimensions(output / "alpha.png") == (1920, 1080)
+    assert png_dimensions(output / "alpha.png") == (512, 288)
     assert len(result.rejected) == 2
     assert result.missing == ("beta", "gamma")
 

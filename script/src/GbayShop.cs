@@ -26,7 +26,6 @@ namespace ALLIN1
         private Keys _openKey = Keys.F9;
         private Keys _nightVisionKey = Keys.N;
         private bool _freeMode;
-        private bool _garageDebug;
         private bool _enableLogging = true;
         private bool _initialized;
         private bool _safeMode;
@@ -82,7 +81,6 @@ namespace ALLIN1
         {
             _openKey = Keys.F9;
             _freeMode = false;
-            _garageDebug = false;
             _enableLogging = true;
             _safeMode = false;
 
@@ -132,10 +130,6 @@ namespace ALLIN1
                     {
                         _freeMode = valLower == "true";
                     }
-                    else if (key == "garage_debug")
-                    {
-                        _garageDebug = valLower == "true";
-                    }
                     else if (key == "enable_logging")
                     {
                         _enableLogging = valLower == "true";
@@ -155,10 +149,6 @@ namespace ALLIN1
                     else if (key == "ui_scale" && float.TryParse(val, out float scale))
                     {
                         _uiScale = Math.Max(0.75f, Math.Min(1.5f, scale));
-                    }
-                    else if (key == "spawner_debug")
-                    {
-                        TrafficSpawner.ShowSpawnMessages = valLower == "true";
                     }
                 }
             }
@@ -217,14 +207,19 @@ namespace ALLIN1
             GbayRenderer.ColorblindMode = _colorblindMode;
             GbayRenderer.UiScale = _uiScale;
             LoadGearPrices();
-            Log($"=== GBAY Initialized: key={_openKey} freeMode={_freeMode} garageDebug={_garageDebug} ===");
+            Log($"=== GBAY Initialized: key={_openKey} freeMode={_freeMode} ===");
 
             try
             {
-                GarageManager.Configure(_garageDebug, _enableLogging);
+                GarageManager.Configure(_enableLogging);
                 GarageManager.Initialize();
-                if (!ClientWatchdog.SafeMode) GarageManager.InitializeFloorGarage();
-                Log("GarageManager initialized (garage + floor garage)");
+                GarageManager.InitializeDavisGarage();
+                if (!ClientWatchdog.SafeMode)
+                    GarageManager.InitializeFloorGarage();
+                else
+                    Log("Floor garage initialization deferred: " +
+                        ClientWatchdog.SafeModeReason);
+                Log("GarageManager base initialization completed");
             }
             catch (Exception ex)
             {
@@ -375,13 +370,60 @@ namespace ALLIN1
             }
         }
 
+        internal void ExecuteDeliverToDavisGarage(string model, int price)
+        {
+            if (VehicleList.GetSizeTier(model) == 2)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~That vehicle is too large for the Davis Auto Shop.", 3000);
+                return;
+            }
+
+            int used = GarageManager.GetDavisGarageUsedSlots();
+            int cap = GarageManager.GetDavisGarageCapacity();
+            if (used >= cap)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~r~The Davis Auto Shop is full.~w~ ({used}/{cap} spaces used)",
+                    3000);
+                return;
+            }
+
+            var rng = new Random();
+            try
+            {
+                bool success = GarageManager.DeliverToDavisGarage(
+                    model, rng.Next(0, 160), rng.Next(0, 160));
+                if (!success)
+                {
+                    GTA.UI.Screen.ShowSubtitle(
+                        "~r~Delivery to the Davis Auto Shop failed.", 3000);
+                    return;
+                }
+                if (!_freeMode && price > 0) Game.Player.Money -= price;
+                string name = VehicleList.DisplayNames.TryGetValue(
+                    model, out string displayName) ? displayName : model;
+                GTA.UI.Screen.ShowSubtitle(
+                    _freeMode || price <= 0
+                        ? $"~g~{name}~w~ delivered to the Davis Auto Shop."
+                        : $"~g~{name}~w~ delivered to the Davis Auto Shop for ~g~${price:N0}~w~.",
+                    3000);
+                Log($"DeliverToDavisGarage: {model}, price=${price}");
+            }
+            catch (Exception ex)
+            {
+                LogException("DeliverToDavisGarage", ex);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Delivery to the Davis Auto Shop failed.", 3000);
+            }
+        }
+
         // ------------------------------------------------------------------ //
         //  Weapon Purchase (called by GbayBrowser)                            //
         // ------------------------------------------------------------------ //
 
         internal void ExecuteGiveWeapon(string weaponName, int price)
         {
-            GbayPreferences.RecordWeapon(weaponName);
             Ped player = Game.Player.Character;
             Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
 
@@ -390,6 +432,18 @@ namespace ALLIN1
                 GTA.UI.Screen.ShowSubtitle(
                     "~r~This weapon is unavailable in the installed GTA V build.", 3500);
                 Log($"GiveWeapon: rejected unavailable weapon {weaponName}");
+                return;
+            }
+
+            // The browser normally routes an owned weapon to ammo refill, but
+            // recheck here so rapid input or another caller cannot charge for
+            // the same weapon twice.
+            if (Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON,
+                    player.Handle, weaponHash, false) ||
+                CharacterInventory.IsOwned(weaponName, false))
+            {
+                GTA.UI.Screen.ShowSubtitle("~y~Already owned.", 3000);
+                Log($"GiveWeapon: duplicate purchase blocked for {weaponName}");
                 return;
             }
 
@@ -426,6 +480,7 @@ namespace ALLIN1
 
             Log($"GiveWeapon: {weaponName}, price=${price}");
             CharacterInventory.RecordOwned(weaponName, false);
+            GbayPreferences.RecordWeapon(weaponName);
         }
 
         /// <summary>
@@ -492,9 +547,32 @@ namespace ALLIN1
         //  Gear Purchase (called by GbayBrowser)                              //
         // ------------------------------------------------------------------ //
 
+        internal bool IsGearOwned(string gearId)
+        {
+            if (string.IsNullOrWhiteSpace(gearId)) return false;
+            if (CharacterInventory.IsOwned(gearId, true)) return true;
+            if (gearId == GearList.ARMOR_JUGGERNAUT) return JuggernautActive;
+            if (gearId == "WEAPON_NIGHTVISION") return NightVisionOwned;
+            if (GearList.IsArmor(gearId)) return false;
+
+            Ped player = Game.Player.Character;
+            Hash itemHash = (Hash)Game.GenerateHash(gearId);
+            return Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON,
+                player.Handle, itemHash, false);
+        }
+
         internal void ExecuteGiveGear(string gearId, int price)
         {
             Ped player = Game.Player.Character;
+
+            // Ownership is enforced at execution time as well as in the UI so
+            // a double click can never result in two deductions.
+            if (IsGearOwned(gearId))
+            {
+                GTA.UI.Screen.ShowSubtitle("~y~Already owned.", 3000);
+                Log($"GiveGear: duplicate purchase blocked for {gearId}");
+                return;
+            }
 
             // Check funds
             if (!_freeMode && price > 0 && Game.Player.Money < price)
@@ -562,28 +640,80 @@ namespace ALLIN1
         //  Vehicle Sell (called by GbayBrowser garage tab)                     //
         // ------------------------------------------------------------------ //
 
-        /// <summary>Get the sell price for a vehicle (60% of purchase price).</summary>
-        internal int GetSellPrice(string model)
+        internal bool CanSellVehicle(string model, string plateText = null)
+        {
+            if (string.IsNullOrWhiteSpace(model)) return false;
+            if (GarageManager.IsProtectedStoryVehicle(model, plateText)) return false;
+            int modelHash = Game.GenerateHash(model);
+            return Function.Call<bool>(Hash.IS_MODEL_A_VEHICLE, modelHash);
+        }
+
+        private static int GetFallbackVehicleValue(int vehicleClass)
+        {
+            // Conservative base values for valid vehicles whose model value is
+            // unavailable in this GTA build. Indexes match GTA vehicle classes.
+            int[] values = {
+                20000, 25000, 35000, 30000, 30000, 40000, 60000, 100000,
+                15000, 35000, 40000, 25000, 25000, 1000, 60000, 100000,
+                150000, 25000, 40000, 120000, 60000, 25000
+            };
+            return vehicleClass >= 0 && vehicleClass < values.Length
+                ? values[vehicleClass] : 25000;
+        }
+
+        /// <summary>
+        /// Get the sell price for a vehicle (60% of catalog/native value).
+        /// Stored base-game vehicles are sellable even when GBAY does not list them.
+        /// </summary>
+        internal int GetSellPrice(string model, string plateText = null)
         {
             if (_freeMode) return 0;
-            int buyPrice = VehicleList.Prices.ContainsKey(model)
-                ? VehicleList.Prices[model] : 0;
+            if (!CanSellVehicle(model, plateText)) return 0;
+
+            int buyPrice;
+            if (!VehicleList.Prices.TryGetValue(model, out buyPrice))
+            {
+                int modelHash = Game.GenerateHash(model);
+                buyPrice = Function.Call<int>(Hash.GET_VEHICLE_MODEL_VALUE, modelHash);
+                if (buyPrice <= 0)
+                {
+                    int vehicleClass = Function.Call<int>(
+                        Hash.GET_VEHICLE_CLASS_FROM_NAME, modelHash);
+                    buyPrice = GetFallbackVehicleValue(vehicleClass);
+                }
+            }
             return (int)(buyPrice * 0.6);
         }
 
-        internal void ExecuteSellVehicle(string model, int listIndex, bool floorGarage = false)
+        internal void ExecuteSellVehicle(string model, int listIndex,
+            int garageLocation = 0, string plateText = null)
         {
-            int sellPrice = GetSellPrice(model);
+            if (GarageManager.IsProtectedStoryVehicle(model, plateText))
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Story-owned personal vehicles cannot be sold.", 3500);
+                ClientLog.Warn("GBAY", "vehicle_sale_rejected",
+                    new Dictionary<string, object> {
+                        { "model", model }, { "reason", "protected_story_vehicle" }
+                    });
+                return;
+            }
 
-            bool removed = floorGarage
+            int sellPrice = GetSellPrice(model, plateText);
+
+            bool removed = garageLocation == 1
                 ? GarageManager.RemoveFloorGarageVehicle(listIndex)
-                : GarageManager.RemoveVehicle(listIndex);
+                : garageLocation == 2
+                    ? GarageManager.RemoveDavisGarageVehicle(listIndex)
+                    : GarageManager.RemoveVehicle(listIndex);
+            string garageName = garageLocation == 1 ? "three_floor"
+                : garageLocation == 2 ? "davis" : "eclipse";
             if (!removed)
             {
                 GTA.UI.Screen.ShowSubtitle("~r~Sale failed; your garage and money were not changed.", 3500);
                 ClientLog.Warn("GBAY", "vehicle_sale_failed", new Dictionary<string, object> {
                     { "model", model }, { "list_index", listIndex },
-                    { "garage", floorGarage ? "three_floor" : "eclipse" }
+                    { "garage", garageName }
                 });
                 return;
             }
@@ -598,7 +728,7 @@ namespace ALLIN1
                 : $"~g~{displayName}~w~ sold for ~g~${sellPrice:N0}";
             GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
-            Log($"SellVehicle: {model}, sellPrice=${sellPrice}, floorGarage={floorGarage}");
+            Log($"SellVehicle: {model}, sellPrice=${sellPrice}, garage={garageName}");
         }
 
         // ------------------------------------------------------------------ //
@@ -812,7 +942,7 @@ namespace ALLIN1
             JuggernautActive = false;
         }
 
-        private static void ApplyBallisticOutfit(Ped player, PedHash ch)
+        internal static void ApplyBallisticOutfit(Ped player, PedHash ch)
         {
             // Paleto Score juggernaut suit — confirmed in-game on Enhanced Edition
             // via F10 debug overlay during the heist mission.
@@ -983,15 +1113,23 @@ namespace ALLIN1
 
                 if (_initialized)
                 {
+                    // A crash-recovery session suppresses the multi-floor
+                    // garage for its first 30 seconds. Initialize it as soon
+                    // as that temporary window closes; otherwise its map
+                    // blips and world markers remain absent for the session.
+                    if (!GarageManager.IsFloorGarageInitialized &&
+                        !ClientWatchdog.SafeMode)
+                    {
+                        GarageManager.InitializeFloorGarage();
+                        Log("Floor garage initialized after safe-mode recovery");
+                    }
                     GarageManager.OnTick();
                     GarageManager.OnFloorGarageTick();
+                    GarageManager.OnDavisGarageTick();
                 }
 
                 if (_browser != null)
                     _browser.Draw();
-
-                if (_garageDebug && _initialized)
-                    GarageManager.DrawDebugMarkers();
 
                 JuggernautTick();
             }

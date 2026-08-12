@@ -12,10 +12,9 @@ free_mode = false
 # Create backups of original game files before modifying.
 backup = true
 
-# Experimental: inject GBAY thumbnails through OpenRPF/OpenIV. Leave this
-# disabled if Enhanced crashes at startup. Gameplay and placeholders work
-# without an RPF loader.
-enable_rpf_previews = false
+# Install GBAY thumbnails through OpenRPF/OpenIV. Disable this only when
+# troubleshooting an artwork-loader conflict; placeholders remain available.
+enable_rpf_previews = true
 
 [traffic]
 # Add GTA Online vehicles to ambient traffic so they appear naturally.
@@ -62,9 +61,9 @@ enable_dlc_police = false
 # Uses .NET Keys enum names: F1-F12, NumPad0-9, etc.
 gbay_key = "F9"
 
-# Key to toggle purchased night vision and to start the developer preview tool.
+# Keys for purchased night vision and the developer world-vector overlay.
 night_vision_key = "N"
-preview_capture_key = "F10"
+world_vector_key = "F10"
 
 # Hold the game's enter/exit control to choose a specific vehicle seat.
 seat_selector_enabled = true
@@ -79,11 +78,3 @@ hold_duration_ms = 350
 
 # When true, all GBAY purchases are free and vehicle sales have no payout.
 gbay_free_mode = false
-
-
-# Show vehicle spawn debug notifications in-game (e.g. "SPAWN: adder | OK").
-# The initial "ALLIN1: X/Y DLC vehicles available" message always shows.
-spawner_debug = false
-
-# Show debug markers at garage parking slots (for coordinate tuning).
-garage_debug = false

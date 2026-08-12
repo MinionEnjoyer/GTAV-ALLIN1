@@ -2,9 +2,30 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $root
 
-python -m pip install -e ".[test]"
-python -m pytest --cov=allin1 --cov-report=term-missing --cov-report=html
-dotnet restore script/ALLIN1.csproj
-dotnet build script/ALLIN1.csproj -c Release --no-restore
+$python = Join-Path $root ".venv\Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $python)) {
+    throw "The project environment is missing. Run install.bat once before test-all.ps1."
+}
 
-Write-Host "All available automated test layers passed." -ForegroundColor Green
+& $python -m pip install -e ".[test]"
+if ($LASTEXITCODE -ne 0) { throw "Installing the test environment failed." }
+& $python -m pytest --cov=allin1 --cov-report=term-missing --cov-report=html
+if ($LASTEXITCODE -ne 0) { throw "Python tests or coverage qualification failed." }
+dotnet restore script/ALLIN1.csproj
+if ($LASTEXITCODE -ne 0) { throw "Restoring the C# client failed." }
+dotnet build script/ALLIN1.csproj -c Release --no-restore
+if ($LASTEXITCODE -ne 0) { throw "Building the C# client failed." }
+Copy-Item -LiteralPath "script/bin/Release/ALLIN1.dll" -Destination "script/dist/ALLIN1.dll" -Force
+
+if (-not (Test-Path -LiteralPath "tools/RpfPatcher/RpfPatcher.exe")) {
+    throw "RpfPatcher runtime is missing. Run runtools.ps1 before release qualification."
+}
+
+$version = (& $python -c "from allin1 import __version__; print(__version__)").Trim()
+$archive = Join-Path $root "output\GTAV-ALLIN1-$version.zip"
+& $python -m allin1.cli build-release --output $archive
+if ($LASTEXITCODE -ne 0) { throw "Building the public release failed." }
+& $python -m allin1.cli verify-release $archive
+if ($LASTEXITCODE -ne 0) { throw "Verifying the public release failed." }
+
+Write-Host "All automated layers and the public release archive passed." -ForegroundColor Green

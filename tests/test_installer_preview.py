@@ -20,6 +20,9 @@ def _layout(tmp_path, monkeypatch):
     (data / "vehicles.toml").write_text(
         '[[vehicles]]\nmodel="alpha"\nname="Alpha"\nclass="super"\nmanufacturer="A"\n'
     )
+    (data / "weapons.toml").write_text(
+        '[[weapons]]\nname="WEAPON_TEST"\nlabel="Test"\ncategory="pistols"\nprice=10\n'
+    )
     tools = project / "tools"
     (tools / "RpfPatcher").mkdir(parents=True)
     (tools / "YTDToolio.exe").touch()
@@ -45,8 +48,8 @@ def test_preview_deploy_reports_missing_inputs(tmp_path, monkeypatch, missing, w
     assert any(warning in item for item in result.warnings)
 
 
-def test_preview_deploy_builds_and_deploys_with_captured_override(tmp_path, monkeypatch):
-    _layout(tmp_path, monkeypatch)
+def test_preview_deploy_builds_and_deploys_curated_assets(tmp_path, monkeypatch):
+    _project, dist, _tools = _layout(tmp_path, monkeypatch)
     from allin1 import preview_assets
     from allin1.generators import ytd_builder
 
@@ -73,7 +76,9 @@ def test_preview_deploy_builds_and_deploys_with_captured_override(tmp_path, monk
     assert installer._deploy_preview_dlc(tmp_path, result) is True
 
     assert "Ignored 1 invalid preview capture(s)." in result.warnings
-    assert merge.call_args.args[0][1] == tmp_path / "scripts" / "previews"
+    assert merge.call_args_list[0].args[0] == [dist / "previews"]
+    assert merge.call_args_list[1].args[0] == [dist / "weapon_previews"]
+    assert merge.call_args_list[2].args[0] == [dist / "equipment_previews"]
     assert any("build-dlc" in args for args in calls)
     assert any("verify-dlc" in args for args in calls)
     assert any("patch" in args for args in calls)

@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw
 from allin1 import cli
 from allin1.config import Config
 from allin1.installer import InstallResult
+from allin1.release import ReleaseReport
 
 
 VEHICLES = '''
@@ -133,6 +134,21 @@ def test_status_reports_filters_and_import_previews(tmp_path, monkeypatch):
     imported = CliRunner().invoke(cli.main, ["import-previews", str(source)])
     assert imported.exit_code == 0
     assert "Imported 1" in imported.output
+    with Image.open(tmp_path / "script/dist/previews/alpha.png") as packaged:
+        assert packaged.size == (512, 288)
+
+    weapon_source = tmp_path / "weapon-captures"
+    weapon_source.mkdir()
+    image.save(weapon_source / "weapon_test.png")
+    imported = CliRunner().invoke(cli.main, [
+        "import-previews", str(weapon_source), "--kind", "weapon",
+    ])
+    assert imported.exit_code == 0
+    assert "valid weapon preview" in imported.output
+    weapon_preview = tmp_path / "script/dist/weapon_previews/weapon_test.png"
+    assert weapon_preview.exists()
+    with Image.open(weapon_preview) as packaged:
+        assert packaged.size == (512, 288)
 
 
 def test_verify_preview_artifacts_success_and_failure(tmp_path, monkeypatch):
@@ -197,3 +213,21 @@ def test_health_repair_and_qualification_commands(tmp_path, monkeypatch):
     failed = CliRunner().invoke(cli.main, ["qualification-report", str(report),
         "--coverage", "80", "--no-script-build"])
     assert failed.exit_code == 1 and "FAIL" in failed.output
+
+
+def test_public_release_commands(tmp_path, monkeypatch):
+    _project(tmp_path, monkeypatch)
+    archive = tmp_path / "release.zip"
+    build = Mock(return_value=ReleaseReport("0.3.0", 42, 10 * 1024 * 1024, archive))
+    verify = Mock(return_value=ReleaseReport("0.3.0", 42, 10 * 1024 * 1024, archive))
+    monkeypatch.setattr("allin1.release.build_public_release", build)
+    monkeypatch.setattr("allin1.release.verify_public_release", verify)
+
+    built = CliRunner().invoke(cli.main, ["build-release", "--output", str(archive)])
+    assert built.exit_code == 0 and "42 files" in built.output
+    build.assert_called_once_with(tmp_path, archive)
+
+    archive.write_bytes(b"zip")
+    checked = CliRunner().invoke(cli.main, ["verify-release", str(archive)])
+    assert checked.exit_code == 0 and "Verified ALLIN1 0.3.0" in checked.output
+    verify.assert_called_once_with(archive)

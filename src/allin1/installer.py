@@ -27,8 +27,14 @@ from pathlib import Path
 from allin1 import asi_loader
 from allin1.config import Config
 from allin1.detector import detect_gta_path, validate_gta_path
+from allin1.preview_assets import GEAR_PREVIEW_ITEMS
 from allin1.vehicles.database import VehicleDatabase
 from allin1.versioning import VERSION_FILE, write_installed_version
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 
 log = logging.getLogger("allin1.installer")
 
@@ -44,7 +50,6 @@ LEGACY_FILES = ("ALLIN1.asi", "ALLIN1.dll", "ALLIN1-Launcher.exe")
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _SCRIPT_DIST_DIR = _PROJECT_ROOT / "script" / "dist"
 _TOOLS_DIR = _PROJECT_ROOT / "tools"
-
 
 def _copy_atomic(source: Path, destination: Path) -> None:
     """Replace a deployed file without exposing a partial destination."""
@@ -163,7 +168,8 @@ def uninstall(config: Config) -> list[Path]:
                    "ALLIN1_garage.json", "ALLIN1_garages.json",
                    "ALLIN1_garages.json.bak", "ALLIN1_gbay_preferences.json",
                    "ALLIN1_gbay_preferences.json.bak", "ALLIN1_session.lock",
-                   "ALLIN1_garage.quarantine.json", VERSION_FILE, "ALLIN1.ini"):
+                   "ALLIN1_garage.quarantine.json", "ALLIN1_preview_pending.toml",
+                   VERSION_FILE, "ALLIN1.ini"):
         fpath = scripts_dir / fname
         if fpath.exists():
             fpath.unlink()
@@ -187,11 +193,12 @@ def uninstall(config: Config) -> list[Path]:
         log.info("Removed %s/ data folder", ALLIN1_DATA_DIR)
 
     # Remove legacy loose preview images (from SHV-era installs)
-    scripts_dir_previews = scripts_dir / "previews"
-    if scripts_dir_previews.exists():
-        shutil.rmtree(scripts_dir_previews)
-        removed.append(scripts_dir_previews)
-        log.info("Removed legacy previews/ folder")
+    for preview_folder in ("previews", "weapon_previews", "equipment_previews"):
+        scripts_dir_previews = scripts_dir / preview_folder
+        if scripts_dir_previews.exists():
+            shutil.rmtree(scripts_dir_previews)
+            removed.append(scripts_dir_previews)
+            log.info("Removed %s/ capture folder", preview_folder)
     logo_file = scripts_dir / "PHAT.png"
     if logo_file.exists():
         logo_file.unlink()
@@ -293,6 +300,13 @@ def _deploy_script(gta_path: Path) -> bool:
         _copy_atomic(toml_src, toml_dest)
         log.info("Deployed config %s -> %s", toml_src.name, toml_dest)
 
+    # The production runtime no longer includes the screenshot-capture tool.
+    # Remove its old deployed pending manifest during repair/install.
+    pending_dest = scripts_dir / "ALLIN1_preview_pending.toml"
+    if pending_dest.exists():
+        pending_dest.unlink()
+        log.info("Removed retired preview capture manifest")
+
     # Clean up legacy INI from previous versions
     legacy_ini = scripts_dir / "ALLIN1.ini"
     if legacy_ini.exists():
@@ -358,6 +372,8 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
     previews_src = _SCRIPT_DIST_DIR / "previews"
     logo_src = _SCRIPT_DIST_DIR / "PHAT.png"
     brand_logo_src = _SCRIPT_DIST_DIR / "ALLIN1.png"
+    weapon_previews_src = _SCRIPT_DIST_DIR / "weapon_previews"
+    equipment_previews_src = _SCRIPT_DIST_DIR / "equipment_previews"
 
     if not previews_src.is_dir():
         log.warning("No previews/ directory found — skipping preview build")
@@ -378,16 +394,24 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
     models = sorted(v.model for v in VehicleDatabase.load(
         _PROJECT_ROOT / "data" / "vehicles.toml"
     ))
+    with (_PROJECT_ROOT / "data" / "weapons.toml").open("rb") as stream:
+        weapon_ids = sorted(
+            item["name"] for item in tomllib.load(stream).get("weapons", [])
+        )
+    gear_ids = sorted(GEAR_PREVIEW_ITEMS)
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         ytd_out = tmp_path / "ytd"
         preview_inputs = tmp_path / "preview_inputs"
+        weapon_preview_inputs = tmp_path / "weapon_preview_inputs"
+        equipment_preview_inputs = tmp_path / "equipment_preview_inputs"
 
-        # The in-game F10 tool writes to scripts/previews. On a later install,
-        # those captures override the bundled images automatically.
+        # Raw captures are source material, not approved catalog art. Package
+        # only the reviewed repository assets so an old or incomplete capture
+        # folder cannot silently replace curated previews during repair.
         merged = merge_previews(
-            [previews_src, gta_path / SCRIPTS_DIR / "previews"],
+            [previews_src],
             preview_inputs,
             models,
         )
@@ -406,12 +430,47 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
         log.info("Building preview textures for %d/%d vehicles...",
                  merged.copied, len(models))
 
+        weapon_merged = merge_previews(
+            [weapon_previews_src],
+            weapon_preview_inputs,
+            weapon_ids,
+        )
+        equipment_merged = merge_previews(
+            [equipment_previews_src],
+            equipment_preview_inputs,
+            gear_ids,
+        )
+        if weapon_merged.rejected or equipment_merged.rejected:
+            rejected_count = (
+                len(weapon_merged.rejected) + len(equipment_merged.rejected)
+            )
+            result.warnings.append(
+                f"Ignored {rejected_count} invalid weapon/equipment preview capture(s)."
+            )
+        if weapon_merged.copied:
+            log.info("Building preview textures for %d/%d weapons...",
+                     weapon_merged.copied, len(weapon_ids))
+        if equipment_merged.copied:
+            log.info("Building preview textures for %d/%d equipment items...",
+                     equipment_merged.copied, len(gear_ids))
+
+        preview_groups = []
+        if weapon_merged.copied:
+            preview_groups.append(
+                ("allin1_weapon", weapon_preview_inputs, weapon_ids)
+            )
+        if equipment_merged.copied:
+            preview_groups.append(
+                ("allin1_gear", equipment_preview_inputs, gear_ids)
+            )
+
         # Step 1: Build .ytd files from PNGs
         ytd_files = ytd_builder.build_ytd_files(
             preview_inputs,
             logo_src if logo_src.exists() else None,
             ytd_out, _TOOLS_DIR, models,
             brand_logo_path=brand_logo_src if brand_logo_src.exists() else None,
+            preview_groups=preview_groups,
         )
 
         if not ytd_files:

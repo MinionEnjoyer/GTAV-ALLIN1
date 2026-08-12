@@ -17,8 +17,18 @@ class UpdateResult:
     backup: Path
 
 
-def package_release(output: Path, root: Path, files: list[Path]) -> Path:
-    """Create a deterministic updater archive with a SHA-256 manifest."""
+def package_release(
+    output: Path,
+    root: Path,
+    files: list[Path],
+    *,
+    extra_files: dict[str, bytes] | None = None,
+) -> Path:
+    """Create a deterministic archive with a SHA-256 manifest.
+
+    ``extra_files`` adds generated metadata without writing it into the source
+    tree first. Its paths follow the same archive safety rules as normal files.
+    """
     checksums: dict[str, str] = {}
     relative_files: list[tuple[str, Path]] = []
     for path in files:
@@ -28,13 +38,28 @@ def package_release(output: Path, root: Path, files: list[Path]) -> Path:
         relative = source.relative_to(root).as_posix()
         checksums[relative] = hashlib.sha256(source.read_bytes()).hexdigest()
         relative_files.append((relative, source))
+    generated: dict[str, bytes] = {}
+    for relative, content in (extra_files or {}).items():
+        path = PurePosixPath(relative)
+        if path.is_absolute() or ".." in path.parts or relative == "checksums.json":
+            raise ValueError(f"unsafe generated archive member: {relative}")
+        if relative in checksums:
+            raise ValueError(f"duplicate archive member: {relative}")
+        generated[relative] = content
+        checksums[relative] = hashlib.sha256(content).hexdigest()
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
         for relative, source in sorted(relative_files):
             info = zipfile.ZipInfo(relative, (2020, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             archive.writestr(info, source.read_bytes())
-        archive.writestr("checksums.json", json.dumps(checksums, indent=2, sort_keys=True))
+        for relative, content in sorted(generated.items()):
+            info = zipfile.ZipInfo(relative, (2020, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, content)
+        manifest = zipfile.ZipInfo("checksums.json", (2020, 1, 1, 0, 0, 0))
+        manifest.compress_type = zipfile.ZIP_DEFLATED
+        archive.writestr(manifest, json.dumps(checksums, indent=2, sort_keys=True))
     return output
 
 

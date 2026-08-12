@@ -96,7 +96,7 @@ def install_cmd(ctx: click.Context) -> None:
         click.echo()
         if result.is_enhanced:
             click.echo("OpenRPF not detected. This is optional; GBAY will use safe placeholders.")
-            click.echo("For experimental RPF previews, install it manually from:")
+            click.echo("For GBAY preview artwork, install it manually from:")
         else:
             click.echo("OpenIV.asi not detected. This is optional for vehicle artwork:")
         click.echo("  https://www.gta5-mods.com/tools/openrpf-openiv-asi-for-gta-v-enhanced")
@@ -262,14 +262,36 @@ def generate_weaponlist(ctx: click.Context, output: str | None) -> None:
 
 @main.command("import-previews")
 @click.argument("source", type=click.Path(exists=True, file_okay=False, path_type=Path))
-def import_previews(source: Path) -> None:
+@click.option(
+    "--kind",
+    type=click.Choice(("vehicle", "weapon", "equipment"), case_sensitive=False),
+    default="vehicle",
+    show_default=True,
+    help="Catalog whose captures should be imported.",
+)
+def import_previews(source: Path, kind: str) -> None:
     """Validate and import PNGs made by the in-game preview capture tool."""
-    from allin1.preview_assets import merge_previews
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        import tomli as tomllib
+    from allin1.preview_assets import GEAR_PREVIEW_ITEMS, merge_previews
 
-    db = VehicleDatabase.load(VEHICLES_DB)
-    destination = PROJECT_ROOT / "script" / "dist" / "previews"
-    result = merge_previews([source], destination, [v.model for v in db])
-    click.echo(f"Imported {result.copied} valid vehicle preview(s).")
+    kind = kind.lower()
+    if kind == "vehicle":
+        item_ids = [vehicle.model for vehicle in VehicleDatabase.load(VEHICLES_DB)]
+        destination_name = "previews"
+    elif kind == "weapon":
+        weapon_data = tomllib.loads((DATA_DIR / "weapons.toml").read_text())
+        item_ids = [weapon["name"] for weapon in weapon_data.get("weapons", [])]
+        destination_name = "weapon_previews"
+    else:
+        item_ids = list(GEAR_PREVIEW_ITEMS)
+        destination_name = "equipment_previews"
+
+    destination = PROJECT_ROOT / "script" / "dist" / destination_name
+    result = merge_previews([source], destination, item_ids)
+    click.echo(f"Imported {result.copied} valid {kind} preview(s).")
     if result.rejected:
         click.echo(f"Rejected {len(result.rejected)} invalid or unknown file(s).")
         for reason in result.rejected:
@@ -394,6 +416,36 @@ def rollback_update_cmd(destination: Path, backup: Path) -> None:
     from allin1.updater import rollback_update
     restored = rollback_update(destination, backup)
     click.echo(f"Restored {len(restored)} files.")
+
+
+@main.command("build-release")
+@click.option(
+    "--output", "-o",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output ZIP (default: output/GTAV-ALLIN1-<version>.zip)",
+)
+def build_release_cmd(output: Path | None) -> None:
+    """Build and verify the minimal public Windows release archive."""
+    from allin1.release import build_public_release
+
+    destination = output or PROJECT_ROOT / "output" / f"GTAV-ALLIN1-{__version__}.zip"
+    report = build_public_release(PROJECT_ROOT, destination)
+    size = report.unpacked_bytes / (1024 * 1024)
+    click.echo(
+        f"Built ALLIN1 {report.version}: {report.file_count} files, "
+        f"{size:.1f} MiB unpacked -> {report.archive}"
+    )
+
+
+@main.command("verify-release")
+@click.argument("archive", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def verify_release_cmd(archive: Path) -> None:
+    """Verify a public release ZIP without extracting or installing it."""
+    from allin1.release import verify_public_release
+
+    report = verify_public_release(archive)
+    click.echo(f"Verified ALLIN1 {report.version} public release ({report.file_count} files).")
 
 
 @main.command("diagnostics")

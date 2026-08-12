@@ -1,16 +1,22 @@
-"""Validation and merging for GBAY vehicle preview captures."""
+"""Validation and merging for GBAY catalog preview captures."""
 
 from __future__ import annotations
 
 import logging
-import shutil
 import struct
 from dataclasses import dataclass
 from pathlib import Path
-from PIL import Image, ImageStat
+from PIL import Image, ImageOps, ImageStat
 
 log = logging.getLogger("allin1.preview_assets")
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+PACKAGED_PREVIEW_SIZE = (512, 288)
+GEAR_PREVIEW_ITEMS = (
+    "ARMOR_SUPER_LIGHT", "ARMOR_LIGHT", "ARMOR_STANDARD", "ARMOR_HEAVY",
+    "ARMOR_SUPER_HEAVY", "ARMOR_JUGGERNAUT", "GADGET_PARACHUTE",
+    "WEAPON_SMOKEGRENADE", "WEAPON_FIREEXTINGUISHER", "WEAPON_PETROLCAN",
+    "WEAPON_HAZARDCAN", "WEAPON_NIGHTVISION",
+)
 
 
 @dataclass(frozen=True)
@@ -84,13 +90,33 @@ def png_dimensions(path: Path) -> tuple[int, int]:
     return width, height
 
 
+def write_packaged_preview(source: Path, destination: Path) -> None:
+    """Write a consistently sized, optimized copy for the streamed texture pack.
+
+    Capture masters remain at the game's native resolution. GBAY displays its
+    cards at 16:9, so imported assets use the same 512x288 format as the vehicle
+    preview library instead of bloating the repository and DLC with full-screen
+    screenshots.
+    """
+    with Image.open(source) as opened:
+        image = opened.convert("RGBA")
+        if image.size != PACKAGED_PREVIEW_SIZE:
+            image = ImageOps.fit(
+                image,
+                PACKAGED_PREVIEW_SIZE,
+                method=Image.Resampling.LANCZOS,
+            )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        image.save(destination, format="PNG", optimize=True)
+
+
 def merge_previews(
     sources: list[Path], destination: Path, models: list[str]
 ) -> PreviewMergeResult:
     """Merge valid captures, with later sources overriding earlier sources.
 
-    Only known vehicle model names are accepted. This keeps texture names in
-    sync with ``VehicleList.PreviewDict`` and prevents unrelated screenshots
+    Only known catalog item IDs are accepted. This keeps texture names in sync
+    with the generated runtime dictionaries and prevents unrelated screenshots
     from being packed into the DLC.
     """
     known = {model.lower(): model.lower() for model in models}
@@ -104,7 +130,7 @@ def merge_previews(
         for image in sorted(source.glob("*.png")):
             model = image.stem.lower()
             if model not in known:
-                rejected.append(f"{image.name}: unknown vehicle model")
+                rejected.append(f"{image.name}: unknown catalog item")
                 continue
             try:
                 png_dimensions(image)
@@ -114,7 +140,7 @@ def merge_previews(
             except (OSError, ValueError) as exc:
                 rejected.append(f"{image.name}: {exc}")
                 continue
-            shutil.copy2(image, destination / f"{model}.png")
+            write_packaged_preview(image, destination / f"{model}.png")
             copied_models.add(model)
 
     for reason in rejected:

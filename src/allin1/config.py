@@ -20,7 +20,7 @@ class GeneralConfig:
     gta_path: str = "auto"
     free_mode: bool = False
     backup: bool = True
-    enable_rpf_previews: bool = False
+    enable_rpf_previews: bool = True
 
 
 @dataclass
@@ -53,7 +53,7 @@ class ScriptConfig:
     enable_dlc_police: bool = False
     gbay_key: str = "F9"
     night_vision_key: str = "N"
-    preview_capture_key: str = "F10"
+    world_vector_key: str = "F10"
     seat_selector_enabled: bool = True
     seat_selector_key: str = "L"
     safe_mode: bool = False
@@ -62,8 +62,6 @@ class ScriptConfig:
     colorblind_mode: bool = False
     hold_duration_ms: int = 350
     gbay_free_mode: bool = False
-    spawner_debug: bool = False
-    garage_debug: bool = False
 
 
 @dataclass
@@ -89,6 +87,9 @@ class Config:
         vehicles = VehiclesConfig(**raw.get("vehicles", {}))
 
         script_raw = raw.get("script", {})
+        if "world_vector_key" not in script_raw and "preview_capture_key" in script_raw:
+            script_raw = dict(script_raw)
+            script_raw["world_vector_key"] = script_raw["preview_capture_key"]
         script_fields = {f.name for f in ScriptConfig.__dataclass_fields__.values()}
         script = ScriptConfig(**{k: v for k, v in script_raw.items() if k in script_fields})
         if "gbay_free_mode" not in script_raw:
@@ -148,7 +149,7 @@ class Config:
             f"enable_dlc_police = {boolean(self.script.enable_dlc_police)}\n"
             f"gbay_key = {quote(self.script.gbay_key)}\n"
             f"night_vision_key = {quote(self.script.night_vision_key)}\n"
-            f"preview_capture_key = {quote(self.script.preview_capture_key)}\n"
+            f"world_vector_key = {quote(self.script.world_vector_key)}\n"
             f"seat_selector_enabled = {boolean(self.script.seat_selector_enabled)}\n"
             f"seat_selector_key = {quote(self.script.seat_selector_key)}\n"
             f"safe_mode = {boolean(self.script.safe_mode)}\n"
@@ -157,8 +158,6 @@ class Config:
             f"colorblind_mode = {boolean(self.script.colorblind_mode)}\n"
             f"hold_duration_ms = {self.script.hold_duration_ms}\n"
             f"gbay_free_mode = {boolean(self.script.gbay_free_mode)}\n"
-            f"spawner_debug = {boolean(self.script.spawner_debug)}\n"
-            f"garage_debug = {boolean(self.script.garage_debug)}\n"
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
@@ -168,7 +167,7 @@ class Config:
         keys = {
             "gbay_key": self.script.gbay_key,
             "night_vision_key": self.script.night_vision_key,
-            "preview_capture_key": self.script.preview_capture_key,
+            "world_vector_key": self.script.world_vector_key,
             "seat_selector_key": self.script.seat_selector_key,
         }
         allowed = ({f"F{i}" for i in range(1, 13)} |

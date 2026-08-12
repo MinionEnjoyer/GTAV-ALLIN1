@@ -31,7 +31,7 @@ def _window():
     window.logging_enabled = Variable(True)
     window.gbay_key = Variable("F8")
     window.night_vision_key = Variable("V")
-    window.preview_capture_key = Variable("F11")
+    window.world_vector_key = Variable("F11")
     window.seat_selector_enabled = Variable(False)
     window.seat_selector_key = Variable("G")
     window.safe_mode = Variable(True)
@@ -40,8 +40,6 @@ def _window():
     window.ui_scale = Variable(1.2)
     window.hold_duration_ms = Variable(600)
     window.gbay_free_mode = Variable(True)
-    window.spawner_debug = Variable(True)
-    window.garage_debug = Variable(True)
     return window
 
 
@@ -58,7 +56,7 @@ def test_current_config_collects_all_launcher_fields():
     assert config.vehicles.disabled_vehicles == ["oppressor2", "deluxo"]
     assert config.script.gbay_key == "F8"
     assert config.script.night_vision_key == "V"
-    assert config.script.preview_capture_key == "F11"
+    assert config.script.world_vector_key == "F11"
     assert config.script.seat_selector_enabled is False
     assert config.script.seat_selector_key == "G"
     assert config.script.safe_mode is True
@@ -80,7 +78,7 @@ def test_queue_log_handler_sends_formatted_record():
 def test_save_displays_validation_errors(monkeypatch):
     window = _window()
     window.gbay_key = Variable("F8")
-    window.preview_capture_key = Variable("F8")
+    window.world_vector_key = Variable("F8")
     window.manager = Mock()
     window._append_log = Mock()
     shown = Mock()

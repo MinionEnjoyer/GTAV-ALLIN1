@@ -67,7 +67,8 @@ Run `uninstall.bat` to remove all ALLIN1 files, unpatch `dlclist.xml`, and clean
 
 ### Update
 
-Run `update.bat` to pull the latest version and redeploy.
+Run `update.bat` to open the latest verified GitHub Release. Extract the new ZIP into a fresh
+folder and run `install.bat`; repair preserves the installed configuration and garage saves.
 
 The desktop manager also has an **About** page with the project goal, creator
 credit, support link, and an explicit **Check for updates** action backed by
@@ -142,13 +143,11 @@ Available classes: `compacts`, `coupes`, `sedans`, `suvs`, `muscle`, `sports`, `
 |-----|---------|-------------|
 | `gbay_key` | `"F9"` | Key to open the GBAY shop menu. Uses .NET `Keys` enum names. |
 | `night_vision_key` | `"N"` | Toggle purchased night vision. |
-| `preview_capture_key` | `"F10"` | Start/stop the developer preview capture tool. |
+| `world_vector_key` | `"F10"` | Toggle the developer world-vector overlay. |
 | `seat_selector_enabled` | `true` | Enable hold-to-select vehicle seats. |
 | `gbay_free_mode` | `false` | All GBAY purchases are free; vehicle sales have no payout. |
 | `enable_logging` | `false` | Write debug info to `scripts/ALLIN1.log`. |
 | `enable_dlc_police` | `false` | Replace vanilla police cars with DLC police vehicles. |
-| `spawner_debug` | `false` | Show vehicle spawn debug notifications. |
-| `garage_debug` | `false` | Show debug markers at garage parking slots. |
 
 ### Price Customization
 
@@ -173,7 +172,8 @@ short cross-fades when moving between shop, garage, weapon, and customization
 screens.
 
 Vehicle and weapon catalogs support **Y** ownership filters (all, owned, or
-available) and **X** text search using GTA's on-screen keyboard. The garage view
+available), a dedicated **Favorites** category, **R3** favorite toggling, and
+**X** text search using GTA's on-screen keyboard. The garage view
 also exposes **Y — Recover**, which saves live vehicle state, clears spawned
 garage entities and transition locks, and safely returns the player outside.
 
@@ -218,8 +218,10 @@ allin1 audit-previews "C:\Games\GTAV\scripts\previews"
 ```
 
 The audit rejects corrupt, undersized, nearly transparent, blank/low-contrast,
-or badly framed transparent previews. Installation applies the same validation
-before merging captures into the preview DLC.
+or badly framed transparent previews. Raw captures remain review material;
+installation packages only curated assets from `script/dist`. Import approved
+captures explicitly with `allin1 import-previews SOURCE --kind vehicle` (or
+`weapon` / `equipment`) before rebuilding the preview DLC.
 
 ### Runtime optimization
 
@@ -286,15 +288,50 @@ Automatically integrates DLC vehicles into Story Mode traffic. Two systems work 
 
 When `rich_areas_only_supers` is enabled, super and sports cars only appear in wealthy neighborhoods like Vinewood.
 
-### Personal Garage
+### Personal Garages
 
-10-vehicle garage at Eclipse Towers underground interior, per character (Michael, Franklin, Trevor).
+Garage storage is separate per character (Michael, Franklin, Trevor) and per
+location. Eclipse Towers provides the original 10-car underground garage, the
+three-floor garage provides oversized storage, and Davis adds a second 10-car
+garage in the Los Santos Tuners Auto Shop interior.
 
-**Access:** Walk to the marker near Eclipse Towers on Eclipse Boulevard.
+Rockstar-managed story vehicles are excluded from every ALLIN1 garage and its
+sale flow, even when a mission temporarily removes the vehicle's decorator or
+map blip. A model-plus-unique-plate fallback protects Franklin's Buffalo S and Bagger, Trevor's Bodhi,
+Michael's Tailgater and temporary Premier, Amanda's Sentinel, Tracey's Issi,
+and Jimmy's BeeJay XL without blocking ordinary civilian copies of those models.
 
-**Features:**
+**Eclipse access:** Use the markers near Eclipse Towers on Eclipse Boulevard.
+
+### Davis Auto Shop Garage
+
+The Davis garage uses these surveyed exterior anchors:
+
+- Vehicle entrance: `X 204.0661, Y -1466.4750, Z 29.1437`, heading `43.97`.
+- Pedestrian entrance/exit: `X 215.0502, Y -1461.0250, Z 29.1847`, heading `49.38`.
+- Interior pedestrian exit: `X -1357.6240, Y 153.2929, Z -99.1942`, heading `0`.
+
+The vehicle door stores a driven-in car before loading the Auto Shop. The
+pedestrian door enters on foot. Inside, GBAY uses Rockstar's native Auto Shop
+10-car arrangement; leaving in a stored car removes it from storage and places
+it outside the Davis vehicle door.
+
+**Davis features:**
+
+- Independent per-character persistence in `ALLIN1_davis_garage.json`.
+- Ten fixed Auto Shop parking spaces with complete color, plate, wheel, mod,
+  livery, neon, smoke, extra, and custom-color restoration.
+- GBAY delivery targeting, garage browsing, selling, ownership filtering, and
+  emergency recovery integration.
+- Auto Shop customization for all nine styles and tints, the optional second
+  lift, personal quarters, work-area fixtures, and storage decor. Choices are
+  saved per protagonist in `ALLIN1_davis_customization.json` and apply live
+  while the player is inside Davis.
+- Standard green world markers and green garage map blips.
+
+**Eclipse features:**
 - 10 parking slots (two rows of 5, heading -105° and 134°)
-- Vehicles persist across game sessions via `ALLIN1_garages.json`
+- Vehicles persist across game sessions via `ALLIN1_garage.json`
 - Vehicle colors are saved and restored
 - Vehicles spawn at fixed Z=-99.0 coordinates when entering the garage interior
 - Uses joaat hash-based reverse lookup for reliable model name resolution
@@ -335,9 +372,11 @@ Purchased from the Gear shop ($50,000). When equipped:
 - Automatically removed on character switch or death
 - Can be replaced by purchasing a lower armor tier
 
-### Coordinate Display (F11)
+### World Vector Display (F10)
 
-Development tool. Press **F11** to toggle an on-screen overlay showing player position (X, Y, Z) and heading. Useful for finding coordinates for garage slots and spawn positions.
+Press F10 to toggle a persistent overlay containing player position (X, Y, Z)
+and heading. It is intended for scouting garage entrances, exits, parking slots,
+and spawn positions.
 
 ---
 
@@ -358,7 +397,7 @@ allin1 [--config PATH] [--verbose] COMMAND
 | `export-catalog [--output PATH]` | Export vehicle database as JSON (default: `catalog/vehicles.json`). |
 | `generate-vehiclelist [--output PATH]` | Regenerate `VehicleList.cs` from data files. |
 | `generate-weaponlist [--output PATH]` | Regenerate `WeaponList.cs` from data files. |
-| `import-previews SOURCE` | Validate and import screenshots captured in-game. |
+| `import-previews SOURCE [--kind vehicle\|weapon\|equipment]` | Validate and import screenshots captured in-game. |
 | `verify-preview-artifacts DIRECTORY` | Verify built YTD dictionary coverage. |
 | `analyze-client-log LOG --edition EDITION` | Produce a machine-readable smoke report from an in-game session. |
 
@@ -389,10 +428,12 @@ GTA_V_ALLIN1/
 │   ├── ALLIN1.csproj              # C# project file (.NET 4.8, x64)
 │   ├── src/                       # C# source files
 │   │   ├── GbayShop.cs            # Script entrypoint, config, key handler
-│   │   ├── GbayBrowser.cs         # Full browser UI (vehicles, weapons, gear, garage)
+│   │   ├── GbayBrowser.cs         # Main browser state and vehicle/garage UI
+│   │   ├── GbayBrowser.Gear.cs    # Gear storefront UI
 │   │   ├── GbayRenderer.cs        # Drawing primitives and theme colors
 │   │   ├── GbayInput.cs           # Input polling (keyboard + mouse)
-│   │   ├── GarageManager.cs       # 10-car garage with persistence
+│   │   ├── GarageManager.cs       # Eclipse and three-floor garage systems
+│   │   ├── GarageManager.Davis.cs # Davis Auto Shop 10-car garage
 │   │   ├── TrafficSpawner.cs      # DLC traffic integration
 │   │   ├── SeatSelector.cs        # Hold-F seat picker
 │   │   ├── VehicleHelper.cs       # Vehicle spawn utilities
@@ -400,10 +441,7 @@ GTA_V_ALLIN1/
 │   │   ├── WeaponList.cs          # Auto-generated weapon data
 │   │   └── GearList.cs            # Static gear item data (12 items)
 │   ├── tools/
-│   │   ├── CoordinateDisplay.cs   # F11 position overlay (included in build)
-│   │   ├── HeightChecker.cs       # F12 garage Z-height measurement tool (included in build)
-│   │   ├── GbayPreviewCapture.cs  # F10 automated screenshot tool (excluded)
-│   │   └── OutfitDebug.cs         # Outfit component viewer (excluded, dormant)
+│   │   └── WorldVectorTool.cs     # F10 coordinate overlay (included)
 │   ├── dist/                      # Pre-built binaries
 │   │   ├── ALLIN1.dll
 │   │   ├── LemonUI.SHVDN3.dll
@@ -437,7 +475,7 @@ GTA_V_ALLIN1/
 ├── prices_gear.toml               # Gear price overrides
 ├── install.bat                    # Windows installer
 ├── uninstall.bat                  # Windows uninstaller
-├── update.bat                     # Update script
+├── update.bat                     # Open the latest verified release
 ├── runtools.ps1                   # Build external tools (YTDToolio, RpfPatcher)
 ├── pyproject.toml                 # Python package metadata
 └── README.md                      # Project overview
@@ -465,7 +503,7 @@ The auto-commit uses `github-actions[bot]` and does `git pull --rebase` before p
 - **Target:** .NET Framework 4.8, x64
 - **Dependencies:** ScriptHookVDotNet3 (3.6.0), LemonUI.SHVDN3 (2.2.0), System.Windows.Forms
 - **Exclusions:** `tools/**` is excluded from compilation by default
-- **Inclusions:** `CoordinateDisplay.cs` and `HeightChecker.cs` are explicitly re-included via `<Compile Include>` entries
+- **Inclusions:** `WorldVectorTool.cs` is explicitly re-included and provides the F10 world-vector overlay
 - **Output:** `script/dist/ALLIN1.dll`
 
 ### Building External Tools
@@ -520,7 +558,7 @@ allin1 generate-weaponlist
 
 ## GBAY RPF Preview Textures
 
-Vehicle preview images are served to the in-game UI from the registered
+Catalog preview images are served to the in-game UI from the registered
 `allin1_previews` DLC pack. Enhanced does not add arbitrary files placed in
 `update2.rpf/textures` to the streamed-texture index; registering the nested RPF
 through `content.xml` and `dlclist.xml` makes the dictionaries discoverable.
@@ -532,15 +570,19 @@ mods/update/x64/dlcpacks/allin1_previews/dlc.rpf
 ├── content.xml
 ├── setup2.xml
 └── x64/textures/textures.rpf
+    ├── phat_logo.ytd
     ├── allin1_logo.ytd
     ├── allin1_prev_01.ytd
     ├── allin1_prev_02.ytd
+    ├── allin1_weapon_01.ytd
+    ├── allin1_weapon_02.ytd
+    ├── allin1_gear_01.ytd
     └── ...
 ```
 
 ### Build Pipeline
 
-1. **PNG source:** captured preview images in `script/dist/previews/`; models listed in `data/preview_pending.toml` use placeholders
+1. **PNG source:** curated vehicle, weapon, and equipment art in `script/dist/previews/`, `script/dist/weapon_previews/`, and `script/dist/equipment_previews/`; models listed in `data/preview_pending.toml` use the runtime fallback until compatible art is available
 2. **Texture encoding:** Pillow converts PNGs to standards-compliant BC3 DDS payloads
 3. **YTD packing:** `RpfPatcher.exe build-ytd` writes Legacy texture dictionaries through CodeWalker (89 textures per YTD)
 4. **Enhanced conversion:** `RpfPatcher.exe convert-gen9` converts the YTD resources for Gen9
@@ -578,53 +620,22 @@ Textures are loaded on demand per page and pre-fetched one page ahead. Unused di
 
 Development tools live in `script/tools/`. The csproj excludes all `tools/**` from compilation by default; individual tools are re-included via `<Compile Include>` entries.
 
-### CoordinateDisplay (F11) — Included in Build
+### World Vector Overlay (F10) — Included in Build
 
-Toggle with **F11** to show player position and heading on screen.
+Press F10 to show or hide player position and heading on screen. The retired
+preview-capture menu and screenshot actions are no longer part of the
+production script.
 
-Format: `X:123.4  Y:-456.7  Z:89.0  H:180.5`
+Format: `X 123.4567  Y -456.7890  Z 89.0123` plus `Heading 180.50`.
 
-Located at `script/tools/CoordinateDisplay.cs`.
+Implemented in `script/tools/WorldVectorTool.cs`.
 
-### HeightChecker (F12) — Included in Build
+The completed preview-capture, height-check, interior-scout, and outfit tools
+are archived outside the production repository. They can be recovered for a
+future DLC pass without shipping dormant developer scripts to players.
 
-Automated tool that cycles through all ground-capable vehicles, spawns each at garage parking slots, waits for physics settling, and measures the resulting Z-height. Produces a TOML data file for per-vehicle height calibration.
-
-**Activation:** Press **F12** while inside the garage interior (the interior geometry must be loaded).
-
-**Process:**
-1. Hides and freezes the player
-2. For each vehicle (skipping boats, helicopters, planes, cycles):
-   - Spawns at slot 0 and slot 5 (representative of left and right rows)
-   - Waits up to 60 frames for physics settling (early exit if Z velocity < 0.01)
-   - Records: measured Z, bounding box dimensions, collision status, height above ground
-   - Deletes vehicle and advances
-3. Writes results to `scripts/ALLIN1_height_check.toml`
-4. Restores player state
-
-**Output:** TOML file with per-vehicle measurements including `model`, `display_name`, `class`, `slot`, `spawn_z`, `measured_z`, `delta_z`, `length`, `width`, `height`, `collided`, `in_air`, and `height_above_ground`. Vehicles that collided with garage geometry are flagged in a `[review]` section.
-
-**Progress display:** Green progress bar with percentage, current vehicle name, and running collision count.
-
-Located at `script/tools/HeightChecker.cs`.
-
-### GbayPreviewCapture (F10) — Excluded from Build
-
-Automated vehicle screenshot tool. Press **F10** (configurable) to cycle through all 461 vehicles, spawning each at a fixed showroom location and capturing a side-profile screenshot.
-
-- Showroom position: (-736, -1455.7, 4.5) near LSIA
-- Camera: dynamic radius based on vehicle dimensions, 50° FOV
-- Output: `scripts/previews/{model}.png`
-- Re-run Install / Repair to merge these captures into the preview DLC automatically, or run `allin1 import-previews <GTA V>/scripts/previews` to import them into a source checkout.
-- Progress bar shown on screen during capture
-
-Located at `script/tools/GbayPreviewCapture.cs`. To enable, add a `<Compile Include>` entry in `ALLIN1.csproj`.
-
-### OutfitDebug — Excluded from Build (Dormant)
-
-Ped outfit component viewer for debugging character drawable/texture slot values. Previously activated on F10. Moved to dormant storage after the Juggernaut Armor outfit values were finalized.
-
-Located at `script/tools/OutfitDebug.cs`.
+Curated capture imports remain available through `allin1 import-previews
+SOURCE --kind vehicle`, `--kind weapon`, or `--kind equipment`.
 
 ---
 
@@ -694,7 +705,15 @@ Unlike VehicleList.cs and WeaponList.cs, `GearList.cs` is hand-written since the
 
 ### Garage Persistence
 
-`ALLIN1_garages.json` in the scripts directory stores per-character garage data:
+Garage state is split into independent files in the scripts directory:
+
+- `ALLIN1_garage.json` — Eclipse Towers.
+- `ALLIN1_floor_garage.json` — three-floor garage.
+- `ALLIN1_davis_garage.json` — Davis Auto Shop.
+- `ALLIN1_davis_customization.json` — per-character Davis Auto Shop themes and upgrades.
+
+Each file stores per-character vehicle data, including complete customization
+state. Atomic writes retain a `.bak` recovery copy. A representative entry is:
 
 ```json
 {
@@ -730,8 +749,7 @@ Model names are stored as spawn names (e.g., `"zentorno"` not GXT labels). A mig
 ### No DLC vehicles in traffic
 
 - Check `[traffic] enabled = true` in config
-- Set `spawner_debug = true` to see spawn notifications
-- Check `scripts/ALLIN1.log` for spawner errors
+- Enable detailed logging in the launcher and check `scripts/ALLIN1.log` for suppression reasons
 
 ### Vehicles are free / wrong prices
 
@@ -742,14 +760,15 @@ Model names are stored as spawn names (e.g., `"zentorno"` not GXT labels). A mig
 
 ### Garage not saving vehicles
 
-- Check that `scripts/ALLIN1_garages.json` is writable
+- Check that the applicable `scripts/ALLIN1_garage.json`,
+  `scripts/ALLIN1_floor_garage.json`, or `scripts/ALLIN1_davis_garage.json` is writable
 - Each character (Michael, Franklin, Trevor) has a separate 10-slot garage
 - Vehicles must be purchased through GBAY and delivered to the garage
 
 ### Vehicles floating in garage
 
 - The garage interior is underground at Z=-99.0. Vehicle placement uses `SET_ENTITY_COORDS` to force exact slot positions rather than `SET_VEHICLE_ON_GROUND_PROPERLY` (which is unreliable in interiors).
-- If vehicles still appear offset, run the HeightChecker tool (F12) inside the garage to measure per-vehicle Z deltas.
+- If vehicles still appear offset, record the affected model and garage slot for a targeted placement adjustment.
 
 ### Preview images not showing
 
@@ -774,8 +793,9 @@ After `allin1 install`, the following files exist in the GTA V directory:
 │   ├── prices_gear.toml           # Gear price overrides
 │   ├── ALLIN1.log                 # Runtime log (if logging enabled)
 │   ├── ALLIN1_gbay.log            # GBAY shop log
-│   ├── ALLIN1_garages.json        # Garage persistence
-│   └── ALLIN1_height_check.toml   # HeightChecker output (if run)
+│   ├── ALLIN1_garage.json         # Eclipse Towers persistence
+│   ├── ALLIN1_floor_garage.json   # Three-floor garage persistence
+│   ├── ALLIN1_davis_garage.json   # Davis Auto Shop persistence
 ├── mods/update/x64/dlcpacks/
 │   └── allin1_previews/
 │       └── dlc.rpf                # Preview texture DLC pack

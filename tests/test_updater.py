@@ -46,3 +46,17 @@ def test_package_release_is_deployable(tmp_path):
     assert result.deployed == ("scripts/mod.dll",)
     assert (tmp_path / "game/scripts/mod.dll").read_bytes() == b"release"
     with pytest.raises(FileNotFoundError): package_release(tmp_path / "x.zip", root, [root / "missing"])
+
+
+def test_package_release_supports_generated_metadata_and_rejects_unsafe_names(tmp_path):
+    root = tmp_path / "root"; root.mkdir()
+    source = root / "mod.dll"; source.write_bytes(b"release")
+    archive = package_release(
+        tmp_path / "release.zip", root, [source],
+        extra_files={"release.json": b'{"version":"0.3.0"}\n'},
+    )
+    with zipfile.ZipFile(archive) as bundle:
+        checksums = json.loads(bundle.read("checksums.json"))
+        assert set(checksums) == {"mod.dll", "release.json"}
+    with pytest.raises(ValueError, match="unsafe generated"):
+        package_release(tmp_path / "bad.zip", root, [source], extra_files={"../x": b"x"})

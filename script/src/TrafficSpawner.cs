@@ -94,9 +94,6 @@ namespace ALLIN1
         private bool _enabled = true;
         private string _lastSuppressionReason = "";
 
-        // Toggled via config: shows per-spawn debug notifications
-        internal static bool ShowSpawnMessages;
-
         public TrafficSpawner()
         {
             LoadSettings();
@@ -169,7 +166,7 @@ namespace ALLIN1
             }
             if (ClientWatchdog.SafeMode)
             {
-                PauseReason = "30-second recovery mode";
+                PauseReason = ClientWatchdog.SafeModeReason;
                 return;
             }
             if (Game.IsLoading)
@@ -445,13 +442,9 @@ namespace ALLIN1
                 Log($"  attempt3 (native {nativePedName}): exists={driverExists} seatFree={seatFree}");
             }
 
-            // Log + on-screen notification
+            // Keep the detailed result in the support log without interrupting gameplay.
             string result = (driverExists && !seatFree) ? "OK" : "FAIL";
             Log($"  RESULT: {modelName} | method={pedMethod} | {result}");
-            string status = (driverExists && !seatFree) ? "~g~OK" : "~r~FAIL";
-            if (ShowSpawnMessages)
-                GTA.UI.Notification.Show(
-                    $"~y~SPAWN~w~: {modelName} | {pedMethod} | {status}");
 
             // If all attempts failed, delete the empty vehicle
             if (!driverExists || seatFree)
