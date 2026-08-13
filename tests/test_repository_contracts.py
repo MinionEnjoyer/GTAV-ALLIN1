@@ -238,10 +238,8 @@ def test_seat_selector_is_animation_only_and_has_external_route_recovery():
     assert "TASK_FOLLOW_NAV_MESH_TO_COORD" in seat
     assert "GET_NAVMESH_ROUTE_RESULT" in seat
     assert "EXTERNAL_ROUTE_STALL_TIMEOUT_MS" in seat
-    assert 'player, "external_entry_left_route"' in seat
     assert "ExecutionPhase.RecoveringWrongSeat" in seat
     assert "ExecutionPhase.ReturningToSourceSeat" in seat
-    assert "IsWithinExternalEntryCorridor" in seat
     assert '"restore_source_seat"' in seat
     assert '"seat_switch_rolled_back"' in seat
     assert "NATIVE_ENTER_TIMEOUT = -1" in seat

@@ -41,11 +41,6 @@ namespace ALLIN1
         private const int SHUFFLE_TIMEOUT_MS = 4500;
         private const float EXTERNAL_APPROACH_DISTANCE = 0.85f;
         private const float EXTERNAL_ROUTE_PROGRESS_EPSILON = 0.12f;
-        private const float EXTERNAL_ENTRY_MAX_DRIFT = 2.75f;
-        private const float CARACARA_ENTRY_MIN_X = -3.75f;
-        private const float CARACARA_ENTRY_MAX_X = 3.75f;
-        private const float CARACARA_ENTRY_MIN_Y = -5.75f;
-        private const float CARACARA_ENTRY_MAX_Y = -0.25f;
         private const float MAX_EXTERNAL_SWITCH_SPEED = 1.25f;
         private const int NATIVE_ENTER_TIMEOUT = -1;
         private const int NORMAL_ENTER_FLAG = 1;
@@ -590,15 +585,6 @@ namespace ALLIN1
                     else if (player.IsInVehicle()
                              && GetPlayerSeatIndex(player) != _targetSeatIdx)
                         HandleWrongSeatEntry(player);
-                    else if (_usesExternalRoute && !player.IsInVehicle()
-                             && !IsWithinExternalEntryCorridor(
-                                 _targetVeh.Model.Hash,
-                                 _targetSeatIdx,
-                                 _targetVeh.GetPositionOffset(player.Position),
-                                 player.Position.DistanceTo(
-                                     _externalApproachPoint)))
-                        FailExternalRoute(
-                            player, "external_entry_left_route");
                     else if (phaseElapsed > ENTER_TIMEOUT_MS)
                     {
                         if (_usesExternalRoute)
@@ -911,23 +897,6 @@ namespace ALLIN1
             return string.IsNullOrEmpty(_externalEntryClipset)
                 || Function.Call<bool>(
                     Hash.HAS_CLIP_SET_LOADED, _externalEntryClipset);
-        }
-
-        internal static bool IsWithinExternalEntryCorridor(
-            int modelHash,
-            int seatIndex,
-            Vector3 vehicleOffset,
-            float approachDistance)
-        {
-            if (modelHash == CARACARA_HASH && seatIndex == 3)
-            {
-                return vehicleOffset.X >= CARACARA_ENTRY_MIN_X
-                    && vehicleOffset.X <= CARACARA_ENTRY_MAX_X
-                    && vehicleOffset.Y >= CARACARA_ENTRY_MIN_Y
-                    && vehicleOffset.Y <= CARACARA_ENTRY_MAX_Y;
-            }
-
-            return approachDistance <= EXTERNAL_ENTRY_MAX_DRIFT;
         }
 
         internal static string GetExternalRouteAbortReason(

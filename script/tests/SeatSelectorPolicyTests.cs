@@ -72,25 +72,5 @@ namespace ALLIN1.Tests
                 routeResult, routeElapsedMs, noProgressMs, distance));
         }
 
-        [Theory]
-        [InlineData(1254014755, 3, 0.0f, -2.0f, 4.0f, true)]
-        [InlineData(1254014755, 3, 0.0f, 0.5f, 1.0f, false)]
-        [InlineData(1254014755, 3, 4.0f, -2.0f, 1.0f, false)]
-        [InlineData(-114627507, 3, 0.0f, -2.0f, 2.0f, true)]
-        [InlineData(-114627507, 3, 0.0f, -2.0f, 3.0f, false)]
-        public void External_entry_corridor_allows_mounting_but_rejects_cab_path(
-            int modelHash,
-            int seatIndex,
-            float offsetX,
-            float offsetY,
-            float approachDistance,
-            bool expected)
-        {
-            Assert.Equal(expected, SeatSelector.IsWithinExternalEntryCorridor(
-                modelHash,
-                seatIndex,
-                new GTA.Math.Vector3(offsetX, offsetY, 0f),
-                approachDistance));
-        }
     }
 }
