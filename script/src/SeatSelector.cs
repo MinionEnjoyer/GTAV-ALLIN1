@@ -39,6 +39,7 @@ namespace ALLIN1
         private const int SHUFFLE_TIMEOUT_MS = 4500;
         private const float EXTERNAL_APPROACH_DISTANCE = 0.85f;
         private const float MAX_EXTERNAL_SWITCH_SPEED = 1.25f;
+        private const int NATIVE_ENTER_TIMEOUT = -1;
         private const int NORMAL_ENTER_FLAG = 1;
         private const int NORMAL_EXIT_FLAG = 0;
 
@@ -78,6 +79,12 @@ namespace ALLIN1
             new Vector3(-1.650f, -2.543f, 0.382f),
             new Vector3(1.680f, -2.543f, 0.382f),
             new Vector3(0.050f, -4.118f, 0.382f),
+        };
+        private static readonly string[] CARACARA_TURRET_ENTRY_CLIPSETS =
+        {
+            "clipset@veh@technical@turret@rds@enter_exit",
+            "clipset@veh@technical@turret@rps@enter_exit",
+            "clipset@veh@technical@turret@rear@enter_exit",
         };
 
         // HUD layout (normalized screen coords, bottom-right area)
@@ -148,6 +155,7 @@ namespace ALLIN1
         private int _sourceSeatIdx;
         private Vector3 _externalApproachPoint;
         private bool _approachIsReentry;
+        private string _externalEntryClipset;
         private ExecutionPhase _executionPhase;
         private bool _enabled = true;
 
@@ -548,7 +556,8 @@ namespace ALLIN1
                     if (player.IsInVehicle())
                         CancelExecution(player, "entered_vehicle_during_approach", true);
                     else if (player.Position.DistanceTo(_externalApproachPoint)
-                             <= EXTERNAL_APPROACH_DISTANCE)
+                             <= EXTERNAL_APPROACH_DISTANCE
+                             && IsExternalEntryClipsetReady())
                         BeginEnter(player, _approachIsReentry);
                     else if (phaseElapsed > EXTERNAL_APPROACH_TIMEOUT_MS)
                         CancelExecution(player, "external_approach_timeout", true);
@@ -653,11 +662,22 @@ namespace ALLIN1
                 reentry ? ExecutionPhase.Reentering : ExecutionPhase.Entering,
                 reentry ? "external_reentry" : "outside_entry");
 
-            // Flag 1 is GTA's normal animated approach/entry. Do not use flags
-            // 3 or 16: both are documented warp modes.
-            Function.Call(Hash.TASK_ENTER_VEHICLE,
-                player.Handle, _targetVeh.Handle, ENTER_TIMEOUT_MS,
-                _targetSeatIdx, 2f, NORMAL_ENTER_FLAG, 0);
+            // A positive native timeout silently enables WarpAfterTime inside
+            // GTA's task implementation. Use -1 and enforce our own bounded
+            // timeout in TickExecuting so this route can never teleport.
+            if (string.IsNullOrEmpty(_externalEntryClipset))
+            {
+                Function.Call(Hash.TASK_ENTER_VEHICLE,
+                    player.Handle, _targetVeh.Handle, NATIVE_ENTER_TIMEOUT,
+                    _targetSeatIdx, 2f, NORMAL_ENTER_FLAG, 0);
+            }
+            else
+            {
+                Function.Call(Hash.TASK_ENTER_VEHICLE,
+                    player.Handle, _targetVeh.Handle, NATIVE_ENTER_TIMEOUT,
+                    _targetSeatIdx, 2f, NORMAL_ENTER_FLAG,
+                    _externalEntryClipset);
+            }
         }
 
         private bool BeginExternalApproach(Ped player, bool reentry)
@@ -668,6 +688,7 @@ namespace ALLIN1
                 return false;
 
             Vector3 nearest = _targetVeh.GetOffsetPosition(offsets[0]);
+            int nearestIndex = 0;
             float nearestDistance = player.Position.DistanceTo(nearest);
             for (int i = 1; i < offsets.Length; i++)
             {
@@ -676,12 +697,17 @@ namespace ALLIN1
                 if (distance < nearestDistance)
                 {
                     nearest = candidate;
+                    nearestIndex = i;
                     nearestDistance = distance;
                 }
             }
 
             _externalApproachPoint = nearest;
             _approachIsReentry = reentry;
+            _externalEntryClipset = GetExternalEntryClipset(
+                _targetVeh.Model.Hash, _targetSeatIdx, nearestIndex);
+            if (!string.IsNullOrEmpty(_externalEntryClipset))
+                Function.Call(Hash.REQUEST_CLIP_SET, _externalEntryClipset);
             SetExecutionPhase(
                 ExecutionPhase.ApproachingExternalSeat,
                 reentry ? "external_reentry_approach" : "outside_entry_approach");
@@ -698,6 +724,23 @@ namespace ALLIN1
             return modelHash == CARACARA_HASH && seatIndex == 3
                 ? CARACARA_TURRET_APPROACH_OFFSETS
                 : null;
+        }
+
+        internal static string GetExternalEntryClipset(
+            int modelHash, int seatIndex, int approachIndex)
+        {
+            if (modelHash != CARACARA_HASH || seatIndex != 3
+                || approachIndex < 0
+                || approachIndex >= CARACARA_TURRET_ENTRY_CLIPSETS.Length)
+                return null;
+            return CARACARA_TURRET_ENTRY_CLIPSETS[approachIndex];
+        }
+
+        private bool IsExternalEntryClipsetReady()
+        {
+            return string.IsNullOrEmpty(_externalEntryClipset)
+                || Function.Call<bool>(
+                    Hash.HAS_CLIP_SET_LOADED, _externalEntryClipset);
         }
 
         private void SetExecutionPhase(ExecutionPhase phase, string route)
@@ -976,6 +1019,11 @@ namespace ALLIN1
 
         private void Reset()
         {
+            if (!string.IsNullOrEmpty(_externalEntryClipset))
+            {
+                Function.Call(Hash.REMOVE_CLIP_SET, _externalEntryClipset);
+                _externalEntryClipset = null;
+            }
             _state = State.Idle;
             _holdStart = 0;
             _targetVeh = null;

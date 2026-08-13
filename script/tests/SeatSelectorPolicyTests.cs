@@ -22,6 +22,15 @@ namespace ALLIN1.Tests
             Assert.Equal(3, offsets.Length);
             Assert.Contains(offsets, point => point.X < 0 && point.Y < 0);
             Assert.Contains(offsets, point => point.X > 0 && point.Y < 0);
+            Assert.Equal(
+                "clipset@veh@technical@turret@rds@enter_exit",
+                SeatSelector.GetExternalEntryClipset(1254014755, 3, 0));
+            Assert.Equal(
+                "clipset@veh@technical@turret@rps@enter_exit",
+                SeatSelector.GetExternalEntryClipset(1254014755, 3, 1));
+            Assert.Equal(
+                "clipset@veh@technical@turret@rear@enter_exit",
+                SeatSelector.GetExternalEntryClipset(1254014755, 3, 2));
         }
 
         [Theory]
@@ -31,6 +40,7 @@ namespace ALLIN1.Tests
             int modelHash, int seatIndex)
         {
             Assert.Null(SeatSelector.GetExternalApproachOffsets(modelHash, seatIndex));
+            Assert.Null(SeatSelector.GetExternalEntryClipset(modelHash, seatIndex, 0));
         }
     }
 }

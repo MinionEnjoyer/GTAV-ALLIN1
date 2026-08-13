@@ -236,6 +236,9 @@ def test_seat_selector_is_animation_only_and_has_external_route_recovery():
     assert "CARACARA_HASH = 1254014755" in seat
     assert "CARACARA_TURRET_APPROACH_OFFSETS" in seat
     assert "TASK_GO_STRAIGHT_TO_COORD" in seat
+    assert "NATIVE_ENTER_TIMEOUT = -1" in seat
+    assert "CARACARA_TURRET_ENTRY_CLIPSETS" in seat
+    assert "REQUEST_CLIP_SET" in seat
     assert 'new Dictionary<int, string> { { 3, "Turret" } }' in seat
     assert '"exit_animation_settle"' in seat
     assert 'BeginExit(player, "different_row_or_external_seat")' in seat
