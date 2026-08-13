@@ -3319,7 +3319,7 @@ traffic = ["veh_mid", "veh_rich"]
 
 # GTA Online 1.73 / The Kortz Center Heist (July 2026).
 [[vehicles]]
-model = "veleno"
+model = "velenogt"
 name = "Grotti Veleno GT"
 class = "super"
 manufacturer = "Grotti"

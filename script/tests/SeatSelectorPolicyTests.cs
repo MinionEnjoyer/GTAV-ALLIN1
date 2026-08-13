@@ -1,5 +1,8 @@
 using ALLIN1;
 using GTA.Math;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace ALLIN1.Tests
@@ -7,11 +10,75 @@ namespace ALLIN1.Tests
     public sealed class SeatSelectorPolicyTests
     {
         [Theory]
-        [InlineData(-114627507)]
-        [InlineData(1254014755)]
-        public void Mounted_weapon_seat_is_labeled_turret(int modelHash)
+        [InlineData(-114627507, "Roof Turret")]
+        [InlineData(1254014755, "Bed Turret")]
+        public void Mounted_weapon_seat_uses_model_specific_turret_label(
+            int modelHash, string expected)
         {
-            Assert.Equal("Turret", SeatSelector.GetSeatLabel(modelHash, 3));
+            Assert.Equal(expected, SeatSelector.GetSeatLabel(modelHash, 3));
+        }
+
+        [Fact]
+        public void Generated_catalog_covers_every_supported_game_and_dlc_vehicle()
+        {
+            Assert.True(VehicleSeatLayoutCatalog.All.Count >= 900);
+            var models = new HashSet<string>(
+                VehicleSeatLayoutCatalog.All.Values.Select(item => item.Model),
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (string model in VehicleList.All)
+                Assert.Contains(model, models);
+            Assert.All(VehicleSeatLayoutCatalog.All.Values,
+                item => Assert.True(item.SeatCount >= 1, item.Model));
+        }
+
+        [Fact]
+        public void High_risk_vehicle_roles_match_rockstar_layout_metadata()
+        {
+            VehicleSeatLayoutRecord technical = Catalog("technical");
+            VehicleSeatLayoutRecord barrage = Catalog("barrage");
+            VehicleSeatLayoutRecord insurgent = Catalog("insurgent3");
+            VehicleSeatLayoutRecord apc = Catalog("apc");
+            VehicleSeatLayoutRecord khanjali = Catalog("khanjali");
+            VehicleSeatLayoutRecord valkyrie = Catalog("valkyrie");
+
+            Assert.Equal(3, technical.SeatCount);
+            Assert.Equal("Bed Turret", technical.Labels[1]);
+            Assert.Equal("Top Turret", barrage.Labels[1]);
+            Assert.Equal("Rear Turret", barrage.Labels[2]);
+            Assert.Equal("Roof Turret", insurgent.Labels[7]);
+            Assert.Equal(3, apc.Turrets.Count);
+            Assert.Equal(3, khanjali.Turrets.Count);
+            Assert.Equal(3, valkyrie.Turrets.Count);
+        }
+
+        [Fact]
+        public void Unconventional_non_turret_seats_are_not_mislabeled_as_guns()
+        {
+            VehicleSeatLayoutRecord limo = Catalog("limo2");
+            VehicleSeatLayoutRecord boxville = Catalog("boxville4");
+            VehicleSeatLayoutRecord savage = Catalog("savage");
+
+            Assert.Equal(new[] { 3 }, limo.Turrets.OrderBy(index => index));
+            Assert.Equal("Left Rear", limo.Labels[1]);
+            Assert.Equal("Right Rear", limo.Labels[2]);
+            Assert.Empty(boxville.Turrets);
+            Assert.Empty(savage.Turrets);
+        }
+
+        [Fact]
+        public void Catalog_records_seat_and_access_geometry_separately()
+        {
+            VehicleSeatLayoutRecord caracara = Catalog("caracara");
+            VehicleSeatLayoutRecord insurgent = Catalog("insurgent");
+            VehicleSeatLayoutRecord dinghy = Catalog("dinghy5");
+
+            Assert.Equal(5, caracara.SeatCount);
+            Assert.Equal(4, caracara.DoorCount);
+            Assert.Equal(9, insurgent.SeatCount);
+            Assert.Equal(4, insurgent.DoorCount);
+            Assert.Equal(1, insurgent.HatchCount);
+            Assert.Equal(0, dinghy.DoorCount);
         }
 
         [Fact]
@@ -23,12 +90,12 @@ namespace ALLIN1.Tests
             Assert.Equal(3, offsets.Length);
             Assert.Contains(offsets, point => point.X < 0 && point.Y < 0);
             Assert.Contains(offsets, point => point.X > 0 && point.Y < 0);
-            Assert.Equal(-2, SeatSelector.GetNativeEntryRequestSeat(
+            Assert.Equal(3, SeatSelector.GetNativeEntryRequestSeat(
                 1254014755, 3, true));
         }
 
         [Theory]
-        [InlineData(1254014755, 2)]
+        [InlineData(1254014755, 0)]
         [InlineData(-114627507, 3)]
         public void Ordinary_and_limo_seats_do_not_use_caracara_staging(
             int modelHash, int seatIndex)
@@ -39,12 +106,48 @@ namespace ALLIN1.Tests
         }
 
         [Fact]
+        public void Caracara_rear_seats_use_authored_door_positions()
+        {
+            var left = SeatSelector.GetExternalApproachOffsets(1254014755, 1);
+            var right = SeatSelector.GetExternalApproachOffsets(1254014755, 2);
+
+            Assert.Single(left);
+            Assert.Single(right);
+            Assert.Equal(-1.2486f, left[0].X, 4);
+            Assert.Equal(-0.1472f, left[0].Y, 4);
+            Assert.Equal(1.2244f, right[0].X, 4);
+            Assert.Equal(-0.2042f, right[0].Y, 4);
+        }
+
+        [Fact]
         public void Caracara_normal_seats_keep_the_requested_index()
         {
             Assert.Equal(3, SeatSelector.GetNativeEntryRequestSeat(
                 1254014755, 3, false));
             Assert.Equal(2, SeatSelector.GetNativeEntryRequestSeat(
                 1254014755, 2, true));
+        }
+
+        [Fact]
+        public void Caracara_exposes_cab_and_turret_but_not_unreachable_rear_seats()
+        {
+            Assert.True(SeatSelector.IsSeatSelectable(1254014755, -1));
+            Assert.True(SeatSelector.IsSeatSelectable(1254014755, 0));
+            Assert.False(SeatSelector.IsSeatSelectable(1254014755, 1));
+            Assert.False(SeatSelector.IsSeatSelectable(1254014755, 2));
+            Assert.True(SeatSelector.IsSeatSelectable(1254014755, 3));
+            Assert.True(SeatSelector.IsSeatSelectable(0, 1));
+        }
+
+        [Fact]
+        public void Caracara_turret_uses_native_context_entry()
+        {
+            Assert.True(SeatSelector.ShouldUseNativeContextEntry(
+                1254014755, 3));
+            Assert.False(SeatSelector.ShouldUseNativeContextEntry(
+                1254014755, 0));
+            Assert.False(SeatSelector.ShouldUseNativeContextEntry(
+                -114627507, 3));
         }
 
         [Fact]
@@ -124,6 +227,13 @@ namespace ALLIN1.Tests
         {
             Assert.Null(SeatSelector.GetExternalRouteAbortReason(
                 routeResult, routeElapsedMs, noProgressMs, distance));
+        }
+
+        private static VehicleSeatLayoutRecord Catalog(string model)
+        {
+            return Assert.Single(VehicleSeatLayoutCatalog.All.Values,
+                item => string.Equals(item.Model, model,
+                    StringComparison.OrdinalIgnoreCase));
         }
 
     }

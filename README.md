@@ -13,7 +13,7 @@ ALLIN1 supports both GTA V Legacy and GTA V Enhanced. It is designed exclusively
 Mode**; the installer configures the game to launch without BattlEye and should never be used in
 GTA Online.
 
-> **Current public release:** **0.4.0**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
+> **Current public release:** **0.4.1**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
 > highlights and hardening work included in this build.
 
 ## Support
@@ -125,9 +125,16 @@ settings. The installed `scripts/ALLIN1.toml` remains the runtime source of trut
 | `L` | Open the seat selector by default |
 | `N` | Toggle acquired night vision |
 | `F10` | Toggle the developer world-vector overlay |
+| `F11` | Run the seat laboratory on the current or nearest vehicle |
+| `Shift+F11` | Run the full physical-turret and unconventional-seat fleet laboratory |
 
 GBAY supports keyboard, mouse, and controller navigation. Page arrows and category-strip arrows
 are also clickable, and directional navigation crosses listing-page boundaries automatically.
+
+Seat names are backed by a generated Rockstar metadata audit rather than guessed from passenger
+indices. The checked-in `catalog/vehicle_seats.json` and `.md` cover base-game and installed DLC
+models; Seat Lab adds runtime evidence for authored seats that are inaccessible or behave
+differently from their declarations.
 
 ## Configuration
 
@@ -140,7 +147,7 @@ Important groups include:
 - `[traffic]` — spawn distances, population limits, replacement behavior, and adaptive FPS guard;
 - `[vehicles]` — global enablement plus class and model exclusions;
 - `[script]` — GBAY, night vision and seat-selector keys, UI scale, reduced motion, colorblind mode,
-  safe mode, free purchases, support logging, and the F10 world-vector overlay.
+  safe mode, free purchases, support logging, the F10 world-vector overlay, and the F11 seat lab.
 
 Vehicle, weapon, and gear pricing is maintained in `prices_vehicles.toml`,
 `prices_weapons.toml`, and `prices_gear.toml`.

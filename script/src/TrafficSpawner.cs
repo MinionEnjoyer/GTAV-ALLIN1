@@ -164,6 +164,11 @@ namespace ALLIN1
                 PauseReason = "disabled in settings";
                 return;
             }
+            if (SeatTestTool.IsActive)
+            {
+                PauseReason = "seat laboratory";
+                return;
+            }
             if (ClientWatchdog.SafeMode)
             {
                 PauseReason = ClientWatchdog.SafeModeReason;

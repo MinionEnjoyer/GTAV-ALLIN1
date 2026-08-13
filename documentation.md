@@ -451,7 +451,8 @@ GTA_V_ALLIN1/
 │   │   ├── WeaponList.cs          # Auto-generated weapon data
 │   │   └── GearList.cs            # Static gear item data (12 items)
 │   ├── tools/
-│   │   └── WorldVectorTool.cs     # F10 coordinate overlay (included)
+│   │   ├── WorldVectorTool.cs     # F10 coordinate overlay (included)
+│   │   └── SeatTestTool.cs        # F11 automated seat laboratory (included)
 │   ├── dist/                      # Pre-built binaries
 │   │   ├── ALLIN1.dll
 │   │   ├── LemonUI.SHVDN3.dll
@@ -513,7 +514,7 @@ The auto-commit uses `github-actions[bot]` and does `git pull --rebase` before p
 - **Target:** .NET Framework 4.8, x64
 - **Dependencies:** ScriptHookVDotNet3 (3.6.0), LemonUI.SHVDN3 (2.2.0), System.Windows.Forms
 - **Exclusions:** `tools/**` is excluded from compilation by default
-- **Inclusions:** `WorldVectorTool.cs` is explicitly re-included and provides the F10 world-vector overlay
+- **Inclusions:** `WorldVectorTool.cs` and `SeatTestTool.cs` are explicitly re-included for the F10 coordinate overlay and F11 seat laboratory
 - **Output:** `script/dist/ALLIN1.dll`
 
 ### Building External Tools
@@ -623,6 +624,7 @@ Textures are loaded on demand per page and pre-fetched one page ahead. Unused di
 | `verify-ytd <gta_path> <ytd_folder>` | Verify all expected YTDs after injection |
 | `remove-ytd <gta_path> <prefix>` | Remove injected YTDs |
 | `inspect <gta_path> <rpf_path>` | Dump RPF structure for debugging |
+| `audit-seats <gta_path> <output_json> [output_cs]` | Extract every base-game and DLC vehicle layout, seat role, occupant-access door, and hatch; also emit Markdown and an optional C# lookup |
 
 ---
 
@@ -639,6 +641,60 @@ production script.
 Format: `X 123.4567  Y -456.7890  Z 89.0123` plus `Heading 180.50`.
 
 Implemented in `script/tools/WorldVectorTool.cs`.
+
+### Seat Laboratory (F11 / Shift+F11) — Included in Build
+
+Enter or stand near the vehicle model to test, then press F11. The laboratory
+clones that model at the flat Sandy Shores airfield test site, clears ambient
+peds and vehicles, pauses ALLIN1 traffic, and runs a directed matrix covering
+outside access plus every source-seat to target-seat transition. Setup and
+session restoration may place the player directly; every measured transition
+uses the production selector's animation-only path.
+
+Rolling trial records survive an interrupted run in
+`scripts/ALLIN1_seat_tests/*.jsonl`. Completed runs also update a per-model JSON
+report, `ALLIN1_seat_catalog.jsonl`, and the append-only
+`ALLIN1_seat_outliers.jsonl` refinement queue. F11 aborts a run and restores the
+player's previous location or vehicle seat.
+
+Press Shift+F11 while on foot to run the curated fleet suite. It covers real
+physical turret, gunner, and unconventional passenger stations while excluding
+driver-controlled remote weapons and interior weapon consoles that are not
+vehicle seats. Ground vehicles and aircraft use Sandy Shores; the Weaponized
+Dinghy uses an open-water Del Perro arena. The suite checkpoints after every
+model, treats unavailable models as skipped rather than failed, and writes
+`latest-unconventional-seat-fleet.json` with aggregate results and links to its
+per-model reports. F11 aborts either mode safely.
+
+Implemented in `script/tools/SeatTestTool.cs`.
+
+### Vehicle Seat Metadata Catalog
+
+`catalog/vehicle_seats.json` is generated from Rockstar's active `vehicles.meta`
+and `vehiclelayouts*.meta` definitions. The audit scans `common.rpf`,
+`update.rpf`, modern loose DLC packs, and the early DLC packs consolidated in
+root `x64*.rpf` archives. It resolves patch priority and records, per model:
+
+- the ordered native seat indices (driver is `-1`), semantic labels, and turret roles;
+- the source layout and DLC pack;
+- unique occupant-access door bones and separate access hatches; and
+- the raw Rockstar seat identifier for later forensic review.
+
+The generated `script/src/VehicleSeatLayoutCatalog.cs` supplies these labels to
+the production selector. Seat Lab reports both the metadata seat count and GTA's
+runtime count, so disagreement is logged rather than concealed. The curated
+Shift+F11 fleet remains the focused regression suite for physical turrets,
+rappel, bench, bed, and other layouts where a declared seat can still be
+unreachable in practice.
+
+Regenerate the current catalog and runtime lookup with:
+
+```powershell
+tools\RpfPatcher\RpfPatcher.exe audit-seats `
+  "D:\Path\To\Grand Theft Auto V" `
+  catalog\vehicle_seats.json `
+  script\src\VehicleSeatLayoutCatalog.cs
+```
 
 The completed preview-capture, height-check, interior-scout, and outfit tools
 are archived outside the production repository. They can be recovered for a

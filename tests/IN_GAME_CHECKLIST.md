@@ -92,6 +92,23 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
 - Press F10 and confirm the world-vector overlay toggles directly, with no
   retired capture menu or screenshot actions. Confirm X/Y/Z and heading update
   while walking or driving.
+- Enter or stand beside a normal four-door car and press F11. Confirm Seat Lab
+  relocates the test to Sandy Shores airfield, suppresses traffic and peds, runs
+  outside-to-seat and every directed seat-to-seat transition, then restores the
+  previous location or vehicle seat. Repeat with the Benefactor Turreted Limo
+  and Vapid Caracara; inspect `scripts/ALLIN1_seat_tests` and confirm wrong-seat,
+  route, timeout, rollback, and slow-success outliers include phase traces.
+- Press Shift+F11 while on foot to run the curated physical-turret and
+  unconventional-seat fleet. Confirm ground and aircraft use the Sandy Shores
+  arena, the Weaponized Dinghy uses the Del Perro water arena, unavailable
+  models are marked skipped rather than failed, and F11 aborts and restores the
+  original session. Inspect `latest-unconventional-seat-fleet.json` for an
+  aggregate summary and links to every per-model directed-matrix report.
+  Confirm each per-model report includes `NativeSeatCount`,
+  `MetadataSeatCount`, `RockstarLayout`, occupant-access door and hatch counts,
+  and that `RuntimeMetadataSeatMismatch` is false unless the running game data
+  genuinely disagrees with the generated catalog. A smaller selectable count is
+  allowed when ALLIN1 intentionally suppresses an empirically unreachable seat.
 - Open GBAY and confirm PHAT loads on the loading screen from its own texture
   dictionary. Open About and confirm the independent ALLIN1 logo is contain-fit,
   crisp, and undistorted above the page content.

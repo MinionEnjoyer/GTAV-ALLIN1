@@ -30,6 +30,30 @@ def test_every_vehicle_price_and_catalog_entry_refers_to_a_model():
     assert {item["model"] for item in catalog} == models
 
 
+def test_generated_seat_catalog_covers_base_game_and_all_supported_dlc_models():
+    seat_catalog = json.loads((ROOT / "catalog/vehicle_seats.json").read_text())
+    records = seat_catalog["Vehicles"]
+    by_model = {record["Model"]: record for record in records}
+    supported = {
+        vehicle.model for vehicle in VehicleDatabase.load(ROOT / "data/vehicles.toml")
+    }
+
+    assert seat_catalog["ResolvedCount"] == seat_catalog["ModelCount"]
+    assert seat_catalog["ModelCount"] >= 900
+    assert seat_catalog["ArchiveCount"] >= 100
+    assert "GamePath" not in seat_catalog
+    assert len(by_model) == len(records)
+    assert supported <= set(by_model)
+    assert all(record["Status"] == "resolved" for record in records)
+    assert all(record["SeatCount"] >= 1 for record in records)
+
+    assert by_model["technical"]["Seats"][2]["Label"] == "Bed Turret"
+    assert by_model["barrage"]["Seats"][2]["Label"] == "Top Turret"
+    assert by_model["barrage"]["Seats"][3]["Label"] == "Rear Turret"
+    assert [seat["Index"] for seat in by_model["limo2"]["Seats"] if seat["Turret"]] == [3]
+    assert not any(seat["Turret"] for seat in by_model["savage"]["Seats"])
+
+
 def test_vehicle_previews_cover_database():
     models = {vehicle.model for vehicle in VehicleDatabase.load(ROOT / "data/vehicles.toml")}
     previews = {path.stem for path in (ROOT / "script/dist/previews").glob("*.png")}
@@ -44,11 +68,12 @@ def test_generated_csharp_contains_every_data_model():
         assert f'"{vehicle.model}"' in source
 
 
-def test_production_project_includes_only_supported_capture_tool():
+def test_production_project_includes_only_supported_developer_tools():
     project = (ROOT / "script/ALLIN1.csproj").read_text()
     assert '<Compile Remove="tools\\**" />' in project
     assert '<Compile Include="tools\\WorldVectorTool.cs" />' in project
-    assert project.count('<Compile Include="tools\\') == 1
+    assert '<Compile Include="tools\\SeatTestTool.cs" />' in project
+    assert project.count('<Compile Include="tools\\') == 2
 
 
 def test_prebuilt_runtime_artifacts_are_present_and_nonempty():
@@ -115,7 +140,7 @@ def test_content_audit_models_are_in_catalog():
         "cargobob5", "duster2", "maverick2", "poldominator10", "poldorado",
         "polgreenwood", "polimpaler5", "polimpaler6", "titan2", "vivanite2", "youga5",
         "caracara3", "cartuccia", "estride", "laufer", "lrcgt", "merula",
-        "polignus", "veleno",
+        "polignus", "velenogt",
     }
     assert audited <= models
 
@@ -161,6 +186,36 @@ def test_world_vector_and_seat_selector_contracts():
     assert "That seat is no longer available" in seat
     assert "seat_selector_enabled" in seat
     assert "seat_selector_key" in seat
+
+
+def test_seat_laboratory_runs_the_production_switch_matrix():
+    lab = (ROOT / "script/tools/SeatTestTool.cs").read_text()
+    traffic = (ROOT / "script/src/TrafficSpawner.cs").read_text()
+    seat = (ROOT / "script/src/SeatSelector.cs").read_text()
+    assert "Sandy Shores airfield" in lab
+    assert "CLEAR_AREA_OF_PEDS" in lab
+    assert "CLEAR_AREA_OF_VEHICLES" in lab
+    assert "SET_PED_DENSITY_MULTIPLIER_THIS_FRAME" in lab
+    assert "SET_VEHICLE_DENSITY_MULTIPLIER_THIS_FRAME" in lab
+    assert "ACTIVATE_PHYSICS" in lab
+    assert "VEHICLE_PHYSICS_SETTLE_MS" in lab
+    assert "IsPositionFrozen = true" not in lab
+    assert "TryBeginHarnessSwitch" in lab
+    assert "HarnessSwitchFinished" in lab
+    assert "ALLIN1_seat_catalog.jsonl" in lab
+    assert "ALLIN1_seat_outliers.jsonl" in lab
+    assert "latest-unconventional-seat-fleet.json" in lab
+    assert "StartFleetLab" in lab
+    assert "e.Shift" in lab
+    assert "WATER_LAB_POSITION" in lab
+    assert 'Fleet("dinghy5"' in lab
+    assert 'Fleet("limo2"' in lab
+    assert 'Fleet("caracara"' in lab
+    assert 'Fleet("valkyrie"' in lab
+    assert 'Fleet("speedo4"' not in lab
+    assert "SeatTestTool.IsActive" in traffic
+    assert "PublishHarnessResult" in seat
+    assert "SET_PED_INTO_VEHICLE" not in seat
 
 
 def test_preview_streaming_uses_per_dictionary_timeout_and_retry():
@@ -226,7 +281,7 @@ def test_seat_selector_is_animation_only_and_has_external_route_recovery():
     assert "TASK_SHUFFLE_TO_NEXT_VEHICLE_SEAT" in seat
     assert "TASK_LEAVE_VEHICLE" in seat
     assert "TASK_ENTER_VEHICLE" in seat
-    assert "NORMAL_ENTER_FLAG = 1" in seat
+    assert "NORMAL_ENTER_FLAG = 0" in seat
     assert "NORMAL_EXIT_FLAG = 0" in seat
     assert "ExecutionPhase.Exiting" in seat
     assert "ExecutionPhase.WaitingAfterExit" in seat
@@ -235,6 +290,9 @@ def test_seat_selector_is_animation_only_and_has_external_route_recovery():
     assert "EXIT_SETTLE_MS = 1200" in seat
     assert "CARACARA_HASH = 1254014755" in seat
     assert "CARACARA_TURRET_APPROACH_OFFSETS" in seat
+    assert "CARACARA_REAR_LEFT_APPROACH_OFFSETS" in seat
+    assert "CARACARA_REAR_RIGHT_APPROACH_OFFSETS" in seat
+    assert "ObservedWrongSeat" in seat
     assert "TASK_FOLLOW_NAV_MESH_TO_COORD" in seat
     assert "GET_NAVMESH_ROUTE_RESULT" in seat
     assert "EXTERNAL_ROUTE_STALL_TIMEOUT_MS" in seat
@@ -249,9 +307,12 @@ def test_seat_selector_is_animation_only_and_has_external_route_recovery():
     assert '"restore_source_seat"' in seat
     assert '"seat_switch_rolled_back"' in seat
     assert "NATIVE_ENTER_TIMEOUT = -1" in seat
-    assert "NATIVE_NEAREST_PASSENGER_SEAT = -2" in seat
     assert "GetNativeEntryRequestSeat" in seat
-    assert 'new Dictionary<int, string> { { 3, "Turret" } }' in seat
+    assert "SET_CONTROL_VALUE_NEXT_FRAME" in seat
+    assert "native_context_turret_reentry" in seat
+    assert "ShouldUseNativeContextEntry" in seat
+    assert "IsSeatSelectable" in seat
+    assert "VehicleSeatLayoutCatalog.GetLabel" in seat
     assert '"exit_animation_settle"' in seat
     assert 'BeginExit(player, "different_row_or_external_seat")' in seat
     assert "Stop the vehicle before changing rows or using an external seat" in seat
@@ -260,7 +321,10 @@ def test_seat_selector_is_animation_only_and_has_external_route_recovery():
     assert 'CancelExecution(player, "same_row_shuffle_timeout", true)' in seat
     assert 'BeginExit(player, "shuffle_fallback")' not in seat
     assert "LIMO2_HASH = -114627507" in seat
-    assert 'new Dictionary<int, string> { { 3, "Turret" } }' in seat
+    generated_seats = (ROOT / "script/src/VehicleSeatLayoutCatalog.cs").read_text()
+    assert 'Model = "limo2"' in generated_seats
+    assert '{ 3, "Roof Turret" }' in generated_seats
+    assert '{ 3, "Bed Turret" }' in generated_seats
     assert "GetSeatLabel(_targetVeh.Model.Hash, idx)" in seat
     settle_case = seat.index("case ExecutionPhase.WaitingAfterExit:")
     settle_guard = seat.index("phaseElapsed >= EXIT_SETTLE_MS", settle_case)

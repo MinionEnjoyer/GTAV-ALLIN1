@@ -1,3 +1,34 @@
+# GTA V ALLIN1 0.4.1
+
+Version 0.4.1 expands the animation-only seat selector into a metadata-backed system covering the
+complete base game and installed DLC catalog, with a focused runtime laboratory for unconventional
+and mounted-weapon layouts.
+
+## Vehicle seat catalog and selector
+
+- Added a read-only RPF audit that resolves active `vehicles.meta` and `vehiclelayouts*.meta`
+  definitions across `common.rpf`, `update.rpf`, modern DLC packs, and early DLC consolidated in
+  root `x64*.rpf` archives.
+- Generated seat, occupant-access door, hatch, Rockstar layout, and source-pack records for all
+  935 installed Enhanced vehicle models with no unresolved layouts or extraction warnings.
+- Replaced generic high-index seat names with model-specific labels. Physical stations such as bed,
+  roof, top, rear, missile, cannon, grenade, and aircraft turrets are identified independently from
+  ordinary rear, bench, bed, rappel, deck, and interior passenger seats.
+- Corrected the Caracara, Technical, Turreted Limo, Barrage, Insurgent, APC, Khanjali, Valkyrie,
+  and other high-risk layouts. Armored Boxville and Savage passenger seats are no longer described
+  as turrets.
+- Seat Lab now records Rockstar metadata count, GTA runtime count, ALLIN1 selectable count, access
+  geometry, and mismatch status separately. Shift+F11 retains the directed high-risk fleet suite.
+
+## Catalog and qualification repairs
+
+- Corrected the Grotti Veleno GT model identifier from the invalid `veleno` to Rockstar's
+  `velenogt` across the storefront, price data, preview queue, web catalog, and generated client.
+- Expanded repository contracts and runtime policy tests. The qualified release passes 349 Python
+  tests, 66 production C# tests, the 91% coverage gate, and public archive verification.
+
+---
+
 # GTA V ALLIN1 0.4.0
 
 Version 0.4.0 is a reliability release that replaces several permissive or synthetic safeguards

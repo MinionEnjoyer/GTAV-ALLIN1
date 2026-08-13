@@ -11,6 +11,7 @@
 //   RpfPatcher.exe verify-dlc   <dlc_rpf> <ytd_folder>      — verify a preview DLC and its dictionaries
 //   RpfPatcher.exe convert-gen9 <ytd_folder>              — convert .ytd files from Legacy to Enhanced format
 //   RpfPatcher.exe inspect      <gta_path> <rpf_path>    — dump RPF structure + XML contents
+//   RpfPatcher.exe audit-seats  <gta_path> <output_json> [output_cs]
 
 using System;
 using System.Collections.Generic;
@@ -43,6 +44,7 @@ namespace RpfPatcher
                     "  RpfPatcher.exe verify-dlc   <dlc_rpf> <ytd_folder>\n" +
                     "  RpfPatcher.exe convert-gen9 <ytd_folder>\n" +
                     "  RpfPatcher.exe inspect      <gta_path> <rpf_path>\n" +
+                    "  RpfPatcher.exe audit-seats  <gta_path> <output_json> [output_cs]\n" +
                     "  RpfPatcher.exe build-ytd    <dds_folder> <output_ytd> [legacy|gen9]\n" +
                     "  RpfPatcher.exe unpack-ytd   <ytd_path> <output_folder> [legacy|gen9]\n" +
                     "  RpfPatcher.exe extract-entry <gta_path> <rpf_path> <name> <output>\n" +
@@ -66,6 +68,8 @@ namespace RpfPatcher
                 return ConvertGen9(args);
             if (command == "inspect")
                 return InspectRpf(args);
+            if (command == "audit-seats")
+                return SeatCatalogAudit.Run(args);
             if (command == "build-ytd")
                 return BuildYtd(args);
             if (command == "unpack-ytd")
@@ -1111,10 +1115,24 @@ namespace RpfPatcher
                 var rpf = new RpfFile(rpfPath, rpfPath);
                 rpf.ScanStructure(null,
                     err => Console.Error.WriteLine($"RPF scan warning: {err}"));
+                string normalizedRequest = entryName
+                    .Replace('\\', '/').TrimStart('/');
+                bool pathRequest = normalizedRequest.Contains('/');
+                string archivePrefix = Path.GetFullPath(rpfPath)
+                    .Replace('\\', '/').TrimEnd('/') + "/";
                 var matches = rpf.AllEntries?
                     .OfType<RpfFileEntry>()
-                    .Where(entry => string.Equals(entry.Name, entryName,
-                        StringComparison.OrdinalIgnoreCase))
+                    .Where(entry => pathRequest
+                        ? string.Equals(
+                            entry.Path.Replace('\\', '/').StartsWith(
+                                archivePrefix, StringComparison.OrdinalIgnoreCase)
+                                ? entry.Path.Replace('\\', '/').Substring(
+                                    archivePrefix.Length)
+                                : entry.Path.Replace('\\', '/'),
+                            normalizedRequest,
+                            StringComparison.OrdinalIgnoreCase)
+                        : string.Equals(entry.Name, entryName,
+                            StringComparison.OrdinalIgnoreCase))
                     .ToArray() ?? Array.Empty<RpfFileEntry>();
                 if (matches.Length == 0)
                 {

@@ -2,6 +2,8 @@ import hashlib
 import json
 import struct
 
+import pytest
+
 from allin1.qualification import (
     QualificationCheck, build_report, checks_from_artifacts, verify_smoke_artifact,
 )
@@ -62,3 +64,51 @@ def test_smoke_artifact_fails_when_source_log_changes(tmp_path):
 
     assert valid is False
     assert "changed" in detail
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"schema": 1}, "unsupported"),
+        ({"schema": 2, "passed": False, "session": "run"}, "did not pass"),
+        ({"schema": 2, "passed": True, "session": "run", "checks": []},
+         "smoke checks"),
+        ({"schema": 2, "passed": True, "session": "run",
+          "checks": [{"passed": True}]}, "provenance"),
+    ],
+)
+def test_smoke_artifact_rejects_incomplete_evidence(tmp_path, payload, expected):
+    artifact = tmp_path / "smoke.json"
+    artifact.write_text(json.dumps(payload))
+
+    valid, detail = verify_smoke_artifact(artifact)
+
+    assert valid is False
+    assert expected in detail
+
+
+def test_smoke_artifact_rejects_missing_source_log(tmp_path):
+    artifact = tmp_path / "smoke.json"
+    artifact.write_text(json.dumps({
+        "schema": 2,
+        "passed": True,
+        "session": "run",
+        "checks": [{"passed": True}],
+        "source_log": str(tmp_path / "missing.log"),
+        "source_log_sha256": "0" * 64,
+    }))
+
+    valid, detail = verify_smoke_artifact(artifact)
+
+    assert valid is False
+    assert "no longer available" in detail
+
+
+def test_smoke_artifact_rejects_unreadable_json(tmp_path):
+    artifact = tmp_path / "smoke.json"
+    artifact.write_text("not-json")
+
+    valid, detail = verify_smoke_artifact(artifact)
+
+    assert valid is False
+    assert "unreadable" in detail

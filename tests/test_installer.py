@@ -64,7 +64,7 @@ def test_deploy_script_copies_binaries_and_config(tmp_path, monkeypatch):
     assert (scripts / "ALLIN1.dll").read_bytes() == b"mod"
     assert (scripts / "LemonUI.SHVDN3.dll").read_bytes() == b"ui"
     assert (scripts / "ALLIN1.toml").exists()
-    assert (scripts / "ALLIN1.version").read_text().strip() == "0.4.0"
+    assert (scripts / "ALLIN1.version").read_text().strip() == "0.4.1"
     assert not (scripts / "ALLIN1.ini").exists()
 
 
