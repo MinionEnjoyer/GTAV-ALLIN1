@@ -185,6 +185,8 @@ class ManagerWindow:
         self.ui_scale = tk.DoubleVar(value=self.config.script.ui_scale)
         self.hold_duration_ms = tk.IntVar(value=self.config.script.hold_duration_ms)
         self.gbay_free_mode = tk.BooleanVar(value=self.config.script.gbay_free_mode)
+        self.garages_always_accessible = tk.BooleanVar(
+            value=self.config.script.garages_always_accessible)
         self.status_text = tk.StringVar(value="Checking installation…")
         self.status_headline = tk.StringVar(value="Checking installation…")
         self.status_detail = tk.StringVar(value="Inspecting the selected GTA V folder.")
@@ -202,6 +204,7 @@ class ManagerWindow:
             self.world_vector_key, self.seat_selector_enabled, self.seat_selector_key,
             self.safe_mode, self.reduced_motion, self.colorblind_mode, self.ui_scale,
             self.hold_duration_ms, self.gbay_free_mode,
+            self.garages_always_accessible,
         )
         for variable in self._setting_variables:
             variable.trace_add("write", self._mark_dirty)
@@ -365,6 +368,9 @@ class ManagerWindow:
         ttk.Checkbutton(options, text="GBAY preview artwork (requires OpenRPF/OpenIV)",
                         variable=self.rpf_previews).grid(row=6, column=0,
                                                          sticky="w", pady=(8, 0))
+        ttk.Checkbutton(options, text="Allow garage entry while wanted",
+                        variable=self.garages_always_accessible).grid(
+                            row=6, column=1, sticky="w", pady=(8, 0))
 
         controls = ttk.LabelFrame(controls_page, text="KEYBINDS & VEHICLE FILTERS", padding=14)
         controls.pack(fill="x", pady=(0, 12))
@@ -585,6 +591,8 @@ class ManagerWindow:
         self.config.script.ui_scale = self.ui_scale.get()
         self.config.script.hold_duration_ms = self.hold_duration_ms.get()
         self.config.script.gbay_free_mode = self.gbay_free_mode.get()
+        self.config.script.garages_always_accessible = \
+            self.garages_always_accessible.get()
         return self.config
 
     @staticmethod
@@ -642,6 +650,8 @@ class ManagerWindow:
             self.ui_scale.set(self.config.script.ui_scale)
             self.hold_duration_ms.set(self.config.script.hold_duration_ms)
             self.gbay_free_mode.set(self.config.script.gbay_free_mode)
+            self.garages_always_accessible.set(
+                self.config.script.garages_always_accessible)
             self.notice_text.set(
                 f"Profile '{self.profile_name.get()}' loaded · save to apply"
             )

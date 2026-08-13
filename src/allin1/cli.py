@@ -182,6 +182,8 @@ def status(ctx: click.Context) -> None:
     click.echo(f"  GTA path: {config.general.gta_path}")
     click.echo(f"  Free GBAY purchases: {config.script.gbay_free_mode}")
     click.echo(f"  Traffic: {'enabled' if config.traffic.enabled else 'disabled'}")
+    click.echo("  Garage wanted-level override: "
+               f"{'enabled' if config.script.garages_always_accessible else 'disabled'}")
     click.echo(f"  Enable all: {config.vehicles.enable_all}")
 
     if config.vehicles.disabled_classes:
@@ -270,7 +272,7 @@ def generate_weaponlist(ctx: click.Context, output: str | None) -> None:
     help="Catalog whose captures should be imported.",
 )
 def import_previews(source: Path, kind: str) -> None:
-    """Validate and import PNGs made by the in-game preview capture tool."""
+    """Validate and import curated catalog preview PNGs."""
     try:
         import tomllib
     except ModuleNotFoundError:

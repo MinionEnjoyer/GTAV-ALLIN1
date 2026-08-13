@@ -29,6 +29,7 @@ namespace ALLIN1
         private bool _enableLogging = true;
         private bool _initialized;
         private bool _safeMode;
+        private bool _garagesAlwaysAccessible;
         private bool _reducedMotion;
         private bool _colorblindMode;
         private float _uiScale = 1f;
@@ -85,6 +86,7 @@ namespace ALLIN1
             _freeMode = false;
             _enableLogging = true;
             _safeMode = false;
+            _garagesAlwaysAccessible = false;
 
             if (!File.Exists(CONFIG_PATH))
                 return;
@@ -139,6 +141,10 @@ namespace ALLIN1
                     else if (key == "safe_mode")
                     {
                         _safeMode = valLower == "true";
+                    }
+                    else if (key == "garages_always_accessible")
+                    {
+                        _garagesAlwaysAccessible = valLower == "true";
                     }
                     else if (key == "reduced_motion")
                     {
@@ -213,9 +219,11 @@ namespace ALLIN1
 
             try
             {
-                GarageManager.Configure(_enableLogging);
+                GarageManager.Configure(
+                    _enableLogging, _garagesAlwaysAccessible);
                 GarageManager.Initialize();
                 GarageManager.InitializeDavisGarage();
+                GarageManager.InitializeGarmentGarage();
                 if (!ClientWatchdog.SafeMode)
                     GarageManager.InitializeFloorGarage();
                 else
@@ -424,7 +432,21 @@ namespace ALLIN1
         //  Weapon Purchase (called by GbayBrowser)                            //
         // ------------------------------------------------------------------ //
 
-        internal void ExecuteGiveWeapon(string weaponName, int price)
+        internal WeaponPurchaseQuote GetWeaponPurchaseQuote(
+            string weaponName, int unitPrice)
+        {
+            Ped player = Game.Player.Character;
+            Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
+            string category = WeaponList.CategoryNames.ContainsKey(weaponName)
+                ? WeaponList.CategoryNames[weaponName] : "";
+            int configuredQuantity = WeaponList.PurchaseQuantities.ContainsKey(
+                    weaponName)
+                ? WeaponList.PurchaseQuantities[weaponName] : 1;
+            return WeaponPurchasePolicy.Quote(
+                unitPrice, category, configuredQuantity, _freeMode);
+        }
+
+        internal void ExecuteGiveWeapon(string weaponName, int unitPrice)
         {
             Ped player = Game.Player.Character;
             Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
@@ -449,15 +471,26 @@ namespace ALLIN1
                 return;
             }
 
-            // Check funds
-            if (!_freeMode && price > 0 && Game.Player.Money < price)
+            WeaponPurchaseQuote quote = GetWeaponPurchaseQuote(
+                weaponName, unitPrice);
+            if (quote.Status != WeaponPurchaseStatus.Available)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Purchase quantity is unavailable for this item.", 3000);
+                ClientLog.Warn("GBAY", "weapon_purchase_quantity_unavailable",
+                    new Dictionary<string, object> { { "weapon", weaponName } });
+                return;
+            }
+
+            if (!_freeMode && quote.TotalPrice > 0
+                && Game.Player.Money < quote.TotalPrice)
             {
                 GTA.UI.Screen.ShowSubtitle("~r~Insufficient funds.", 3000);
                 return;
             }
 
-            // Give weapon with ammo
-            player.Weapons.Give((WeaponHash)(uint)weaponHash, 9999, false, true);
+            player.Weapons.Give((WeaponHash)(uint)weaponHash,
+                quote.GrantAmmo, false, true);
 
             // Some Online-only weapons are edition/build gated. Never charge
             // the player unless the native confirms the weapon was granted.
@@ -470,17 +503,38 @@ namespace ALLIN1
                 return;
             }
 
-            if (!_freeMode && price > 0)
-                Game.Player.Money -= price;
+            int actualAmmo = Function.Call<int>(
+                Hash.GET_AMMO_IN_PED_WEAPON, player, weaponHash);
+            if (quote.QuantityPriced && actualAmmo <= 0)
+            {
+                Function.Call(Hash.REMOVE_WEAPON_FROM_PED,
+                    player.Handle, weaponHash);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~The purchased item quantity could not be verified.", 3500);
+                ClientLog.Warn("GBAY", "weapon_purchase_empty_grant",
+                    new Dictionary<string, object> { { "weapon", weaponName } });
+                return;
+            }
+            int chargedQuantity = quote.QuantityPriced
+                ? Math.Min(quote.Quantity, actualAmmo) : 1;
+            int totalPrice = WeaponPurchasePolicy.PriceActualQuantity(
+                quote, chargedQuantity, _freeMode);
+
+            if (!_freeMode && totalPrice > 0)
+                Game.Player.Money -= totalPrice;
 
             string displayName = WeaponList.DisplayNames.ContainsKey(weaponName)
                 ? WeaponList.DisplayNames[weaponName] : weaponName;
-            string msg = _freeMode || price <= 0
+            string quantityText = quote.QuantityPriced
+                ? $" ({chargedQuantity} x ${quote.UnitPrice:N0})" : "";
+            string msg = _freeMode || totalPrice <= 0
                 ? $"~g~{displayName}~w~ added."
-                : $"~g~{displayName}~w~ purchased for ~g~${price:N0}~w~.";
+                : $"~g~{displayName}~w~ purchased{quantityText} for "
+                    + $"~g~${totalPrice:N0}~w~.";
             GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
-            Log($"GiveWeapon: {weaponName}, price=${price}");
+            Log($"GiveWeapon: {weaponName}, unit=${quote.UnitPrice}, "
+                + $"quantity={chargedQuantity}, total=${totalPrice}");
             CharacterInventory.RecordOwned(weaponName, false);
             GbayPreferences.RecordWeapon(weaponName);
         }
@@ -524,8 +578,7 @@ namespace ALLIN1
             }
             int needed = capacity.RoundsNeeded;
 
-            int costPerRound = WeaponList.AmmoCostPerRound.ContainsKey(weaponName)
-                ? WeaponList.AmmoCostPerRound[weaponName] : 2;
+            int costPerRound = GetAmmoUnitPrice(weaponName);
             int totalCost = needed * costPerRound;
 
             if (_freeMode)
@@ -570,6 +623,52 @@ namespace ALLIN1
             Hash itemHash = (Hash)Game.GenerateHash(gearId);
             return Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON,
                 player.Handle, itemHash, false);
+        }
+
+        internal void ExecuteDeliverToGarmentGarage(string model, int price)
+        {
+            if (VehicleList.GetSizeTier(model) == 2)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~That vehicle is too large for the Garment Factory garage.", 3000);
+                return;
+            }
+            int used = GarageManager.GetGarmentGarageUsedSlots();
+            int cap = GarageManager.GetGarmentGarageCapacity();
+            if (used >= cap)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~r~The Garment Factory garage is full.~w~ ({used}/{cap} spaces used)",
+                    3000);
+                return;
+            }
+            var rng = new Random();
+            try
+            {
+                bool success = GarageManager.DeliverToGarmentGarage(
+                    model, rng.Next(0, 160), rng.Next(0, 160));
+                if (!success)
+                {
+                    GTA.UI.Screen.ShowSubtitle(
+                        "~r~Delivery to the Garment Factory failed.", 3000);
+                    return;
+                }
+                if (!_freeMode && price > 0) Game.Player.Money -= price;
+                string name = VehicleList.DisplayNames.TryGetValue(
+                    model, out string displayName) ? displayName : model;
+                GTA.UI.Screen.ShowSubtitle(
+                    _freeMode || price <= 0
+                        ? $"~g~{name}~w~ delivered to the Garment Factory."
+                        : $"~g~{name}~w~ delivered to the Garment Factory for ~g~${price:N0}~w~.",
+                    3000);
+                Log($"DeliverToGarmentGarage: {model}, price=${price}");
+            }
+            catch (Exception ex)
+            {
+                LogException("DeliverToGarmentGarage", ex);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Delivery to the Garment Factory failed.", 3000);
+            }
         }
 
         internal bool IsGearEquipped(string gearId)
@@ -704,12 +803,15 @@ namespace ALLIN1
             {
                 Function.Call(Hash.REMOVE_WEAPON_FROM_PED,
                     player.Handle, Game.GenerateHash(gearId));
-                string displayName = GearList.DisplayNames.TryGetValue(
-                    gearId, out string name) ? name : gearId;
-                GTA.UI.Screen.ShowSubtitle($"~y~{displayName}~w~ unequipped.", 3000);
                 Log($"UnequipGear: {gearId}");
             }
-            CharacterInventory.SetGearEquipped(gearId, false);
+            CharacterInventory.RemoveOwnedGear(gearId);
+            string removedName = GearList.DisplayNames.TryGetValue(
+                gearId, out string removedDisplay) ? removedDisplay : gearId;
+            GTA.UI.Screen.ShowSubtitle(
+                $"~y~{removedName}~w~ removed. Repurchase it to equip it again.",
+                3500);
+            Log($"UnequipGear: ownership removed for {gearId}");
         }
 
         // ------------------------------------------------------------------ //
@@ -785,9 +887,12 @@ namespace ALLIN1
                 ? GarageManager.RemoveFloorGarageVehicle(listIndex)
                 : garageLocation == 2
                     ? GarageManager.RemoveDavisGarageVehicle(listIndex)
+                    : garageLocation == 3
+                        ? GarageManager.RemoveGarmentGarageVehicle(listIndex)
                     : GarageManager.RemoveVehicle(listIndex);
             string garageName = garageLocation == 1 ? "three_floor"
-                : garageLocation == 2 ? "davis" : "eclipse";
+                : garageLocation == 2 ? "davis"
+                : garageLocation == 3 ? "garment_factory" : "eclipse";
             if (!removed)
             {
                 GTA.UI.Screen.ShowSubtitle("~r~Sale failed; your garage and money were not changed.", 3500);
@@ -875,10 +980,21 @@ namespace ALLIN1
                 return 0;
             roundsNeeded = capacity.RoundsNeeded;
 
-            int costPerRound = WeaponList.AmmoCostPerRound.ContainsKey(weaponName)
-                ? WeaponList.AmmoCostPerRound[weaponName] : 2;
+            int costPerRound = GetAmmoUnitPrice(weaponName);
 
             return _freeMode ? 0 : roundsNeeded * costPerRound;
+        }
+
+        private static int GetAmmoUnitPrice(string weaponName)
+        {
+            int fallback = WeaponList.AmmoCostPerRound.ContainsKey(weaponName)
+                ? WeaponList.AmmoCostPerRound[weaponName] : 2;
+            int catalogPrice = WeaponList.Prices.ContainsKey(weaponName)
+                ? WeaponList.Prices[weaponName] : fallback;
+            string category = WeaponList.CategoryNames.ContainsKey(weaponName)
+                ? WeaponList.CategoryNames[weaponName] : "";
+            return WeaponPurchasePolicy.RefillUnitPrice(
+                category, catalogPrice, fallback);
         }
 
         // ------------------------------------------------------------------ //
@@ -892,15 +1008,11 @@ namespace ALLIN1
             if (gearId == GearList.ARMOR_JUGGERNAUT)
             {
                 RemoveJuggernaut(player);
-                GTA.UI.Screen.ShowSubtitle("~y~Juggernaut Armor~w~ removed.", 3000);
                 Log("RemoveArmor: juggernaut removed");
             }
             else
             {
                 player.Armor = 0;
-                string displayName = GearList.DisplayNames.ContainsKey(gearId)
-                    ? GearList.DisplayNames[gearId] : gearId;
-                GTA.UI.Screen.ShowSubtitle($"~y~{displayName}~w~ removed.", 3000);
                 Log($"RemoveArmor: {gearId} removed (armor set to 0)");
             }
         }
@@ -913,7 +1025,6 @@ namespace ALLIN1
                 _nightVisionActive = false;
                 Function.Call(Hash.SET_NIGHTVISION, false);
             }
-            GTA.UI.Screen.ShowSubtitle("~y~Night Vision~w~ removed.", 3000);
             Log("RemoveNightVision: removed");
         }
 
@@ -1238,11 +1349,13 @@ namespace ALLIN1
                     }
                     if (supportedCharacter || GarageManager.IsPlayerInGarage ||
                         GarageManager.IsPlayerInFloorGarage ||
-                        GarageManager.IsPlayerInDavisGarage)
+                        GarageManager.IsPlayerInDavisGarage ||
+                        GarageManager.IsPlayerInGarmentGarage)
                     {
                         GarageManager.OnTick();
                         GarageManager.OnFloorGarageTick();
                         GarageManager.OnDavisGarageTick();
+                        GarageManager.OnGarmentGarageTick();
                     }
                 }
 

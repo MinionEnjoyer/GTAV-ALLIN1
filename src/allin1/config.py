@@ -62,6 +62,7 @@ class ScriptConfig:
     colorblind_mode: bool = False
     hold_duration_ms: int = 350
     gbay_free_mode: bool = False
+    garages_always_accessible: bool = False
 
 
 @dataclass
@@ -87,9 +88,6 @@ class Config:
         vehicles = VehiclesConfig(**raw.get("vehicles", {}))
 
         script_raw = raw.get("script", {})
-        if "world_vector_key" not in script_raw and "preview_capture_key" in script_raw:
-            script_raw = dict(script_raw)
-            script_raw["world_vector_key"] = script_raw["preview_capture_key"]
         script_fields = {f.name for f in ScriptConfig.__dataclass_fields__.values()}
         script = ScriptConfig(**{k: v for k, v in script_raw.items() if k in script_fields})
         if "gbay_free_mode" not in script_raw:
@@ -158,6 +156,8 @@ class Config:
             f"colorblind_mode = {boolean(self.script.colorblind_mode)}\n"
             f"hold_duration_ms = {self.script.hold_duration_ms}\n"
             f"gbay_free_mode = {boolean(self.script.gbay_free_mode)}\n"
+            "garages_always_accessible = "
+            f"{boolean(self.script.garages_always_accessible)}\n"
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")

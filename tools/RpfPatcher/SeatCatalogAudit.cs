@@ -104,6 +104,10 @@ namespace RpfPatcher
                     (3, "Left Side Seat"), (4, "Right Side Seat"),
                     (5, "Left Bed Seat"), (6, "Right Bed Seat"),
                     (7, "Roof Turret")) },
+                { "insurgent2", Labels(
+                    (3, "Left Side Seat"), (4, "Right Side Seat"),
+                    (5, "Left Bed Seat"), (6, "Right Bed Seat"),
+                    (7, "Roof Turret")) },
                 { "insurgent3", Labels(
                     (3, "Left Side Seat"), (4, "Right Side Seat"),
                     (5, "Left Bed Seat"), (6, "Right Bed Seat"),
@@ -119,6 +123,7 @@ namespace RpfPatcher
                     (0, "Machine Gun Turret"), (1, "Left Grenade Turret"),
                     (2, "Right Grenade Turret")) },
                 { "dune3", Labels((0, "Front Turret")) },
+                { "boxville5", Labels((3, "Roof Turret")) },
                 { "guardian", Labels(
                     (3, "Left Bed Seat"), (4, "Right Bed Seat")) },
                 { "wastelander", Labels(

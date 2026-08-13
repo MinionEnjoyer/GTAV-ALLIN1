@@ -121,6 +121,7 @@ def test_default_config():
     assert config.general.enable_rpf_previews is True
     assert config.script.ui_scale == 1.0
     assert config.script.seat_selector_key == "L"
+    assert config.script.garages_always_accessible is False
 
 
 def test_save_round_trip_preserves_all_fields(tmp_path):
@@ -141,6 +142,7 @@ def test_save_round_trip_preserves_all_fields(tmp_path):
     config.script.seat_selector_enabled = False
     config.script.seat_selector_key = "G"
     config.script.gbay_free_mode = True
+    config.script.garages_always_accessible = True
     path = tmp_path / "nested" / "config.toml"
 
     config.save(path)
@@ -170,15 +172,6 @@ def test_keybind_validation_rejects_conflicts_and_normalizes_case():
         config.validate()
     config.script.world_vector_key = "NumPad9"
     config.validate()
-
-
-def test_legacy_preview_capture_key_loads_as_world_vector_key(tmp_path):
-    path = tmp_path / "legacy.toml"
-    path.write_text('[script]\npreview_capture_key = "F11"\n')
-
-    config = Config.load(path)
-
-    assert config.script.world_vector_key == "F11"
 
 
 @pytest.mark.parametrize("field,value", [

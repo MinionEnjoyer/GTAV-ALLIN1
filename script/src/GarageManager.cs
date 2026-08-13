@@ -25,11 +25,18 @@ namespace ALLIN1
         {
             internal Vector3 Position;
             internal float Heading;
+            internal float FloorZ;
 
             internal ParkingSlot(float x, float y, float z, float h)
+                : this(x, y, z, h, float.NaN)
+            {
+            }
+
+            internal ParkingSlot(float x, float y, float z, float h, float floorZ)
             {
                 Position = new Vector3(x, y, z);
                 Heading = h;
+                FloorZ = floorZ;
             }
         }
 
@@ -93,21 +100,22 @@ namespace ALLIN1
             new Vector3(240.7f, -1004.8f, -99f);
         private const float PED_EXIT_HEADING = 82.8f;
 
-        // 10 vehicle parking positions (from SPGR data -- two rows of 5)
+        // Ten surveyed parking bays in the apartment garage shell. FloorZ is
+        // the physical plane; Position.Z remains the audited root fallback.
         internal static readonly ParkingSlot[] Slots =
         {
             // Left row (facing heading -105)
-            new ParkingSlot(224.57f, -1002.75f, -99.0f, -105f),
-            new ParkingSlot(224.36f, -998.87f,  -99.0f, -105f),
-            new ParkingSlot(223.61f, -993.94f,  -99.0f, -105f),
-            new ParkingSlot(223.65f, -989.04f,  -99.0f, -105f),
-            new ParkingSlot(224.18f, -983.51f,  -99.0f, -105f),
+            new ParkingSlot(224.57f, -1002.75f, -99.56f, -105f, -100.0f),
+            new ParkingSlot(224.36f, -998.87f,  -99.56f, -105f, -100.0f),
+            new ParkingSlot(223.61f, -993.94f,  -99.56f, -105f, -100.0f),
+            new ParkingSlot(223.65f, -989.04f,  -99.56f, -105f, -100.0f),
+            new ParkingSlot(224.18f, -983.51f,  -99.56f, -105f, -100.0f),
             // Right row (facing heading 134) -- shifted -0.5 X for wall clearance
-            new ParkingSlot(233.94f, -1000.90f, -99.0f, 134f),
-            new ParkingSlot(233.18f, -995.90f,  -99.0f, 134f),
-            new ParkingSlot(232.50f, -991.15f,  -99.0f, 134f),
-            new ParkingSlot(232.44f, -985.76f,  -99.0f, 134f),
-            new ParkingSlot(231.89f, -981.39f,  -99.0f, 134f),
+            new ParkingSlot(233.94f, -1000.90f, -99.56f, 134f, -100.0f),
+            new ParkingSlot(233.18f, -995.90f,  -99.56f, 134f, -100.0f),
+            new ParkingSlot(232.50f, -991.15f,  -99.56f, 134f, -100.0f),
+            new ParkingSlot(232.44f, -985.76f,  -99.56f, 134f, -100.0f),
+            new ParkingSlot(231.89f, -981.39f,  -99.56f, 134f, -100.0f),
         };
 
         // Character keys for save file
@@ -182,6 +190,7 @@ namespace ALLIN1
             };
 
         private static bool _enableLogging = true;
+        private static bool _garagesAlwaysAccessible;
         private static bool _initialized;
         private static PedHash _lastGarageCharacter;
 
@@ -205,9 +214,11 @@ namespace ALLIN1
         //  Public API                                                         //
         // ------------------------------------------------------------------ //
 
-        internal static void Configure(bool enableLogging)
+        internal static void Configure(
+            bool enableLogging, bool garagesAlwaysAccessible = false)
         {
             _enableLogging = enableLogging;
+            _garagesAlwaysAccessible = garagesAlwaysAccessible;
         }
 
         internal static bool IsInGarage => _isPlayerInGarage;
@@ -268,16 +279,21 @@ namespace ALLIN1
         {
             try
             {
-                Vector3 recoveryPosition = _isPlayerInDavisGarage
+                Vector3 recoveryPosition = _isPlayerInGarmentGarage
+                    ? GARMENT_PED_ENTRANCE_POS
+                    : _isPlayerInDavisGarage
                     ? DAVIS_PED_ENTRANCE_POS
                     : _isPlayerInFloorGarage ? FLOOR_GARAGE_PED_EXIT_DEST : PED_EXIT_DEST;
-                float recoveryHeading = _isPlayerInDavisGarage
+                float recoveryHeading = _isPlayerInGarmentGarage
+                    ? GARMENT_PED_ENTRANCE_HEADING
+                    : _isPlayerInDavisGarage
                     ? DAVIS_PED_ENTRANCE_HEADING
                     : _isPlayerInFloorGarage
                         ? FLOOR_GARAGE_PED_EXIT_DEST_HEADING : PED_EXIT_DEST_HEADING;
                 UpdateStoredFromLive();
                 FloorGarageUpdateStoredFromLive();
                 DavisUpdateStoredFromLive();
+                GarmentUpdateStoredFromLive();
                 for (int i = 0; i < _handles.Length; i++)
                 {
                     if (_handles[i] != null && _handles[i].Exists()) _handles[i].Delete();
@@ -294,6 +310,12 @@ namespace ALLIN1
                     if (_davisHandles[i] != null && _davisHandles[i].Exists())
                         _davisHandles[i].Delete();
                     _davisHandles[i] = null;
+                }
+                for (int i = 0; i < _garmentHandles.Length; i++)
+                {
+                    if (_garmentHandles[i] != null && _garmentHandles[i].Exists())
+                        _garmentHandles[i].Delete();
+                    _garmentHandles[i] = null;
                 }
                 RecoverTransition("EmergencyRecover", recoveryPosition, recoveryHeading);
                 Log("EmergencyRecover: player returned outside and garage state reset");
@@ -326,6 +348,8 @@ namespace ALLIN1
 
             // Don't show garage markers while in another garage.
             if (_isPlayerInFloorGarage || _isPlayerInDavisGarage)
+                return;
+            if (_isPlayerInGarmentGarage)
                 return;
 
             if (_exitCooldownFrames > 0)
@@ -394,10 +418,18 @@ namespace ALLIN1
                     float pedDist = player.Position.DistanceTo(PED_EXIT_DEST);
                     if (pedDist < ENTER_RADIUS)
                     {
-                        GTA.UI.Screen.ShowHelpTextThisFrame(
-                            "Press ~INPUT_CONTEXT~ to enter your garage.");
-                        if (Game.IsControlJustPressed(GTA.Control.Context))
-                            EnterGarage();
+                        GarageEntryDenial denial = EvaluateGarageEntry(
+                            ECLIPSE_GARAGE);
+                        if (denial != GarageEntryDenial.None)
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                GarageEntryMessage(ECLIPSE_GARAGE, denial));
+                        else
+                        {
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                "Press ~INPUT_CONTEXT~ to enter your garage.");
+                            if (Game.IsControlJustPressed(GTA.Control.Context))
+                                EnterGarage();
+                        }
                     }
                 }
             }
@@ -468,6 +500,8 @@ namespace ALLIN1
                 if (string.Equals(vehicle.Model, model, StringComparison.OrdinalIgnoreCase)) return true;
             foreach (StoredVehicle vehicle in GetDavisGarageStoredVehicles())
                 if (string.Equals(vehicle.Model, model, StringComparison.OrdinalIgnoreCase)) return true;
+            foreach (StoredVehicle vehicle in GetGarmentGarageStoredVehicles())
+                if (string.Equals(vehicle.Model, model, StringComparison.OrdinalIgnoreCase)) return true;
             return false;
         }
 
@@ -516,13 +550,8 @@ namespace ALLIN1
                     {
                         veh.IsPersistent = true;
                         veh.IsEngineRunning = false;
-                        float deltaZ = VehicleList.GetSpawnDeltaZ(model);
-                        Function.Call(Hash.SET_ENTITY_COORDS, veh,
-                            slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
-                            false, false, false, true);
-                        Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
-                        CenterVehicleInParkingSpace(
-                            veh, slot, deltaZ, model, "Eclipse");
+                        PlaceVehicleInParkingSpace(
+                            veh, slot, model, "Eclipse");
                         veh.IsPositionFrozen = true;
                         _handles[slotIndex] = veh;
                     }
@@ -592,6 +621,19 @@ namespace ALLIN1
                 Function.Call(Hash.SET_VEHICLE_FIXED, veh);
                 cleaned++;
             }
+            foreach (Vehicle[] handles in new[]
+            {
+                _floorGarageHandles, _davisHandles, _garmentHandles,
+            })
+            {
+                foreach (Vehicle veh in handles)
+                {
+                    if (veh == null || !veh.Exists()) continue;
+                    Function.Call(Hash.SET_VEHICLE_DIRT_LEVEL, veh, 0f);
+                    Function.Call(Hash.SET_VEHICLE_FIXED, veh);
+                    cleaned++;
+                }
+            }
             Log($"DetailVehicles: cleaned {cleaned} vehicles");
         }
 
@@ -635,13 +677,16 @@ namespace ALLIN1
             {
                 UnloadFloorGarageInterior();
                 UnloadDavisAutoShopInterior();
+                UnloadGarmentInterior();
                 _isPlayerInGarage = false;
                 _isPlayerInFloorGarage = false;
                 _isPlayerInDavisGarage = false;
+                _isPlayerInGarmentGarage = false;
                 _elevatorMenuActive = false;
                 _exitCooldownFrames = 120;
                 _floorGarageExitCooldownFrames = 120;
                 _davisExitCooldownFrames = 120;
+                _garmentExitCooldownFrames = 120;
                 try
                 {
                     Function.Call(Hash.DO_SCREEN_FADE_IN, 0);
@@ -855,16 +900,11 @@ namespace ALLIN1
                             ApplyVehicleState(veh, sv);
                             veh.IsPersistent = true;
                             veh.IsEngineRunning = false;
-                            float deltaZ = VehicleList.GetSpawnDeltaZ(sv.Model);
-                            Function.Call(Hash.SET_ENTITY_COORDS, veh,
-                                slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
-                                false, false, false, true);
-                            Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
-                            CenterVehicleInParkingSpace(
-                                veh, slot, deltaZ, sv.Model, "Eclipse");
+                            PlaceVehicleInParkingSpace(
+                                veh, slot, sv.Model, "Eclipse");
                             veh.IsPositionFrozen = true;
                             _handles[sv.Slot] = veh;
-                            Log($"EnterGarage: spawned {sv.Model} at slot {sv.Slot} (deltaZ={deltaZ:F3})");
+                            Log($"EnterGarage: spawned {sv.Model} at slot {sv.Slot}");
                         }
                         else
                         {
@@ -1049,6 +1089,8 @@ namespace ALLIN1
             return GarageEntryPolicy.Evaluate(
                 rules,
                 IsMissionActive(),
+                Game.Player.WantedLevel,
+                _garagesAlwaysAccessible,
                 vehiclePresent,
                 storyOwned,
                 sizeKnown,
@@ -1061,6 +1103,8 @@ namespace ALLIN1
         {
             if (denial == GarageEntryDenial.MissionActive)
                 return "~y~ALLIN1 garages are unavailable during missions.";
+            if (denial == GarageEntryDenial.WantedLevel)
+                return "~r~Lose your wanted level before entering an ALLIN1 garage.";
             if (denial == GarageEntryDenial.StoryOwnedVehicle)
                 return $"~r~Story-owned personal vehicles cannot enter the {garage.DisplayName}.";
             if (denial == GarageEntryDenial.VehicleTooLarge)
@@ -1221,6 +1265,8 @@ namespace ALLIN1
             SetBlipColor(_floorGaragePedBlip, charColor);
             SetBlipColor(_davisVehicleBlip, charColor);
             SetBlipColor(_davisPedBlip, charColor);
+            SetBlipColor(_garmentVehicleBlip, charColor);
+            SetBlipColor(_garmentPedBlip, charColor);
 
             _lastBlipColor = charColor;
             _hasBlipColor = true;
@@ -1242,7 +1288,8 @@ namespace ALLIN1
                 _lastGarageCharacter = character;
                 return character;
             }
-            if ((_isPlayerInGarage || _isPlayerInFloorGarage || _isPlayerInDavisGarage) &&
+            if ((_isPlayerInGarage || _isPlayerInFloorGarage ||
+                _isPlayerInDavisGarage || _isPlayerInGarmentGarage) &&
                 _lastGarageCharacter != (PedHash)0)
                 return _lastGarageCharacter;
             return (PedHash)0;
@@ -1316,19 +1363,26 @@ namespace ALLIN1
             return configuredTier;
         }
 
-        private static void CenterVehicleInParkingSpace(
-            Vehicle vehicle, ParkingSlot slot, float deltaZ,
+        private static void PlaceVehicleInParkingSpace(
+            Vehicle vehicle, ParkingSlot slot,
             string modelName, string garageName, float maxCorrection = 1.25f)
         {
             if (vehicle == null || !vehicle.Exists()) return;
             try
             {
+                Function.Call(Hash.SET_ENTITY_HEADING, vehicle, slot.Heading);
+                Function.Call(Hash.SET_ENTITY_COORDS, vehicle,
+                    slot.Position.X, slot.Position.Y, slot.Position.Z,
+                    false, false, false, true);
+
                 var minArg = new OutputArgument();
                 var maxArg = new OutputArgument();
                 Function.Call(Hash.GET_MODEL_DIMENSIONS,
                     vehicle.Model.Hash, minArg, maxArg);
                 Vector3 min = minArg.GetResult<Vector3>();
                 Vector3 max = maxArg.GetResult<Vector3>();
+                bool usableBounds = VehiclePlacementMath.HasUsableBounds(
+                    min.Z, max.Z);
                 Vector3 localCenter = new Vector3(
                     (min.X + max.X) * 0.5f,
                     (min.Y + max.Y) * 0.5f,
@@ -1349,17 +1403,98 @@ namespace ALLIN1
                     correctionY *= scale;
                 }
 
+                float floorZ = slot.FloorZ;
+                string floorSource = "configured";
+                if (TryProbeParkingFloor(vehicle, slot, out float probedFloorZ))
+                {
+                    floorZ = probedFloorZ;
+                    floorSource = "raycast";
+                }
+                else if (!VehiclePlacementMath.IsFinite(floorZ))
+                {
+                    // Layouts without a measured floor keep Rockstar's native
+                    // spawn root until their anchor can be audited in game.
+                    floorSource = "native-root";
+                }
+
+                float rootZ = slot.Position.Z;
+                string heightSource = "native-root";
+                if (VehiclePlacementMath.IsFinite(floorZ)
+                    && VehicleGroundingCatalog.TryGetStableRootOffset(
+                        modelName, vehicle.Model.Hash, out float measuredOffset))
+                {
+                    rootZ = VehiclePlacementMath.CalculateMeasuredRootZ(
+                        floorZ, measuredOffset, slot.Position.Z);
+                    heightSource = "measured";
+                }
+                else if (usableBounds && VehiclePlacementMath.IsFinite(floorZ))
+                {
+                    rootZ = VehiclePlacementMath.CalculateRootZ(
+                        floorZ, min.Z, slot.Position.Z);
+                    heightSource = "bounds";
+                }
+
+                // Stored vehicle state can retain a road pitch from before it
+                // entered the garage. Always level the body, then let GTA's
+                // suspension establish its native rest pose before callers
+                // freeze the display vehicle.
+                vehicle.IsPositionFrozen = true;
+                Function.Call(Hash.SET_ENTITY_ROTATION,
+                    vehicle.Handle, 0f, 0f, slot.Heading, 2, true);
                 Function.Call(Hash.SET_ENTITY_COORDS, vehicle,
                     root.X + correctionX, root.Y + correctionY,
-                    slot.Position.Z + deltaZ,
+                    rootZ,
                     false, false, false, true);
                 Function.Call(Hash.SET_ENTITY_HEADING, vehicle, slot.Heading);
-                Log($"CenterVehicleInParkingSpace: {garageName}/{modelName} " +
-                    $"correction=({correctionX:F3},{correctionY:F3})");
+                vehicle.IsCollisionEnabled = true;
+                vehicle.IsPositionFrozen = false;
+                Function.Call(Hash.SET_ENTITY_DYNAMIC, vehicle.Handle, true);
+                Function.Call(Hash.ACTIVATE_PHYSICS, vehicle.Handle);
+                Function.Call(Hash.SET_VEHICLE_HANDBRAKE,
+                    vehicle.Handle, true);
+                Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY,
+                    vehicle.Handle, 5f);
+                Script.Wait(180);
+                Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY,
+                    vehicle.Handle, 5f);
+                Script.Wait(80);
+                Log($"PlaceVehicleInParkingSpace: {garageName}/{modelName} " +
+                    $"center=({correctionX:F3},{correctionY:F3}) " +
+                    $"rootZ={rootZ:F3} floorZ={floorZ:F3} minZ={min.Z:F3} " +
+                    $"floorSource={floorSource} heightSource={heightSource} " +
+                    $"settledZ={vehicle.Position.Z:F3} " +
+                    $"pitch={vehicle.Rotation.X:F2} roll={vehicle.Rotation.Y:F2}");
             }
             catch (Exception ex)
             {
-                LogException($"CenterVehicleInParkingSpace({garageName}/{modelName})", ex);
+                LogException($"PlaceVehicleInParkingSpace({garageName}/{modelName})", ex);
+            }
+        }
+
+        private static bool TryProbeParkingFloor(
+            Vehicle vehicle, ParkingSlot slot, out float floorZ)
+        {
+            floorZ = 0f;
+            try
+            {
+                Vector3 start = new Vector3(
+                    slot.Position.X, slot.Position.Y, slot.Position.Z + 1.75f);
+                Vector3 end = new Vector3(
+                    slot.Position.X, slot.Position.Y, slot.Position.Z - 2.5f);
+                RaycastResult result = World.Raycast(
+                    start, end, IntersectFlags.Map | IntersectFlags.Objects,
+                    vehicle);
+                if (!result.DidHit || result.SurfaceNormal.Z < 0.55f)
+                    return false;
+                if (Math.Abs(result.HitPosition.Z - slot.Position.Z) > 2.25f)
+                    return false;
+                floorZ = result.HitPosition.Z;
+                return VehiclePlacementMath.IsFinite(floorZ);
+            }
+            catch (Exception ex)
+            {
+                LogException("TryProbeParkingFloor", ex);
+                return false;
             }
         }
 
@@ -2254,17 +2389,16 @@ namespace ALLIN1
             return sets;
         }
 
-        // Five physical bays laid out along Y. Vehicles face east into the
-        // aisle so their length runs across the bay instead of nose-to-tail
-        // along the row; the prior 0-degree heading caused long cars to crowd
-        // adjacent spaces.
+        // Five surveyed positions in the Nightclub warehouse shell, reused by
+        // each virtual floor. Vehicles face east into the aisle and remain six
+        // metres apart so oversized bodies do not overlap adjacent vehicles.
         private static readonly ParkingSlot[] _floorGaragePhysicalSlots =
         {
-            new ParkingSlot(-1517.0f, -3022.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3016.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3010.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3004.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -2998.0f, -80.0f, 90f),
+            new ParkingSlot(-1517.0f, -3022.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -3016.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -3010.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -3004.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -2998.0f, -79.69f, 90f, -80.2422f),
         };
 
         // 15 logical slots across 3 virtual floors (5 per floor)
@@ -2273,23 +2407,23 @@ namespace ALLIN1
         internal static readonly ParkingSlot[] FloorGarageSlots =
         {
             // Floor 0 — 5 slots (physical positions 0-4)
-            new ParkingSlot(-1517.0f, -3022.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3016.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3010.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3004.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -2998.0f, -80.0f, 90f),
+            new ParkingSlot(-1517.0f, -3022.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -3016.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -3010.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -3004.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -2998.0f, -79.69f, 90f, -80.2422f),
             // Floor 1 — 5 slots (same physical positions)
-            new ParkingSlot(-1517.0f, -3022.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3016.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3010.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3004.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -2998.0f, -80.0f, 90f),
+            new ParkingSlot(-1517.0f, -3022.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -3016.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -3010.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -3004.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -2998.0f, -79.69f, 90f, -80.2422f),
             // Floor 2 — 5 slots (same physical positions)
-            new ParkingSlot(-1517.0f, -3022.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3016.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3010.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3004.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -2998.0f, -80.0f, 90f),
+            new ParkingSlot(-1517.0f, -3022.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -3016.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -3010.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -3004.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -2998.0f, -79.69f, 90f, -80.2422f),
         };
 
         private static readonly string FLOOR_GARAGE_SAVE_PATH =
@@ -2473,13 +2607,8 @@ namespace ALLIN1
                         {
                             veh.IsPersistent = true;
                             veh.IsEngineRunning = false;
-                            float deltaZ = VehicleList.GetSpawnDeltaZ(model);
-                            Function.Call(Hash.SET_ENTITY_COORDS, veh,
-                                slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
-                                false, false, false, true);
-                            Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
-                            CenterVehicleInParkingSpace(
-                                veh, slot, deltaZ, model, "ThreeFloor", 2.0f);
+                            PlaceVehicleInParkingSpace(
+                                veh, slot, model, "ThreeFloor", 2.0f);
                             veh.IsPositionFrozen = true;
                             _floorGarageHandles[slotIndex] = veh;
                         }
@@ -2563,7 +2692,8 @@ namespace ALLIN1
             if (!_isPlayerInFloorGarage && !GbayShop.TryGetCurrentCharacter(out _)) return;
 
             // Don't show floor garage markers while in garage (and vice versa)
-            if (_isPlayerInGarage || _isPlayerInDavisGarage) return;
+            if (_isPlayerInGarage || _isPlayerInDavisGarage ||
+                _isPlayerInGarmentGarage) return;
 
             if (!_isPlayerInFloorGarage)
             {
@@ -2616,10 +2746,18 @@ namespace ALLIN1
                     float dist = player.Position.DistanceTo(FLOOR_GARAGE_PED_EXIT_DEST);
                     if (dist < ENTER_RADIUS)
                     {
-                        GTA.UI.Screen.ShowHelpTextThisFrame(
-                            "Press ~INPUT_CONTEXT~ to enter the three-floor garage.");
-                        if (Game.IsControlJustPressed(GTA.Control.Context))
-                            EnterFloorGarage();
+                        GarageEntryDenial denial = EvaluateGarageEntry(
+                            THREE_FLOOR_GARAGE);
+                        if (denial != GarageEntryDenial.None)
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                GarageEntryMessage(THREE_FLOOR_GARAGE, denial));
+                        else
+                        {
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                "Press ~INPUT_CONTEXT~ to enter the three-floor garage.");
+                            if (Game.IsControlJustPressed(GTA.Control.Context))
+                                EnterFloorGarage();
+                        }
                     }
                 }
             }
@@ -3225,13 +3363,8 @@ namespace ALLIN1
                         ApplyVehicleState(veh, sv);
                         veh.IsPersistent = true;
                         veh.IsEngineRunning = false;
-                        float deltaZ = VehicleList.GetSpawnDeltaZ(sv.Model);
-                        Function.Call(Hash.SET_ENTITY_COORDS, veh,
-                            slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
-                            false, false, false, true);
-                        Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
-                        CenterVehicleInParkingSpace(
-                            veh, slot, deltaZ, sv.Model, "ThreeFloor", 2.0f);
+                        PlaceVehicleInParkingSpace(
+                            veh, slot, sv.Model, "ThreeFloor", 2.0f);
                         veh.IsPositionFrozen = true;
                         _floorGarageHandles[sv.Slot] = veh;
                         Log($"SpawnFloorGarageVehicles: spawned {sv.Model} at slot {sv.Slot} (physical {physicalIndex})");

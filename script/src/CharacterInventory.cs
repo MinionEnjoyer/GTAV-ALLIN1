@@ -29,7 +29,7 @@ namespace ALLIN1
 
         public sealed class Inventory
         {
-            public int schema_version { get; set; } = 5;
+            public int schema_version { get; set; } = 6;
             public List<string> weapons { get; set; } = new List<string>();
             public Dictionary<string, int> weapon_ammo { get; set; } =
                 new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -374,6 +374,28 @@ namespace ALLIN1
             }
         }
 
+        internal static void RemoveOwnedGear(string item)
+        {
+            if (string.IsNullOrWhiteSpace(item)) return;
+            string character = CurrentCharacter();
+            if (character.Length == 0) return;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory)) return;
+                NormalizeInventory(inventory);
+                if (!RemoveOwnedGearInMemory(inventory, item)) return;
+                try
+                {
+                    SaveStateLocked();
+                    ClientLog.Info("Character", "gear_ownership_removed",
+                        new Dictionary<string, object> {
+                            { "character", character }, { "item", item }
+                        });
+                }
+                catch (Exception ex) { ClientLog.Error("Character", "inventory_save_failed", ex); }
+            }
+        }
+
         internal static void RecordWeaponAmmo(string item, int ammo)
         {
             if (string.IsNullOrWhiteSpace(item)) return;
@@ -475,7 +497,7 @@ namespace ALLIN1
             catch (Exception ex) { ClientLog.Error("Character", "shutdown_backup_failed", ex); }
         }
 
-        private static void SetEquippedInMemory(
+        internal static void SetEquippedInMemory(
             Inventory inventory, string item, bool equipped)
         {
             inventory.equipped_gear.RemoveAll(value =>
@@ -483,10 +505,28 @@ namespace ALLIN1
             if (!equipped) return;
 
             // Protection is a single equipment slot: equipping one armor tier
-            // replaces the previous normal or Juggernaut armor.
+            // consumes the previous normal or Juggernaut armor.
             if (GearList.IsArmor(item))
+            {
+                var displaced = inventory.equipped_gear.FindAll(GearList.IsArmor);
                 inventory.equipped_gear.RemoveAll(GearList.IsArmor);
+                foreach (string oldArmor in displaced)
+                    inventory.gear.RemoveAll(value => string.Equals(
+                        value, oldArmor, StringComparison.OrdinalIgnoreCase));
+            }
             inventory.equipped_gear.Add(item);
+        }
+
+        internal static bool RemoveOwnedGearInMemory(
+            Inventory inventory, string item)
+        {
+            if (inventory == null || string.IsNullOrWhiteSpace(item))
+                return false;
+            bool changed = inventory.gear.RemoveAll(value => string.Equals(
+                value, item, StringComparison.OrdinalIgnoreCase)) > 0;
+            changed |= inventory.equipped_gear.RemoveAll(value => string.Equals(
+                value, item, StringComparison.OrdinalIgnoreCase)) > 0;
+            return changed;
         }
 
         private static bool NormalizeInventory(Inventory inventory)
@@ -531,12 +571,6 @@ namespace ALLIN1
                     changed = true;
                 inventory.weapon_ammo = normalizedAmmo;
             }
-            if (inventory.schema_version != 5)
-            {
-                inventory.schema_version = 5;
-                changed = true;
-            }
-
             var normalized = new List<string>();
             string activeArmor = null;
             foreach (string item in inventory.equipped_gear)
@@ -553,6 +587,19 @@ namespace ALLIN1
             if (activeArmor != null) normalized.Add(activeArmor);
             if (!ListsEqualIgnoreCase(inventory.equipped_gear, normalized)) changed = true;
             inventory.equipped_gear = normalized;
+
+            // Schema 6 makes gear consumable: ownership exists only while an
+            // item is equipped. Migrating an older save discards gear that had
+            // already been explicitly unequipped under the former locker rule.
+            int ownedBefore = inventory.gear.Count;
+            inventory.gear.RemoveAll(item =>
+                !ContainsIgnoreCase(inventory.equipped_gear, item));
+            if (inventory.gear.Count != ownedBefore) changed = true;
+            if (inventory.schema_version != 6)
+            {
+                inventory.schema_version = 6;
+                changed = true;
+            }
             return changed;
         }
 

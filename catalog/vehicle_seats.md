@@ -1,6 +1,6 @@
 # GTA V Vehicle Seat Metadata Audit
 
-Generated: `2026-08-13T07:14:47.1938441Z`
+Generated: `2026-08-13T07:33:37.6005219Z`
 Edition: `Enhanced`
 Models: **935/935 resolved**
 
@@ -96,7 +96,7 @@ Door count means unique occupant-access door bones; turret hatches are listed se
 | `boxville2` | `LAYOUT_VAN_BOXVILLE` | 6 | 4 | 0 | -1: Driver; 0: Passenger; 1: Left Rear; 2: Right Rear; 3: Left Seat 3; 4: Right Seat 4 | `update/update.rpf/common/data/ai/vehiclelayouts.meta` |
 | `boxville3` | `LAYOUT_VAN_BOXVILLE` | 6 | 4 | 0 | -1: Driver; 0: Passenger; 1: Left Rear; 2: Right Rear; 3: Left Seat 3; 4: Right Seat 4 | `update/update.rpf/common/data/ai/vehiclelayouts.meta` |
 | `boxville4` | `LAYOUT_VAN_BOXVILLE` | 6 | 4 | 0 | -1: Driver; 0: Passenger; 1: Left Rear; 2: Right Rear; 3: Left Seat 3; 4: Right Seat 4 | `update/update.rpf/common/data/ai/vehiclelayouts.meta` |
-| `boxville5` | `LAYOUT_VAN_APOCOLYPSE` | 5 | 4 | 1 | -1: Driver; 0: Passenger; 1: Left Rear; 2: Right Rear; 3: Turret | `update/update.rpf/dlc_patch/mpimportexport/common/data/ai/vehiclelayouts.meta` |
+| `boxville5` | `LAYOUT_VAN_APOCOLYPSE` | 5 | 4 | 1 | -1: Driver; 0: Passenger; 1: Left Rear; 2: Right Rear; 3: Roof Turret | `update/update.rpf/dlc_patch/mpimportexport/common/data/ai/vehiclelayouts.meta` |
 | `boxville6` | `LAYOUT_VAN_BOXVILLE` | 6 | 4 | 0 | -1: Driver; 0: Passenger; 1: Left Rear; 2: Right Rear; 3: Left Seat 3; 4: Right Seat 4 | `update/update.rpf/common/data/ai/vehiclelayouts.meta` |
 | `brawler` | `LAYOUT_STD_BRAWLER` | 2 | 2 | 0 | -1: Driver; 0: Passenger | `update/update.rpf/dlc_patch/mpluxe2/common/data/ai/vehiclelayouts.meta` |
 | `brickade` | `LAYOUT_TRUCK_BRICKADE` | 6 | 2 | 0 | -1: Driver; 0: Passenger; 1: Left Seat 1; 2: Right Seat 2; 3: Left Seat 3; 4: Right Seat 4 | `update/update.rpf/dlc_patch/mpexecutive/common/data/ai/vehiclelayouts.meta` |
@@ -412,7 +412,7 @@ Door count means unique occupant-access door bones; turret hatches are listed se
 | `ingot` | `LAYOUT_STANDARD` | 4 | 4 | 0 | -1: Driver; 0: Passenger; 1: Left Rear; 2: Right Rear | `update/update.rpf/common/data/ai/vehiclelayouts.meta` |
 | `innovation` | `LAYOUT_BIKE_FREEWAY` | 2 | 0 | 0 | -1: Driver; 0: Passenger | `update/update.rpf/common/data/ai/vehiclelayouts.meta` |
 | `insurgent` | `LAYOUT_VAN_ARMORED` | 9 | 4 | 1 | -1: Driver; 0: Passenger; 1: Left Rear; 2: Right Rear; 3: Left Side Seat; 4: Right Side Seat; 5: Left Bed Seat; 6: Right Bed Seat; 7: Roof Turret | `update/update.rpf/dlc_patch/mpheist/common/data/ai/vehiclelayouts_insurgent.meta` |
-| `insurgent2` | `LAYOUT_VAN_ARMORED` | 9 | 4 | 1 | -1: Driver; 0: Passenger; 1: Left Rear; 2: Right Rear; 3: Left Side; 4: Right Side; 5: Left Seat 5; 6: Right Seat 6; 7: Rear Turret | `update/update.rpf/dlc_patch/mpheist/common/data/ai/vehiclelayouts_insurgent.meta` |
+| `insurgent2` | `LAYOUT_VAN_ARMORED` | 9 | 4 | 1 | -1: Driver; 0: Passenger; 1: Left Rear; 2: Right Rear; 3: Left Side Seat; 4: Right Side Seat; 5: Left Bed Seat; 6: Right Bed Seat; 7: Roof Turret | `update/update.rpf/dlc_patch/mpheist/common/data/ai/vehiclelayouts_insurgent.meta` |
 | `insurgent3` | `LAYOUT_VAN_ARMORED` | 9 | 4 | 1 | -1: Driver; 0: Passenger; 1: Left Rear; 2: Right Rear; 3: Left Side Seat; 4: Right Side Seat; 5: Left Bed Seat; 6: Right Bed Seat; 7: Roof Turret | `update/update.rpf/dlc_patch/mpheist/common/data/ai/vehiclelayouts_insurgent.meta` |
 | `intruder` | `LAYOUT_STD_EXITFIXUP` | 4 | 4 | 0 | -1: Driver; 0: Passenger; 1: Left Rear; 2: Right Rear | `update/update.rpf/common/data/ai/vehiclelayouts.meta` |
 | `issi2` | `LAYOUT_STANDARD` | 4 | 4 | 0 | -1: Driver; 0: Passenger; 1: Left Rear; 2: Right Rear | `update/update.rpf/common/data/ai/vehiclelayouts.meta` |

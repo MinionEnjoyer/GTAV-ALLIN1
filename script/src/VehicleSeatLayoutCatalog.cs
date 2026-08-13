@@ -906,7 +906,7 @@ namespace ALLIN1
                         SeatCount = 5,
                         DoorCount = 4,
                         HatchCount = 1,
-                        Labels = new Dictionary<int, string> { { -1, "Driver" }, { 0, "Passenger" }, { 1, "Left Rear" }, { 2, "Right Rear" }, { 3, "Turret" } },
+                        Labels = new Dictionary<int, string> { { -1, "Driver" }, { 0, "Passenger" }, { 1, "Left Rear" }, { 2, "Right Rear" }, { 3, "Roof Turret" } },
                         Turrets = new HashSet<int> { 3 },
                     } },
                 { -842765535, new VehicleSeatLayoutRecord
@@ -4066,7 +4066,7 @@ namespace ALLIN1
                         SeatCount = 9,
                         DoorCount = 4,
                         HatchCount = 1,
-                        Labels = new Dictionary<int, string> { { -1, "Driver" }, { 0, "Passenger" }, { 1, "Left Rear" }, { 2, "Right Rear" }, { 3, "Left Side" }, { 4, "Right Side" }, { 5, "Left Seat 5" }, { 6, "Right Seat 6" }, { 7, "Rear Turret" } },
+                        Labels = new Dictionary<int, string> { { -1, "Driver" }, { 0, "Passenger" }, { 1, "Left Rear" }, { 2, "Right Rear" }, { 3, "Left Side Seat" }, { 4, "Right Side Seat" }, { 5, "Left Bed Seat" }, { 6, "Right Bed Seat" }, { 7, "Roof Turret" } },
                         Turrets = new HashSet<int> { 7 },
                     } },
                 { -1924433270, new VehicleSeatLayoutRecord

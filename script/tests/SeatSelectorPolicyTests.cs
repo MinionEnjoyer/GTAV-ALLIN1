@@ -140,6 +140,39 @@ namespace ALLIN1.Tests
         }
 
         [Fact]
+        public void Caracara_sparse_grid_navigation_reaches_the_turret()
+        {
+            int[] seats = { -1, 0, 3 };
+            bool[] available = { true, true, true };
+
+            Assert.Equal(3, SeatSelector.FindNavigationTarget(
+                -1, 0, 1, seats, available));
+            Assert.Equal(-1, SeatSelector.FindNavigationTarget(
+                3, 0, -1, seats, available));
+            Assert.Equal(0, SeatSelector.FindNavigationTarget(
+                -1, 1, 0, seats, available));
+        }
+
+        [Fact]
+        public void Sparse_navigation_does_not_select_an_unavailable_turret()
+        {
+            int[] seats = { -1, 0, 3 };
+            bool[] available = { true, true, false };
+
+            Assert.Equal(-1, SeatSelector.FindNavigationTarget(
+                -1, 0, 1, seats, available));
+        }
+
+        [Fact]
+        public void Metadata_preserves_sparse_high_seat_indices()
+        {
+            Assert.Equal(4, SeatSelector.GetSeatEnumerationPassengerLimit(
+                1254014755, 2));
+            Assert.Equal(6, SeatSelector.GetSeatEnumerationPassengerLimit(
+                123456789, 6));
+        }
+
+        [Fact]
         public void Caracara_turret_uses_native_context_entry()
         {
             Assert.True(SeatSelector.ShouldUseNativeContextEntry(

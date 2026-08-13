@@ -146,6 +146,7 @@ Available classes: `compacts`, `coupes`, `sedans`, `suvs`, `muscle`, `sports`, `
 | `world_vector_key` | `"F10"` | Toggle the developer world-vector overlay. |
 | `seat_selector_enabled` | `true` | Enable hold-to-select vehicle seats. |
 | `gbay_free_mode` | `false` | All GBAY purchases are free; vehicle sales have no payout. |
+| `garages_always_accessible` | `false` | Allow garage entry with a wanted level. Mission, vehicle-ownership, and size safety rules still apply. |
 | `enable_logging` | `false` | Write debug info to `scripts/ALLIN1.log`. |
 | `enable_dlc_police` | `false` | Replace vanilla police cars with DLC police vehicles. |
 
@@ -257,11 +258,11 @@ change, and the former per-frame GBAY texture-debug overlay has been removed.
 - **Equipment** (6 items): Parachute ($300), Tear Gas ($150), Fire Extinguisher ($100), Jerry Can ($100), Hazardous Jerry Can ($250), Night Vision ($5,000)
 - Juggernaut Armor applies a full ballistic suit outfit, 1000 HP, 80% damage reduction, and heavy movement animation
 - Night Vision adds a toggleable mode (press **N** while it is equipped)
-- Purchased gear remains owned when unequipped. Press **Y** on the selected
-  card or click its **UNEQUIP** badge to remove it, then select the owned card
-  again to re-equip it without another charge.
+- Press **Y** on the selected gear card or click its **UNEQUIP** badge to
+  discard it. The card returns to its purchase price and must be repurchased
+  before it can be equipped again.
 - Protection uses one active equipment slot, so equipping another armor tier
-  replaces normal or Juggernaut armor without removing ownership.
+  consumes the previous normal or Juggernaut armor.
 - Grid-based card layout matching the vehicle and weapon browsers
 
 **Navigation:**
@@ -298,8 +299,8 @@ When `rich_areas_only_supers` is enabled, super and sports cars only appear in w
 
 Garage storage is separate per character (Michael, Franklin, Trevor) and per
 location. Eclipse Towers provides the original 10-car underground garage, the
-three-floor garage provides oversized storage, and Davis adds a second 10-car
-garage in the Los Santos Tuners Auto Shop interior.
+three-floor garage provides oversized storage, Davis adds a 10-car Los Santos
+Tuners Auto Shop, and the Garment Factory adds another 10 native bays.
 
 Rockstar-managed story vehicles are excluded from every ALLIN1 garage and its
 sale flow, even when a mission temporarily removes the vehicle's decorator or
@@ -337,11 +338,34 @@ it outside the Davis vehicle door.
   green for Franklin, and orange for Trevor. Eclipse Towers and the three-floor
   garage use the same shared color behavior.
 
+### Garment Factory Garage
+
+- Vehicle entrance: `X 762.1525, Y -899.2333, Z 25.1761`, heading `270`.
+- Pedestrian entrance/exit: `X 760.7663, Y -909.4583, Z 25.2538`, heading `270`.
+- Interior pedestrian exit: `X 750.9566, Y -973.1649, Z -66.7538`, heading `0`,
+  centered on Rockstar's native interior doorway trigger.
+- Ten native parking roots from the Garment Factory script, with Rockstar's
+  inward 0.8-meter adjustment for standard cars and unshifted large vehicles.
+- Independent per-character persistence in
+  `ALLIN1_garment_factory_garage.json` and full GBAY delivery/sale integration.
+
+Every garage now uses one vehicle-aware vertical placement path. It probes the
+bay floor, reads the model's native dimensions, and places the model's lowest
+bound just above the floor. If collision is not ready, the configured floor is
+used; invalid add-on bounds fall back to the native spawn root instead of a
+vehicle-class average.
+
+The Davis and Garment Factory layouts use the exact paired roots Rockstar ships
+for standard and large vehicles. Eclipse and the three-floor Nightclub shell
+retain their existing surveyed bay centers—the Rockstar scripts do not expose
+equivalent literal personal-vehicle roots for those shared shells—but now use
+the same measured-floor and per-model grounding calculation.
+
 **Eclipse features:**
 - 10 parking slots (two rows of 5, heading -105° and 134°)
 - Vehicles persist across game sessions via `ALLIN1_garage.json`
 - Vehicle colors are saved and restored
-- Vehicles spawn at fixed Z=-99.0 coordinates when entering the garage interior
+- Vehicles use model-bound grounding against the measured interior floor
 - Uses joaat hash-based reverse lookup for reliable model name resolution
 
 **Sell Vehicles:**
@@ -444,6 +468,9 @@ GTA_V_ALLIN1/
 │   │   ├── GbayInput.cs           # Input polling (keyboard + mouse)
 │   │   ├── GarageManager.cs       # Eclipse and three-floor garage systems
 │   │   ├── GarageManager.Davis.cs # Davis Auto Shop 10-car garage
+│   │   ├── GarageManager.GarmentFactory.cs # Garment Factory 10-car garage
+│   │   ├── VehiclePlacementMath.cs # Shared model-aware floor grounding
+│   │   ├── VehicleGroundingCatalog.cs # Measured root-to-floor catalog
 │   │   ├── TrafficSpawner.cs      # DLC traffic integration
 │   │   ├── SeatSelector.cs        # Hold-F seat picker
 │   │   ├── VehicleHelper.cs       # Vehicle spawn utilities
@@ -451,8 +478,7 @@ GTA_V_ALLIN1/
 │   │   ├── WeaponList.cs          # Auto-generated weapon data
 │   │   └── GearList.cs            # Static gear item data (12 items)
 │   ├── tools/
-│   │   ├── WorldVectorTool.cs     # F10 coordinate overlay (included)
-│   │   └── SeatTestTool.cs        # F11 automated seat laboratory (included)
+│   │   └── WorldVectorTool.cs     # F10 coordinate overlay (included)
 │   ├── dist/                      # Pre-built binaries
 │   │   ├── ALLIN1.dll
 │   │   ├── LemonUI.SHVDN3.dll
@@ -514,7 +540,7 @@ The auto-commit uses `github-actions[bot]` and does `git pull --rebase` before p
 - **Target:** .NET Framework 4.8, x64
 - **Dependencies:** ScriptHookVDotNet3 (3.6.0), LemonUI.SHVDN3 (2.2.0), System.Windows.Forms
 - **Exclusions:** `tools/**` is excluded from compilation by default
-- **Inclusions:** `WorldVectorTool.cs` and `SeatTestTool.cs` are explicitly re-included for the F10 coordinate overlay and F11 seat laboratory
+- **Inclusions:** `WorldVectorTool.cs` is explicitly re-included for the F10 coordinate overlay
 - **Output:** `script/dist/ALLIN1.dll`
 
 ### Building External Tools
@@ -563,6 +589,7 @@ allin1 generate-weaponlist
 - `Dictionary<string, string> DisplayNames`
 - `Dictionary<string, int> Prices`
 - `Dictionary<string, string> CategoryNames`
+- `Dictionary<string, int> PurchaseQuantities` — first-purchase bundle sizes for quantity-priced items
 - `Dictionary<string, int> AmmoCostPerRound` — per-round ammo refill costs
 
 ---
@@ -642,31 +669,21 @@ Format: `X 123.4567  Y -456.7890  Z 89.0123` plus `Heading 180.50`.
 
 Implemented in `script/tools/WorldVectorTool.cs`.
 
-### Seat Laboratory (F11 / Shift+F11) — Included in Build
+### Vehicle Grounding Catalog
 
-Enter or stand near the vehicle model to test, then press F11. The laboratory
-clones that model at the flat Sandy Shores airfield test site, clears ambient
-peds and vehicles, pauses ALLIN1 traffic, and runs a directed matrix covering
-outside access plus every source-seat to target-seat transition. Setup and
-session restoration may place the player directly; every measured transition
-uses the production selector's animation-only path.
+The completed physical survey is packaged as `data/vehicle_grounding.json` and
+deployed to `scripts/ALLIN1_vehicle_grounding.json`. It contains outcomes for
+all 827 surveyed land-vehicle models: 821 stable measured offsets, six models
+classified as intentionally unsupported, and no unresolved outliers. Five
+unhitched trailers and the Kosatka have no meaningful standalone garage-floor
+pose. Aircraft, boats, and trains are outside the ground-vehicle catalog.
 
-Rolling trial records survive an interrupted run in
-`scripts/ALLIN1_seat_tests/*.jsonl`. Completed runs also update a per-model JSON
-report, `ALLIN1_seat_catalog.jsonl`, and the append-only
-`ALLIN1_seat_outliers.jsonl` refinement queue. F11 aborts a run and restores the
-player's previous location or vehicle seat.
-
-Press Shift+F11 while on foot to run the curated fleet suite. It covers real
-physical turret, gunner, and unconventional passenger stations while excluding
-driver-controlled remote weapons and interior weapon consoles that are not
-vehicle seats. Ground vehicles and aircraft use Sandy Shores; the Weaponized
-Dinghy uses an open-water Del Perro arena. The suite checkpoints after every
-model, treats unavailable models as skipped rather than failed, and writes
-`latest-unconventional-seat-fleet.json` with aggregate results and links to its
-per-model reports. F11 aborts either mode safely.
-
-Implemented in `script/tools/SeatTestTool.cs`.
+Garage placement reads stable offsets from this catalog, retains each garage's
+surveyed floor plane, and falls back to model bounds for an unknown future DLC
+model. Install and repair preserve valid user measurements while filling missing
+or unresolved entries from the packaged catalog. The completed F11 measurement
+laboratory and its runtime writer were retired in 0.4.2; World Vector is the sole
+developer tool included in production.
 
 ### Vehicle Seat Metadata Catalog
 
@@ -680,12 +697,11 @@ root `x64*.rpf` archives. It resolves patch priority and records, per model:
 - unique occupant-access door bones and separate access hatches; and
 - the raw Rockstar seat identifier for later forensic review.
 
-The generated `script/src/VehicleSeatLayoutCatalog.cs` supplies these labels to
-the production selector. Seat Lab reports both the metadata seat count and GTA's
-runtime count, so disagreement is logged rather than concealed. The curated
-Shift+F11 fleet remains the focused regression suite for physical turrets,
-rappel, bench, bed, and other layouts where a declared seat can still be
-unreachable in practice.
+The generated `script/src/VehicleSeatLayoutCatalog.cs` supplies these labels and
+verified access exceptions to the production selector. Turrets, rappel points,
+benches, beds, and other unconventional stations remain covered by the checked-in
+metadata catalog and production selector policy tests; the retired runtime seat
+laboratory is no longer shipped.
 
 Regenerate the current catalog and runtime lookup with:
 
@@ -776,6 +792,7 @@ Garage state is split into independent files in the scripts directory:
 - `ALLIN1_garage.json` — Eclipse Towers.
 - `ALLIN1_floor_garage.json` — three-floor garage.
 - `ALLIN1_davis_garage.json` — Davis Auto Shop.
+- `ALLIN1_garment_factory_garage.json` — Garment Factory garage.
 - `ALLIN1_davis_customization.json` — per-character Davis Auto Shop themes and upgrades.
 
 Each file stores per-character vehicle data, including complete customization
@@ -862,6 +879,7 @@ After `allin1 install`, the following files exist in the GTA V directory:
 │   ├── ALLIN1_garage.json         # Eclipse Towers persistence
 │   ├── ALLIN1_floor_garage.json   # Three-floor garage persistence
 │   ├── ALLIN1_davis_garage.json   # Davis Auto Shop persistence
+│   ├── ALLIN1_garment_factory_garage.json # Garment Factory persistence
 ├── mods/update/x64/dlcpacks/
 │   └── allin1_previews/
 │       └── dlc.rpf                # Preview texture DLC pack

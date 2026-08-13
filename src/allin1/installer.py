@@ -17,6 +17,7 @@ Prerequisites (installed separately by the user):
 from __future__ import annotations
 
 import logging
+import json
 import os
 import shutil
 import subprocess
@@ -43,11 +44,35 @@ log = logging.getLogger("allin1.installer")
 
 DLL_FILENAME = "ALLIN1.dll"
 LEMONUI_FILENAME = "LemonUI.SHVDN3.dll"
+GROUNDING_CATALOG_FILENAME = "ALLIN1_vehicle_grounding.json"
 SCRIPTS_DIR = "scripts"
 ALLIN1_DATA_DIR = "ALLIN1"  # Legacy data folder — cleaned up on install
 
 # Files from previous ALLIN1 versions to clean up
 LEGACY_FILES = ("ALLIN1.asi", "ALLIN1.dll", "ALLIN1-Launcher.exe")
+
+# Workspace artifacts written by development-only tools retired before 0.4.2.
+# These are not user saves and are removed during every install/repair so an
+# upgraded public installation does not retain dormant test data or DLLs.
+RETIRED_DEVELOPER_ARTIFACTS = (
+    "ALLIN1_height_check.toml",
+    "ALLIN1_outfit_debug.log",
+    "ALLIN1_entity_sets.log",
+    "ALLIN1_preview_pending.toml",
+    "ALLIN1_preview_pending.toml.bak",
+    "ALLIN1_vehicle_grounding_outliers.json",
+    "ALLIN1_vehicle_grounding_outliers.json.bak",
+    "ALLIN1.dll.pre-0.3.1.bak",
+    "ALLIN1.dll.pre-capture-modes.bak",
+    "ALLIN1.dll.pre-furore-modelhash.bak",
+    "ALLIN1.dll.pre-gbay-nav.bak",
+    "ALLIN1.dll.pre-gbay-ux.bak",
+    "ALLIN1.dll.pre-pushed-0.3.1.bak",
+    "ALLIN1.dll.pre-seat-nav-fix.bak",
+)
+RETIRED_DEVELOPER_DIRECTORIES = (
+    "ALLIN1_seat_tests",
+)
 
 # Resolve directories relative to this source file (project root).
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -60,6 +85,24 @@ def _copy_atomic(source: Path, destination: Path) -> None:
     backup = destination.with_name(destination.name + ".bak")
     try:
         shutil.copy2(source, temporary)
+        if destination.exists():
+            shutil.copy2(destination, backup)
+        temporary.replace(destination)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        if backup.exists():
+            shutil.copy2(backup, destination)
+        raise
+
+
+def _write_json_atomic(payload: dict, destination: Path) -> None:
+    """Replace a JSON file while retaining the previous checkpoint."""
+    temporary = destination.with_name(destination.name + ".tmp")
+    backup = destination.with_name(destination.name + ".bak")
+    try:
+        temporary.write_text(
+            json.dumps(payload, separators=(",", ":")), encoding="utf-8"
+        )
         if destination.exists():
             shutil.copy2(destination, backup)
         temporary.replace(destination)
@@ -193,6 +236,15 @@ def uninstall(config: Config) -> list[Path]:
                    "ALLIN1_client.log", "ALLIN1_client.log.1",
                    "ALLIN1_client.log.2", "ALLIN1_client.log.3",
                    "ALLIN1_garage.json", "ALLIN1_garages.json",
+                   "ALLIN1_floor_garage.json", "ALLIN1_floor_garage.json.bak",
+                   "ALLIN1_floor_themes.json", "ALLIN1_floor_themes.json.bak",
+                   "ALLIN1_davis_garage.json", "ALLIN1_davis_garage.json.bak",
+                   "ALLIN1_davis_customization.json", "ALLIN1_davis_customization.json.bak",
+                   "ALLIN1_garment_factory_garage.json",
+                   "ALLIN1_garment_factory_garage.json.bak",
+                   GROUNDING_CATALOG_FILENAME,
+                   GROUNDING_CATALOG_FILENAME + ".bak",
+                   *RETIRED_DEVELOPER_ARTIFACTS,
                    "ALLIN1_garages.json.bak", "ALLIN1_gbay_preferences.json",
                    "ALLIN1_gbay_preferences.json.bak", "ALLIN1_session.lock",
                    "ALLIN1_garage.quarantine.json", "ALLIN1_preview_pending.toml",
@@ -202,6 +254,13 @@ def uninstall(config: Config) -> list[Path]:
             fpath.unlink()
             removed.append(fpath)
             log.info("Removed %s from scripts/", fname)
+
+    for dirname in RETIRED_DEVELOPER_DIRECTORIES:
+        dpath = scripts_dir / dirname
+        if dpath.exists():
+            shutil.rmtree(dpath)
+            removed.append(dpath)
+            log.info("Removed %s from scripts/", dirname)
 
     # Remove legacy files from game root
     for fname in LEGACY_FILES:
@@ -327,12 +386,20 @@ def _deploy_script(gta_path: Path) -> bool:
         _copy_atomic(toml_src, toml_dest)
         log.info("Deployed config %s -> %s", toml_src.name, toml_dest)
 
-    # The production runtime no longer includes the screenshot-capture tool.
-    # Remove its old deployed pending manifest during repair/install.
-    pending_dest = scripts_dir / "ALLIN1_preview_pending.toml"
-    if pending_dest.exists():
-        pending_dest.unlink()
-        log.info("Removed retired preview capture manifest")
+    _deploy_grounding_catalog(scripts_dir)
+
+    # Development-only runtime tools are retired. Their generated artifacts
+    # are not user data and must not survive install or repair.
+    for retired_name in RETIRED_DEVELOPER_ARTIFACTS:
+        retired_path = scripts_dir / retired_name
+        if retired_path.exists():
+            retired_path.unlink()
+            log.info("Removed retired developer artifact %s", retired_name)
+    for retired_name in RETIRED_DEVELOPER_DIRECTORIES:
+        retired_path = scripts_dir / retired_name
+        if retired_path.exists():
+            shutil.rmtree(retired_path)
+            log.info("Removed retired developer directory %s", retired_name)
 
     # Clean up legacy INI from previous versions
     legacy_ini = scripts_dir / "ALLIN1.ini"
@@ -341,6 +408,81 @@ def _deploy_script(gta_path: Path) -> bool:
         log.info("Removed legacy ALLIN1.ini")
 
     return True
+
+
+def _deploy_grounding_catalog(scripts_dir: Path) -> None:
+    """Seed validated outcomes without replacing newer resolved user data."""
+    source = _PROJECT_ROOT / "data" / "vehicle_grounding.json"
+    if not source.is_file():
+        log.warning("Validated vehicle grounding catalog is missing: %s", source)
+        return
+    destination = scripts_dir / GROUNDING_CATALOG_FILENAME
+    seed = json.loads(source.read_text(encoding="utf-8"))
+    seed_entries = seed.get("Entries", {})
+    if not isinstance(seed_entries, dict):
+        raise ValueError("validated grounding catalog has no Entries object")
+    if not destination.exists():
+        _copy_atomic(source, destination)
+        log.info("Deployed %d validated vehicle grounding offsets", len(seed_entries))
+        return
+
+    try:
+        current = json.loads(destination.read_text(encoding="utf-8"))
+        current_entries = current.get("Entries", {})
+        if not isinstance(current_entries, dict):
+            raise ValueError("installed grounding catalog has no Entries object")
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        log.warning("Replacing unreadable grounding checkpoint: %s", exc)
+        _copy_atomic(source, destination)
+        return
+
+    normalized = {
+        str(key).strip().lower(): value
+        for key, value in current_entries.items()
+        if str(key).strip()
+    }
+    added = 0
+    for key, entry in seed_entries.items():
+        model = str(key).strip().lower()
+        existing = normalized.get(model)
+        existing_resolved = isinstance(existing, dict) and (
+            (existing.get("Stable") is True
+             and existing.get("Status") == "measured")
+            or existing.get("Status") == "unsupported"
+        )
+        if existing_resolved:
+            continue
+        normalized[model] = entry
+        added += 1
+    if added == 0:
+        log.info("Installed grounding checkpoint already contains validated offsets")
+        return
+
+    current["SchemaVersion"] = 1
+    current["TotalModels"] = max(
+        int(current.get("TotalModels") or 0), int(seed.get("TotalModels") or 0)
+    )
+    current["Entries"] = dict(sorted(normalized.items()))
+    values = [entry for entry in normalized.values() if isinstance(entry, dict)]
+    current["MeasuredModels"] = sum(
+        entry.get("Status") == "measured" for entry in values
+    )
+    current["StableModels"] = sum(
+        entry.get("Stable") is True and entry.get("Status") == "measured"
+        for entry in values
+    )
+    current["UnsupportedModels"] = sum(
+        entry.get("Status") == "unsupported" for entry in values
+    )
+    current["OutlierModels"] = sum(
+        not (
+            (entry.get("Stable") is True and entry.get("Status") == "measured")
+            or entry.get("Status") == "unsupported"
+        )
+        for entry in values
+    )
+    _write_json_atomic(current, destination)
+    log.info("Merged %d validated vehicle grounding offsets", added)
 
 
 def _check_scripthookv(gta_path: Path) -> bool:

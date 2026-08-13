@@ -8,6 +8,7 @@ namespace ALLIN1
     {
         None,
         MissionActive,
+        WantedLevel,
         StoryOwnedVehicle,
         VehicleTooLarge,
     }
@@ -15,17 +16,20 @@ namespace ALLIN1
     internal sealed class GarageEntryRules
     {
         internal bool DisableDuringMissions { get; }
+        internal bool BlockWantedLevel { get; }
         internal bool BlockStoryOwnedVehicles { get; }
         internal int MaximumVehicleSizeTier { get; }
         internal string OversizedVehicleHint { get; }
 
         internal GarageEntryRules(
             bool disableDuringMissions,
+            bool blockWantedLevel,
             bool blockStoryOwnedVehicles,
             int maximumVehicleSizeTier,
             string oversizedVehicleHint = "")
         {
             DisableDuringMissions = disableDuringMissions;
+            BlockWantedLevel = blockWantedLevel;
             BlockStoryOwnedVehicles = blockStoryOwnedVehicles;
             MaximumVehicleSizeTier = maximumVehicleSizeTier;
             OversizedVehicleHint = oversizedVehicleHint ?? "";
@@ -55,6 +59,8 @@ namespace ALLIN1
         internal static GarageEntryDenial Evaluate(
             GarageEntryRules rules,
             bool missionActive,
+            int wantedLevel,
+            bool garagesAlwaysAccessible,
             bool vehiclePresent,
             bool storyOwnedVehicle,
             bool vehicleSizeKnown,
@@ -64,6 +70,9 @@ namespace ALLIN1
                 return GarageEntryDenial.MissionActive;
             if (rules.DisableDuringMissions && missionActive)
                 return GarageEntryDenial.MissionActive;
+            if (rules.BlockWantedLevel && wantedLevel > 0
+                && !garagesAlwaysAccessible)
+                return GarageEntryDenial.WantedLevel;
             if (vehiclePresent && rules.BlockStoryOwnedVehicles && storyOwnedVehicle)
                 return GarageEntryDenial.StoryOwnedVehicle;
             if (vehiclePresent && vehicleSizeKnown &&
@@ -79,6 +88,7 @@ namespace ALLIN1
             "eclipse", "Eclipse Towers garage",
             new GarageEntryRules(
                 disableDuringMissions: true,
+                blockWantedLevel: true,
                 blockStoryOwnedVehicles: true,
                 maximumVehicleSizeTier: 1,
                 oversizedVehicleHint: " Use the three-floor garage."));
@@ -87,6 +97,7 @@ namespace ALLIN1
             "three_floor", "three-floor garage",
             new GarageEntryRules(
                 disableDuringMissions: true,
+                blockWantedLevel: true,
                 blockStoryOwnedVehicles: true,
                 maximumVehicleSizeTier: 2),
             requiresMultiplayerMap: true);
@@ -95,6 +106,16 @@ namespace ALLIN1
             "davis", "Davis Auto Shop",
             new GarageEntryRules(
                 disableDuringMissions: true,
+                blockWantedLevel: true,
+                blockStoryOwnedVehicles: true,
+                maximumVehicleSizeTier: 1),
+            requiresMultiplayerMap: true);
+
+        internal static readonly GarageDefinition GarmentFactory = new GarageDefinition(
+            "garment_factory", "Garment Factory garage",
+            new GarageEntryRules(
+                disableDuringMissions: true,
+                blockWantedLevel: true,
                 blockStoryOwnedVehicles: true,
                 maximumVehicleSizeTier: 1),
             requiresMultiplayerMap: true);

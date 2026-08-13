@@ -158,10 +158,10 @@ def validate_version_consistency(root: Path, version: str = __version__) -> Rele
         raise ValueError(f"release notes do not identify release {version}")
 
     tool_sources = sorted(path.name for path in (root / "script" / "tools").glob("*.cs"))
-    supported_tools = ["SeatTestTool.cs", "WorldVectorTool.cs"]
+    supported_tools = ["WorldVectorTool.cs"]
     if tool_sources != supported_tools:
         raise ValueError(
-            "only SeatTestTool.cs and WorldVectorTool.cs may remain in "
+            "only WorldVectorTool.cs may remain in "
             f"script/tools: {tool_sources}"
         )
 
@@ -217,6 +217,7 @@ def verify_public_release(archive_path: Path, version: str = __version__) -> Rel
         if metadata.get("version") != version:
             raise ValueError(f"release metadata version is not {version}")
         required = set(PUBLIC_ROOT_FILES) | {
+            "data/vehicle_grounding.json",
             "script/dist/ALLIN1.dll",
             "script/dist/LemonUI.SHVDN3.dll",
             "tools/RpfPatcher/RpfPatcher.exe",

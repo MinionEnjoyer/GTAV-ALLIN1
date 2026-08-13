@@ -14,6 +14,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 using GTA;
 using GTA.Math;
@@ -21,26 +22,6 @@ using GTA.Native;
 
 namespace ALLIN1
 {
-    internal sealed class SeatSwitchTelemetry
-    {
-        internal bool Success { get; set; }
-        internal string Outcome { get; set; }
-        internal string Reason { get; set; }
-        internal int ModelHash { get; set; }
-        internal int SourceSeat { get; set; }
-        internal int TargetSeat { get; set; }
-        internal int LandedSeat { get; set; }
-        internal int ObservedWrongSeat { get; set; }
-        internal int ElapsedMs { get; set; }
-        internal string FinalPhase { get; set; }
-        internal string PhaseTrace { get; set; }
-        internal bool UsedExternalRoute { get; set; }
-        internal bool RouteValidated { get; set; }
-        internal int RouteResult { get; set; }
-        internal int RouteCandidate { get; set; }
-        internal int WaypointCount { get; set; }
-    }
-
     public class SeatSelector : Script
     {
         // ------------------------------------------------------------------ //
@@ -83,9 +64,6 @@ namespace ALLIN1
         // We read both via IS_DISABLED_CONTROL_PRESSED and suppress both when selecting.
         private const int CONTROL_ENTER = 23;
         private const int CONTROL_VEHICLE_EXIT = 75;
-
-        private static readonly string LOG_PATH =
-            Path.Combine("scripts", "ALLIN1_SeatSelector.log");
 
         // These hashes also have model-specific pathing policy below. Seat
         // names for them and every other game/DLC model come from the generated
@@ -194,113 +172,26 @@ namespace ALLIN1
         private int _externalRouteLastProgress;
         private int _externalRouteResult;
         private string _pendingFailureReason;
-        private int _observedWrongSeat = -2;
         private readonly List<Vector3> _plannedExternalWaypoints =
             new List<Vector3>();
         private int _externalRouteWaypointIndex;
         private bool _hasPreplannedExternalRoute;
         private readonly List<List<Vector3>> _routePlanCandidates =
             new List<List<Vector3>>();
-        private readonly List<string> _phaseTrace = new List<string>();
         private int _routePlanCandidateIndex;
         private int _routePlanSegmentIndex;
         private ShapeTestHandle _routeShapeTest;
         private ExecutionPhase _executionPhase;
         private bool _enabled = true;
-        private bool _harnessOwned;
-
-        internal static SeatSelector ActiveInstance { get; private set; }
-        internal static event Action<SeatSwitchTelemetry> HarnessSwitchFinished;
-        internal bool IsHarnessSwitchRunning =>
-            _harnessOwned && _state == State.Executing;
-
         // ------------------------------------------------------------------ //
         //  Constructor                                                        //
         // ------------------------------------------------------------------ //
 
         public SeatSelector()
         {
-            ActiveInstance = this;
             LoadConfig();
             Tick += OnTick;
-            Aborted += OnAborted;
             Interval = 0;
-        }
-
-        private void OnAborted(object sender, EventArgs e)
-        {
-            if (ReferenceEquals(ActiveInstance, this))
-                ActiveInstance = null;
-        }
-
-        internal bool TryBeginHarnessSwitch(
-            Vehicle vehicle, int targetSeat, out string rejectionReason)
-        {
-            rejectionReason = null;
-            if (!_enabled)
-            {
-                rejectionReason = "selector_disabled";
-                return false;
-            }
-            if (_state != State.Idle)
-            {
-                rejectionReason = "selector_busy";
-                return false;
-            }
-
-            Ped player = Game.Player.Character;
-            if (player == null || !player.Exists() || player.IsDead)
-            {
-                rejectionReason = "player_unavailable";
-                return false;
-            }
-            if (vehicle == null || !vehicle.Exists())
-            {
-                rejectionReason = "vehicle_invalid";
-                return false;
-            }
-
-            _targetVeh = vehicle;
-            _playerInVehicle = player.IsInVehicle()
-                && player.CurrentVehicle == vehicle;
-            BuildSeatList(player);
-            _selectedIdx = _seats.FindIndex(seat => seat.Index == targetSeat);
-            if (_selectedIdx < 0)
-            {
-                rejectionReason = "target_seat_missing";
-                Reset();
-                return false;
-            }
-            if (_seats[_selectedIdx].IsPlayer)
-            {
-                rejectionReason = "source_equals_target";
-                Reset();
-                return false;
-            }
-            if (!_seats[_selectedIdx].Free)
-            {
-                rejectionReason = "target_seat_occupied";
-                Reset();
-                return false;
-            }
-
-            _harnessOwned = true;
-            _phaseTrace.Clear();
-            ConfirmSelection(player);
-            if (_state != State.Executing)
-            {
-                rejectionReason = "selector_rejected";
-                return false;
-            }
-            return true;
-        }
-
-        internal void AbortHarnessSwitch(string reason)
-        {
-            if (!_harnessOwned)
-                return;
-            Ped player = Game.Player.Character;
-            CancelExecution(player, reason ?? "seat_lab_aborted", true);
         }
 
         // ------------------------------------------------------------------ //
@@ -482,40 +373,91 @@ namespace ALLIN1
             if (dX == 0 && dY == 0)
                 return;
 
-            SeatInfo cur = _seats[_selectedIdx];
-            int targetRow = cur.GridRow + dY;
-            int targetCol = cur.GridCol + dX;
-
-            // Find the seat at the target grid position
-            int bestIdx = -1;
-            for (int i = 0; i < _seats.Count; i++)
-            {
-                if (_seats[i].GridRow == targetRow && _seats[i].GridCol == targetCol
-                    && (_seats[i].Free || _seats[i].IsPlayer))
-                {
-                    bestIdx = i;
-                    break;
-                }
-            }
-
-            // If exact match not found but we're moving vertically, try same column
-            if (bestIdx < 0 && dY != 0)
-            {
-                for (int i = 0; i < _seats.Count; i++)
-                {
-                    if (_seats[i].GridRow == targetRow
-                        && (_seats[i].Free || _seats[i].IsPlayer))
-                    {
-                        bestIdx = i;
-                        break;
-                    }
-                }
-            }
+            int[] seatIndices = _seats.Select(seat => seat.Index).ToArray();
+            bool[] available = _seats.Select(
+                seat => seat.Free || seat.IsPlayer).ToArray();
+            int targetSeat = FindNavigationTarget(
+                _seats[_selectedIdx].Index, dX, dY, seatIndices, available);
+            int bestIdx = _seats.FindIndex(seat => seat.Index == targetSeat);
 
             if (bestIdx >= 0 && bestIdx != _selectedIdx)
             {
                 _selectedIdx = bestIdx;
                 GbayRenderer.PlayNav();
+            }
+        }
+
+        internal static int FindNavigationTarget(
+            int currentSeat,
+            int dX,
+            int dY,
+            int[] seatIndices,
+            bool[] available)
+        {
+            if (seatIndices == null || available == null
+                || seatIndices.Length == 0
+                || seatIndices.Length != available.Length)
+                return currentSeat;
+
+            GetSeatGridPosition(currentSeat, out int currentRow, out int currentCol);
+            if (dX != 0)
+            {
+                int targetCol = currentCol + Math.Sign(dX);
+                for (int i = 0; i < seatIndices.Length; i++)
+                {
+                    GetSeatGridPosition(seatIndices[i], out int row, out int col);
+                    if (available[i] && row == currentRow && col == targetCol)
+                        return seatIndices[i];
+                }
+                return currentSeat;
+            }
+
+            if (dY == 0)
+                return currentSeat;
+
+            int direction = Math.Sign(dY);
+            int maxRow = currentRow;
+            for (int i = 0; i < seatIndices.Length; i++)
+            {
+                GetSeatGridPosition(seatIndices[i], out int row, out int ignoredCol);
+                if (row > maxRow) maxRow = row;
+            }
+
+            // Sparse authored layouts can omit an entire row. For example,
+            // Caracara hides indices 1/2 but keeps its turret at index 3.
+            // Continue in the requested direction until an available row is
+            // found instead of trapping navigation at the empty row.
+            for (int targetRow = currentRow + direction;
+                targetRow >= 0 && targetRow <= maxRow;
+                targetRow += direction)
+            {
+                int rowFallback = int.MinValue;
+                for (int i = 0; i < seatIndices.Length; i++)
+                {
+                    if (!available[i]) continue;
+                    GetSeatGridPosition(seatIndices[i], out int row, out int col);
+                    if (row != targetRow) continue;
+                    if (col == currentCol) return seatIndices[i];
+                    if (rowFallback == int.MinValue)
+                        rowFallback = seatIndices[i];
+                }
+                if (rowFallback != int.MinValue)
+                    return rowFallback;
+            }
+            return currentSeat;
+        }
+
+        private static void GetSeatGridPosition(
+            int seatIndex, out int row, out int col)
+        {
+            if (seatIndex == -1) { row = 0; col = 0; }
+            else if (seatIndex == 0) { row = 0; col = 1; }
+            else if (seatIndex == 1) { row = 1; col = 0; }
+            else if (seatIndex == 2) { row = 1; col = 1; }
+            else
+            {
+                row = (seatIndex - 1) / 2 + 1;
+                col = seatIndex % 2 == 1 ? 0 : 1;
             }
         }
 
@@ -611,8 +553,6 @@ namespace ALLIN1
                                 { "target_seat", _targetSeatIdx },
                                 { "model_hash", _targetVeh.Model.Hash },
                             });
-                        PublishHarnessResult(
-                            player, false, "cancelled", "preexit_route_blocked");
                         Reset();
                         return;
                     }
@@ -630,8 +570,7 @@ namespace ALLIN1
 
         private void TickExecuting(Ped player)
         {
-            if (!_harnessOwned
-                && Game.IsControlJustPressed(GTA.Control.FrontendCancel))
+            if (Game.IsControlJustPressed(GTA.Control.FrontendCancel))
             {
                 CancelExecution(player, "cancelled_by_player", true);
                 return;
@@ -650,7 +589,6 @@ namespace ALLIN1
             {
                 ClientLog.Info("SeatSelector", "seat_switch_cancelled",
                     new Dictionary<string, object> { { "reason", "vehicle_invalid" } });
-                PublishHarnessResult(player, false, "cancelled", "vehicle_invalid");
                 Reset();
                 return;
             }
@@ -665,7 +603,6 @@ namespace ALLIN1
                         { "from_seat", _sourceSeatIdx },
                         { "seat", _targetSeatIdx },
                     });
-                PublishHarnessResult(player, true, "completed", "target_reached");
                 Reset();
                 return;
             }
@@ -880,46 +817,6 @@ namespace ALLIN1
                 nativeSeat, 2f, NORMAL_ENTER_FLAG, 0);
         }
 
-        private void PublishHarnessResult(
-            Ped player, bool success, string outcome, string reason)
-        {
-            if (!_harnessOwned)
-                return;
-
-            int landedSeat = -2;
-            if (player != null && player.Exists())
-                landedSeat = GetPlayerSeatIndex(player);
-            var result = new SeatSwitchTelemetry
-            {
-                Success = success,
-                Outcome = outcome ?? "cancelled",
-                Reason = reason ?? "unknown",
-                ModelHash = _targetVeh != null && _targetVeh.Exists()
-                    ? _targetVeh.Model.Hash : 0,
-                SourceSeat = _sourceSeatIdx,
-                TargetSeat = _targetSeatIdx,
-                LandedSeat = landedSeat,
-                ObservedWrongSeat = _observedWrongSeat,
-                ElapsedMs = _executeStart > 0
-                    ? Math.Max(0, Game.GameTime - _executeStart) : 0,
-                FinalPhase = _executionPhase.ToString(),
-                PhaseTrace = string.Join(" > ", _phaseTrace),
-                UsedExternalRoute = _usesExternalRoute,
-                RouteValidated = _externalRouteValidated,
-                RouteResult = _externalRouteResult,
-                RouteCandidate = _routePlanCandidateIndex,
-                WaypointCount = _plannedExternalWaypoints.Count,
-            };
-            try
-            {
-                HarnessSwitchFinished?.Invoke(result);
-            }
-            catch (Exception ex)
-            {
-                ClientLog.Error("SeatSelector", "seat_lab_result_callback_failed", ex);
-            }
-        }
-
         private void TickExternalApproach(Ped player, int phaseElapsed)
         {
             float distance = player.Position.DistanceTo(_externalApproachPoint);
@@ -973,7 +870,6 @@ namespace ALLIN1
 
         private void HandleWrongSeatEntry(Ped player)
         {
-            _observedWrongSeat = GetPlayerSeatIndex(player);
             _pendingFailureReason = "entered_wrong_external_seat";
             if (GetPlayerSeatIndex(player) == _sourceSeatIdx)
                 CompleteSourceSeatRollback();
@@ -1039,11 +935,6 @@ namespace ALLIN1
                 });
             GTA.UI.Screen.ShowSubtitle(
                 "~y~External route failed; previous seat restored.", 2500);
-            PublishHarnessResult(
-                Game.Player.Character,
-                false,
-                "rolled_back",
-                _pendingFailureReason ?? "external_route_failed");
             Reset();
         }
 
@@ -1419,7 +1310,6 @@ namespace ALLIN1
         {
             _executionPhase = phase;
             _phaseStart = Game.GameTime;
-            _phaseTrace.Add($"{phase}:{route}");
             ClientLog.Info("SeatSelector", "seat_switch_phase",
                 new Dictionary<string, object>
                 {
@@ -1450,7 +1340,6 @@ namespace ALLIN1
                 });
             if (reason.EndsWith("timeout", StringComparison.OrdinalIgnoreCase))
                 GTA.UI.Screen.ShowSubtitle("~y~Seat switch timed out safely.", 2000);
-            PublishHarnessResult(player, false, "cancelled", reason);
             Reset();
         }
 
@@ -1487,8 +1376,10 @@ namespace ALLIN1
             if (_targetVeh == null || !_targetVeh.Exists())
                 return;
 
-            int maxPass = Function.Call<int>(
+            int nativeMaxPass = Function.Call<int>(
                 Hash.GET_VEHICLE_MAX_NUMBER_OF_PASSENGERS, _targetVeh.Handle);
+            int maxPass = GetSeatEnumerationPassengerLimit(
+                _targetVeh.Model.Hash, nativeMaxPass);
 
             for (int idx = -1; idx < maxPass; idx++)
             {
@@ -1548,13 +1439,25 @@ namespace ALLIN1
             }
         }
 
+        internal static int GetSeatEnumerationPassengerLimit(
+            int modelHash, int nativeMaxPassengers)
+        {
+            VehicleSeatLayoutRecord metadata =
+                VehicleSeatLayoutCatalog.Get(modelHash);
+            int metadataPassengers = metadata == null
+                ? 0 : Math.Max(0, metadata.SeatCount - 1);
+            return Math.Max(nativeMaxPassengers, metadataPassengers);
+        }
+
         private int GetPlayerSeatIndex(Ped player)
         {
             if (_targetVeh == null || !player.IsInVehicle())
                 return -2; // not in vehicle
 
-            int maxPass = Function.Call<int>(
+            int nativeMaxPass = Function.Call<int>(
                 Hash.GET_VEHICLE_MAX_NUMBER_OF_PASSENGERS, _targetVeh.Handle);
+            int maxPass = GetSeatEnumerationPassengerLimit(
+                _targetVeh.Model.Hash, nativeMaxPass);
 
             for (int idx = -1; idx < maxPass; idx++)
             {
@@ -1705,12 +1608,10 @@ namespace ALLIN1
             _externalRouteLastProgress = 0;
             _externalRouteResult = NAV_ROUTE_TASK_NOT_FOUND;
             _pendingFailureReason = null;
-            _observedWrongSeat = -2;
             _plannedExternalWaypoints.Clear();
             _externalRouteWaypointIndex = 0;
             _hasPreplannedExternalRoute = false;
             _routePlanCandidates.Clear();
-            _phaseTrace.Clear();
             _routePlanCandidateIndex = 0;
             _routePlanSegmentIndex = 0;
             _routeShapeTest = default(ShapeTestHandle);
@@ -1728,7 +1629,6 @@ namespace ALLIN1
             _nativeContextEntryActive = false;
             _playerInVehicle = false;
             _executionPhase = ExecutionPhase.None;
-            _harnessOwned = false;
         }
 
         private void LogError(string context, Exception ex)

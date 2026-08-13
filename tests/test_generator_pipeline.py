@@ -68,6 +68,8 @@ def test_weapon_generator_and_file(tmp_path):
     source = weaponlist.generate(weapons, {"WEAPON_TEST": 99})
     assert 'Test \\"Gun\\"' in source
     assert '{ "WEAPON_TEST", 99 }' in source
+    assert 'PurchaseQuantities' in source
+    assert '{ "WEAPON_TEST", 1 }' in source
     assert '{ "WEAPON_TEST", 2 }' in source
     output = tmp_path / "WeaponList.cs"
     assert weaponlist.generate_file(weapons, prices, output) == 1

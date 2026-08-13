@@ -143,17 +143,31 @@ namespace ALLIN1
         // Rockstar's native Auto Shop ten-car arrangement.
         internal static readonly ParkingSlot[] DavisGarageSlots =
         {
-            new ParkingSlot(-1341.5f, 156.0f, -99.6944f, 160f),
-            new ParkingSlot(-1337.5f, 156.0f, -99.6944f, 160f),
-            new ParkingSlot(-1333.5f, 156.0f, -99.6944f, 160f),
-            new ParkingSlot(-1329.5f, 156.0f, -99.6944f, 160f),
-            new ParkingSlot(-1326.0f, 149.0f, -99.6944f, 90f),
-            new ParkingSlot(-1325.5f, 142.0f, -99.6944f, 20f),
-            new ParkingSlot(-1329.5f, 142.0f, -99.6944f, 20f),
-            new ParkingSlot(-1333.5f, 142.0f, -99.6944f, 20f),
-            new ParkingSlot(-1337.5f, 142.0f, -99.6944f, 20f),
-            new ParkingSlot(-1341.5f, 142.0f, -99.6944f, 20f),
+            new ParkingSlot(-1341.5f, 156.0f, -99.6944f, 160f, -100.1944f),
+            new ParkingSlot(-1337.5f, 156.0f, -99.6944f, 160f, -100.1944f),
+            new ParkingSlot(-1333.5f, 156.0f, -99.6944f, 160f, -100.1944f),
+            new ParkingSlot(-1329.5f, 156.0f, -99.6944f, 160f, -100.1944f),
+            new ParkingSlot(-1326.0f, 149.0f, -99.6944f, 90f, -100.1944f),
+            new ParkingSlot(-1325.5f, 142.0f, -99.6944f, 20f, -100.1944f),
+            new ParkingSlot(-1329.5f, 142.0f, -99.6944f, 20f, -100.1944f),
+            new ParkingSlot(-1333.5f, 142.0f, -99.6944f, 20f, -100.1944f),
+            new ParkingSlot(-1337.5f, 142.0f, -99.6944f, 20f, -100.1944f),
+            new ParkingSlot(-1341.5f, 142.0f, -99.6944f, 20f, -100.1944f),
         };
+
+        private static ParkingSlot ResolveDavisGarageSlot(
+            int slotIndex, string modelName, int modelHash)
+        {
+            ParkingSlot slot = DavisGarageSlots[slotIndex];
+            if (GetGarageSizeTier(modelName, modelHash) > 0) return slot;
+
+            // Rockstar moves ordinary cars toward the center of each bay;
+            // the published roots remain unchanged for long/wide vehicles.
+            if (slotIndex <= 3) slot.Position.Y += 0.75f;
+            else if (slotIndex == 4) slot.Position.X += 0.75f;
+            else slot.Position.Y -= 0.75f;
+            return slot;
+        }
 
         private static readonly string DAVIS_SAVE_PATH =
             Path.Combine(SCRIPTS_DIR, "ALLIN1_davis_garage.json");
@@ -319,7 +333,8 @@ namespace ALLIN1
         internal static void OnDavisGarageTick()
         {
             if (!_davisInitialized || _transitionInProgress) return;
-            if (_isPlayerInGarage || _isPlayerInFloorGarage) return;
+            if (_isPlayerInGarage || _isPlayerInFloorGarage ||
+                _isPlayerInGarmentGarage) return;
             if (_davisExitCooldownFrames > 0)
             {
                 _davisExitCooldownFrames--;
@@ -370,10 +385,18 @@ namespace ALLIN1
                         markerColor);
                     if (player.Position.DistanceTo(DAVIS_PED_ENTRANCE_POS) < ENTER_RADIUS)
                     {
-                        GTA.UI.Screen.ShowHelpTextThisFrame(
-                            "Press ~INPUT_CONTEXT~ to enter the Davis Auto Shop.");
-                        if (Game.IsControlJustPressed(GTA.Control.Context))
-                            EnterDavisGarage();
+                        GarageEntryDenial denial = EvaluateGarageEntry(
+                            DAVIS_GARAGE);
+                        if (denial != GarageEntryDenial.None)
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                GarageEntryMessage(DAVIS_GARAGE, denial));
+                        else
+                        {
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                "Press ~INPUT_CONTEXT~ to enter the Davis Auto Shop.");
+                            if (Game.IsControlJustPressed(GTA.Control.Context))
+                                EnterDavisGarage();
+                        }
                     }
                 }
                 return;
@@ -647,7 +670,8 @@ namespace ALLIN1
             if (stored.Slot < 0 || stored.Slot >= DAVIS_SLOT_COUNT) return;
             try
             {
-                ParkingSlot slot = DavisGarageSlots[stored.Slot];
+                ParkingSlot slot = ResolveDavisGarageSlot(
+                    stored.Slot, stored.Model, stored.ModelHash);
                 Model model = GetStoredModel(stored);
                 model.Request(10000);
                 if (!model.IsLoaded)
@@ -662,13 +686,8 @@ namespace ALLIN1
                 ApplyVehicleState(vehicle, stored);
                 vehicle.IsPersistent = true;
                 vehicle.IsEngineRunning = false;
-                float deltaZ = VehicleList.GetSpawnDeltaZ(stored.Model);
-                Function.Call(Hash.SET_ENTITY_COORDS, vehicle,
-                    slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
-                    false, false, false, true);
-                Function.Call(Hash.SET_ENTITY_HEADING, vehicle, slot.Heading);
-                CenterVehicleInParkingSpace(
-                    vehicle, slot, deltaZ, stored.Model, "Davis");
+                PlaceVehicleInParkingSpace(
+                    vehicle, slot, stored.Model, "Davis");
                 vehicle.IsPositionFrozen = true;
                 _davisHandles[stored.Slot] = vehicle;
             }

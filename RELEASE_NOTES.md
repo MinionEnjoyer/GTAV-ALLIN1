@@ -1,3 +1,32 @@
+# GTA V ALLIN1 0.4.2
+
+Version 0.4.2 completes the garage-grounding survey, retires the last temporary runtime
+laboratory, and tightens GBAY quantity purchasing for stackable weapons.
+
+## Production tool cleanup
+
+- Promoted the completed 827-model grounding run into the packaged catalog: 821 stable measured
+  offsets, six intentionally unsupported standalone models, and no unresolved outliers.
+- Retired the F11 grounding laboratory, its mutable runtime writer, and its outlier checkpoint.
+  F10 World Vector is now the only developer tool compiled into the public client.
+- Removed the dormant Seat Lab programmatic harness and the retired preview-capture key alias;
+  production seat switching retains its recovery logic and structured support logging without
+  exposing developer-only entry points.
+- Install and repair preserve valid measured offsets, merge the completed catalog, and remove old
+  grounding-lab checkpoint files.
+
+## Storefront and qualification
+
+- GBAY throwable listings now show unit price × quantity and charge the actual stack granted;
+  for example, 25 Sticky Bombs at $600 each cost $15,000.
+- Moving DLC traffic remains paired with its driver while managed. Mission, cutscene, interior,
+  wanted-level, and character-switch transitions purge off-screen managed traffic, and any moving
+  vehicle that loses its driver is removed instead of coasting through the world empty.
+- Bumped the desktop launcher and in-game client together to 0.4.2 and expanded release contracts
+  to prevent retired tools from returning to public builds.
+
+---
+
 # GTA V ALLIN1 0.4.1
 
 Version 0.4.1 expands the animation-only seat selector into a metadata-backed system covering the
@@ -17,11 +46,14 @@ and mounted-weapon layouts.
 - Corrected the Caracara, Technical, Turreted Limo, Barrage, Insurgent, APC, Khanjali, Valkyrie,
   and other high-risk layouts. Armored Boxville and Savage passenger seats are no longer described
   as turrets.
-- Seat Lab now records Rockstar metadata count, GTA runtime count, ALLIN1 selectable count, access
-  geometry, and mismatch status separately. Shift+F11 retains the directed high-risk fleet suite.
+- Retired the completed runtime Seat Lab after promoting its findings into the generated metadata
+  catalog and selector regression tests. F11 now runs only unresolved vehicle-grounding outliers;
+  the old F12 fleet and focused grounding modes are retired.
 
 ## Catalog and qualification repairs
 
+- GBAY now prices throwable purchases and refills by the actual quantity granted. Listing cards
+  show the unit-price multiplication before purchase instead of charging one unit for a full stack.
 - Corrected the Grotti Veleno GT model identifier from the invalid `veleno` to Rockstar's
   `velenogt` across the storefront, price data, preview queue, web catalog, and generated client.
 - Expanded repository contracts and runtime policy tests. The qualified release passes 349 Python

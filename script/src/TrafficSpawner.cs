@@ -80,7 +80,8 @@ namespace ALLIN1
             AppDomain.CurrentDomain.BaseDirectory, "ALLIN1.log");
 
         // --- State ---
-        private readonly List<Vehicle> _spawned = new List<Vehicle>();
+        private readonly List<ManagedTraffic> _spawned =
+            new List<ManagedTraffic>();
         private readonly List<string> _validModels = new List<string>();
         private readonly Dictionary<VehicleClass, List<string>> _classPools =
             new Dictionary<VehicleClass, List<string>>();
@@ -93,6 +94,27 @@ namespace ALLIN1
         private bool _initialized;
         private bool _enabled = true;
         private string _lastSuppressionReason = "";
+
+        private sealed class AmbientOccupant
+        {
+            internal Ped Ped;
+            internal int SourceSeat;
+            internal int TargetSeat;
+        }
+
+        private sealed class ManagedTraffic
+        {
+            internal Vehicle Vehicle;
+            internal Ped Driver;
+            internal bool RequiresDriver;
+        }
+
+        internal enum ManagedTrafficAction
+        {
+            Keep,
+            Release,
+            Delete,
+        }
 
         public TrafficSpawner()
         {
@@ -164,11 +186,6 @@ namespace ALLIN1
                 PauseReason = "disabled in settings";
                 return;
             }
-            if (SeatTestTool.IsActive)
-            {
-                PauseReason = "seat laboratory";
-                return;
-            }
             if (ClientWatchdog.SafeMode)
             {
                 PauseReason = ClientWatchdog.SafeModeReason;
@@ -188,6 +205,12 @@ namespace ALLIN1
                     ClientLog.Info("Traffic", "spawning_suppressed",
                         new Dictionary<string, object> { { "reason", suppression } });
                 _lastSuppressionReason = suppression;
+
+                // Suppression must stop existing ALLIN1 traffic as well as
+                // new spawns. Previously this early return skipped cleanup,
+                // allowing GTA to reap a released driver while its vehicle
+                // survived into a mission as an empty moving car.
+                Cleanup(ShouldPurgeManagedTraffic(suppression));
                 return;
             }
             _lastSuppressionReason = "";
@@ -211,7 +234,7 @@ namespace ALLIN1
             IsThrottled = _throttled;
             if (now - _lastCleanupTime >= 1000)
             {
-                Cleanup();
+                Cleanup(false);
                 _lastCleanupTime = now;
             }
 
@@ -252,6 +275,15 @@ namespace ALLIN1
             if (Function.Call<bool>(Hash.IS_PLAYER_SWITCH_IN_PROGRESS)) return "player_switch";
             if (Function.Call<int>(Hash.GET_INTERIOR_FROM_ENTITY, player.Handle) != 0) return "interior";
             return "";
+        }
+
+        internal static bool ShouldPurgeManagedTraffic(string suppression)
+        {
+            return suppression == "mission_active"
+                || suppression == "cutscene_active"
+                || suppression == "player_switch"
+                || suppression == "interior"
+                || suppression == "wanted_level";
         }
 
         // ------------------------------------------------------------------ //
@@ -341,7 +373,7 @@ namespace ALLIN1
             // before attempting ped creation — may fix intermittent failures.
             Script.Wait(0);
 
-            veh.IsEngineRunning = true;
+            ReleaseVehiclePhysics(veh, true);
 
             Log($"SpawnDriven: vehicle={modelName} handle={veh.Handle}");
 
@@ -468,16 +500,17 @@ namespace ALLIN1
             Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS,
                 driver.Handle, true);
 
-            // Assign driving task
-            driver.Task.CruiseWithVehicle(veh, 20f, DrivingStyle.Normal);
+            ConfigureAmbientDriver(driver, veh, 20f, keepPersistent: true);
 
-            // Ensure the driving task survives MarkAsNoLongerNeeded
-            Function.Call(Hash.SET_PED_KEEP_TASK, driver.Handle, true);
-
-            // Release to ambient traffic AFTER everything is configured
-            driver.MarkAsNoLongerNeeded();
-            veh.MarkAsNoLongerNeeded();
-            _spawned.Add(veh);
+            // Keep the pair together while ALLIN1 owns it. Releasing the ped
+            // independently allowed GTA cleanup to remove the driver while
+            // MPBitset kept the vehicle alive.
+            _spawned.Add(new ManagedTraffic
+            {
+                Vehicle = veh,
+                Driver = driver,
+                RequiresDriver = true,
+            });
             return true;
         }
 
@@ -596,18 +629,22 @@ namespace ALLIN1
             float heading = old.Heading;
             float speed = old.Speed;
 
-            Ped driver = old.Driver;
-            bool hadDriver = driver != null && driver.Exists();
-
-            Ped[] passengers = null;
-            try { passengers = old.Passengers; }
+            List<AmbientOccupant> occupants;
+            try { occupants = CaptureAmbientOccupants(old); }
             catch (Exception ex)
             {
                 ClientLog.Warn("Traffic", "passenger_capture_failed",
                     new Dictionary<string, object> { { "exception", ex.Message } });
+                return;
             }
 
-            Log($"  ReplaceVehicle: hadDriver={hadDriver} speed={speed:F1} passengers={passengers?.Length ?? 0}");
+            AmbientOccupant driverOccupant = occupants.Find(
+                occupant => occupant.SourceSeat == -1);
+            bool hadDriver = driverOccupant != null;
+            int passengerCount = Math.Max(
+                0, occupants.Count - (hadDriver ? 1 : 0));
+
+            Log($"  ReplaceVehicle: hadDriver={hadDriver} speed={speed:F1} passengers={passengerCount}");
 
             // Stage and validate the replacement before touching the original.
             // Creating it above the source vehicle keeps both entities from
@@ -647,21 +684,33 @@ namespace ALLIN1
                 return;
             }
 
-            // Make driver persistent before deleting vehicle so they don't
-            // despawn when their vehicle is removed.
-            if (hadDriver)
-                driver.IsPersistent = true;
-
-            if (passengers != null)
+            // Move occupants to the staged replacement before deleting their
+            // source vehicle. Deleting an ambient vehicle can destroy its peds
+            // even after IsPersistent is set, which used to turn moving traffic
+            // into empty, stationary replacement cars.
+            bool occupantsTransferred =
+                TryAssignReplacementSeats(occupants, replacement)
+                && TryTransferOccupants(occupants, replacement);
+            bool driverTransferred = !hadDriver || (occupantsTransferred
+                && IsPedInVehicleSeat(driverOccupant.Ped, replacement, -1));
+            if (!occupantsTransferred
+                || !CanCommitReplacement(hadDriver, driverTransferred))
             {
-                foreach (Ped passenger in passengers)
-                {
-                    if (passenger != null && passenger.Exists())
-                        passenger.IsPersistent = true;
-                }
+                ClientLog.Warn("Traffic", "replacement_occupant_transfer_failed",
+                    new Dictionary<string, object>
+                    {
+                        { "model", newModelName },
+                        { "source_handle", old.Handle },
+                        { "had_driver", hadDriver },
+                        { "occupants", occupants.Count }
+                    });
+                RestoreOccupantsToSource(occupants, old);
+                if (replacement.Exists()) replacement.Delete();
+                RestoreSourceTraffic(old, driverOccupant?.Ped, speed);
+                return;
             }
 
-            // Remove old vehicle
+            // Remove the now-empty source vehicle.
             old.IsPersistent = true;
             old.Delete();
 
@@ -673,124 +722,223 @@ namespace ALLIN1
                         { "model", newModelName },
                         { "source_handle", old.Handle }
                     });
-                if (replacement.Exists())
-                    replacement.Delete();
-                if (hadDriver && driver.Exists())
-                    driver.MarkAsNoLongerNeeded();
-                if (passengers != null)
-                {
-                    foreach (Ped passenger in passengers)
-                    {
-                        if (passenger != null && passenger.Exists())
-                            passenger.MarkAsNoLongerNeeded();
-                    }
-                }
+                RestoreOccupantsToSource(occupants, old);
+                if (replacement.Exists()) replacement.Delete();
+                RestoreSourceTraffic(old, driverOccupant?.Ped, speed);
                 return;
             }
 
-            // Revalidate the staged entity before committing occupant transfer.
+            // Revalidate the staged entity before committing it to traffic.
             if (!replacement.Exists())
             {
                 ClientLog.Warn("Traffic", "replacement_lost_after_commit",
                     new Dictionary<string, object> { { "model", newModelName } });
                 // Vehicle creation failed — clean up orphaned driver
-                if (hadDriver && driver.Exists())
-                    driver.MarkAsNoLongerNeeded();
-                if (passengers != null)
-                    foreach (Ped passenger in passengers)
-                        if (passenger != null && passenger.Exists())
-                            passenger.MarkAsNoLongerNeeded();
+                foreach (AmbientOccupant occupant in occupants)
+                    if (occupant.Ped != null && occupant.Ped.Exists())
+                        occupant.Ped.MarkAsNoLongerNeeded();
                 return;
             }
 
-            replacement.IsVisible = true;
-            replacement.IsCollisionEnabled = true;
-            replacement.IsPositionFrozen = false;
+            ReleaseVehiclePhysics(replacement, hadDriver);
 
-            if (hadDriver && driver.Exists())
+            if (hadDriver && driverOccupant.Ped.Exists())
             {
-                // Transfer driver
-                driver.Task.WarpIntoVehicle(replacement, VehicleSeat.Driver);
-
-                // Verify the warp actually worked
-                Script.Wait(0);
-                bool driverInSeat = !replacement.IsSeatFree(VehicleSeat.Driver);
-                Log($"  ReplaceVehicle: driver warp driverInSeat={driverInSeat}");
-
-                if (!driverInSeat)
-                {
-                    // Warp failed — create a new driver instead
-                    Log($"  ReplaceVehicle: warp failed, creating fallback driver");
-                    driver.IsPersistent = true;
-                    driver.Delete();
-
-                    Ped newDriver = null;
-                    try
-                    {
-                        newDriver = replacement.CreateRandomPedOnSeat(VehicleSeat.Driver);
-                    }
-                    catch { }
-
-                    if (newDriver != null && newDriver.Exists())
-                    {
-                        driver = newDriver;
-                        driverInSeat = true;
-                        Log($"  ReplaceVehicle: fallback driver created OK");
-                    }
-                    else
-                    {
-                        Log($"  ReplaceVehicle: fallback driver FAILED — car will be empty");
-                    }
-                }
-
-                if (driverInSeat)
-                {
-                    if (speed > 1f)
-                    {
-                        replacement.Speed = speed;
-                        Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER,
-                            driver.Handle, replacement.Handle,
-                            speed, 786603);
-                    }
-                    else
-                    {
-                        replacement.IsEngineRunning = false;
-                    }
-
-                    Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS,
-                        driver.Handle, true);
-                    Function.Call(Hash.SET_PED_KEEP_TASK, driver.Handle, true);
-                    driver.MarkAsNoLongerNeeded();
-                }
-                else
-                {
-                    replacement.IsEngineRunning = false;
-                }
-
-                // Transfer passengers
-                if (passengers != null)
-                {
-                    for (int i = 0; i < passengers.Length; i++)
-                    {
-                        if (passengers[i] != null && passengers[i].Exists())
-                        {
-                            passengers[i].Task.WarpIntoVehicle(
-                                replacement, (VehicleSeat)(i + 1));
-                            passengers[i].MarkAsNoLongerNeeded();
-                        }
-                    }
-                }
+                // A source driver still represents moving traffic even when
+                // captured at 0 mph at a light. Always restore a driving task.
+                ConfigureAmbientDriver(
+                    driverOccupant.Ped, replacement, speed,
+                    keepPersistent: true);
+                Log($"  ReplaceVehicle: driven speed={speed:F1} "
+                    + $"cruise={GetTrafficCruiseSpeed(speed):F1}");
             }
             else
             {
-                // Parked — no driver
-                Log($"  ReplaceVehicle: parked (no driver)");
-                replacement.IsEngineRunning = false;
+                Log("  ReplaceVehicle: parked (source had no driver)");
             }
 
-            replacement.MarkAsNoLongerNeeded();
-            _spawned.Add(replacement);
+            foreach (AmbientOccupant occupant in occupants)
+            {
+                if (occupant.SourceSeat != -1
+                    && occupant.Ped != null && occupant.Ped.Exists())
+                    occupant.Ped.MarkAsNoLongerNeeded();
+            }
+
+            replacement.IsPersistent = true;
+            _spawned.Add(new ManagedTraffic
+            {
+                Vehicle = replacement,
+                Driver = hadDriver ? driverOccupant.Ped : null,
+                RequiresDriver = hadDriver,
+            });
             _replacedHandles.Add(replacement.Handle);
+        }
+
+        private static List<AmbientOccupant> CaptureAmbientOccupants(
+            Vehicle vehicle)
+        {
+            var occupants = new List<AmbientOccupant>();
+            int maxPassengers = Function.Call<int>(
+                Hash.GET_VEHICLE_MAX_NUMBER_OF_PASSENGERS, vehicle.Handle);
+            for (int seat = -1; seat < maxPassengers; seat++)
+            {
+                Ped ped = vehicle.GetPedOnSeat((VehicleSeat)seat);
+                if (ped != null && ped.Exists())
+                {
+                    occupants.Add(new AmbientOccupant
+                    {
+                        Ped = ped,
+                        SourceSeat = seat,
+                        TargetSeat = int.MinValue,
+                    });
+                }
+            }
+            return occupants;
+        }
+
+        private static bool TryAssignReplacementSeats(
+            List<AmbientOccupant> occupants, Vehicle replacement)
+        {
+            int maxPassengers = Function.Call<int>(
+                Hash.GET_VEHICLE_MAX_NUMBER_OF_PASSENGERS,
+                replacement.Handle);
+            var used = new HashSet<int>();
+            foreach (AmbientOccupant occupant in occupants)
+            {
+                if (occupant.SourceSeat == -1)
+                {
+                    occupant.TargetSeat = -1;
+                    used.Add(-1);
+                    continue;
+                }
+
+                int target = occupant.SourceSeat >= 0
+                    && occupant.SourceSeat < maxPassengers
+                    && !used.Contains(occupant.SourceSeat)
+                    ? occupant.SourceSeat : -2;
+                if (target == -2)
+                {
+                    for (int seat = 0; seat < maxPassengers; seat++)
+                    {
+                        if (used.Contains(seat)) continue;
+                        target = seat;
+                        break;
+                    }
+                }
+                if (target == -2)
+                    return false;
+                occupant.TargetSeat = target;
+                used.Add(target);
+            }
+            return true;
+        }
+
+        private static bool TryTransferOccupants(
+            List<AmbientOccupant> occupants, Vehicle replacement)
+        {
+            foreach (AmbientOccupant occupant in occupants)
+            {
+                if (occupant.Ped == null || !occupant.Ped.Exists())
+                    return false;
+                occupant.Ped.IsPersistent = true;
+                Function.Call(Hash.SET_PED_INTO_VEHICLE,
+                    occupant.Ped.Handle, replacement.Handle,
+                    occupant.TargetSeat);
+            }
+            Script.Wait(0);
+            foreach (AmbientOccupant occupant in occupants)
+            {
+                if (!IsPedInVehicleSeat(
+                    occupant.Ped, replacement, occupant.TargetSeat))
+                    return false;
+            }
+            return true;
+        }
+
+        private static bool IsPedInVehicleSeat(
+            Ped ped, Vehicle vehicle, int seat)
+        {
+            if (ped == null || !ped.Exists()
+                || vehicle == null || !vehicle.Exists())
+                return false;
+            Ped occupant = vehicle.GetPedOnSeat((VehicleSeat)seat);
+            return occupant != null && occupant.Exists()
+                && occupant.Handle == ped.Handle;
+        }
+
+        private static void RestoreOccupantsToSource(
+            List<AmbientOccupant> occupants, Vehicle source)
+        {
+            if (source == null || !source.Exists()) return;
+            foreach (AmbientOccupant occupant in occupants)
+            {
+                if (occupant.Ped == null || !occupant.Ped.Exists()) continue;
+                Function.Call(Hash.SET_PED_INTO_VEHICLE,
+                    occupant.Ped.Handle, source.Handle, occupant.SourceSeat);
+            }
+            Script.Wait(0);
+        }
+
+        private static void RestoreSourceTraffic(
+            Vehicle source, Ped driver, float capturedSpeed)
+        {
+            if (source == null || !source.Exists()) return;
+            if (driver != null && driver.Exists()
+                && IsPedInVehicleSeat(driver, source, -1))
+                ConfigureAmbientDriver(driver, source, capturedSpeed);
+            source.MarkAsNoLongerNeeded();
+        }
+
+        private static void ReleaseVehiclePhysics(
+            Vehicle vehicle, bool engineOn)
+        {
+            if (vehicle == null || !vehicle.Exists()) return;
+            vehicle.IsVisible = true;
+            vehicle.IsCollisionEnabled = true;
+            vehicle.IsPositionFrozen = false;
+            Function.Call(Hash.SET_ENTITY_DYNAMIC, vehicle.Handle, true);
+            Function.Call(Hash.ACTIVATE_PHYSICS, vehicle.Handle);
+            Function.Call(Hash.SET_VEHICLE_HANDBRAKE, vehicle.Handle, false);
+            Function.Call(Hash.SET_VEHICLE_ENGINE_ON,
+                vehicle.Handle, engineOn, true, false);
+        }
+
+        private static void ConfigureAmbientDriver(
+            Ped driver, Vehicle vehicle, float capturedSpeed,
+            bool keepPersistent = false)
+        {
+            if (driver == null || !driver.Exists()
+                || vehicle == null || !vehicle.Exists()) return;
+            if (keepPersistent)
+            {
+                driver.IsPersistent = true;
+                vehicle.IsPersistent = true;
+            }
+            ReleaseVehiclePhysics(vehicle, true);
+            if (capturedSpeed > 1f)
+                vehicle.Speed = capturedSpeed;
+            Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER,
+                driver.Handle, vehicle.Handle,
+                GetTrafficCruiseSpeed(capturedSpeed), 786603);
+            Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS,
+                driver.Handle, true);
+            Function.Call(Hash.SET_PED_KEEP_TASK, driver.Handle, true);
+            if (!keepPersistent)
+                driver.MarkAsNoLongerNeeded();
+        }
+
+        internal static float GetTrafficCruiseSpeed(float capturedSpeed)
+        {
+            if (float.IsNaN(capturedSpeed) || float.IsInfinity(capturedSpeed)
+                || capturedSpeed <= 1f)
+                return 20f;
+            return Math.Max(12f, Math.Min(30f, capturedSpeed));
+        }
+
+        internal static bool CanCommitReplacement(
+            bool sourceHadDriver, bool driverTransferred)
+        {
+            return !sourceHadDriver || driverTransferred;
         }
 
         // ------------------------------------------------------------------ //
@@ -893,19 +1041,103 @@ namespace ALLIN1
         //  Cleanup                                                            //
         // ------------------------------------------------------------------ //
 
-        private void Cleanup()
+        internal static ManagedTrafficAction DecideManagedTrafficAction(
+            bool vehicleExists, bool requiresDriver, bool driverExists,
+            bool driverInSeat, bool claimedByPlayer, bool purge,
+            bool vehicleOnScreen, bool tooFar)
         {
-            Vector3 playerPos = Game.Player.Character.Position;
+            if (!vehicleExists) return ManagedTrafficAction.Release;
+            if (claimedByPlayer) return ManagedTrafficAction.Release;
+            if (requiresDriver && (!driverExists || !driverInSeat))
+                return ManagedTrafficAction.Delete;
+            if (purge)
+                return vehicleOnScreen
+                    ? ManagedTrafficAction.Keep
+                    : ManagedTrafficAction.Delete;
+            if (tooFar) return ManagedTrafficAction.Release;
+            return ManagedTrafficAction.Keep;
+        }
+
+        private void Cleanup(bool purge)
+        {
+            Ped player = Game.Player.Character;
+            bool playerAvailable = player != null && player.Exists();
+            Vector3 playerPos = playerAvailable ? player.Position : Vector3.Zero;
+            Vehicle currentVehicle = playerAvailable ? player.CurrentVehicle : null;
+            Vehicle lastVehicle = playerAvailable ? player.LastVehicle : null;
 
             for (int i = _spawned.Count - 1; i >= 0; i--)
             {
-                Vehicle v = _spawned[i];
+                ManagedTraffic managed = _spawned[i];
+                Vehicle vehicle = managed?.Vehicle;
+                Ped driver = managed?.Driver;
+                bool vehicleExists = vehicle != null && vehicle.Exists();
+                bool driverExists = driver != null && driver.Exists();
+                bool driverInSeat = vehicleExists && driverExists
+                    && IsPedInVehicleSeat(driver, vehicle, -1);
+                bool claimedByPlayer = vehicleExists
+                    && ((currentVehicle != null
+                            && currentVehicle.Handle == vehicle.Handle)
+                        || (lastVehicle != null
+                            && lastVehicle.Handle == vehicle.Handle));
+                bool vehicleOnScreen = vehicleExists && vehicle.IsOnScreen;
+                bool tooFar = playerAvailable && vehicleExists
+                    && vehicle.Position.DistanceTo(playerPos) > _cleanupDist;
+                ManagedTrafficAction action = DecideManagedTrafficAction(
+                    vehicleExists, managed != null && managed.RequiresDriver,
+                    driverExists, driverInSeat, claimedByPlayer, purge,
+                    vehicleOnScreen, tooFar);
 
-                if (v == null || !v.Exists()
-                    || v.Position.DistanceTo(playerPos) > _cleanupDist)
+                if (action == ManagedTrafficAction.Keep)
+                    continue;
+
+                if (action == ManagedTrafficAction.Delete)
                 {
-                    _spawned.RemoveAt(i);
+                    ClientLog.Warn("Traffic", "managed_driver_lost",
+                        new Dictionary<string, object>
+                        {
+                            { "vehicle_handle", vehicleExists ? vehicle.Handle : 0 },
+                            { "driver_exists", driverExists },
+                            { "driver_in_seat", driverInSeat },
+                        });
+                    DeleteManagedTraffic(managed);
                 }
+                else
+                    ReleaseManagedTraffic(managed);
+                _spawned.RemoveAt(i);
+            }
+            ManagedVehicleCount = _spawned.Count;
+        }
+
+        private static void ReleaseManagedTraffic(ManagedTraffic managed)
+        {
+            if (managed == null) return;
+            Vehicle vehicle = managed.Vehicle;
+            Ped driver = managed.Driver;
+            if (vehicle != null && vehicle.Exists())
+            {
+                Function.Call(Hash.DECOR_REMOVE, vehicle.Handle, "MPBitset");
+                vehicle.MarkAsNoLongerNeeded();
+            }
+            if (driver != null && driver.Exists())
+                driver.MarkAsNoLongerNeeded();
+        }
+
+        private static void DeleteManagedTraffic(ManagedTraffic managed)
+        {
+            if (managed == null) return;
+            Vehicle vehicle = managed.Vehicle;
+            Ped driver = managed.Driver;
+            if (driver != null && driver.Exists())
+            {
+                driver.IsPersistent = true;
+                driver.Delete();
+            }
+            if (vehicle != null && vehicle.Exists())
+            {
+                vehicle.IsPersistent = true;
+                Function.Call(Hash.DECOR_REMOVE, vehicle.Handle, "MPBitset");
+                vehicle.Delete();
             }
         }
     }

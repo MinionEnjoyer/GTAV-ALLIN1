@@ -42,7 +42,11 @@ namespace ALLIN1
         internal string WeaponName;
         internal string DisplayName;
         internal string Category;
+        internal int UnitPrice;
         internal int Price;
+        internal int PurchaseQuantity;
+        internal bool QuantityPriced;
+        internal bool PurchaseAvailable;
         internal bool Owned;
     }
 
@@ -575,7 +579,8 @@ namespace ALLIN1
                     _state = BrowserState.GarageView;
                     _garageVehicleIdx = 0;
                     _garageLocationIndex = GarageManager.IsPlayerInFloorGarage ? 1
-                        : GarageManager.IsPlayerInDavisGarage ? 2 : 0;
+                        : GarageManager.IsPlayerInDavisGarage ? 2
+                        : GarageManager.IsPlayerInGarmentGarage ? 3 : 0;
                 }
                 else if (activateIdx == 4)
                 {
@@ -660,6 +665,7 @@ namespace ALLIN1
                 "Garage location: " + (GarageManager.IsPlayerInFloorGarage
                     ? "three-floor garage"
                     : GarageManager.IsPlayerInDavisGarage ? "Davis Auto Shop"
+                    : GarageManager.IsPlayerInGarmentGarage ? "Garment Factory"
                     : GarageManager.IsInGarage ? "Eclipse Towers" : "outside"),
                 "Traffic: " + TrafficSpawner.ManagedVehicleCount + " managed, " +
                     Math.Round(TrafficSpawner.SmoothedFps) + " FPS" +
@@ -1185,7 +1191,8 @@ namespace ALLIN1
 
             _pendingModel = model;
             _pendingPrice = price;
-            _deliveryGarageIndex = GarageManager.IsPlayerInDavisGarage ? 1 : 0;
+            _deliveryGarageIndex = GarageManager.IsPlayerInDavisGarage ? 1
+                : GarageManager.IsPlayerInGarmentGarage ? 2 : 0;
 
             GbayRenderer.PlaySelect();
             _state = BrowserState.DeliveryConfirm;
@@ -1228,7 +1235,9 @@ namespace ALLIN1
                 input.CategoryNext || input.MouseClick &&
                 (garageLeftHover || garageRightHover)))
             {
-                _deliveryGarageIndex = 1 - _deliveryGarageIndex;
+                int direction = input.DirX != 0 ? input.DirX
+                    : input.CategoryNext || garageRightHover ? 1 : -1;
+                _deliveryGarageIndex = (_deliveryGarageIndex + direction + 3) % 3;
                 GbayRenderer.PlayNav();
             }
 
@@ -1237,14 +1246,19 @@ namespace ALLIN1
             int used = oversized ? GarageManager.GetFloorGarageUsedSlots()
                 : _deliveryGarageIndex == 1
                     ? GarageManager.GetDavisGarageUsedSlots()
+                    : _deliveryGarageIndex == 2
+                        ? GarageManager.GetGarmentGarageUsedSlots()
                     : GarageManager.GetUsedSlots();
             int cap = oversized ? GarageManager.GetFloorGarageCapacity()
                 : _deliveryGarageIndex == 1
                     ? GarageManager.GetDavisGarageCapacity()
+                    : _deliveryGarageIndex == 2
+                        ? GarageManager.GetGarmentGarageCapacity()
                     : GarageManager.GetCapacity();
             bool isFull = used >= cap;
             string garageName = oversized ? "Three-Floor Garage"
-                : _deliveryGarageIndex == 1 ? "Davis Auto Shop" : "Eclipse Towers";
+                : _deliveryGarageIndex == 1 ? "Davis Auto Shop"
+                : _deliveryGarageIndex == 2 ? "Garment Factory" : "Eclipse Towers";
             string garageInfo = $"{garageName} ({used}/{cap})";
             Color garageColor = isFull ? GbayRenderer.TextDim : GbayRenderer.TextDark;
             GbayRenderer.DrawText(garageInfo, BROWSER_CX, modalTop + 0.09f,
@@ -1303,6 +1317,8 @@ namespace ALLIN1
                 GbayRenderer.PlaySelect();
                 if (!oversized && _deliveryGarageIndex == 1)
                     _shop.ExecuteDeliverToDavisGarage(_pendingModel, _pendingPrice);
+                else if (!oversized && _deliveryGarageIndex == 2)
+                    _shop.ExecuteDeliverToGarmentGarage(_pendingModel, _pendingPrice);
                 else
                     _shop.ExecuteDeliverToGarage(_pendingModel, _pendingPrice);
                 ClosePreview();
@@ -1511,16 +1527,20 @@ namespace ALLIN1
 
             bool floorGarage = _garageLocationIndex == 1;
             bool davisGarage = _garageLocationIndex == 2;
+            bool garmentGarage = _garageLocationIndex == 3;
 
             // Capacity info (right side of header)
             int used = floorGarage ? GarageManager.GetFloorGarageUsedSlots()
                 : davisGarage ? GarageManager.GetDavisGarageUsedSlots()
+                : garmentGarage ? GarageManager.GetGarmentGarageUsedSlots()
                 : GarageManager.GetUsedSlots();
             int cap = floorGarage ? GarageManager.GetFloorGarageCapacity()
                 : davisGarage ? GarageManager.GetDavisGarageCapacity()
+                : garmentGarage ? GarageManager.GetGarmentGarageCapacity()
                 : GarageManager.GetCapacity();
             string capText = floorGarage ? $"Three-Floor Garage ({used}/{cap})"
                 : davisGarage ? $"Davis Auto Shop ({used}/{cap})"
+                : garmentGarage ? $"Garment Factory ({used}/{cap})"
                 : $"Eclipse Towers ({used}/{cap})";
             GbayRenderer.DrawTextFit(capText, BROWSER_RIGHT - 0.01f, HEADER_Y + 0.018f,
                 0.32f, 0.23f, 0.25f, GbayRenderer.HeaderText,
@@ -1529,6 +1549,7 @@ namespace ALLIN1
             // Vehicle list
             var vehicles = floorGarage ? GarageManager.GetFloorGarageStoredVehicles()
                 : davisGarage ? GarageManager.GetDavisGarageStoredVehicles()
+                : garmentGarage ? GarageManager.GetGarmentGarageStoredVehicles()
                 : GarageManager.GetStoredVehicles();
 
             float listTop = TAB_Y + TAB_H + 0.015f;
@@ -1568,6 +1589,8 @@ namespace ALLIN1
                     ? "Drive a vehicle inside or deliver one to the three-floor garage."
                     : davisGarage
                         ? "Drive a vehicle inside or choose Davis during GBAY delivery."
+                    : garmentGarage
+                        ? "Drive a vehicle inside or choose Garment Factory during delivery."
                     : "Purchase a vehicle or drive one inside to store it here.";
                 GbayRenderer.DrawTextFit(emptyHint,
                     BROWSER_CX, listTop + 0.15f, 0.26f, 0.20f, 0.62f,
@@ -1716,9 +1739,16 @@ namespace ALLIN1
 
         private void DrawGarageLocationTabs(FrameInput input)
         {
-            const float tabW = 0.22f;
-            float[] tabX = { BROWSER_CX - tabW, BROWSER_CX, BROWSER_CX + tabW };
-            string[] labels = { "Eclipse Towers", "Three-Floor Garage", "Davis Auto Shop" };
+            const float tabW = 0.165f;
+            float[] tabX =
+            {
+                BROWSER_CX - tabW * 1.5f, BROWSER_CX - tabW * 0.5f,
+                BROWSER_CX + tabW * 0.5f, BROWSER_CX + tabW * 1.5f,
+            };
+            string[] labels =
+            {
+                "Eclipse Towers", "Three-Floor", "Davis Auto Shop", "Garment Factory",
+            };
 
             for (int i = 0; i < labels.Length; i++)
             {
@@ -1744,13 +1774,13 @@ namespace ALLIN1
 
             if ((input.DirX < 0 || input.CategoryPrev) && _garageLocationIndex > 0)
                 SetGarageLocation(_garageLocationIndex - 1);
-            else if ((input.DirX > 0 || input.CategoryNext) && _garageLocationIndex < 2)
+            else if ((input.DirX > 0 || input.CategoryNext) && _garageLocationIndex < 3)
                 SetGarageLocation(_garageLocationIndex + 1);
         }
 
         private void SetGarageLocation(int location)
         {
-            _garageLocationIndex = Math.Max(0, Math.Min(2, location));
+            _garageLocationIndex = Math.Max(0, Math.Min(3, location));
             _garageVehicleIdx = 0;
             _garageHoverIdx = -1;
             GbayRenderer.PlayNav();
@@ -2113,11 +2143,22 @@ namespace ALLIN1
             }
             else
             {
-                string priceText = card.Price <= 0 ? "FREE" : $"${card.Price:N0}";
+                string priceText;
+                if (!card.PurchaseAvailable)
+                    priceText = "PRICE UNAVAILABLE";
+                else if (card.QuantityPriced && card.Price > 0)
+                    priceText = $"{card.PurchaseQuantity} x ${card.UnitPrice:N0} = ${card.Price:N0}";
+                else if (card.QuantityPriced)
+                    priceText = $"{card.PurchaseQuantity} ITEMS - FREE";
+                else
+                    priceText = card.Price <= 0 ? "FREE" : $"${card.Price:N0}";
                 Color priceColor = card.Price <= 0
                     ? GbayRenderer.TextPriceFree : GbayRenderer.TextPrice;
-                GbayRenderer.DrawText(priceText, textLeft, textTop + 0.038f,
-                    0.30f, priceColor, GbayRenderer.FONT_CHALET);
+                GbayRenderer.DrawTextFit(priceText, textLeft, textTop + 0.038f,
+                    0.30f, 0.19f, cardW - 0.016f,
+                    card.PurchaseAvailable ? priceColor
+                        : Color.FromArgb(255, 180, 70, 45),
+                    GbayRenderer.FONT_CHALET);
             }
         }
 
@@ -2374,8 +2415,15 @@ namespace ALLIN1
                     else
                     {
                         // Not owned — purchase weapon
+                        if (!card.PurchaseAvailable)
+                        {
+                            GbayRenderer.PlayError();
+                            GTA.UI.Screen.ShowSubtitle(
+                                "~r~Purchase quantity is unavailable for this item.", 3000);
+                            return;
+                        }
                         GbayRenderer.PlaySelect();
-                        _shop.ExecuteGiveWeapon(card.WeaponName, card.Price);
+                        _shop.ExecuteGiveWeapon(card.WeaponName, card.UnitPrice);
                         RebuildWeaponFilteredList();
                     }
                 }
@@ -2401,6 +2449,8 @@ namespace ALLIN1
 
                 string category = WeaponList.CategoryNames.ContainsKey(weaponName)
                     ? WeaponList.CategoryNames[weaponName] : "";
+                WeaponPurchaseQuote quote = _shop.GetWeaponPurchaseQuote(
+                    weaponName, price);
 
                 // Check if player already owns this weapon
                 Hash weaponHash = (Hash)CharacterInventory.GetWeaponHash(weaponName);
@@ -2422,7 +2472,11 @@ namespace ALLIN1
                     WeaponName = weaponName,
                     DisplayName = displayName,
                     Category = category,
-                    Price = _shop.FreeMode ? 0 : price,
+                    UnitPrice = price,
+                    Price = quote.TotalPrice,
+                    PurchaseQuantity = quote.Quantity,
+                    QuantityPriced = quote.QuantityPriced,
+                    PurchaseAvailable = quote.Status == WeaponPurchaseStatus.Available,
                     Owned = owned,
                 });
             }

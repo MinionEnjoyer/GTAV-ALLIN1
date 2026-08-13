@@ -14,12 +14,23 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   no entrance marker or interaction prompt appears and no fade, teleport, vehicle
   storage, passenger separation, or mission failure occurs. Garage exits must
   remain usable if a mission flag becomes active while already inside.
+- With **Allow garage entry while wanted** disabled, gain one through five stars
+  and approach every pedestrian and vehicle entrance. Confirm each shows the
+  wanted-level denial and cannot start a transition. Lose the wanted level and
+  confirm entry immediately returns. Enable the launcher override and confirm
+  wanted entry works, while mission, protected-story-vehicle, and size rules are
+  still enforced. Garage exits must remain usable in either setting.
 - Enter and leave both DLC-backed garages (Davis and the three-floor garage),
   then visit Michael's house and Floyd's apartment. Confirm Story Mode bedroom
   beds, sofas, and other furniture still render, and confirm the log records
   `multiplayer_map_acquired` followed by `story_map_restored` for each visit.
 - Restart the game and confirm garage, balance, ownership, and configuration persistence.
 - Drive through poor, middle, rich, highway, emergency, air, and water spawn regions.
+- Watch off-screen DLC traffic replacements enter view. Cars whose source had a
+  driver must retain a driver and resume ambient driving even when replaced at a
+  red light or in stopped traffic. Bump several managed vehicles and confirm
+  collision and physics are active; no road vehicle may remain frozen or lose
+  its occupants during replacement. Parked source vehicles may remain parked.
 - Hold the selector key in 2-, 4-, and 6-seat vehicles; verify selection, cancellation, and occupied seats. In Franklin's Buffalo S, verify front -1/0 and rear 1/2 switches shuffle internally, while front/rear row changes exit and re-enter normally.
 - For every switch that requires an exit, park first in open space and then with
   the intended walk-around side against a wall or another vehicle. In open space,
@@ -41,6 +52,10 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   entry or exit the wrong seat normally, then restore the previous seat without
   teleporting.
 - Equip and remove armor, Juggernaut, night vision, weapons, ammo, and throwables.
+- Buy Sticky Bombs from GBAY and confirm the card shows `25 x $600 = $15,000`,
+  the player receives 25, and exactly $15,000 is deducted. Spend five, refill
+  them, and confirm the refill costs `5 x $600 = $3,000`. Repeat with the
+  five-item Proximity Mine bundle and verify its quantity and total.
 - Purchase an Online-only weapon from GBAY without opening the desktop character
   editor. Fire a measurable number of rounds, make a normal GTA save, quit, and
   reload as the same protagonist; confirm the weapon and its remaining ammunition
@@ -51,11 +66,12 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   12 cards and previews are reachable, and purchase at least one item from each tab.
   Confirm equipped cards say **EQUIPPED**. Press Y and separately click the
   **UNEQUIP** badge; confirm armor, Juggernaut, parachute, and night vision are
-  physically removed while their cards remain **OWNED**. Select each owned card
-  again, confirm it re-equips without deducting money, and confirm equipping one
-  armor removes the previously active armor. Rapidly double-select one new item
-  and confirm it is still charged only once. Repeat the duplicate check with a weapon.
-- At Eclipse Towers, the three-floor garage, and Davis, switch among Michael,
+  physically removed and their cards return to a purchase price. Confirm each
+  item must be repurchased before it can be equipped again. Confirm equipping one
+  armor consumes the previously active armor, which must likewise be repurchased.
+  Rapidly double-select one new item and confirm it is still charged only once.
+  Repeat the duplicate check with a weapon.
+- At Eclipse Towers, the three-floor garage, Davis, and the Garment Factory, switch among Michael,
   Franklin, and Trevor. Verify every vehicle/pedestrian map blip and every visible
   world marker changes to blue, green, and orange respectively without a reload.
 - At Davis, verify the vehicle marker at `204.0661, -1466.4750, 29.1437`
@@ -64,7 +80,22 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   Shop loads, all ten parking spaces are usable, the driven-in vehicle is stored,
   and the pedestrian exit appears at `-1357.6240, 153.2929, -99.1942` before
   pedestrian/vehicle exits return to their respective Davis exterior doors.
-- In My Garage, switch among Eclipse Towers, Three-Floor Garage, and Davis Auto
+- At the Garment Factory, verify the vehicle marker at
+  `762.1525, -899.2333, 25.1761` and pedestrian marker at
+  `760.7663, -909.4583, 25.2538`, both heading 270. Enter on foot and in a
+  vehicle, confirm all ten native bays are used and standard cars sit 0.8 m
+  deeper than large vehicles. Confirm the pedestrian exit is centered at
+  `751.0350, -975.4493, -67.5536` at heading 180, then verify both exit paths
+  return to La Mesa.
+- On a clean install, confirm `scripts/ALLIN1_vehicle_grounding.json` contains
+  the completed 827-model catalog and garages place a low sports car, an SUV,
+  and a motorcycle on their tires without hovering or clipping. Confirm F11 no
+  longer opens a developer tool and F10 remains the World Vector toggle.
+- In My Garage, switch among Eclipse Towers, Three-Floor Garage, Davis Auto
+  Shop, and Garment Factory. Deliver a standard vehicle to the Garment Factory,
+  sell it, restart, and confirm its save remains independent. Then switch among
+  all four locations and confirm each list and capacity is correct.
+  Deliver a standard vehicle to Davis Auto
   Shop. Deliver a standard vehicle to Davis, sell it, restart, and confirm Davis
   storage remains independent. Confirm oversized vehicles still route to the
   three-floor garage and cannot be delivered to Davis.
@@ -85,30 +116,24 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   visible, changes do not flicker or overlap, and each floor/character retains
   its choices after exiting and restarting. Confirm slot labels run F1-1 through
   F1-5, F2-1 through F2-5, and F3-1 through F3-5.
-- Place short, long, wide, and offset-origin vehicles in Eclipse and the
-  three-floor garage. Confirm each body—not merely its model origin—is centered
-  over its bay, wheels remain on the floor, and adjacent vehicles do not overlap.
+- Place short, long, wide, and offset-origin vehicles in Eclipse, the
+  three-floor garage, Davis, and the Garment Factory. Confirm each body—not
+  merely its model origin—is centered over its native bay and the lowest model
+  bound meets the raycast/configured floor. Wheels must remain on the floor,
+  adjacent vehicles must not overlap, and the log must identify the Z source as
+  `raycast`, `configured`, or the safe `native-root` fallback.
 - Confirm preview textures load and no placeholder remains for catalogued vehicles.
 - Press F10 and confirm the world-vector overlay toggles directly, with no
   retired capture menu or screenshot actions. Confirm X/Y/Z and heading update
   while walking or driving.
-- Enter or stand beside a normal four-door car and press F11. Confirm Seat Lab
-  relocates the test to Sandy Shores airfield, suppresses traffic and peds, runs
-  outside-to-seat and every directed seat-to-seat transition, then restores the
-  previous location or vehicle seat. Repeat with the Benefactor Turreted Limo
-  and Vapid Caracara; inspect `scripts/ALLIN1_seat_tests` and confirm wrong-seat,
-  route, timeout, rollback, and slow-success outliers include phase traces.
-- Press Shift+F11 while on foot to run the curated physical-turret and
-  unconventional-seat fleet. Confirm ground and aircraft use the Sandy Shores
-  arena, the Weaponized Dinghy uses the Del Perro water arena, unavailable
-  models are marked skipped rather than failed, and F11 aborts and restores the
-  original session. Inspect `latest-unconventional-seat-fleet.json` for an
-  aggregate summary and links to every per-model directed-matrix report.
-  Confirm each per-model report includes `NativeSeatCount`,
-  `MetadataSeatCount`, `RockstarLayout`, occupant-access door and hatch counts,
-  and that `RuntimeMetadataSeatMismatch` is false unless the running game data
-  genuinely disagrees with the generated catalog. A smaller selectable count is
-  allowed when ALLIN1 intentionally suppresses an empirically unreachable seat.
+- Allow ALLIN1 traffic to populate, then begin a Story Mode mission. Confirm no
+  newly spawned or replacement traffic appears during the mission and no
+  previously managed vehicle continues driving without a visible driver.
+- In the Vapid Caracara selector, confirm only Driver, Passenger, and Bed Turret
+  are shown. From Driver, press Down once and confirm selection skips the hidden
+  rear-seat row and lands on Bed Turret; release the selector key and confirm the
+  native external climb mounts the gun. From Bed Turret, press Up once and
+  confirm Driver is reachable again.
 - Open GBAY and confirm PHAT loads on the loading screen from its own texture
   dictionary. Open About and confirm the independent ALLIN1 logo is contain-fit,
   crisp, and undistorted above the page content.

@@ -46,7 +46,7 @@ def test_loadout_round_trip_normalizes_all_characters(tmp_path):
         ["WEAPON_A"], ["GEAR_A"], False, equipped_gear=["GEAR_A"],
         weapon_ammo={"WEAPON_A": 9999})
     assert loaded["franklin"] == CharacterLoadout()
-    assert json.loads((tmp_path / "loadouts.json").read_text())["michael"]["schema_version"] == 5
+    assert json.loads((tmp_path / "loadouts.json").read_text())["michael"]["schema_version"] == 6
 
 
 @pytest.mark.parametrize("loadouts", [
@@ -83,13 +83,23 @@ def test_weapon_ammo_round_trip_and_validation(tmp_path):
         store.save({"franklin": loadout})
 
 
-def test_loadout_preserves_unequipped_owned_gear(tmp_path):
+def test_loadout_rejects_unequipped_owned_gear(tmp_path):
     store = LoadoutStore(tmp_path / "loadouts.json", set(), {"ARMOR", "PARACHUTE"})
     loadout = CharacterLoadout(
         gear=["ARMOR", "PARACHUTE"], equipped_gear=["PARACHUTE"])
-    store.save({"franklin": loadout})
-    loaded = store.load()["franklin"]
-    assert loaded.gear == ["ARMOR", "PARACHUTE"]
+    with pytest.raises(ValueError, match="ARMOR"):
+        store.save({"franklin": loadout})
+
+
+def test_schema_five_migration_discards_unequipped_gear(tmp_path):
+    path = tmp_path / "loadouts.json"
+    path.write_text(json.dumps({"franklin": {
+        "schema_version": 5,
+        "gear": ["ARMOR", "PARACHUTE"],
+        "equipped_gear": ["PARACHUTE"],
+    }}))
+    loaded = LoadoutStore(path, set(), {"ARMOR", "PARACHUTE"}).load()["franklin"]
+    assert loaded.gear == ["PARACHUTE"]
     assert loaded.equipped_gear == ["PARACHUTE"]
 
 

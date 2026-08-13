@@ -2908,83 +2908,6 @@ namespace ALLIN1
             { "zorrusso", "allin1_prev_06" },
             { "zr350", "allin1_prev_06" },
         };
-        //  Vehicle size data (generated from HeightChecker measurements)      //
-        // ------------------------------------------------------------------ //
-
-        // Average delta_z by class (slot 0, non-colliding vehicles)
-        internal static readonly Dictionary<string, float> ClassDeltaZ =
-            new Dictionary<string, float>
-        {
-            { "Compacts",            -0.647f },
-            { "Coupes",              -0.526f },
-            { "Emergency",           -0.410f },
-            { "Industrial",          -0.304f },
-            { "Military",            -0.245f },
-            { "Motorcycles",         -0.543f },
-            { "Muscle",              -0.559f },
-            { "Offroad",             -0.313f },
-            { "Openwheel",           -0.771f },
-            { "Sedans",              -0.526f },
-            { "Service",             -0.273f },
-            { "Special",             -0.589f },
-            { "Sportsclassics",      -0.578f },
-            { "Super",               -0.608f },
-            { "Suvs",                -0.345f },
-            { "Vans",                -0.149f },
-        };
-
-        // Per-vehicle delta_z overrides (>0.25 deviation from class average)
-        internal static readonly Dictionary<string, float> DeltaZOverride =
-            new Dictionary<string, float>
-        {
-            { "astron",              -0.612f },
-            { "astron2",             -0.612f },
-            { "baller3",             -0.076f },
-            { "baller4",             -0.078f },
-            { "baller5",             -0.087f },
-            { "baller6",             -0.089f },
-            { "baller7",             -0.077f },
-            { "blazer4",             -0.709f },
-            { "blazer5",             -0.750f },
-            { "boor",                -0.700f },
-            { "bruiser",             0.003f },
-            { "brutus",              -0.046f },
-            { "buccaneer2",          -0.814f },
-            { "contender",           0.225f },
-            { "everon",              0.009f },
-            { "everon3",             -0.619f },
-            { "flashgt",             -0.203f },
-            { "guardian",            0.270f },
-            { "imorgon",             -0.199f },
-            { "issi7",               -0.300f },
-            { "journey2",            -0.518f },
-            { "keitora",             -0.577f },
-            { "khanjali",            0.557f },
-            { "kuruma",              -0.272f },
-            { "kuruma2",             -0.262f },
-            { "l352",                -0.623f },
-            { "monster3",            0.123f },
-            { "oppressor",           -0.518f },
-            { "oppressor2",          -0.523f },
-            { "polcoquette4",        -0.728f },
-            { "policet3",            -0.017f },
-            { "raiden",              -0.309f },
-            { "rhinehart",           -0.260f },
-            { "riot2",               -0.159f },
-            { "ruiner2",             -0.285f },
-            { "rumpo3",              0.203f },
-            { "scarab",              -0.543f },
-            { "seminole2",           -0.601f },
-            { "uranus",              -0.689f },
-            { "vetir",               0.297f },
-            { "warrener2",           -0.787f },
-            { "winky",               -0.588f },
-            { "xls2",                -0.090f },
-            { "yosemite3",           -0.613f },
-            { "youga3",              0.166f },
-            { "zhaba",               0.365f },
-        };
-
         // Oversized vehicles (19) -- length > 8m, too large for Eclipse Towers
         internal static readonly HashSet<string> OversizedVehicles = new HashSet<string>
         {
@@ -3002,20 +2925,6 @@ namespace ALLIN1
             "limo2", "polcaracara", "scarab", "slamtruck", "speedo4", "stockade4", "thruster",
             "towtruck4", "vetir", "vigilante"
         };
-
-        /// <summary>
-        /// Returns the delta_z offset for spawning this vehicle in the garage.
-        /// Checks per-vehicle override first, then falls back to class average.
-        /// </summary>
-        internal static float GetSpawnDeltaZ(string model)
-        {
-            if (DeltaZOverride.TryGetValue(model, out float dz))
-                return dz;
-            if (ClassNames.TryGetValue(model, out string cls)
-                && ClassDeltaZ.TryGetValue(cls, out float cdz))
-                return cdz;
-            return -0.56f; // global fallback
-        }
 
         /// <summary>
         /// Returns the size tier: 0 = normal, 1 = large (left row only), 2 = oversized (floor garage only).

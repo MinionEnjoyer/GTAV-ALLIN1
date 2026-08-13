@@ -615,66 +615,77 @@ name = "WEAPON_GRENADE"
 label = "Grenade"
 category = "throwables"
 price = 250
+purchase_quantity = 25
 
 [[weapons]]
 name = "WEAPON_BZGAS"
 label = "BZ Gas"
 category = "throwables"
 price = 150
+purchase_quantity = 25
 
 [[weapons]]
 name = "WEAPON_MOLOTOV"
 label = "Molotov Cocktail"
 category = "throwables"
 price = 200
+purchase_quantity = 25
 
 [[weapons]]
 name = "WEAPON_STICKYBOMB"
 label = "Sticky Bomb"
 category = "throwables"
 price = 600
+purchase_quantity = 25
 
 [[weapons]]
 name = "WEAPON_PROXMINE"
 label = "Proximity Mine"
 category = "throwables"
 price = 1000
+purchase_quantity = 5
 
 [[weapons]]
 name = "WEAPON_SNOWBALL"
 label = "Snowball"
 category = "throwables"
 price = 0
+purchase_quantity = 10
 
 [[weapons]]
 name = "WEAPON_PIPEBOMB"
 label = "Pipe Bomb"
 category = "throwables"
 price = 750
+purchase_quantity = 10
 
 [[weapons]]
 name = "WEAPON_BALL"
 label = "Ball"
 category = "throwables"
 price = 0
+purchase_quantity = 1
 
 [[weapons]]
 name = "WEAPON_SMOKEGRENADE"
 label = "Tear Gas"
 category = "throwables"
 price = 150
+purchase_quantity = 25
 
 [[weapons]]
 name = "WEAPON_FLARE"
 label = "Flare"
 category = "throwables"
 price = 0
+purchase_quantity = 20
 
 [[weapons]]
 name = "WEAPON_NEWSPAPER"
 label = "Newspaper"
 category = "throwables"
 price = 50
+purchase_quantity = 1
 
 # =============================================================================
 # MISCELLANEOUS

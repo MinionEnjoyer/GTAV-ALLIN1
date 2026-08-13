@@ -1,6 +1,6 @@
 {
   "SchemaVersion": 1,
-  "GeneratedUtc": "2026-08-13T07:14:47.1938441Z",
+  "GeneratedUtc": "2026-08-13T07:33:37.6005219Z",
   "Edition": "Enhanced",
   "ArchiveCount": 104,
   "SourceDocumentCount": 185,
@@ -3934,7 +3934,7 @@
         },
         {
           "Index": 3,
-          "Label": "Turret",
+          "Label": "Roof Turret",
           "RockstarSeat": "SEAT_VAN_APOCOLYPSE_TURRET",
           "Turret": true
         }
@@ -16918,31 +16918,31 @@
         },
         {
           "Index": 3,
-          "Label": "Left Side",
+          "Label": "Left Side Seat",
           "RockstarSeat": "SEAT_VAN_ARMORED_SIDE_LEFT",
           "Turret": false
         },
         {
           "Index": 4,
-          "Label": "Right Side",
+          "Label": "Right Side Seat",
           "RockstarSeat": "SEAT_VAN_ARMORED_SIDE_RIGHT",
           "Turret": false
         },
         {
           "Index": 5,
-          "Label": "Left Seat 5",
+          "Label": "Left Bed Seat",
           "RockstarSeat": "SEAT_VAN_EXTRA_LEFT_2",
           "Turret": false
         },
         {
           "Index": 6,
-          "Label": "Right Seat 6",
+          "Label": "Right Bed Seat",
           "RockstarSeat": "SEAT_VAN_EXTRA_RIGHT_2",
           "Turret": false
         },
         {
           "Index": 7,
-          "Label": "Rear Turret",
+          "Label": "Roof Turret",
           "RockstarSeat": "SEAT_VAN_ARMORED_REAR_TURRET",
           "Turret": true
         }

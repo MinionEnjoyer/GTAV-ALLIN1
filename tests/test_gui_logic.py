@@ -43,6 +43,7 @@ def _window():
     window.ui_scale = Variable(1.2)
     window.hold_duration_ms = Variable(600)
     window.gbay_free_mode = Variable(True)
+    window.garages_always_accessible = Variable(True)
     return window
 
 
@@ -68,6 +69,7 @@ def test_current_config_collects_all_launcher_fields():
     assert config.script.ui_scale == 1.2
     assert config.script.hold_duration_ms == 600
     assert config.script.gbay_free_mode is True
+    assert config.script.garages_always_accessible is True
 
 
 def test_queue_log_handler_sends_formatted_record():

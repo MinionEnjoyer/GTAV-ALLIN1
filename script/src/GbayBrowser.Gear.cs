@@ -194,9 +194,9 @@ namespace ALLIN1
                     GbayRenderer.FONT_CONDENSED, true);
             }
 
-            // Owned gear keeps its purchase state when removed. The compact
-            // overlay is a direct mouse action while Y provides the same
-            // controller/keyboard action for the selected card.
+            // The compact overlay is a direct mouse action while Y provides
+            // the same controller/keyboard action for the selected card.
+            // Unequipped gear is discarded and must be purchased again.
             if (card.Equipped)
             {
                 float unequipX = left + cardW - 0.031f;

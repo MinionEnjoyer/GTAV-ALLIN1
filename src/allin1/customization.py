@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 CHARACTERS = ("michael", "franklin", "trevor")
-LOADOUT_SCHEMA_VERSION = 5
+LOADOUT_SCHEMA_VERSION = 6
 GARAGE_SCHEMA_VERSION = 2
 SKILLS = ("stamina", "strength", "lung_capacity", "driving", "flying", "shooting", "stealth")
 
@@ -81,7 +81,7 @@ class LoadoutStore:
             gear = list(dict.fromkeys(item.get("gear", [])))
             schema_version = int(item.get("schema_version", 0))
             equipped_source = item.get("equipped_gear", []) or []
-            if schema_version < LOADOUT_SCHEMA_VERSION:
+            if schema_version < 4:
                 equipped_source = gear
             owned_gear = set(gear)
             equipped_gear = [
@@ -89,8 +89,11 @@ class LoadoutStore:
                 for value in dict.fromkeys(equipped_source)
                 if value in owned_gear
             ]
+            # Gear is consumable as of schema 6. An item remains owned only
+            # while equipped; older unequipped locker entries are discarded.
+            gear = list(equipped_gear)
             ammo_source = item.get("weapon_ammo", {}) or {}
-            if schema_version < LOADOUT_SCHEMA_VERSION:
+            if schema_version < 5:
                 weapon_ammo = {weapon: 9999 for weapon in weapons}
             else:
                 weapon_ammo = {
@@ -136,10 +139,11 @@ class LoadoutStore:
             bad_weapons = set(loadout.weapons) - self.valid_weapons
             bad_gear = set(loadout.gear) - self.valid_gear
             bad_equipped = set(loadout.equipped_gear) - set(loadout.gear)
+            unequipped_gear = set(loadout.gear) - set(loadout.equipped_gear)
             bad_ammo = set(loadout.weapon_ammo) - set(loadout.weapons)
-            if bad_weapons or bad_gear or bad_equipped or bad_ammo:
+            if bad_weapons or bad_gear or bad_equipped or unequipped_gear or bad_ammo:
                 raise ValueError(f"Unknown inventory items: "
-                                 f"{sorted(bad_weapons | bad_gear | bad_equipped | bad_ammo)}")
+                                 f"{sorted(bad_weapons | bad_gear | bad_equipped | unequipped_gear | bad_ammo)}")
             if any(not isinstance(value, int) or value < 0
                    for value in loadout.weapon_ammo.values()):
                 raise ValueError("Weapon ammunition must be a non-negative whole number")
