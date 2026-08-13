@@ -31,8 +31,10 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   animation. Repeat from outside on both sides and behind the truck; no route
   may teleport or stall at the front door. Block a rear approach point with the
   truck against a wall or solid prop and repeat: the selector must report no
-  valid path and leave the player on foot. If GTA redirects an entry toward the
-  cab, the selector must cancel it before entry or exit the wrong seat normally.
+  valid path and return the player to the seat occupied before the attempt. If
+  GTA redirects an entry toward the cab, the selector must cancel it before
+  entry or exit the wrong seat normally, then restore the previous seat without
+  teleporting.
 - Equip and remove armor, Juggernaut, night vision, weapons, ammo, and throwables.
 - Purchase an Online-only weapon from GBAY without opening the desktop character
   editor. Fire a measurable number of rounds, make a normal GTA save, quit, and

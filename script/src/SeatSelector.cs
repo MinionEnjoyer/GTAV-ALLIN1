@@ -42,6 +42,10 @@ namespace ALLIN1
         private const float EXTERNAL_APPROACH_DISTANCE = 0.85f;
         private const float EXTERNAL_ROUTE_PROGRESS_EPSILON = 0.12f;
         private const float EXTERNAL_ENTRY_MAX_DRIFT = 2.75f;
+        private const float CARACARA_ENTRY_MIN_X = -3.75f;
+        private const float CARACARA_ENTRY_MAX_X = 3.75f;
+        private const float CARACARA_ENTRY_MIN_Y = -5.75f;
+        private const float CARACARA_ENTRY_MAX_Y = -0.25f;
         private const float MAX_EXTERNAL_SWITCH_SPEED = 1.25f;
         private const int NATIVE_ENTER_TIMEOUT = -1;
         private const int NORMAL_ENTER_FLAG = 1;
@@ -132,6 +136,7 @@ namespace ALLIN1
             Reentering,
             ApproachingExternalSeat,
             RecoveringWrongSeat,
+            ReturningToSourceSeat,
         }
 
         private struct SeatInfo
@@ -172,6 +177,7 @@ namespace ALLIN1
         private float _externalRouteBestDistance;
         private int _externalRouteLastProgress;
         private int _externalRouteResult;
+        private string _pendingFailureReason;
         private ExecutionPhase _executionPhase;
         private bool _enabled = true;
 
@@ -531,7 +537,9 @@ namespace ALLIN1
             }
 
             Ped occupant = _targetVeh.GetPedOnSeat((VehicleSeat)_targetSeatIdx);
-            if (occupant != null && occupant.Exists() && occupant != player)
+            if (_executionPhase != ExecutionPhase.RecoveringWrongSeat
+                && _executionPhase != ExecutionPhase.ReturningToSourceSeat
+                && occupant != null && occupant.Exists() && occupant != player)
             {
                 GTA.UI.Screen.ShowSubtitle("~y~That seat is no longer available.", 2000);
                 CancelExecution(player, "seat_claimed", true);
@@ -581,37 +589,40 @@ namespace ALLIN1
                         CancelExecution(player, "entered_different_vehicle", true);
                     else if (player.IsInVehicle()
                              && GetPlayerSeatIndex(player) != _targetSeatIdx)
-                        BeginWrongSeatRecovery(player);
+                        HandleWrongSeatEntry(player);
                     else if (_usesExternalRoute && !player.IsInVehicle()
-                             && GetExternalRouteAbortReason(
-                                 _externalRouteResult,
-                                 phaseElapsed,
-                                 Game.GameTime - _externalRouteLastProgress,
+                             && !IsWithinExternalEntryCorridor(
+                                 _targetVeh.Model.Hash,
+                                 _targetSeatIdx,
+                                 _targetVeh.GetPositionOffset(player.Position),
                                  player.Position.DistanceTo(
-                                     _externalApproachPoint),
-                                 true) != null)
-                        CancelExecution(player, "external_entry_left_route", true);
+                                     _externalApproachPoint)))
+                        FailExternalRoute(
+                            player, "external_entry_left_route");
                     else if (phaseElapsed > ENTER_TIMEOUT_MS)
-                        CancelExecution(player, "entry_timeout", true);
+                    {
+                        if (_usesExternalRoute)
+                            FailExternalRoute(player, "entry_timeout");
+                        else
+                            CancelExecution(player, "entry_timeout", true);
+                    }
                     break;
 
                 case ExecutionPhase.RecoveringWrongSeat:
                     if (!player.IsInVehicle())
-                    {
-                        ClientLog.Info("SeatSelector", "seat_switch_cancelled",
-                            new Dictionary<string, object>
-                            {
-                                { "reason", "entered_wrong_external_seat" },
-                                { "phase", _executionPhase.ToString() },
-                                { "from_seat", _sourceSeatIdx },
-                                { "target_seat", _targetSeatIdx },
-                            });
-                        GTA.UI.Screen.ShowSubtitle(
-                            "~y~No valid path to that external seat.", 2500);
-                        Reset();
-                    }
+                        FailExternalRoute(player, _pendingFailureReason);
                     else if (phaseElapsed > EXIT_TIMEOUT_MS)
                         CancelExecution(player, "wrong_seat_exit_timeout", true);
+                    break;
+
+                case ExecutionPhase.ReturningToSourceSeat:
+                    if (player.IsInVehicle() && player.CurrentVehicle != _targetVeh)
+                        CancelExecution(player, "rollback_entered_different_vehicle", true);
+                    else if (player.IsInVehicle()
+                             && GetPlayerSeatIndex(player) == _sourceSeatIdx)
+                        CompleteSourceSeatRollback();
+                    else if (phaseElapsed > ENTER_TIMEOUT_MS)
+                        CancelExecution(player, "source_seat_rollback_timeout", true);
                     break;
 
                 default:
@@ -753,27 +764,85 @@ namespace ALLIN1
                 routeResult,
                 phaseElapsed,
                 now - _externalRouteLastProgress,
-                distance,
-                false);
+                distance);
             if (abortReason != null)
             {
-                CancelExecution(player, abortReason, true);
-                GTA.UI.Screen.ShowSubtitle(
-                    "~y~No valid path to that external seat.", 2500);
+                FailExternalRoute(player, abortReason);
                 return;
             }
 
             if (phaseElapsed > EXTERNAL_APPROACH_TIMEOUT_MS)
-                CancelExecution(player, "external_approach_timeout", true);
+                FailExternalRoute(player, "external_approach_timeout");
         }
 
-        private void BeginWrongSeatRecovery(Ped player)
+        private void HandleWrongSeatEntry(Ped player)
         {
+            _pendingFailureReason = "entered_wrong_external_seat";
+            if (GetPlayerSeatIndex(player) == _sourceSeatIdx)
+                CompleteSourceSeatRollback();
+            else
+                BeginWrongSeatRecovery(player, _pendingFailureReason);
+        }
+
+        private void BeginWrongSeatRecovery(Ped player, string reason)
+        {
+            _pendingFailureReason = reason;
             SetExecutionPhase(
                 ExecutionPhase.RecoveringWrongSeat,
                 "wrong_external_seat_exit");
             Function.Call(Hash.TASK_LEAVE_VEHICLE,
                 player.Handle, _targetVeh.Handle, NORMAL_EXIT_FLAG);
+        }
+
+        private void FailExternalRoute(Ped player, string reason)
+        {
+            if (BeginSourceSeatRollback(player, reason))
+                return;
+
+            CancelExecution(player, reason, true);
+            GTA.UI.Screen.ShowSubtitle(
+                "~y~No valid path to that external seat.", 2500);
+        }
+
+        private bool BeginSourceSeatRollback(Ped player, string reason)
+        {
+            if (_sourceSeatIdx == -2 || player == null || !player.Exists()
+                || player.IsInVehicle() || _targetVeh == null
+                || !_targetVeh.Exists())
+                return false;
+
+            Ped occupant = _targetVeh.GetPedOnSeat((VehicleSeat)_sourceSeatIdx);
+            if (occupant != null && occupant.Exists() && occupant != player)
+                return false;
+
+            Function.Call(Hash.CLEAR_PED_TASKS, player.Handle);
+            _pendingFailureReason = reason ?? "external_route_failed";
+            _executeStart = Game.GameTime;
+            SetExecutionPhase(
+                ExecutionPhase.ReturningToSourceSeat,
+                "restore_source_seat");
+            Function.Call(Hash.TASK_ENTER_VEHICLE,
+                player.Handle, _targetVeh.Handle, NATIVE_ENTER_TIMEOUT,
+                _sourceSeatIdx, 2f, NORMAL_ENTER_FLAG, 0);
+            GTA.UI.Screen.ShowSubtitle(
+                "~y~External route failed; returning to the previous seat.",
+                2500);
+            return true;
+        }
+
+        private void CompleteSourceSeatRollback()
+        {
+            ClientLog.Info("SeatSelector", "seat_switch_rolled_back",
+                new Dictionary<string, object>
+                {
+                    { "reason", _pendingFailureReason
+                        ?? "external_route_failed" },
+                    { "source_seat", _sourceSeatIdx },
+                    { "target_seat", _targetSeatIdx },
+                });
+            GTA.UI.Screen.ShowSubtitle(
+                "~y~External route failed; previous seat restored.", 2500);
+            Reset();
         }
 
         private bool BeginExternalApproach(Ped player, bool reentry)
@@ -844,15 +913,29 @@ namespace ALLIN1
                     Hash.HAS_CLIP_SET_LOADED, _externalEntryClipset);
         }
 
+        internal static bool IsWithinExternalEntryCorridor(
+            int modelHash,
+            int seatIndex,
+            Vector3 vehicleOffset,
+            float approachDistance)
+        {
+            if (modelHash == CARACARA_HASH && seatIndex == 3)
+            {
+                return vehicleOffset.X >= CARACARA_ENTRY_MIN_X
+                    && vehicleOffset.X <= CARACARA_ENTRY_MAX_X
+                    && vehicleOffset.Y >= CARACARA_ENTRY_MIN_Y
+                    && vehicleOffset.Y <= CARACARA_ENTRY_MAX_Y;
+            }
+
+            return approachDistance <= EXTERNAL_ENTRY_MAX_DRIFT;
+        }
+
         internal static string GetExternalRouteAbortReason(
             int routeResult,
             int routeElapsedMs,
             int noProgressMs,
-            float distance,
-            bool entering)
+            float distance)
         {
-            if (entering && distance > EXTERNAL_ENTRY_MAX_DRIFT)
-                return "external_entry_left_route";
             if (distance <= EXTERNAL_APPROACH_DISTANCE)
                 return null;
             if (routeResult == NAV_ROUTE_NOT_FOUND)
@@ -1156,6 +1239,7 @@ namespace ALLIN1
             _externalRouteBestDistance = 0f;
             _externalRouteLastProgress = 0;
             _externalRouteResult = NAV_ROUTE_TASK_NOT_FOUND;
+            _pendingFailureReason = null;
             _state = State.Idle;
             _holdStart = 0;
             _targetVeh = null;

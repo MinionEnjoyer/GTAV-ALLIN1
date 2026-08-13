@@ -44,36 +44,53 @@ namespace ALLIN1.Tests
         }
 
         [Theory]
-        [InlineData(2, 100, 100, 4.0f, false, "external_route_not_found")]
-        [InlineData(0, 1600, 100, 4.0f, false, "external_route_task_missing")]
-        [InlineData(3, 2000, 2600, 4.0f, false, "external_route_stalled")]
-        [InlineData(3, 100, 100, 3.0f, true, "external_entry_left_route")]
+        [InlineData(2, 100, 100, 4.0f, "external_route_not_found")]
+        [InlineData(0, 1600, 100, 4.0f, "external_route_task_missing")]
+        [InlineData(3, 2000, 2600, 4.0f, "external_route_stalled")]
         public void Invalid_external_routes_abort_safely(
             int routeResult,
             int routeElapsedMs,
             int noProgressMs,
             float distance,
-            bool entering,
             string expected)
         {
             Assert.Equal(expected, SeatSelector.GetExternalRouteAbortReason(
-                routeResult, routeElapsedMs, noProgressMs, distance, entering));
+                routeResult, routeElapsedMs, noProgressMs, distance));
         }
 
         [Theory]
-        [InlineData(1, 500, 500, 4.0f, false)]
-        [InlineData(3, 2000, 100, 4.0f, false)]
-        [InlineData(0, 5000, 5000, 0.5f, false)]
-        [InlineData(3, 100, 100, 2.0f, true)]
+        [InlineData(1, 500, 500, 4.0f)]
+        [InlineData(3, 2000, 100, 4.0f)]
+        [InlineData(0, 5000, 5000, 0.5f)]
         public void Valid_or_progressing_external_routes_continue(
             int routeResult,
             int routeElapsedMs,
             int noProgressMs,
-            float distance,
-            bool entering)
+            float distance)
         {
             Assert.Null(SeatSelector.GetExternalRouteAbortReason(
-                routeResult, routeElapsedMs, noProgressMs, distance, entering));
+                routeResult, routeElapsedMs, noProgressMs, distance));
+        }
+
+        [Theory]
+        [InlineData(1254014755, 3, 0.0f, -2.0f, 4.0f, true)]
+        [InlineData(1254014755, 3, 0.0f, 0.5f, 1.0f, false)]
+        [InlineData(1254014755, 3, 4.0f, -2.0f, 1.0f, false)]
+        [InlineData(-114627507, 3, 0.0f, -2.0f, 2.0f, true)]
+        [InlineData(-114627507, 3, 0.0f, -2.0f, 3.0f, false)]
+        public void External_entry_corridor_allows_mounting_but_rejects_cab_path(
+            int modelHash,
+            int seatIndex,
+            float offsetX,
+            float offsetY,
+            float approachDistance,
+            bool expected)
+        {
+            Assert.Equal(expected, SeatSelector.IsWithinExternalEntryCorridor(
+                modelHash,
+                seatIndex,
+                new GTA.Math.Vector3(offsetX, offsetY, 0f),
+                approachDistance));
         }
     }
 }
