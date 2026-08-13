@@ -231,7 +231,12 @@ def test_seat_selector_is_animation_only_and_has_external_route_recovery():
     assert "ExecutionPhase.Exiting" in seat
     assert "ExecutionPhase.WaitingAfterExit" in seat
     assert "ExecutionPhase.Reentering" in seat
+    assert "ExecutionPhase.ApproachingExternalSeat" in seat
     assert "EXIT_SETTLE_MS = 1200" in seat
+    assert "CARACARA_HASH = 1254014755" in seat
+    assert "CARACARA_TURRET_APPROACH_OFFSETS" in seat
+    assert "TASK_GO_STRAIGHT_TO_COORD" in seat
+    assert 'new Dictionary<int, string> { { 3, "Turret" } }' in seat
     assert '"exit_animation_settle"' in seat
     assert 'BeginExit(player, "different_row_or_external_seat")' in seat
     assert "Stop the vehicle before changing rows or using an external seat" in seat
@@ -239,15 +244,17 @@ def test_seat_selector_is_animation_only_and_has_external_route_recovery():
     assert "IsSeatPair(currentSeat, targetSeat, 1, 2)" in seat
     assert 'CancelExecution(player, "same_row_shuffle_timeout", true)' in seat
     assert 'BeginExit(player, "shuffle_fallback")' not in seat
-    assert 'Game.GenerateHash("limo2")' in seat
+    assert "LIMO2_HASH = -114627507" in seat
     assert 'new Dictionary<int, string> { { 3, "Turret" } }' in seat
     assert "GetSeatLabel(_targetVeh.Model.Hash, idx)" in seat
     settle_case = seat.index("case ExecutionPhase.WaitingAfterExit:")
     settle_guard = seat.index("phaseElapsed >= EXIT_SETTLE_MS", settle_case)
-    reentry = seat.index("BeginEnter(player, true);", settle_guard)
-    assert settle_case < settle_guard < reentry
+    staged_reentry = seat.index("BeginExternalApproach(player, true)", settle_guard)
+    reentry = seat.index("BeginEnter(player, true);", staged_reentry)
+    assert settle_case < settle_guard < staged_reentry < reentry
     checklist = (ROOT / "tests/IN_GAME_CHECKLIST.md").read_text()
     assert "Benefactor Turreted Limo" in checklist
+    assert "Vapid Caracara" in checklist
     assert "labeled **Turret**" in checklist
 
 

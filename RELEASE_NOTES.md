@@ -37,7 +37,7 @@ with transactional runtime behavior and production-backed tests.
 
 ## Verification
 
-- 31 production C# tests and 340 Python/repository tests pass for this source release. The optional
+- 36 production C# tests and 340 Python/repository tests pass for this source release. The optional
   real Windows preview-tool integration remains isolated to its toolchain-qualified CI job.
 
 ---

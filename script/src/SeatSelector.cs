@@ -31,11 +31,13 @@ namespace ALLIN1
         private Keys _selectorKey = Keys.L;
         private const float NEARBY_RADIUS = 3.5f;
         private const float MAX_DIST_WHILE_SELECTING = 5f;
-        private const int EXECUTE_TIMEOUT_MS = 25000;
+        private const int EXECUTE_TIMEOUT_MS = 32000;
         private const int ENTER_TIMEOUT_MS = 14000;
         private const int EXIT_TIMEOUT_MS = 7000;
         private const int EXIT_SETTLE_MS = 1200;
+        private const int EXTERNAL_APPROACH_TIMEOUT_MS = 7000;
         private const int SHUFFLE_TIMEOUT_MS = 4500;
+        private const float EXTERNAL_APPROACH_DISTANCE = 0.85f;
         private const float MAX_EXTERNAL_SWITCH_SPEED = 1.25f;
         private const int NORMAL_ENTER_FLAG = 1;
         private const int NORMAL_EXIT_FLAG = 0;
@@ -50,16 +52,33 @@ namespace ALLIN1
 
         // GTA exposes mounted weapon stations as ordinary high-numbered seats.
         // Keep model-specific names here so the selector does not present a
-        // turret as a generic "Extra" seat. The Turreted Limo's roof gun is
+        // turret as a generic "Extra" seat. Both supported gun mounts are
         // passenger index 3 (the first external seat).
+        private const int LIMO2_HASH = -114627507;
+        private const int CARACARA_HASH = 1254014755;
         private static readonly Dictionary<int, Dictionary<int, string>>
             SPECIAL_SEAT_LABELS = new Dictionary<int, Dictionary<int, string>>
             {
                 {
-                    Game.GenerateHash("limo2"),
+                    LIMO2_HASH,
+                    new Dictionary<int, string> { { 3, "Turret" } }
+                },
+                {
+                    CARACARA_HASH,
                     new Dictionary<int, string> { { 3, "Turret" } }
                 },
             };
+
+        // The Caracara layout defines three vehicle-relative climb points for
+        // its bed turret. GTA's generic seat task can time out when issued at
+        // the front door, so walk to the nearest authored point before asking
+        // the normal entry task to play the climb animation.
+        private static readonly Vector3[] CARACARA_TURRET_APPROACH_OFFSETS =
+        {
+            new Vector3(-1.650f, -2.543f, 0.382f),
+            new Vector3(1.680f, -2.543f, 0.382f),
+            new Vector3(0.050f, -4.118f, 0.382f),
+        };
 
         // HUD layout (normalized screen coords, bottom-right area)
         private const float HUD_RIGHT = 0.97f;
@@ -94,6 +113,7 @@ namespace ALLIN1
             Exiting,
             WaitingAfterExit,
             Reentering,
+            ApproachingExternalSeat,
         }
 
         private struct SeatInfo
@@ -126,6 +146,8 @@ namespace ALLIN1
         private int _phaseStart;
         private int _targetSeatIdx;
         private int _sourceSeatIdx;
+        private Vector3 _externalApproachPoint;
+        private bool _approachIsReentry;
         private ExecutionPhase _executionPhase;
         private bool _enabled = true;
 
@@ -408,7 +430,8 @@ namespace ALLIN1
                     return;
                 }
 
-                BeginEnter(player, false);
+                if (!BeginExternalApproach(player, false))
+                    BeginEnter(player, false);
             }
             else
             {
@@ -515,7 +538,20 @@ namespace ALLIN1
                     if (player.IsInVehicle())
                         CancelExecution(player, "returned_to_vehicle_during_exit", true);
                     else if (phaseElapsed >= EXIT_SETTLE_MS)
-                        BeginEnter(player, true);
+                    {
+                        if (!BeginExternalApproach(player, true))
+                            BeginEnter(player, true);
+                    }
+                    break;
+
+                case ExecutionPhase.ApproachingExternalSeat:
+                    if (player.IsInVehicle())
+                        CancelExecution(player, "entered_vehicle_during_approach", true);
+                    else if (player.Position.DistanceTo(_externalApproachPoint)
+                             <= EXTERNAL_APPROACH_DISTANCE)
+                        BeginEnter(player, _approachIsReentry);
+                    else if (phaseElapsed > EXTERNAL_APPROACH_TIMEOUT_MS)
+                        CancelExecution(player, "external_approach_timeout", true);
                     break;
 
                 case ExecutionPhase.Entering:
@@ -622,6 +658,46 @@ namespace ALLIN1
             Function.Call(Hash.TASK_ENTER_VEHICLE,
                 player.Handle, _targetVeh.Handle, ENTER_TIMEOUT_MS,
                 _targetSeatIdx, 2f, NORMAL_ENTER_FLAG, 0);
+        }
+
+        private bool BeginExternalApproach(Ped player, bool reentry)
+        {
+            Vector3[] offsets = GetExternalApproachOffsets(
+                _targetVeh.Model.Hash, _targetSeatIdx);
+            if (offsets == null || offsets.Length == 0)
+                return false;
+
+            Vector3 nearest = _targetVeh.GetOffsetPosition(offsets[0]);
+            float nearestDistance = player.Position.DistanceTo(nearest);
+            for (int i = 1; i < offsets.Length; i++)
+            {
+                Vector3 candidate = _targetVeh.GetOffsetPosition(offsets[i]);
+                float distance = player.Position.DistanceTo(candidate);
+                if (distance < nearestDistance)
+                {
+                    nearest = candidate;
+                    nearestDistance = distance;
+                }
+            }
+
+            _externalApproachPoint = nearest;
+            _approachIsReentry = reentry;
+            SetExecutionPhase(
+                ExecutionPhase.ApproachingExternalSeat,
+                reentry ? "external_reentry_approach" : "outside_entry_approach");
+            Function.Call(Hash.TASK_GO_STRAIGHT_TO_COORD,
+                player.Handle,
+                nearest.X, nearest.Y, nearest.Z,
+                1.25f, EXTERNAL_APPROACH_TIMEOUT_MS, -1f, 0.15f);
+            return true;
+        }
+
+        internal static Vector3[] GetExternalApproachOffsets(
+            int modelHash, int seatIndex)
+        {
+            return modelHash == CARACARA_HASH && seatIndex == 3
+                ? CARACARA_TURRET_APPROACH_OFFSETS
+                : null;
         }
 
         private void SetExecutionPhase(ExecutionPhase phase, string route)
@@ -731,7 +807,7 @@ namespace ALLIN1
             }
         }
 
-        private static string GetSeatLabel(int modelHash, int seatIndex)
+        internal static string GetSeatLabel(int modelHash, int seatIndex)
         {
             Dictionary<int, string> modelLabels;
             string specialLabel;
@@ -909,6 +985,8 @@ namespace ALLIN1
             _phaseStart = 0;
             _targetSeatIdx = 0;
             _sourceSeatIdx = -2;
+            _externalApproachPoint = Vector3.Zero;
+            _approachIsReentry = false;
             _playerInVehicle = false;
             _executionPhase = ExecutionPhase.None;
         }

@@ -25,6 +25,11 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   rather than **Extra 1**. Switch from the driver and both rear seats to the
   turret, and back again. Every route must finish its exit animation before
   walking to and mounting the target position; no transition may teleport.
+- In the weaponized Vapid Caracara, confirm **Extra 1** is labeled **Turret**.
+  Switch from the cab to the turret and verify the character exits fully, walks
+  to the nearest rear climb point, and uses the truck's native mounting
+  animation. Repeat from outside on both sides and behind the truck; no route
+  may teleport or stall at the front door.
 - Equip and remove armor, Juggernaut, night vision, weapons, ammo, and throwables.
 - Purchase an Online-only weapon from GBAY without opening the desktop character
   editor. Fire a measurable number of rounds, make a normal GTA save, quit, and
