@@ -34,6 +34,7 @@ namespace ALLIN1
         private const int EXECUTE_TIMEOUT_MS = 25000;
         private const int ENTER_TIMEOUT_MS = 14000;
         private const int EXIT_TIMEOUT_MS = 7000;
+        private const int EXIT_SETTLE_MS = 1200;
         private const int SHUFFLE_TIMEOUT_MS = 4500;
         private const float MAX_EXTERNAL_SWITCH_SPEED = 1.25f;
         private const int NORMAL_ENTER_FLAG = 1;
@@ -46,6 +47,19 @@ namespace ALLIN1
 
         private static readonly string LOG_PATH =
             Path.Combine("scripts", "ALLIN1_SeatSelector.log");
+
+        // GTA exposes mounted weapon stations as ordinary high-numbered seats.
+        // Keep model-specific names here so the selector does not present a
+        // turret as a generic "Extra" seat. The Turreted Limo's roof gun is
+        // passenger index 3 (the first external seat).
+        private static readonly Dictionary<int, Dictionary<int, string>>
+            SPECIAL_SEAT_LABELS = new Dictionary<int, Dictionary<int, string>>
+            {
+                {
+                    Game.GenerateHash("limo2"),
+                    new Dictionary<int, string> { { 3, "Turret" } }
+                },
+            };
 
         // HUD layout (normalized screen coords, bottom-right area)
         private const float HUD_RIGHT = 0.97f;
@@ -78,6 +92,7 @@ namespace ALLIN1
             Entering,
             Shuffling,
             Exiting,
+            WaitingAfterExit,
             Reentering,
         }
 
@@ -485,9 +500,22 @@ namespace ALLIN1
 
                 case ExecutionPhase.Exiting:
                     if (!player.IsInVehicle())
-                        BeginEnter(player, true);
+                        SetExecutionPhase(
+                            ExecutionPhase.WaitingAfterExit,
+                            "exit_animation_settle");
                     else if (phaseElapsed > EXIT_TIMEOUT_MS)
                         CancelExecution(player, "exit_timeout", true);
+                    break;
+
+                case ExecutionPhase.WaitingAfterExit:
+                    // IsInVehicle becomes false before GTA has finished the
+                    // leave-vehicle animation. Starting another task during
+                    // that tail cancels entry to external seats such as limo2's
+                    // roof turret. Let the ped finish planting both feet first.
+                    if (player.IsInVehicle())
+                        CancelExecution(player, "returned_to_vehicle_during_exit", true);
+                    else if (phaseElapsed >= EXIT_SETTLE_MS)
+                        BeginEnter(player, true);
                     break;
 
                 case ExecutionPhase.Entering:
@@ -672,15 +700,7 @@ namespace ALLIN1
                 bool isPlayer = (occupant != null && occupant.Exists()
                                  && occupant == player);
 
-                string label;
-                switch (idx)
-                {
-                    case -1: label = "Driver"; break;
-                    case 0:  label = "Passenger"; break;
-                    case 1:  label = "Left Rear"; break;
-                    case 2:  label = "Right Rear"; break;
-                    default: label = $"Extra {idx - 2}"; break;
-                }
+                string label = GetSeatLabel(_targetVeh.Model.Hash, idx);
 
                 // Grid layout: 2 columns matching vehicle sides
                 // Col 0 = left (driver side), Col 1 = right (passenger side)
@@ -708,6 +728,24 @@ namespace ALLIN1
                     GridRow = row,
                     GridCol = col,
                 });
+            }
+        }
+
+        private static string GetSeatLabel(int modelHash, int seatIndex)
+        {
+            Dictionary<int, string> modelLabels;
+            string specialLabel;
+            if (SPECIAL_SEAT_LABELS.TryGetValue(modelHash, out modelLabels)
+                && modelLabels.TryGetValue(seatIndex, out specialLabel))
+                return specialLabel;
+
+            switch (seatIndex)
+            {
+                case -1: return "Driver";
+                case 0:  return "Passenger";
+                case 1:  return "Left Rear";
+                case 2:  return "Right Rear";
+                default: return $"Extra {seatIndex - 2}";
             }
         }
 

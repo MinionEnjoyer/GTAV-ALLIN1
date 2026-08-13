@@ -1,22 +1,33 @@
 import hashlib
 import os
+import struct
 
 from allin1.health import scan_installation, sha256_file
 
 
+def _write_pe(path, *, size=4096):
+    payload = bytearray(size)
+    payload[:2] = b"MZ"
+    struct.pack_into("<I", payload, 0x3C, 0x80)
+    payload[0x80:0x84] = b"PE\0\0"
+    struct.pack_into("<H", payload, 0x84, 0x8664)
+    path.write_bytes(payload)
+
+
 def _game(tmp_path, enhanced=False):
     (tmp_path / ("GTA5_Enhanced.exe" if enhanced else "GTA5.exe")).touch()
-    (tmp_path / "ScriptHookV.dll").touch(); (tmp_path / "ScriptHookVDotNet.asi").touch()
-    (tmp_path / ("OpenRPF.asi" if enhanced else "OpenIV.asi")).write_bytes(b"asi")
-    (tmp_path / ("xinput1_4.dll" if enhanced else "dinput8.dll")).write_bytes(b"loader")
+    _write_pe(tmp_path / "ScriptHookV.dll"); _write_pe(tmp_path / "ScriptHookVDotNet.asi")
+    _write_pe(tmp_path / ("OpenRPF.asi" if enhanced else "OpenIV.asi"))
+    _write_pe(tmp_path / ("xinput1_4.dll" if enhanced else "dinput8.dll"))
     scripts = tmp_path / "scripts"; scripts.mkdir()
-    (scripts / "ALLIN1.dll").write_bytes(b"dll")
+    _write_pe(scripts / "ALLIN1.dll")
     (scripts / "ALLIN1.version").write_text("0.2.0\n")
     return scripts
 
 
 def test_healthy_install_and_checksum(tmp_path):
-    scripts = _game(tmp_path); expected = hashlib.sha256(b"dll").hexdigest()
+    scripts = _game(tmp_path)
+    expected = hashlib.sha256((scripts / "ALLIN1.dll").read_bytes()).hexdigest()
     report = scan_installation(tmp_path, expected_hashes={"scripts/ALLIN1.dll": expected})
     assert report.launch_safe and report.edition == "legacy"
     assert report.installed_version == "0.2.0" and report.to_dict()["launch_safe"] is True
@@ -67,6 +78,19 @@ def test_health_rejects_empty_openrpf_and_missing_asi_loader(tmp_path):
     (tmp_path / "xinput1_4.dll").unlink()
     codes = {issue.code for issue in scan_installation(tmp_path).issues}
     assert {"rpf_loader_corrupt", "asi_loader_missing"} <= codes
+
+
+def test_health_rejects_placeholder_or_wrong_architecture_dependencies(tmp_path):
+    scripts = _game(tmp_path, enhanced=True)
+    (tmp_path / "ScriptHookV.dll").write_bytes(b"placeholder")
+    payload = bytearray((scripts / "ALLIN1.dll").read_bytes())
+    struct.pack_into("<H", payload, 0x84, 0x014C)
+    (scripts / "ALLIN1.dll").write_bytes(payload)
+
+    report = scan_installation(tmp_path)
+    codes = {issue.code for issue in report.issues}
+    assert {"dependency_corrupt", "mod_corrupt"} <= codes
+    assert report.launch_safe is False
 
 
 def test_health_blocks_rpf_archive_from_older_game_build(tmp_path):

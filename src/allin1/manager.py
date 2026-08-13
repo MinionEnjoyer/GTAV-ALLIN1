@@ -10,6 +10,7 @@ from allin1.config import Config
 from allin1 import __version__
 from allin1.detector import detect_gta_path, validate_gta_path
 from allin1.installer import InstallResult, install, uninstall
+from allin1.health import inspect_windows_binary
 from allin1.vehicles.database import VehicleDatabase
 from allin1.versioning import read_installed_version
 
@@ -82,15 +83,15 @@ class ModManager:
         except (OSError, ValueError):
             installed_version = None
         rpf_plugin = gta_path / ("OpenRPF.asi" if edition == "Enhanced" else "OpenIV.asi")
-        rpf_installed = rpf_plugin.is_file() and rpf_plugin.stat().st_size > 0
+        rpf_installed = inspect_windows_binary(rpf_plugin).valid
         disabled_plugin = (
             gta_path / "allin1_backups" / "DisabledPlugins" /
             (rpf_plugin.name + ".disabled")
         )
-        asi_loader = any((gta_path / name).is_file() for name in
+        asi_loader = any(inspect_windows_binary(gta_path / name).valid for name in
                          ("dinput8.dll", "dsound.dll", "xinput1_4.dll"))
         if rpf_installed:
-            rpf_status = "Installed"
+            rpf_status = "Installed (file validated)"
         elif disabled_plugin.is_file():
             rpf_status = "Disabled"
         elif asi_loader:
@@ -102,9 +103,9 @@ class ModManager:
             gta_path=gta_path,
             valid_game=valid,
             edition=edition,
-            mod_installed=(scripts / "ALLIN1.dll").exists(),
-            scripthookv_installed=(gta_path / "ScriptHookV.dll").exists(),
-            shvdn_installed=(gta_path / "ScriptHookVDotNet.asi").exists(),
+            mod_installed=inspect_windows_binary(scripts / "ALLIN1.dll").valid,
+            scripthookv_installed=inspect_windows_binary(gta_path / "ScriptHookV.dll").valid,
+            shvdn_installed=inspect_windows_binary(gta_path / "ScriptHookVDotNet.asi").valid,
             openrpf_installed=rpf_installed,
             installed_version=installed_version,
             rpf_loader_status=rpf_status,

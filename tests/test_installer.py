@@ -1,12 +1,22 @@
 """Unit tests for game-file installation orchestration."""
 
 from pathlib import Path
+import struct
 from unittest.mock import Mock
 
 import pytest
 
 from allin1.config import Config
 from allin1 import installer
+
+
+def _write_pe(path, *, size=4096):
+    payload = bytearray(size)
+    payload[:2] = b"MZ"
+    struct.pack_into("<I", payload, 0x3C, 0x80)
+    payload[0x80:0x84] = b"PE\0\0"
+    struct.pack_into("<H", payload, 0x84, 0x8664)
+    path.write_bytes(payload)
 
 
 def _game(tmp_path: Path, enhanced: bool = False) -> Path:
@@ -54,7 +64,7 @@ def test_deploy_script_copies_binaries_and_config(tmp_path, monkeypatch):
     assert (scripts / "ALLIN1.dll").read_bytes() == b"mod"
     assert (scripts / "LemonUI.SHVDN3.dll").read_bytes() == b"ui"
     assert (scripts / "ALLIN1.toml").exists()
-    assert (scripts / "ALLIN1.version").read_text().strip() == "0.3.1"
+    assert (scripts / "ALLIN1.version").read_text().strip() == "0.4.0"
     assert not (scripts / "ALLIN1.ini").exists()
 
 
@@ -67,8 +77,8 @@ def test_prerequisite_checks(tmp_path):
     game = _game(tmp_path)
     assert installer._check_scripthookv(game) is False
     assert installer._check_shvdn(game) is False
-    (game / "ScriptHookV.dll").touch()
-    (game / "ScriptHookVDotNet.asi").touch()
+    _write_pe(game / "ScriptHookV.dll")
+    _write_pe(game / "ScriptHookVDotNet.asi")
     assert installer._check_scripthookv(game) is True
     assert installer._check_shvdn(game) is True
 
@@ -76,9 +86,9 @@ def test_prerequisite_checks(tmp_path):
 def test_legacy_openiv_check_does_not_download(tmp_path):
     game = _game(tmp_path)
     assert installer._check_openrpf(game, enhanced=False) is False
-    (game / "OpenIV.asi").write_bytes(b"asi")
+    _write_pe(game / "OpenIV.asi")
     assert installer._check_openrpf(game, enhanced=False) is False
-    (game / "dinput8.dll").write_bytes(b"loader")
+    _write_pe(game / "dinput8.dll")
     assert installer._check_openrpf(game, enhanced=False) is True
 
 

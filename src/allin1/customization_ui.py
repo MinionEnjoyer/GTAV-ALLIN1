@@ -213,6 +213,7 @@ class CharacterCustomizationDialog(tk.Toplevel):
                     loadout.equipped_gear.append(item)
             else:
                 loadout.weapons.append(item)
+                loadout.weapon_ammo[item] = 9999
         self._refresh_inventory()
 
     def _remove_inventory(self) -> None:
@@ -220,7 +221,9 @@ class CharacterCustomizationDialog(tk.Toplevel):
         loadout.managed = True
         for index in reversed(self.owned.curselection()):
             item = self.owned.get(index)
-            if item in loadout.weapons: loadout.weapons.remove(item)
+            if item in loadout.weapons:
+                loadout.weapons.remove(item)
+                loadout.weapon_ammo.pop(item, None)
             if item in loadout.gear: loadout.gear.remove(item)
             if item in loadout.equipped_gear: loadout.equipped_gear.remove(item)
         self._refresh_inventory()

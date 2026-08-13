@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 CHARACTERS = ("michael", "franklin", "trevor")
-LOADOUT_SCHEMA_VERSION = 4
+LOADOUT_SCHEMA_VERSION = 5
 GARAGE_SCHEMA_VERSION = 2
 SKILLS = ("stamina", "strength", "lung_capacity", "driving", "flying", "shooting", "stealth")
 
@@ -63,6 +63,7 @@ class CharacterLoadout:
     outfit: CharacterOutfit = field(default_factory=CharacterOutfit)
     progress: CharacterProgress = field(default_factory=CharacterProgress)
     equipped_gear: list[str] = field(default_factory=list)
+    weapon_ammo: dict[str, int] = field(default_factory=dict)
 
 
 class LoadoutStore:
@@ -88,6 +89,14 @@ class LoadoutStore:
                 for value in dict.fromkeys(equipped_source)
                 if value in owned_gear
             ]
+            ammo_source = item.get("weapon_ammo", {}) or {}
+            if schema_version < LOADOUT_SCHEMA_VERSION:
+                weapon_ammo = {weapon: 9999 for weapon in weapons}
+            else:
+                weapon_ammo = {
+                    weapon: max(0, int(ammo_source.get(weapon, 9999)))
+                    for weapon in weapons
+                }
             outfit_raw = item.get("outfit", {})
             components = [OutfitVariation(int(v.get("drawable", 0)), int(v.get("texture", 0)))
                           for v in outfit_raw.get("components", [])]
@@ -113,6 +122,7 @@ class LoadoutStore:
                     },
                 ),
                 equipped_gear,
+                weapon_ammo,
             )
         return result
 
@@ -126,15 +136,23 @@ class LoadoutStore:
             bad_weapons = set(loadout.weapons) - self.valid_weapons
             bad_gear = set(loadout.gear) - self.valid_gear
             bad_equipped = set(loadout.equipped_gear) - set(loadout.gear)
-            if bad_weapons or bad_gear or bad_equipped:
+            bad_ammo = set(loadout.weapon_ammo) - set(loadout.weapons)
+            if bad_weapons or bad_gear or bad_equipped or bad_ammo:
                 raise ValueError(f"Unknown inventory items: "
-                                 f"{sorted(bad_weapons | bad_gear | bad_equipped)}")
+                                 f"{sorted(bad_weapons | bad_gear | bad_equipped | bad_ammo)}")
+            if any(not isinstance(value, int) or value < 0
+                   for value in loadout.weapon_ammo.values()):
+                raise ValueError("Weapon ammunition must be a non-negative whole number")
             self._validate_outfit(loadout.outfit)
             self._validate_progress(loadout.progress)
             output[character] = {
                 "weapons": sorted(set(loadout.weapons)),
                 "gear": sorted(set(loadout.gear)),
                 "equipped_gear": sorted(set(loadout.equipped_gear)),
+                "weapon_ammo": {
+                    weapon: loadout.weapon_ammo.get(weapon, 9999)
+                    for weapon in sorted(set(loadout.weapons))
+                },
                 "managed": loadout.managed,
                 "outfit": {
                     "managed": loadout.outfit.managed,

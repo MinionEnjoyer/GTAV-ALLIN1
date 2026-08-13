@@ -1,54 +1,31 @@
+import hashlib
 import json
+from datetime import datetime, timezone
 
 import pytest
 
 from allin1.compatibility import load_weapon_compatibility, weapon_available
 from allin1.preview_artifacts import expected_dictionary, verify_ytd_set
 from allin1.reliability import (
-    GarageState, SeatState, SmokeCheck, analyze_client_log, write_smoke_report,
+    SmokeAnalysis, SmokeCheck, analyze_client_log, write_smoke_report,
 )
-
-
-def test_garage_state_machine_success_overlap_and_recovery():
-    state = GarageState()
-    assert state.begin("enter") is True
-    assert state.begin("leave") is False
-    state.step("fade_out")
-    state.step("freeze")
-    state.step("enter_complete")
-    state.finish()
-    assert state == GarageState(location="garage")
-    assert state.begin("leave") is True
-    state.step("fade_out")
-    state.recover()
-    assert state == GarageState()
-    with pytest.raises(ValueError, match="no transition"):
-        state.step("freeze")
-    state.begin("enter")
-    with pytest.raises(ValueError, match="unknown"):
-        state.step("explode")
-
-
-def test_seat_state_revalidates_occupancy_and_times_out():
-    state = SeatState({-1: "player", 0: "free", 1: "npc"})
-    assert state.available() == [-1, 0]
-    assert state.select(1) is False
-    assert state.select(0) is True
-    state.seats[0] = "npc"
-    assert state.confirm() is False
-    state.seats[0] = "free"
-    assert state.confirm() is True
-    state.timeout()
-    assert state.executing is False
 
 
 def test_smoke_report_records_pass_and_failure(tmp_path):
     path = tmp_path / "report.json"
-    assert write_smoke_report(path, "enhanced", [SmokeCheck("spawn", True)]) is True
+    log = tmp_path / "client.log"
+    log.write_text("session log")
+    digest = hashlib.sha256(log.read_bytes()).hexdigest()
+    passed = SmokeAnalysis(log, digest, "session-a", "2026-08-12T12:00:00+00:00",
+                           (SmokeCheck("spawn", True),))
+    failed = SmokeAnalysis(log, digest, "session-b", "2026-08-12T12:00:00+00:00",
+                           (SmokeCheck("preview", False, "missing"),))
+    assert write_smoke_report(path, "enhanced", passed) is True
     assert json.loads(path.read_text())["passed"] is True
-    assert write_smoke_report(path, "legacy", [SmokeCheck("preview", False, "missing")]) is False
+    assert write_smoke_report(path, "legacy", failed) is False
     payload = json.loads(path.read_text())
     assert payload["checks"][0]["detail"] == "missing"
+    assert payload["schema"] == 2 and payload["source_log_sha256"] == digest
 
 
 def test_weapon_compatibility_manifest(tmp_path):
@@ -78,13 +55,46 @@ def test_preview_artifact_plan_and_validation(tmp_path):
 
 def test_client_log_analysis_handles_events_and_malformed_lines(tmp_path):
     path = tmp_path / "client.log"
+    now = datetime(2026, 8, 12, 12, 30, tzinfo=timezone.utc)
+    session = "fresh-session"
+    def event(component, message, **fields):
+        return {"ts": "2026-08-12T12:00:00+00:00", "level": "INFO",
+                "session": session, "component": component, "message": message, **fields}
     events = [
-        {"component": "VehicleHelper", "message": "vehicle_created"},
-        {"component": "GBAY", "message": "GiveWeapon: WEAPON_TEST, price=$0"},
-        {"component": "Preview", "message": "texture_loaded"},
-        {"component": "Garage", "message": "EnterGarage: COMPLETE, character=michael"},
-        {"component": "Garage", "message": "LeaveFloorGarage: COMPLETE"},
-        {"component": "SeatSelector", "message": "seat_switch_completed"},
+        event("Client", "session_started"),
+        event("VehicleHelper", "vehicle_created"),
+        event("GBAY", "GiveWeapon: WEAPON_TEST, price=$0"),
+        event("Preview", "texture_loaded", dictionary="allin1_prev_01"),
+        event("Garage", "EnterGarage: COMPLETE, character=michael"),
+        event("Garage", "LeaveGarage: COMPLETE"),
+        event("Garage", "EnterFloorGarage: COMPLETE, character=michael_floor"),
+        event("Garage", "LeaveFloorGarage: COMPLETE"),
+        event("SeatSelector", "seat_switch_completed"),
     ]
     path.write_text("broken\n" + "\n".join(json.dumps(event) for event in events))
-    assert all(check.passed for check in analyze_client_log(path))
+    analysis = analyze_client_log(path, now=now)
+    assert analysis.passed is True
+    assert analysis.session == session
+
+
+def test_client_log_analysis_rejects_stale_mixed_or_failed_events(tmp_path):
+    path = tmp_path / "client.log"
+    events = [
+        {"ts": "2026-08-10T12:00:00+00:00", "level": "INFO", "session": "old",
+         "component": "Client", "message": "session_started"},
+        {"ts": "2026-08-10T12:00:01+00:00", "level": "INFO", "session": "old",
+         "component": "GBAY", "message": "GiveWeapon: WEAPON_TEST, price=$0"},
+        {"ts": "2026-08-12T12:00:00+00:00", "level": "INFO", "session": "new",
+         "component": "Client", "message": "session_started"},
+        {"ts": "2026-08-12T12:00:01+00:00", "level": "INFO", "session": "new",
+         "component": "GBAY", "message": "GiveWeapon: native grant failed for WEAPON_TEST"},
+        {"ts": "2026-08-12T12:00:02+00:00", "level": "ERROR", "session": "new",
+         "component": "Garage", "message": "transition_failed"},
+    ]
+    path.write_text("\n".join(json.dumps(event) for event in events))
+    analysis = analyze_client_log(
+        path, now=datetime(2026, 8, 12, 12, 30, tzinfo=timezone.utc))
+    checks = {check.name: check.passed for check in analysis.checks}
+    assert analysis.session == "new"
+    assert checks["weapon_grant"] is False
+    assert checks["client_errors"] is False

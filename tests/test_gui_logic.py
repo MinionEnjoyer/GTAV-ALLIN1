@@ -127,8 +127,8 @@ def test_status_presentation_prioritizes_missing_dependencies_and_version_drift(
         valid_game=True,
         edition="Enhanced",
         mod_installed=True,
-        installed_version="0.3.1",
-        manager_version="0.3.1",
+        installed_version="0.4.0",
+        manager_version="0.4.0",
     ))
     assert missing.headline == "Required components are missing"
     assert "ScriptHookV" in missing.detail
@@ -140,11 +140,11 @@ def test_status_presentation_prioritizes_missing_dependencies_and_version_drift(
         mod_installed=True,
         scripthookv_installed=True,
         shvdn_installed=True,
-        installed_version="0.3.0",
-        manager_version="0.3.1",
+        installed_version="0.3.1",
+        manager_version="0.4.0",
     ))
     assert update.headline == "Client update available"
-    assert "0.3.0" in update.detail and "0.3.1" in update.detail
+    assert "0.3.1" in update.detail and "0.4.0" in update.detail
 
 
 def test_status_presentation_reports_ready_when_versions_match(tmp_path):
@@ -155,8 +155,8 @@ def test_status_presentation_reports_ready_when_versions_match(tmp_path):
         mod_installed=True,
         scripthookv_installed=True,
         shvdn_installed=True,
-        installed_version="0.3.1",
-        manager_version="0.3.1",
+        installed_version="0.4.0",
+        manager_version="0.4.0",
     ))
     assert ready.headline == "Ready to play"
     assert ready.can_launch is True

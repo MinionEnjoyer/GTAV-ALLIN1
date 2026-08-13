@@ -337,8 +337,8 @@ def analyze_client_log_cmd(log_file: Path, edition: str, output: Path) -> None:
     """Convert an in-game structured client log into a smoke-test report."""
     from allin1.reliability import analyze_client_log, write_smoke_report
 
-    checks = analyze_client_log(log_file)
-    passed = write_smoke_report(output, edition, checks)
+    analysis = analyze_client_log(log_file)
+    passed = write_smoke_report(output, edition, analysis)
     click.echo(f"Smoke report: {output} ({'PASS' if passed else 'FAIL'})")
     if not passed:
         raise SystemExit(1)
@@ -376,22 +376,23 @@ def repair_garage_cmd(garage_file: Path) -> None:
 
 @main.command("qualification-report")
 @click.argument("output", type=click.Path(path_type=Path))
-@click.option("--coverage", type=float, default=0.0)
+@click.option("--coverage-report", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
 @click.option("--minimum-coverage", type=float, default=91.0)
-@click.option("--script-build/--no-script-build", default=True)
-@click.option("--smoke-pass/--no-smoke-pass", default=False)
-def qualification_report_cmd(output: Path, coverage: float, minimum_coverage: float,
-                             script_build: bool, smoke_pass: bool) -> None:
+@click.option("--script-assembly", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
+@click.option("--smoke-report", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
+def qualification_report_cmd(output: Path, coverage_report: Path, minimum_coverage: float,
+                             script_assembly: Path, smoke_report: Path) -> None:
     """Create a release qualification dashboard JSON file."""
-    from allin1.qualification import QualificationCheck, build_report
+    from allin1.qualification import build_report, checks_from_artifacts
 
-    checks = [
-        QualificationCheck("python_coverage", coverage >= minimum_coverage,
-                           f"{coverage:.2f}% / {minimum_coverage:.2f}%"),
-        QualificationCheck("script_build", script_build, "C# Release build"),
-        QualificationCheck("in_game_smoke", smoke_pass, "Legacy/Enhanced smoke report"),
-    ]
-    report = build_report(output, checks, metrics={"coverage": coverage})
+    try:
+        checks, metrics = checks_from_artifacts(
+            coverage_report, script_assembly, smoke_report,
+            minimum_coverage=minimum_coverage,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    report = build_report(output, checks, metrics=metrics)
     click.echo(f"Qualification: {'PASS' if report['passed'] else 'FAIL'} ({output})")
     if not report["passed"]:
         raise SystemExit(1)

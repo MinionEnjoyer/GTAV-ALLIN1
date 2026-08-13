@@ -43,9 +43,10 @@ def test_loadout_round_trip_normalizes_all_characters(tmp_path):
         ["WEAPON_A", "WEAPON_A"], ["GEAR_A"], equipped_gear=["GEAR_A"])})
     loaded = store.load()
     assert loaded["michael"] == CharacterLoadout(
-        ["WEAPON_A"], ["GEAR_A"], False, equipped_gear=["GEAR_A"])
+        ["WEAPON_A"], ["GEAR_A"], False, equipped_gear=["GEAR_A"],
+        weapon_ammo={"WEAPON_A": 9999})
     assert loaded["franklin"] == CharacterLoadout()
-    assert json.loads((tmp_path / "loadouts.json").read_text())["michael"]["schema_version"] == 4
+    assert json.loads((tmp_path / "loadouts.json").read_text())["michael"]["schema_version"] == 5
 
 
 @pytest.mark.parametrize("loadouts", [
@@ -63,7 +64,23 @@ def test_loadout_load_deduplicates_external_file(tmp_path):
     path.write_text('{"trevor":{"weapons":["A","A"],"gear":["G","G"]}}')
     loaded = LoadoutStore(path, {"A"}, {"G"}).load()
     assert loaded["trevor"] == CharacterLoadout(
-        ["A"], ["G"], False, equipped_gear=["G"])
+        ["A"], ["G"], False, equipped_gear=["G"],
+        weapon_ammo={"A": 9999})
+
+
+def test_weapon_ammo_round_trip_and_validation(tmp_path):
+    path = tmp_path / "characters.json"
+    store = LoadoutStore(path, {"WEAPON_A"}, set())
+    loadout = CharacterLoadout(
+        weapons=["WEAPON_A"], weapon_ammo={"WEAPON_A": 37})
+    store.save({"franklin": loadout})
+    assert store.load()["franklin"].weapon_ammo == {"WEAPON_A": 37}
+    raw = json.loads(path.read_text())
+    assert raw["franklin"]["weapon_ammo"] == {"WEAPON_A": 37}
+
+    loadout.weapon_ammo["WEAPON_A"] = -1
+    with pytest.raises(ValueError, match="ammunition"):
+        store.save({"franklin": loadout})
 
 
 def test_loadout_preserves_unequipped_owned_gear(tmp_path):

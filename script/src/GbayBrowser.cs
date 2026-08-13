@@ -2082,7 +2082,13 @@ namespace ALLIN1
                     int rounds;
                     int cost = _shop.GetAmmoRefillInfo(card.WeaponName, out rounds);
 
-                    if (cost == -1)
+                    if (cost == GbayShop.AmmoCapacityUnavailable)
+                    {
+                        GbayRenderer.DrawTextFit("AMMO DATA UNAVAILABLE", textLeft,
+                            textTop + 0.038f, 0.24f, 0.17f, cardW - 0.016f,
+                            Color.FromArgb(255, 180, 70, 45), GbayRenderer.FONT_CONDENSED);
+                    }
+                    else if (cost == GbayShop.AmmoNotApplicable)
                     {
                         // Melee / no-ammo
                         GbayRenderer.DrawText("OWNED", textLeft, textTop + 0.038f,
@@ -2336,7 +2342,13 @@ namespace ALLIN1
                         int rounds;
                         int cost = _shop.GetAmmoRefillInfo(card.WeaponName, out rounds);
 
-                        if (cost == -1)
+                        if (cost == GbayShop.AmmoCapacityUnavailable)
+                        {
+                            GbayRenderer.PlayError();
+                            GTA.UI.Screen.ShowSubtitle(
+                                "~r~Ammo data is unavailable for this weapon.", 3000);
+                        }
+                        else if (cost == GbayShop.AmmoNotApplicable)
                         {
                             // Melee / no-ammo weapon
                             GbayRenderer.PlayError();

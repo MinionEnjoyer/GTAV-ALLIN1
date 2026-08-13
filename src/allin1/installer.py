@@ -27,6 +27,7 @@ from pathlib import Path
 from allin1 import asi_loader
 from allin1.config import Config
 from allin1.detector import detect_gta_path, validate_gta_path
+from allin1.health import inspect_windows_binary
 from allin1.preview_assets import GEAR_PREVIEW_ITEMS
 from allin1.vehicles.database import VehicleDatabase
 from allin1.versioning import VERSION_FILE, write_installed_version
@@ -318,20 +319,20 @@ def _deploy_script(gta_path: Path) -> bool:
 
 def _check_scripthookv(gta_path: Path) -> bool:
     """Check if ScriptHookV is installed in the game directory."""
-    return (gta_path / "ScriptHookV.dll").exists()
+    return inspect_windows_binary(gta_path / "ScriptHookV.dll").valid
 
 
 def _check_shvdn(gta_path: Path) -> bool:
     """Check if ScriptHookVDotNet is installed in the game directory."""
-    return (gta_path / "ScriptHookVDotNet.asi").exists()
+    return inspect_windows_binary(gta_path / "ScriptHookVDotNet.asi").valid
 
 
 def _check_openrpf(gta_path: Path, enhanced: bool) -> bool:
     """Detect a user-installed RPF loader without downloading executable code."""
     if not enhanced:
         asi_path = gta_path / "OpenIV.asi"
-        found = asi_path.exists() and asi_path.stat().st_size > 0
-        if found and not (gta_path / "dinput8.dll").exists():
+        found = inspect_windows_binary(asi_path).valid
+        if found and not inspect_windows_binary(gta_path / "dinput8.dll").valid:
             log.warning("OpenIV.asi exists but dinput8.dll ASI loader is missing")
             found = False
         if found:
@@ -352,11 +353,12 @@ def _check_openrpf(gta_path: Path, enhanced: bool) -> bool:
     if (gta_path / "OpenIV.asi").exists():
         log.error("Both OpenRPF.asi and OpenIV.asi are installed on Enhanced")
         return False
-    if asi_path.stat().st_size == 0:
-        log.warning("OpenRPF.asi is empty or corrupt")
+    inspection = inspect_windows_binary(asi_path)
+    if not inspection.valid:
+        log.warning("OpenRPF.asi is invalid: %s", inspection.reason)
         return False
     asi_loaders = ("dsound.dll", "xinput1_4.dll", "dinput8.dll")
-    if not any((gta_path / name).exists() for name in asi_loaders):
+    if not any(inspect_windows_binary(gta_path / name).valid for name in asi_loaders):
         log.warning("OpenRPF.asi exists but no compatible ASI loader was detected")
         return False
     log.info("User-installed OpenRPF.asi and ASI loader detected")

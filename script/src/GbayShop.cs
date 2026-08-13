@@ -49,6 +49,8 @@ namespace ALLIN1
 
         // --- Public accessors for GbayBrowser ---
         internal bool FreeMode => _freeMode;
+        internal const int AmmoNotApplicable = -1;
+        internal const int AmmoCapacityUnavailable = -3;
 
         public GbayShop()
         {
@@ -497,22 +499,30 @@ namespace ALLIN1
                 Hash.GET_AMMO_IN_PED_WEAPON, player, weaponHash);
 
             OutputArgument maxAmmoOut = new OutputArgument();
-            Function.Call<bool>(
+            bool capacityResolved = Function.Call<bool>(
                 Hash.GET_MAX_AMMO, player, weaponHash, maxAmmoOut);
             int maxAmmo = maxAmmoOut.GetResult<int>();
+            AmmoCapacityResult capacity = AmmoRefillPolicy.Evaluate(
+                capacityResolved, currentAmmo, maxAmmo);
 
-            if (maxAmmo <= 0)
+            if (capacity.Status == AmmoCapacityStatus.Unavailable)
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~Ammo capacity is unavailable for this weapon.", 3000);
+                ClientLog.Warn("GBAY", "ammo_capacity_unavailable",
+                    new Dictionary<string, object> { { "weapon", weaponName } });
+                return AmmoCapacityUnavailable;
+            }
+            if (capacity.Status == AmmoCapacityStatus.NotApplicable)
             {
                 GTA.UI.Screen.ShowSubtitle("~y~Already owned.", 3000);
-                return -1;
+                return AmmoNotApplicable;
             }
-
-            int needed = maxAmmo - currentAmmo;
-            if (needed <= 0)
+            if (capacity.Status == AmmoCapacityStatus.FullyStocked)
             {
                 GTA.UI.Screen.ShowSubtitle("~g~Already fully stocked.", 3000);
-                return -1;
+                return AmmoNotApplicable;
             }
+            int needed = capacity.RoundsNeeded;
 
             int costPerRound = WeaponList.AmmoCostPerRound.ContainsKey(weaponName)
                 ? WeaponList.AmmoCostPerRound[weaponName] : 2;
@@ -528,6 +538,7 @@ namespace ALLIN1
             }
 
             Function.Call(Hash.SET_PED_AMMO, player, weaponHash, maxAmmo);
+            CharacterInventory.RecordWeaponAmmo(weaponName, maxAmmo);
 
             if (!_freeMode && totalCost > 0)
                 Game.Player.Money -= totalCost;
@@ -851,16 +862,18 @@ namespace ALLIN1
                 Hash.GET_AMMO_IN_PED_WEAPON, player, weaponHash);
 
             OutputArgument maxAmmoOut = new OutputArgument();
-            Function.Call<bool>(
+            bool capacityResolved = Function.Call<bool>(
                 Hash.GET_MAX_AMMO, player, weaponHash, maxAmmoOut);
             int maxAmmo = maxAmmoOut.GetResult<int>();
-
-            if (maxAmmo <= 0)
-                return -1;  // melee/no-ammo
-
-            roundsNeeded = maxAmmo - currentAmmo;
-            if (roundsNeeded <= 0)
-                return 0;  // fully stocked
+            AmmoCapacityResult capacity = AmmoRefillPolicy.Evaluate(
+                capacityResolved, currentAmmo, maxAmmo);
+            if (capacity.Status == AmmoCapacityStatus.Unavailable)
+                return AmmoCapacityUnavailable;
+            if (capacity.Status == AmmoCapacityStatus.NotApplicable)
+                return AmmoNotApplicable;
+            if (capacity.Status == AmmoCapacityStatus.FullyStocked)
+                return 0;
+            roundsNeeded = capacity.RoundsNeeded;
 
             int costPerRound = WeaponList.AmmoCostPerRound.ContainsKey(weaponName)
                 ? WeaponList.AmmoCostPerRound[weaponName] : 2;
@@ -918,6 +931,12 @@ namespace ALLIN1
 
         internal static void ApplyJuggernaut(Ped player)
         {
+            if (!TryGetCurrentCharacter(out PedHash ch))
+            {
+                ClientLog.Warn("GBAY", "juggernaut_rejected_for_unsupported_player_model");
+                return;
+            }
+
             // Save current outfit so we can restore later
             _savedComponents = new int[12];
             _savedTextures = new int[12];
@@ -940,7 +959,6 @@ namespace ALLIN1
                 Hash.GET_PED_PROP_TEXTURE_INDEX, player, 2);
 
             // Apply Paleto Score ballistic outfit
-            PedHash ch = GetCurrentCharacter();
             ApplyBallisticOutfit(player, ch);
 
             // Health boost to 1000 (matches Paleto Score mission values)
@@ -1046,7 +1064,7 @@ namespace ALLIN1
                 SafeSetComponent(player, 11, 0, 0); // aux/torso2
                 SafeSetProp(player, 0, 24, 1);      // helmet
             }
-            else
+            else if (ch == PedHash.Franklin)
             {
                 // Franklin — no juggernaut torso or helmet in his model.
                 // Slots 3 (torso) and prop 0 (helmet) left unchanged.
@@ -1155,16 +1173,35 @@ namespace ALLIN1
 
         internal static PedHash GetCurrentCharacter()
         {
-            Model playerModel = Game.Player.Character.Model;
+            Ped player = Game.Player.Character;
+            if (player != null && TryResolveProtagonist(player.Model.Hash, out PedHash character))
+                return character;
+            return (PedHash)0;
+        }
 
-            if (playerModel == new Model(PedHash.Michael))
-                return PedHash.Michael;
-            if (playerModel == new Model(PedHash.Franklin))
-                return PedHash.Franklin;
-            if (playerModel == new Model(PedHash.Trevor))
-                return PedHash.Trevor;
+        internal static bool TryGetCurrentCharacter(out PedHash character)
+        {
+            Ped player = Game.Player.Character;
+            if (player != null)
+                return TryResolveProtagonist(player.Model.Hash, out character);
+            character = (PedHash)0;
+            return false;
+        }
 
-            return PedHash.Michael;
+        internal static bool TryResolveProtagonist(int modelHash, out PedHash character)
+        {
+            if (modelHash == unchecked((int)PedHash.Michael))
+                character = PedHash.Michael;
+            else if (modelHash == unchecked((int)PedHash.Franklin))
+                character = PedHash.Franklin;
+            else if (modelHash == unchecked((int)PedHash.Trevor))
+                character = PedHash.Trevor;
+            else
+            {
+                character = (PedHash)0;
+                return false;
+            }
+            return true;
         }
 
         // ------------------------------------------------------------------ //
@@ -1180,6 +1217,13 @@ namespace ALLIN1
                 if (!_initialized && !Game.IsLoading)
                     Initialize();
 
+                bool supportedCharacter = TryGetCurrentCharacter(out _);
+                if (!supportedCharacter && _browser != null && _browser.IsOpen)
+                {
+                    _browser.Close();
+                    ClientLog.Warn("GBAY", "browser_closed_for_unsupported_player_model");
+                }
+
                 if (_initialized)
                 {
                     // A crash-recovery session suppresses the multi-floor
@@ -1192,12 +1236,17 @@ namespace ALLIN1
                         GarageManager.InitializeFloorGarage();
                         Log("Floor garage initialized after safe-mode recovery");
                     }
-                    GarageManager.OnTick();
-                    GarageManager.OnFloorGarageTick();
-                    GarageManager.OnDavisGarageTick();
+                    if (supportedCharacter || GarageManager.IsPlayerInGarage ||
+                        GarageManager.IsPlayerInFloorGarage ||
+                        GarageManager.IsPlayerInDavisGarage)
+                    {
+                        GarageManager.OnTick();
+                        GarageManager.OnFloorGarageTick();
+                        GarageManager.OnDavisGarageTick();
+                    }
                 }
 
-                if (_browser != null)
+                if (supportedCharacter && _browser != null)
                     _browser.Draw();
 
                 JuggernautTick();
@@ -1217,6 +1266,13 @@ namespace ALLIN1
             {
                 try
                 {
+                    if (!TryGetCurrentCharacter(out _))
+                    {
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~y~GBAY is available to Michael, Franklin, and Trevor.", 2500);
+                        ClientLog.Warn("GBAY", "unsupported_player_model");
+                        return;
+                    }
                     if (GarageManager.IsTransitionInProgress)
                     {
                         GTA.UI.Screen.ShowSubtitle("~y~A garage transition is already in progress.", 1500);

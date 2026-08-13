@@ -5,11 +5,21 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import struct
 from pathlib import Path
 
 import pytest
 
 from allin1.mods import ModCatalog, ModIntegrationService, ModManifest
+
+
+def _write_pe(path: Path) -> None:
+    payload = bytearray(4096)
+    payload[:2] = b"MZ"
+    struct.pack_into("<I", payload, 0x3C, 0x80)
+    payload[0x80:0x84] = b"PE\0\0"
+    struct.pack_into("<H", payload, 0x84, 0x8664)
+    path.write_bytes(payload)
 
 
 def _game(tmp_path: Path, *, enhanced: bool = True) -> Path:
@@ -76,7 +86,7 @@ def test_install_toggle_and_uninstall_each_supported_mod_shape(
     game = _game(tmp_path)
     for loader in ("ScriptHookV.dll", "ScriptHookVDotNet.asi", "OpenRPF.asi",
                    "xinput1_4.dll"):
-        (game / loader).write_bytes(b"loader")
+        _write_pe(game / loader)
     package = _package(tmp_path, f"test-{mod_type}", mod_type, destination,
                        dependencies=dependencies)
     manifest = ModManifest.load(package)

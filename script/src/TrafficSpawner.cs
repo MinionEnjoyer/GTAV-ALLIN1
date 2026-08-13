@@ -595,35 +595,112 @@ namespace ALLIN1
             bool hadDriver = driver != null && driver.Exists();
 
             Ped[] passengers = null;
-            if (hadDriver)
+            try { passengers = old.Passengers; }
+            catch (Exception ex)
             {
-                try { passengers = old.Passengers; }
-                catch { passengers = null; }
+                ClientLog.Warn("Traffic", "passenger_capture_failed",
+                    new Dictionary<string, object> { { "exception", ex.Message } });
             }
 
             Log($"  ReplaceVehicle: hadDriver={hadDriver} speed={speed:F1} passengers={passengers?.Length ?? 0}");
+
+            // Stage and validate the replacement before touching the original.
+            // Creating it above the source vehicle keeps both entities from
+            // colliding while the transaction is prepared.
+            Vector3 stagingPos = pos + new Vector3(0f, 0f, 50f);
+            Vehicle replacement = LoadAndCreateVehicle(
+                newModelName, stagingPos, heading, placeOnGround: false);
+            if (replacement == null)
+            {
+                ClientLog.Warn("Traffic", "replacement_stage_failed",
+                    new Dictionary<string, object>
+                    {
+                        { "model", newModelName },
+                        { "source_handle", old.Handle }
+                    });
+                return;
+            }
+
+            try
+            {
+                replacement.IsPersistent = true;
+                replacement.IsPositionFrozen = true;
+                replacement.IsCollisionEnabled = false;
+                replacement.IsVisible = false;
+                replacement.Position = pos;
+                replacement.Heading = heading;
+            }
+            catch (Exception ex)
+            {
+                ClientLog.Error("Traffic", "replacement_stage_invalid", ex,
+                    new Dictionary<string, object>
+                    {
+                        { "model", newModelName }
+                    });
+                if (replacement.Exists())
+                    replacement.Delete();
+                return;
+            }
 
             // Make driver persistent before deleting vehicle so they don't
             // despawn when their vehicle is removed.
             if (hadDriver)
                 driver.IsPersistent = true;
 
+            if (passengers != null)
+            {
+                foreach (Ped passenger in passengers)
+                {
+                    if (passenger != null && passenger.Exists())
+                        passenger.IsPersistent = true;
+                }
+            }
+
             // Remove old vehicle
             old.IsPersistent = true;
             old.Delete();
 
-            // Create replacement
-            Vehicle replacement = LoadAndCreateVehicle(newModelName, pos, heading);
-            if (replacement == null)
+            if (old.Exists())
             {
-                // Vehicle creation failed — clean up orphaned driver
+                ClientLog.Warn("Traffic", "source_delete_failed",
+                    new Dictionary<string, object>
+                    {
+                        { "model", newModelName },
+                        { "source_handle", old.Handle }
+                    });
+                if (replacement.Exists())
+                    replacement.Delete();
                 if (hadDriver && driver.Exists())
+                    driver.MarkAsNoLongerNeeded();
+                if (passengers != null)
                 {
-                    Log($"  ReplaceVehicle: vehicle creation failed, deleting orphaned driver");
-                    driver.Delete();
+                    foreach (Ped passenger in passengers)
+                    {
+                        if (passenger != null && passenger.Exists())
+                            passenger.MarkAsNoLongerNeeded();
+                    }
                 }
                 return;
             }
+
+            // Revalidate the staged entity before committing occupant transfer.
+            if (!replacement.Exists())
+            {
+                ClientLog.Warn("Traffic", "replacement_lost_after_commit",
+                    new Dictionary<string, object> { { "model", newModelName } });
+                // Vehicle creation failed — clean up orphaned driver
+                if (hadDriver && driver.Exists())
+                    driver.MarkAsNoLongerNeeded();
+                if (passengers != null)
+                    foreach (Ped passenger in passengers)
+                        if (passenger != null && passenger.Exists())
+                            passenger.MarkAsNoLongerNeeded();
+                return;
+            }
+
+            replacement.IsVisible = true;
+            replacement.IsCollisionEnabled = true;
+            replacement.IsPositionFrozen = false;
 
             if (hadDriver && driver.Exists())
             {
@@ -716,7 +793,8 @@ namespace ALLIN1
         // ------------------------------------------------------------------ //
 
         private Vehicle LoadAndCreateVehicle(string modelName, Vector3 pos,
-                                              float heading)
+                                              float heading,
+                                              bool placeOnGround = true)
         {
             var model = new Model(modelName);
             model.Request(MODEL_LOAD_TIMEOUT);
@@ -738,7 +816,8 @@ namespace ALLIN1
             if (veh == null)
                 return null;
 
-            veh.PlaceOnGround();
+            if (placeOnGround)
+                veh.PlaceOnGround();
 
             // Random colors
             int c1 = _rng.Next(0, 160);

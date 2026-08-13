@@ -1,3 +1,44 @@
+# GTA V ALLIN1 0.4.0
+
+Version 0.4.0 is a reliability release that replaces several permissive or synthetic safeguards
+with transactional runtime behavior and production-backed tests.
+
+## Data integrity and runtime repairs
+
+- Garage files are decoded with a strict, side-effect-free JSON codec. Incomplete, malformed,
+  duplicate-slot, and out-of-range data is rejected before live state changes, allowing the
+  recovery copy to load without silently emptying a garage.
+- GTA Online map data is reference-counted across the multi-floor and Davis interiors, and Story
+  Mode map state is restored after the final garage closes or emergency recovery runs. This
+  prevents missing beds, furniture, and other interior variants.
+- Every garage shares the same mission, protected-story-vehicle, and vehicle-size admission
+  policy. Unknown protagonist models fail closed instead of inheriting Michael's data.
+- DLC traffic replacements are created and validated off-screen before the original vehicle is
+  removed, preventing failed model loads from deleting ambient cars and occupants.
+- Online weapon and gear state is backed up with character saves, native ammunition failures are
+  reported accurately, and unsupported characters cannot mutate protagonist inventories.
+- Seat selection improves mounted-turret labeling and animation routing without adding teleport
+  fallbacks.
+
+## Diagnostics and qualification
+
+- ScriptHookV, ScriptHookVDotNet, ASI loaders, OpenRPF/OpenIV, and the ALLIN1 client are validated
+  as x64 PE binaries rather than accepted solely because a file exists.
+- GBAY distinguishes an installed preview plug-in from texture streaming that has actually been
+  observed in the current game session.
+- Release qualification now consumes hashed coverage, client assembly, and fresh single-session
+  smoke artifacts. Replayed, edited, stale, or mixed-session evidence is rejected.
+- Added a .NET Framework test assembly for production garage parsing, admission rules, map leases,
+  protagonist identity, ammunition handling, and preview diagnostics. These tests now run in local
+  release scripts and both Windows CI paths.
+
+## Verification
+
+- 31 production C# tests and 334 Python/repository tests pass for this source release. The optional
+  real Windows preview-tool integration remains isolated to its toolchain-qualified CI job.
+
+---
+
 # GTA V ALLIN1 0.3.1
 
 Version 0.3.1 is a stabilization release focused on garage data integrity, gear management,

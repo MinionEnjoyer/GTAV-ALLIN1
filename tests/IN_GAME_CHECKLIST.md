@@ -9,10 +9,29 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   Franklin's Buffalo S and Bagger, Trevor's Bodhi, Michael's Tailgater and
   temporary Premier, plus Amanda's Sentinel, Tracey's Issi, and Jimmy's BeeJay
   XL. Confirm none can enter garage persistence or be sold through GBAY.
+- During an active Story Mode mission, approach Eclipse Towers, the three-floor
+  garage, and Davis both on foot and in a mission vehicle with passengers. Confirm
+  no entrance marker or interaction prompt appears and no fade, teleport, vehicle
+  storage, passenger separation, or mission failure occurs. Garage exits must
+  remain usable if a mission flag becomes active while already inside.
+- Enter and leave both DLC-backed garages (Davis and the three-floor garage),
+  then visit Michael's house and Floyd's apartment. Confirm Story Mode bedroom
+  beds, sofas, and other furniture still render, and confirm the log records
+  `multiplayer_map_acquired` followed by `story_map_restored` for each visit.
 - Restart the game and confirm garage, balance, ownership, and configuration persistence.
 - Drive through poor, middle, rich, highway, emergency, air, and water spawn regions.
 - Hold the selector key in 2-, 4-, and 6-seat vehicles; verify selection, cancellation, and occupied seats. In Franklin's Buffalo S, verify front -1/0 and rear 1/2 switches shuffle internally, while front/rear row changes exit and re-enter normally.
+- In the Benefactor Turreted Limo, confirm seat index 3 is labeled **Turret**
+  rather than **Extra 1**. Switch from the driver and both rear seats to the
+  turret, and back again. Every route must finish its exit animation before
+  walking to and mounting the target position; no transition may teleport.
 - Equip and remove armor, Juggernaut, night vision, weapons, ammo, and throwables.
+- Purchase an Online-only weapon from GBAY without opening the desktop character
+  editor. Fire a measurable number of rounds, make a normal GTA save, quit, and
+  reload as the same protagonist; confirm the weapon and its remaining ammunition
+  return while unrelated story weapons remain.
+  Repeat after death/save reload, then switch protagonists twice and confirm the
+  weapon is restored only for its purchasing character.
 - Open Gear from the GBAY top menu, visit All/Protection/Equipment, verify all
   12 cards and previews are reachable, and purchase at least one item from each tab.
   Confirm equipped cards say **EQUIPPED**. Press Y and separately click the

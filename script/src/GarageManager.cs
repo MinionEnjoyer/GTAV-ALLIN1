@@ -69,6 +69,8 @@ namespace ALLIN1
         private const int SLOT_COUNT = 10;
         private const float ENTER_RADIUS = 2.5f;
         private const float EXIT_RADIUS = 4.0f;
+        private static readonly GarageDefinition ECLIPSE_GARAGE =
+            GarageDefinitions.Eclipse;
 
         // Outside entrance/exit positions (shared by all characters)
         private static readonly Vector3 ENTRANCE_POS =
@@ -112,6 +114,7 @@ namespace ALLIN1
         private const string KEY_MICHAEL  = "michael";
         private const string KEY_FRANKLIN = "franklin";
         private const string KEY_TREVOR   = "trevor";
+        private const string KEY_UNSUPPORTED = "__unsupported__";
 
         // Story vehicles are owned and restored by Rockstar's scripts. Their
         // model/plate pairs provide a fallback when mission transitions remove
@@ -180,6 +183,7 @@ namespace ALLIN1
 
         private static bool _enableLogging = true;
         private static bool _initialized;
+        private static PedHash _lastGarageCharacter;
 
         // ------------------------------------------------------------------ //
         //  Logging                                                            //
@@ -333,9 +337,17 @@ namespace ALLIN1
             Ped player = Game.Player.Character;
             if (player == null || player.IsDead)
                 return;
+            if (!_isPlayerInGarage && !GbayShop.TryGetCurrentCharacter(out _))
+                return;
 
             if (!_isPlayerInGarage)
             {
+                // Never detach the player, passengers, or a mission vehicle
+                // from Rockstar's active mission script. Exits stay available
+                // if a mission flag appears while already inside a garage.
+                if (EvaluateGarageEntry(ECLIPSE_GARAGE) ==
+                    GarageEntryDenial.MissionActive) return;
+
                 bool inVehicle = player.IsInVehicle();
 
                 // ---- Vehicle entrance — only when in a vehicle ----
@@ -352,10 +364,12 @@ namespace ALLIN1
                     if (vehDist < ENTER_RADIUS)
                     {
                         Vehicle veh = player.CurrentVehicle;
-                        if (veh != null && veh.Exists() && IsPersonalVehicle(veh))
+                        GarageEntryDenial denial = EvaluateGarageEntry(
+                            ECLIPSE_GARAGE, veh);
+                        if (denial != GarageEntryDenial.None)
                         {
                             GTA.UI.Screen.ShowHelpTextThisFrame(
-                                "You cannot store your personal vehicle in the garage.");
+                                GarageEntryMessage(ECLIPSE_GARAGE, denial));
                         }
                         else
                         {
@@ -619,6 +633,8 @@ namespace ALLIN1
             }
             finally
             {
+                UnloadFloorGarageInterior();
+                UnloadDavisAutoShopInterior();
                 _isPlayerInGarage = false;
                 _isPlayerInFloorGarage = false;
                 _isPlayerInDavisGarage = false;
@@ -659,6 +675,7 @@ namespace ALLIN1
 
         private static void EnterGarage()
         {
+            if (RejectGarageEntry(ECLIPSE_GARAGE)) return;
             if (!BeginTransition("EnterGarage")) return;
             try
             {
@@ -691,13 +708,6 @@ namespace ALLIN1
                 Vehicle rideIn = player.CurrentVehicle;
                 if (rideIn != null && rideIn.Exists())
                 {
-                    if (IsPersonalVehicle(rideIn))
-                    {
-                        GTA.UI.Screen.ShowSubtitle(
-                            "~r~You cannot bring your personal vehicle into the garage.", 3000);
-                        return;
-                    }
-
                     // Resolve spawn name from model hash before slot assignment
                     int modelHash = rideIn.Model.Hash;
                     string modelName;
@@ -717,15 +727,8 @@ namespace ALLIN1
                         Log($"EnterGarage: vehicle hash {modelHash} not in VehicleList, fallback name={modelName}");
                     }
 
-                    // Reject oversized vehicles
-                    if (GetGarageSizeTier(modelName, modelHash) == 2)
-                    {
-                        string ovName = VehicleList.DisplayNames.ContainsKey(modelName)
-                            ? VehicleList.DisplayNames[modelName] : modelName;
-                        GTA.UI.Screen.ShowSubtitle(
-                            $"~r~{ovName}~w~ is too large for this garage. Use the three-floor garage.", 3000);
-                        return;
-                    }
+                    if (RejectGarageEntry(
+                        ECLIPSE_GARAGE, rideIn, modelName, modelHash)) return;
 
                     // Try to store the vehicle in the garage
                     string charKey = CharacterKey();
@@ -1021,6 +1024,72 @@ namespace ALLIN1
         //  Helpers                                                            //
         // ------------------------------------------------------------------ //
 
+        private static bool IsMissionActive()
+        {
+            try { return Function.Call<bool>(Hash.GET_MISSION_FLAG); }
+            catch (Exception ex)
+            {
+                // Fail closed. Entering a scripted interior without knowing
+                // mission state is riskier than temporarily hiding a marker.
+                LogException("IsMissionActive", ex);
+                return true;
+            }
+        }
+
+        private static GarageEntryDenial EvaluateGarageEntry(
+            GarageDefinition garage, Vehicle vehicle = null,
+            string modelName = null, int modelHash = 0)
+        {
+            GarageEntryRules rules = garage.EntryRules;
+            bool vehiclePresent = vehicle != null && vehicle.Exists();
+            bool storyOwned = vehiclePresent && rules.BlockStoryOwnedVehicles &&
+                IsPersonalVehicle(vehicle);
+            bool sizeKnown = vehiclePresent && modelName != null;
+            int sizeTier = sizeKnown ? GetGarageSizeTier(modelName, modelHash) : 0;
+            return GarageEntryPolicy.Evaluate(
+                rules,
+                IsMissionActive(),
+                vehiclePresent,
+                storyOwned,
+                sizeKnown,
+                sizeTier);
+        }
+
+        private static string GarageEntryMessage(
+            GarageDefinition garage, GarageEntryDenial denial,
+            string vehicleName = null)
+        {
+            if (denial == GarageEntryDenial.MissionActive)
+                return "~y~ALLIN1 garages are unavailable during missions.";
+            if (denial == GarageEntryDenial.StoryOwnedVehicle)
+                return $"~r~Story-owned personal vehicles cannot enter the {garage.DisplayName}.";
+            if (denial == GarageEntryDenial.VehicleTooLarge)
+                return $"~r~{vehicleName ?? "That vehicle"}~w~ is too large for the " +
+                    $"{garage.DisplayName}.{garage.EntryRules.OversizedVehicleHint}";
+            return "";
+        }
+
+        private static bool RejectGarageEntry(
+            GarageDefinition garage, Vehicle vehicle = null,
+            string modelName = null, int modelHash = 0)
+        {
+            GarageEntryDenial denial = EvaluateGarageEntry(
+                garage, vehicle, modelName, modelHash);
+            if (denial == GarageEntryDenial.None) return false;
+
+            string displayName = modelName != null &&
+                VehicleList.DisplayNames.TryGetValue(modelName, out string knownName)
+                ? knownName : modelName;
+            GTA.UI.Screen.ShowSubtitle(
+                GarageEntryMessage(garage, denial, displayName), 3000);
+            ClientLog.Warn("Garage", "entry_blocked",
+                new Dictionary<string, object> {
+                    { "garage", garage.Id }, { "reason", denial.ToString() },
+                    { "model", modelName ?? "" }
+                });
+            return true;
+        }
+
         /// <summary>
         /// Check if a vehicle is the character's assigned personal vehicle
         /// (e.g., Michael's Tailgater, Franklin's Buffalo/Bagger, Trevor's Bodhi).
@@ -1124,10 +1193,11 @@ namespace ALLIN1
 
         private static BlipColor CharacterBlipColor()
         {
-            PedHash ch = GbayShop.GetCurrentCharacter();
+            PedHash ch = GarageCharacter();
             if (ch == PedHash.Franklin) return BlipColor.Green;
             if (ch == PedHash.Trevor)   return BlipColor.Orange;
-            return BlipColor.Blue; // Michael
+            if (ch == PedHash.Michael)  return BlipColor.Blue;
+            return (BlipColor)0;
         }
 
         private static void SetBlipColor(Blip blip, BlipColor color)
@@ -1158,18 +1228,33 @@ namespace ALLIN1
 
         private static System.Drawing.Color CharacterMarkerColor()
         {
-            PedHash ch = GbayShop.GetCurrentCharacter();
+            PedHash ch = GarageCharacter();
             if (ch == PedHash.Franklin) return System.Drawing.Color.FromArgb(128, 100, 255, 100);
             if (ch == PedHash.Trevor)   return System.Drawing.Color.FromArgb(128, 255, 170, 50);
-            return System.Drawing.Color.FromArgb(128, 100, 100, 255); // Michael
+            if (ch == PedHash.Michael)  return System.Drawing.Color.FromArgb(128, 100, 100, 255);
+            return System.Drawing.Color.FromArgb(128, 180, 180, 180);
+        }
+
+        private static PedHash GarageCharacter()
+        {
+            if (GbayShop.TryGetCurrentCharacter(out PedHash character))
+            {
+                _lastGarageCharacter = character;
+                return character;
+            }
+            if ((_isPlayerInGarage || _isPlayerInFloorGarage || _isPlayerInDavisGarage) &&
+                _lastGarageCharacter != (PedHash)0)
+                return _lastGarageCharacter;
+            return (PedHash)0;
         }
 
         private static string CharacterKey()
         {
-            PedHash ch = GbayShop.GetCurrentCharacter();
+            PedHash ch = GarageCharacter();
             if (ch == PedHash.Franklin) return KEY_FRANKLIN;
             if (ch == PedHash.Trevor) return KEY_TREVOR;
-            return KEY_MICHAEL;
+            if (ch == PedHash.Michael) return KEY_MICHAEL;
+            return KEY_UNSUPPORTED;
         }
 
         private static int FindEmptySlot(
@@ -1291,8 +1376,6 @@ namespace ALLIN1
             try
             {
                 string json = File.ReadAllText(loadPath);
-                if (!IsCompleteJson(json))
-                    throw new InvalidDataException($"Incomplete garage save: {loadPath}");
                 ParseJson(json);
                 MigrateModelNames();
                 if (loadPath.EndsWith(".bak", StringComparison.OrdinalIgnoreCase))
@@ -1310,8 +1393,6 @@ namespace ALLIN1
                     try
                     {
                         string json = File.ReadAllText(backup);
-                        if (!IsCompleteJson(json))
-                            throw new InvalidDataException("Incomplete garage backup");
                         ParseJson(json);
                         Log("Load: primary save failed; recovered from backup");
                     }
@@ -1423,13 +1504,6 @@ namespace ALLIN1
             }
         }
 
-        private static bool IsCompleteJson(string json)
-        {
-            if (string.IsNullOrWhiteSpace(json)) return false;
-            string trimmed = json.Trim();
-            return trimmed.StartsWith("{") && trimmed.EndsWith("}");
-        }
-
         private static void AtomicWriteText(string path, string content)
         {
             string tmp = path + ".tmp";
@@ -1481,7 +1555,7 @@ namespace ALLIN1
                     {
                         var sv = list[i];
                         sb.Append("    { ");
-                        sb.Append($"\"model\": \"{sv.Model}\", ");
+                        sb.Append($"\"model\": \"{EscapeJson(sv.Model)}\", ");
                         sb.Append($"\"modelHash\": {GetStoredModelHash(sv)}, ");
                         sb.Append($"\"slot\": {sv.Slot}, ");
                         sb.Append($"\"color1\": {sv.Color1}, ");
@@ -1545,7 +1619,27 @@ namespace ALLIN1
         private static string EscapeJson(string s)
         {
             if (s == null) return "";
-            return s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            var escaped = new StringBuilder(s.Length + 8);
+            foreach (char value in s)
+            {
+                switch (value)
+                {
+                    case '\\': escaped.Append("\\\\"); break;
+                    case '"': escaped.Append("\\\""); break;
+                    case '\b': escaped.Append("\\b"); break;
+                    case '\f': escaped.Append("\\f"); break;
+                    case '\n': escaped.Append("\\n"); break;
+                    case '\r': escaped.Append("\\r"); break;
+                    case '\t': escaped.Append("\\t"); break;
+                    default:
+                        if (value < 0x20)
+                            escaped.Append("\\u").Append(((int)value).ToString("x4"));
+                        else
+                            escaped.Append(value);
+                        break;
+                }
+            }
+            return escaped.ToString();
         }
 
         private static int[] BoolArrayToInts(bool[] arr)
@@ -1558,6 +1652,16 @@ namespace ALLIN1
         }
 
         private static void ParseJson(string json)
+        {
+            var parsed = GarageSaveCodec.Parse(
+                json, new[] { KEY_MICHAEL, KEY_FRANKLIN, KEY_TREVOR }, SLOT_COUNT);
+            foreach (var entry in parsed)
+                _stored[entry.Key] = entry.Value;
+        }
+
+        // Kept temporarily for backward-comparison during the 0.4.0 parser
+        // migration. Runtime loading exclusively uses GarageSaveCodec above.
+        private static void LegacyParseJson(string json)
         {
             string currentKey = null;
 
@@ -2037,6 +2141,8 @@ namespace ALLIN1
 
         private const int FLOOR_GARAGE_SLOT_COUNT = 15; // 3 floors x 5 slots
         private const int FLOOR_GARAGE_SLOTS_PER_FLOOR = 5;
+        private static readonly GarageDefinition THREE_FLOOR_GARAGE =
+            GarageDefinitions.ThreeFloor;
 
         // Outside entrance/exit — placeholder coordinates, will be set later
         private static readonly Vector3 FLOOR_GARAGE_ENTRANCE_POS =
@@ -2223,9 +2329,10 @@ namespace ALLIN1
         /// <summary>Get the theme choice for a specific floor and category.</summary>
         internal static int GetFloorThemeChoice(int floor, int category)
         {
-            string key = FloorGarageCharacterKey();
-            if (!_floorThemes.TryGetValue(key, out var themes)) return floor;
             if (floor < 0 || floor >= 3 || category < 0 || category >= CUSTOM_CATEGORY_COUNT) return 0;
+            string key = FloorGarageCharacterKey();
+            if (!_floorThemes.TryGetValue(key, out var themes))
+                return DefaultThemes()[floor][category];
             return themes[floor][category];
         }
 
@@ -2237,6 +2344,7 @@ namespace ALLIN1
             if (option < 0 || option >= GetFloorCustomizationOptionCount(category)) return;
 
             string key = FloorGarageCharacterKey();
+            if (key == KEY_UNSUPPORTED) return;
             if (!_floorThemes.TryGetValue(key, out var themes))
             {
                 themes = DefaultThemes();
@@ -2452,12 +2560,16 @@ namespace ALLIN1
 
             Ped player = Game.Player.Character;
             if (player == null || player.IsDead) return;
+            if (!_isPlayerInFloorGarage && !GbayShop.TryGetCurrentCharacter(out _)) return;
 
             // Don't show floor garage markers while in garage (and vice versa)
             if (_isPlayerInGarage || _isPlayerInDavisGarage) return;
 
             if (!_isPlayerInFloorGarage)
             {
+                if (EvaluateGarageEntry(THREE_FLOOR_GARAGE) ==
+                    GarageEntryDenial.MissionActive) return;
+
                 bool inVehicle = player.IsInVehicle();
 
                 if (inVehicle)
@@ -2473,10 +2585,21 @@ namespace ALLIN1
                     float dist = player.Position.DistanceTo(FLOOR_GARAGE_ENTRANCE_POS);
                     if (dist < ENTER_RADIUS + 1f)
                     {
-                        GTA.UI.Screen.ShowHelpTextThisFrame(
-                            "Press ~INPUT_CONTEXT~ to enter the three-floor garage.");
-                        if (Game.IsControlJustPressed(GTA.Control.Context))
-                            EnterFloorGarage();
+                        Vehicle vehicle = player.CurrentVehicle;
+                        GarageEntryDenial denial = EvaluateGarageEntry(
+                            THREE_FLOOR_GARAGE, vehicle);
+                        if (denial != GarageEntryDenial.None)
+                        {
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                GarageEntryMessage(THREE_FLOOR_GARAGE, denial));
+                        }
+                        else
+                        {
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                "Press ~INPUT_CONTEXT~ to enter the three-floor garage.");
+                            if (Game.IsControlJustPressed(GTA.Control.Context))
+                                EnterFloorGarage();
+                        }
                     }
                 }
 
@@ -2664,6 +2787,7 @@ namespace ALLIN1
 
         private static void EnterFloorGarage()
         {
+            if (RejectGarageEntry(THREE_FLOOR_GARAGE)) return;
             if (!BeginTransition("EnterFloorGarage")) return;
             try
             {
@@ -2700,13 +2824,6 @@ namespace ALLIN1
                 Vehicle rideIn = player.CurrentVehicle;
                 if (rideIn != null && rideIn.Exists())
                 {
-                    if (IsPersonalVehicle(rideIn))
-                    {
-                        GTA.UI.Screen.ShowSubtitle(
-                            "~r~You cannot bring your personal vehicle into the three-floor garage.", 3000);
-                        return;
-                    }
-
                     int modelHash = rideIn.Model.Hash;
                     string modelName;
                     if (_hashToSpawnName != null && _hashToSpawnName.TryGetValue(modelHash, out string spawnName))
@@ -2720,6 +2837,9 @@ namespace ALLIN1
                         else
                             modelName = modelHash.ToString();
                     }
+
+                    if (RejectGarageEntry(
+                        THREE_FLOOR_GARAGE, rideIn, modelName, modelHash)) return;
 
                     string hKey = FloorGarageCharacterKey();
                     if (!_floorGarageStored.TryGetValue(hKey, out var storedList))
@@ -2930,6 +3050,8 @@ namespace ALLIN1
 
             _isPlayerInFloorGarage = false;
             _floorGarageExitCooldownFrames = 60;
+            UnloadFloorGarageInterior();
+            Script.Wait(500);
 
             // Fade back in
             Log("LeaveFloorGarage: fading in");
@@ -2943,10 +3065,11 @@ namespace ALLIN1
 
         private static string FloorGarageCharacterKey()
         {
-            PedHash ch = GbayShop.GetCurrentCharacter();
+            PedHash ch = GarageCharacter();
             if (ch == PedHash.Franklin) return KEY_FRANKLIN_FG;
             if (ch == PedHash.Trevor) return KEY_TREVOR_FG;
-            return KEY_MICHAEL_FG;
+            if (ch == PedHash.Michael) return KEY_MICHAEL_FG;
+            return KEY_UNSUPPORTED;
         }
 
         private static int FindEmptyFloorGarageSlot(List<StoredVehicle> list)
@@ -3000,9 +3123,7 @@ namespace ALLIN1
         /// </summary>
         private static void LoadFloorGarageInterior()
         {
-            // Load MP DLC maps — required for Online interiors in SP
-            // Native: _LOAD_MP_DLC_MAPS (0x0888C3502DBBEEF5)
-            Function.Call((Hash)0x0888C3502DBBEEF5, 1);
+            DlcMapState.Acquire(THREE_FLOOR_GARAGE);
             Script.Wait(500);
 
             // Remove then re-request all IPLs (pattern from Enable All Interiors mod)
@@ -3034,6 +3155,14 @@ namespace ALLIN1
             {
                 Log("LoadFloorGarageInterior: WARNING — could not get interior ID");
             }
+        }
+
+        private static void UnloadFloorGarageInterior()
+        {
+            if (!DlcMapState.IsAcquired(THREE_FLOOR_GARAGE)) return;
+            foreach (string ipl in FLOOR_GARAGE_IPLS)
+                Function.Call(Hash.REMOVE_IPL, ipl);
+            DlcMapState.Release(THREE_FLOOR_GARAGE);
         }
 
         /// <summary>
@@ -3174,8 +3303,6 @@ namespace ALLIN1
             try
             {
                 string json = File.ReadAllText(loadPath);
-                if (!IsCompleteJson(json))
-                    throw new InvalidDataException($"Incomplete floor garage save: {loadPath}");
                 FloorGarageParseJson(json);
                 if (loadPath.EndsWith(".bak", StringComparison.OrdinalIgnoreCase))
                 {
@@ -3192,8 +3319,6 @@ namespace ALLIN1
                     try
                     {
                         string json = File.ReadAllText(backup);
-                        if (!IsCompleteJson(json))
-                            throw new InvalidDataException("Incomplete floor garage backup");
                         FloorGarageParseJson(json);
                         Log("FloorGarageLoad: primary save failed; recovered from backup");
                     }
@@ -3320,7 +3445,7 @@ namespace ALLIN1
                     {
                         var sv = list[i];
                         sb.Append("    { ");
-                        sb.Append($"\"model\": \"{sv.Model}\", ");
+                        sb.Append($"\"model\": \"{EscapeJson(sv.Model)}\", ");
                         sb.Append($"\"modelHash\": {GetStoredModelHash(sv)}, ");
                         sb.Append($"\"slot\": {sv.Slot}, ");
                         sb.Append($"\"color1\": {sv.Color1}, ");
@@ -3381,6 +3506,15 @@ namespace ALLIN1
         }
 
         private static void FloorGarageParseJson(string json)
+        {
+            var parsed = GarageSaveCodec.Parse(json,
+                new[] { KEY_MICHAEL_FG, KEY_FRANKLIN_FG, KEY_TREVOR_FG },
+                FLOOR_GARAGE_SLOT_COUNT);
+            foreach (var entry in parsed)
+                _floorGarageStored[entry.Key] = entry.Value;
+        }
+
+        private static void LegacyFloorGarageParseJson(string json)
         {
             // Reuse the same JSON parsing approach as the garage
             string currentKey = null;

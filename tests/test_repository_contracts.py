@@ -64,6 +64,17 @@ def test_retired_native_asi_is_not_shipped_or_built():
     assert "cmake -S asi" not in workflow
 
 
+def test_production_csharp_tests_run_in_ci():
+    workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+    command = "dotnet test script/tests/ALLIN1.Tests.csproj -c Release --no-restore"
+    assert workflow.count(command) >= 2
+    assert (ROOT / "script/tests/GarageSaveCodecTests.cs").is_file()
+    assert (ROOT / "script/tests/AmmoRefillPolicyTests.cs").is_file()
+    reliability = (ROOT / "src/allin1/reliability.py").read_text(encoding="utf-8")
+    assert "class GarageState" not in reliability
+    assert "class SeatState" not in reliability
+
+
 def test_required_user_entrypoints_exist():
     for relative in ("install.bat", "uninstall.bat", "manager.bat", "install.sh", "uninstall.sh"):
         assert (ROOT / relative).is_file()
@@ -218,13 +229,26 @@ def test_seat_selector_is_animation_only_and_has_external_route_recovery():
     assert "NORMAL_ENTER_FLAG = 1" in seat
     assert "NORMAL_EXIT_FLAG = 0" in seat
     assert "ExecutionPhase.Exiting" in seat
+    assert "ExecutionPhase.WaitingAfterExit" in seat
     assert "ExecutionPhase.Reentering" in seat
+    assert "EXIT_SETTLE_MS = 1200" in seat
+    assert '"exit_animation_settle"' in seat
     assert 'BeginExit(player, "different_row_or_external_seat")' in seat
     assert "Stop the vehicle before changing rows or using an external seat" in seat
     assert "IsSeatPair(currentSeat, targetSeat, -1, 0)" in seat
     assert "IsSeatPair(currentSeat, targetSeat, 1, 2)" in seat
     assert 'CancelExecution(player, "same_row_shuffle_timeout", true)' in seat
     assert 'BeginExit(player, "shuffle_fallback")' not in seat
+    assert 'Game.GenerateHash("limo2")' in seat
+    assert 'new Dictionary<int, string> { { 3, "Turret" } }' in seat
+    assert "GetSeatLabel(_targetVeh.Model.Hash, idx)" in seat
+    settle_case = seat.index("case ExecutionPhase.WaitingAfterExit:")
+    settle_guard = seat.index("phaseElapsed >= EXIT_SETTLE_MS", settle_case)
+    reentry = seat.index("BeginEnter(player, true);", settle_guard)
+    assert settle_case < settle_guard < reentry
+    checklist = (ROOT / "tests/IN_GAME_CHECKLIST.md").read_text()
+    assert "Benefactor Turreted Limo" in checklist
+    assert "labeled **Turret**" in checklist
 
 
 def test_client_logging_is_structured_rotating_and_shared():
@@ -265,6 +289,38 @@ def test_character_customization_is_shared_with_gbay_and_has_animated_loading():
     assert "CharacterInventory.IsOwned(weaponName, false)" in shop
 
 
+def test_gbay_weapons_restore_without_clobbering_story_loadouts():
+    inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()
+    assert "bool hasSavedWeapons = inventory.weapons.Count > 0" in inventory
+    assert "inventory.equipped_gear.Count == 0 && !hasSavedWeapons" in inventory
+    apply_start = inventory.index("private static void Apply(string character)")
+    weapon_loop = inventory.index("foreach (var entry in WeaponHashes)", apply_start)
+    grant = inventory.index("ped.Weapons.Give", weapon_loop)
+    managed_remove = inventory.index("else if (inventory.managed)", grant)
+    remove = inventory.index("REMOVE_WEAPON_FROM_PED", managed_remove)
+    assert weapon_loop < grant < managed_remove < remove
+    assert "Game.IsLoading" in inventory
+    assert "_restorePending" in inventory
+    assert "player.IsDead" in inventory
+    assert "player.Handle == _lastPedHandle" in inventory
+    assert '"managed", inventory.managed' in inventory
+    assert "IS_AUTO_SAVE_IN_PROGRESS" in inventory
+    assert "CaptureWeaponAmmo(character, player, \"story_save_started\")" in inventory
+    assert 'new[] { "GTA V", "GTAV Enhanced" }' in inventory
+    assert 'Directory.EnumerateFiles(' in inventory
+    assert 'profiles, "SGTA5*", SearchOption.AllDirectories' in inventory
+    assert 'CaptureWeaponAmmo(character, player, "story_save_written")' in inventory
+    assert "weapon_state_backed_up" in inventory
+    assert "GET_AMMO_IN_PED_WEAPON" in inventory
+    assert "Hash.SET_PED_AMMO" in inventory
+    assert "inventory.weapon_ammo.TryGetValue" in inventory
+    assert "RecordWeaponAmmo(weaponName, maxAmmo)" in (
+        ROOT / "script/src/GbayShop.cs").read_text()
+    customization = (ROOT / "src/allin1/customization.py").read_text()
+    assert "LOADOUT_SCHEMA_VERSION = 5" in customization
+    assert '"weapon_ammo"' in customization
+
+
 def test_runtime_hot_paths_are_throttled_and_cached():
     traffic = (ROOT / "script/src/TrafficSpawner.cs").read_text()
     garage = (ROOT / "script/src/GarageManager.cs").read_text()
@@ -273,6 +329,44 @@ def test_runtime_hot_paths_are_throttled_and_cached():
     assert "UpdateLocationBlipColors();" in garage
     assert "_hasBlipColor && charColor == _lastBlipColor" in garage
     assert "_lastFloorBlipColor" not in garage
+
+
+def test_all_garage_entrances_fail_closed_during_story_missions():
+    garage = (ROOT / "script/src/GarageManager.cs").read_text()
+    davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
+    definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
+    assert "Hash.GET_MISSION_FLAG" in garage
+    assert definitions.count("disableDuringMissions: true") == 3
+    assert "rules.DisableDuringMissions && missionActive" in definitions
+    assert "GarageEntryPolicy.Evaluate(" in garage
+    assert "RejectGarageEntry(ECLIPSE_GARAGE)" in garage
+    assert "RejectGarageEntry(THREE_FLOOR_GARAGE)" in garage
+    assert "RejectGarageEntry(DAVIS_GARAGE)" in davis
+    # All outside tick paths consult their assigned policy before markers draw.
+    assert "EvaluateGarageEntry(ECLIPSE_GARAGE)" in garage
+    assert "EvaluateGarageEntry(THREE_FLOOR_GARAGE)" in garage
+    assert "EvaluateGarageEntry(DAVIS_GARAGE)" in davis
+    assert '"entry_blocked"' in garage
+
+
+def test_dlc_garages_restore_story_map_and_interior_furniture_on_exit():
+    definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
+    state = (ROOT / "script/src/DlcMapState.cs").read_text()
+    garage = (ROOT / "script/src/GarageManager.cs").read_text()
+    davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
+    assert definitions.count("requiresMultiplayerMap: true") == 2
+    assert "0x0888C3502DBBEEF5" in state  # ON_ENTER_MP
+    assert "0xD7C10C4A637992C9" in state  # ON_ENTER_SP
+    assert '"multiplayer_map_acquired"' in state
+    assert '"story_map_restored"' in state
+    assert "DlcMapState.Acquire(THREE_FLOOR_GARAGE)" in garage
+    assert "DlcMapState.Release(THREE_FLOOR_GARAGE)" in garage
+    assert "DlcMapState.Acquire(DAVIS_GARAGE)" in davis
+    assert "DlcMapState.Release(DAVIS_GARAGE)" in davis
+    assert "UnloadFloorGarageInterior();" in garage
+    assert "UnloadDavisAutoShopInterior();" in davis
+    assert "0x0888C3502DBBEEF5" not in garage
+    assert "0x0888C3502DBBEEF5" not in davis
 
 
 def test_issue_five_playtest_regressions_are_guarded():
@@ -487,6 +581,7 @@ def test_story_owned_vehicles_cannot_enter_garage_persistence_or_sale_flow():
     manager = (ROOT / "script/src/GarageManager.cs").read_text()
     shop = (ROOT / "script/src/GbayShop.cs").read_text()
     davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
+    definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
     for model in (
         "buffalo2", "bagger", "bodhi2", "tailgater", "premier",
         "sentinel2", "issi2", "bjxl",
@@ -498,8 +593,12 @@ def test_story_owned_vehicles_cannot_enter_garage_persistence_or_sale_flow():
     ):
         assert f'"{plate}"' in manager
     assert "IsProtectedStoryVehicle(veh.Model.Hash, plate)" in manager
-    assert manager.count("if (IsPersonalVehicle(") >= 2
-    assert "if (IsPersonalVehicle(rideIn))" in davis
+    assert definitions.count("blockStoryOwnedVehicles: true") == 3
+    assert "rules.BlockStoryOwnedVehicles && storyOwnedVehicle" in definitions
+    assert "IsPersonalVehicle(vehicle);" in manager
+    assert "RejectGarageEntry(\n                        ECLIPSE_GARAGE, rideIn" in manager
+    assert "RejectGarageEntry(\n                        THREE_FLOOR_GARAGE, rideIn" in manager
+    assert "RejectGarageEntry(\n                        DAVIS_GARAGE, rideIn" in davis
     assert "model, plateText, modelHash" in shop
     assert '"protected_story_vehicle"' in shop
 
@@ -572,9 +671,11 @@ def test_legacy_garages_use_real_customization_sets_and_model_aware_placement():
 
 def test_rpf_diagnostics_distinguish_plugin_from_asi_host_and_disabled_state():
     renderer = (ROOT / "script/src/GbayRenderer.cs").read_text()
+    policy = (ROOT / "script/src/PreviewRuntimeStatus.cs").read_text()
     assert '"OpenRPF.asi.disabled"' in renderer
-    assert '"ASI loader detected; OpenRPF plug-in missing"' in renderer
-    assert '"OpenRPF plug-in disabled (fallback active)"' in renderer
+    assert '"ASI loader detected; OpenRPF plug-in missing"' in policy
+    assert '"OpenRPF plug-in disabled (fallback active)"' in policy
+    assert '"preview streaming verified"' in policy
 
 
 def test_watchdog_cleans_session_marker_on_all_graceful_shutdown_paths():

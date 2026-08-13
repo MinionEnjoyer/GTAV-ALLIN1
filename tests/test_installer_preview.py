@@ -1,12 +1,22 @@
 """End-to-end orchestration tests for preview packaging and helper tools."""
 
 from pathlib import Path
+import struct
 from unittest.mock import Mock
 
 import pytest
 
 from allin1 import installer
 from allin1.preview_assets import PreviewMergeResult
+
+
+def _write_pe(path, *, size=4096):
+    payload = bytearray(size)
+    payload[:2] = b"MZ"
+    struct.pack_into("<I", payload, 0x3C, 0x80)
+    payload[0x80:0x84] = b"PE\0\0"
+    struct.pack_into("<H", payload, 0x84, 0x8664)
+    path.write_bytes(payload)
 
 
 def _layout(tmp_path, monkeypatch):
@@ -109,11 +119,11 @@ def test_preview_deploy_surfaces_tool_failures(tmp_path, monkeypatch, stage):
 
 
 def test_openrpf_detection_requires_nonempty_plugin_and_loader(tmp_path):
-    (tmp_path / "OpenRPF.asi").write_bytes(b"asi")
+    _write_pe(tmp_path / "OpenRPF.asi")
     assert installer._check_openrpf(tmp_path, enhanced=True) is False
-    (tmp_path / "xinput1_4.dll").write_bytes(b"loader")
+    _write_pe(tmp_path / "xinput1_4.dll")
     assert installer._check_openrpf(tmp_path, enhanced=True) is True
-    (tmp_path / "OpenIV.asi").write_bytes(b"legacy")
+    _write_pe(tmp_path / "OpenIV.asi")
     assert installer._check_openrpf(tmp_path, enhanced=True) is False
 
 

@@ -13,7 +13,7 @@ ALLIN1 supports both GTA V Legacy and GTA V Enhanced. It is designed exclusively
 Mode**; the installer configures the game to launch without BattlEye and should never be used in
 GTA Online.
 
-> **Current public release:** **0.3.1**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
+> **Current public release:** **0.4.0**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
 > highlights and hardening work included in this build.
 
 ## Support
