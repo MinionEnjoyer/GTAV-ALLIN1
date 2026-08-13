@@ -235,7 +235,11 @@ def test_seat_selector_is_animation_only_and_has_external_route_recovery():
     assert "EXIT_SETTLE_MS = 1200" in seat
     assert "CARACARA_HASH = 1254014755" in seat
     assert "CARACARA_TURRET_APPROACH_OFFSETS" in seat
-    assert "TASK_GO_STRAIGHT_TO_COORD" in seat
+    assert "TASK_FOLLOW_NAV_MESH_TO_COORD" in seat
+    assert "GET_NAVMESH_ROUTE_RESULT" in seat
+    assert "EXTERNAL_ROUTE_STALL_TIMEOUT_MS" in seat
+    assert 'CancelExecution(player, "external_entry_left_route", true)' in seat
+    assert "ExecutionPhase.RecoveringWrongSeat" in seat
     assert "NATIVE_ENTER_TIMEOUT = -1" in seat
     assert "CARACARA_TURRET_ENTRY_CLIPSETS" in seat
     assert "REQUEST_CLIP_SET" in seat

@@ -42,5 +42,38 @@ namespace ALLIN1.Tests
             Assert.Null(SeatSelector.GetExternalApproachOffsets(modelHash, seatIndex));
             Assert.Null(SeatSelector.GetExternalEntryClipset(modelHash, seatIndex, 0));
         }
+
+        [Theory]
+        [InlineData(2, 100, 100, 4.0f, false, "external_route_not_found")]
+        [InlineData(0, 1600, 100, 4.0f, false, "external_route_task_missing")]
+        [InlineData(3, 2000, 2600, 4.0f, false, "external_route_stalled")]
+        [InlineData(3, 100, 100, 3.0f, true, "external_entry_left_route")]
+        public void Invalid_external_routes_abort_safely(
+            int routeResult,
+            int routeElapsedMs,
+            int noProgressMs,
+            float distance,
+            bool entering,
+            string expected)
+        {
+            Assert.Equal(expected, SeatSelector.GetExternalRouteAbortReason(
+                routeResult, routeElapsedMs, noProgressMs, distance, entering));
+        }
+
+        [Theory]
+        [InlineData(1, 500, 500, 4.0f, false)]
+        [InlineData(3, 2000, 100, 4.0f, false)]
+        [InlineData(0, 5000, 5000, 0.5f, false)]
+        [InlineData(3, 100, 100, 2.0f, true)]
+        public void Valid_or_progressing_external_routes_continue(
+            int routeResult,
+            int routeElapsedMs,
+            int noProgressMs,
+            float distance,
+            bool entering)
+        {
+            Assert.Null(SeatSelector.GetExternalRouteAbortReason(
+                routeResult, routeElapsedMs, noProgressMs, distance, entering));
+        }
     }
 }
