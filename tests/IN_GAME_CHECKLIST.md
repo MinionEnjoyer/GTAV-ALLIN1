@@ -21,6 +21,11 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
 - Restart the game and confirm garage, balance, ownership, and configuration persistence.
 - Drive through poor, middle, rich, highway, emergency, air, and water spawn regions.
 - Hold the selector key in 2-, 4-, and 6-seat vehicles; verify selection, cancellation, and occupied seats. In Franklin's Buffalo S, verify front -1/0 and rear 1/2 switches shuffle internally, while front/rear row changes exit and re-enter normally.
+- For every switch that requires an exit, park first in open space and then with
+  the intended walk-around side against a wall or another vehicle. In open space,
+  the selector must trace the route before opening the door and complete it. When
+  all candidate routes are obstructed, the player must remain in the original
+  seat and see the blocked-route message; no exit or teleport may occur.
 - In the Benefactor Turreted Limo, confirm seat index 3 is labeled **Turret**
   rather than **Extra 1**. Switch from the driver and both rear seats to the
   turret, and back again. Every route must finish its exit animation before

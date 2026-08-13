@@ -238,13 +238,19 @@ def test_seat_selector_is_animation_only_and_has_external_route_recovery():
     assert "TASK_FOLLOW_NAV_MESH_TO_COORD" in seat
     assert "GET_NAVMESH_ROUTE_RESULT" in seat
     assert "EXTERNAL_ROUTE_STALL_TIMEOUT_MS" in seat
+    assert "BeginSimulatedExternalRoutePlan(player)" in seat
+    assert "ShapeTest.StartTestCapsule" in seat
+    assert "ExecutionPhase.PlanningExternalRoute" in seat
+    assert "BuildLocalExternalRoute" in seat
+    assert '"preexit_route_blocked"' in seat
+    assert '"preexit_route_planned"' in seat
     assert "ExecutionPhase.RecoveringWrongSeat" in seat
     assert "ExecutionPhase.ReturningToSourceSeat" in seat
     assert '"restore_source_seat"' in seat
     assert '"seat_switch_rolled_back"' in seat
     assert "NATIVE_ENTER_TIMEOUT = -1" in seat
-    assert "CARACARA_TURRET_ENTRY_CLIPSETS" in seat
-    assert "REQUEST_CLIP_SET" in seat
+    assert "NATIVE_NEAREST_PASSENGER_SEAT = -2" in seat
+    assert "GetNativeEntryRequestSeat" in seat
     assert 'new Dictionary<int, string> { { 3, "Turret" } }' in seat
     assert '"exit_animation_settle"' in seat
     assert 'BeginExit(player, "different_row_or_external_seat")' in seat
