@@ -730,3 +730,18 @@ def test_launcher_uses_gui_entry_point_without_console_window():
     assert "[project.gui-scripts]" in pyproject
     gui_section = pyproject.split("[project.gui-scripts]", 1)[1]
     assert 'allin1-gui = "allin1.gui:main"' in gui_section
+
+
+def test_repair_progress_and_helper_consoles_are_managed_in_process():
+    gui = (ROOT / "src/allin1/gui.py").read_text(encoding="utf-8")
+    installer = (ROOT / "src/allin1/installer.py").read_text(encoding="utf-8")
+    processes = (ROOT / "src/allin1/processes.py").read_text(encoding="utf-8")
+    ytd_builder = (ROOT / "src/allin1/generators/ytd_builder.py").read_text(
+        encoding="utf-8"
+    )
+    assert '"Repairing"' in gui and 'kind == "progress"' in gui
+    assert 'mode="determinate"' in gui and "maximum=100" in gui
+    assert "launch_pending" in gui and "root.after(15000" in gui
+    assert "CREATE_NO_WINDOW" in processes and "STARTF_USESHOWWINDOW" in processes
+    assert "subprocess.run(" not in installer
+    assert "subprocess.run(" not in ytd_builder

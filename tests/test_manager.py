@@ -94,6 +94,17 @@ def test_install_saves_config_and_delegates(tmp_path):
     install_fn.assert_called_once()
 
 
+def test_install_forwards_progress_callback(tmp_path):
+    install_fn = Mock(return_value=object())
+    manager = _manager(tmp_path, install_fn=install_fn)
+    config = Config.default()
+    progress = Mock()
+
+    manager.install(config, progress=progress)
+
+    assert install_fn.call_args.kwargs == {"progress": progress}
+
+
 def test_uninstall_delegates_without_loading_database(tmp_path):
     uninstall_fn = Mock(return_value=[tmp_path / "scripts" / "ALLIN1.dll"])
     manager = _manager(tmp_path, uninstall_fn=uninstall_fn)

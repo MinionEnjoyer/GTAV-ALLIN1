@@ -31,10 +31,13 @@ with transactional runtime behavior and production-backed tests.
 - Added a .NET Framework test assembly for production garage parsing, admission rules, map leases,
   protagonist identity, ammunition handling, and preview diagnostics. These tests now run in local
   release scripts and both Windows CI paths.
+- Install / Repair now reports determinate percentage progress, helper tools run without flashing
+  console windows, and repeated game-launch requests are suppressed during the Steam/Rockstar
+  handoff.
 
 ## Verification
 
-- 31 production C# tests and 334 Python/repository tests pass for this source release. The optional
+- 31 production C# tests and 340 Python/repository tests pass for this source release. The optional
   real Windows preview-tool integration remains isolated to its toolchain-qualified CI job.
 
 ---

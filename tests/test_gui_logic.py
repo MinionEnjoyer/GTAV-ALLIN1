@@ -5,7 +5,9 @@ from unittest.mock import Mock
 import pytest
 
 from allin1.config import Config
-from allin1.gui import ManagerWindow, QueueLogHandler, _status_presentation
+from allin1.gui import (
+    ManagerWindow, QueueLogHandler, _operation_progress_text, _status_presentation,
+)
 from allin1.manager import InstallationStatus
 
 
@@ -74,6 +76,33 @@ def test_queue_log_handler_sends_formatted_record():
     handler.setFormatter(logging.Formatter("%(levelname)s:%(message)s"))
     handler.emit(logging.LogRecord("test", logging.WARNING, "", 0, "hello", (), None))
     assert messages.get_nowait() == ("log", "WARNING:hello")
+
+
+def test_repair_progress_text_clamps_percentages():
+    assert _operation_progress_text("Repairing", -5) == "Repairing - 0%"
+    assert _operation_progress_text("Repairing", 47) == "Repairing - 47%"
+    assert _operation_progress_text("Repairing", 150) == "Repairing - 100%"
+
+
+def test_launch_guard_submits_only_one_storefront_request(tmp_path, monkeypatch):
+    window = _window()
+    window.busy = False
+    window.launch_pending = False
+    window.manager = Mock()
+    window.manager.resolve_path.return_value = tmp_path
+    window.launch_button = Mock()
+    window.root = Mock()
+    window._clear_dirty = Mock()
+    window._append_log = Mock()
+    target = Mock(description="GTA V Enhanced through Steam")
+    launcher = Mock(return_value=target)
+    monkeypatch.setattr("allin1.gui.launch_gta", launcher)
+
+    window.launch_game()
+    window.launch_game()
+
+    launcher.assert_called_once_with(tmp_path)
+    window.root.after.assert_called_once_with(15000, window._reset_launch_guard)
 
 
 def test_save_displays_validation_errors(monkeypatch):

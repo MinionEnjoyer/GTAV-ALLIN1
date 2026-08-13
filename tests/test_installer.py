@@ -206,9 +206,13 @@ def test_install_deploys_default_enabled_rpf_previews(tmp_path, monkeypatch):
     deploy = Mock(return_value=True)
     monkeypatch.setattr(installer, "_deploy_preview_dlc", deploy)
     monkeypatch.setattr(installer.asi_loader, "ensure_nobattleye", Mock(return_value="set"))
-    result = installer.install(config, Mock())
+    progress = Mock()
+    result = installer.install(config, Mock(), progress=progress)
     assert result.rpf_previews_deployed is True
-    deploy.assert_called_once_with(game, result)
+    deploy.assert_called_once_with(game, result, progress=progress)
+    percentages = [call.args[0] for call in progress.call_args_list]
+    assert percentages == sorted(percentages)
+    assert percentages[0] == 0 and percentages[-1] == 100
 
 
 def test_atomic_copy_replaces_complete_file_and_keeps_backup(tmp_path):

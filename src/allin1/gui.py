@@ -106,6 +106,10 @@ class QueueLogHandler(logging.Handler):
         self.messages.put(("log", self.format(record)))
 
 
+def _operation_progress_text(label: str, percentage: int) -> str:
+    return f"{label} - {max(0, min(100, int(percentage)))}%"
+
+
 class ScrollableFrame(ttk.Frame):
     """Vertically scrollable surface for settings-heavy launcher pages."""
 
@@ -142,6 +146,7 @@ class ManagerWindow:
         self.config = manager.load_config()
         self.messages: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy = False
+        self.launch_pending = False
         self.profiles = ProfileStore(manager.project_root / "profiles")
         self.mod_catalog = ModCatalog(manager.project_root / "mods" / "catalog")
         self.mod_manifests: dict[str, ModManifest] = {}
@@ -531,7 +536,9 @@ class ManagerWindow:
         ttk.Label(footer_left, text="  ·  ").pack(side="left")
         ttk.Label(footer_left, textvariable=self.notice_text,
                   foreground="#3f6659").pack(side="left")
-        self.busy_progress = ttk.Progressbar(footer_left, mode="indeterminate", length=110)
+        self.busy_progress = ttk.Progressbar(
+            footer_left, mode="determinate", maximum=100, length=170,
+        )
         ttk.Label(footer_left, textvariable=self.operation_text,
                   foreground="#3f6659").pack(side="left")
 
@@ -862,26 +869,44 @@ class ManagerWindow:
 
     def install(self) -> None:
         config = self._current_config()
-        self._run("Installing", lambda: self.manager.install(config))
+        def report(percentage: int, detail: str) -> None:
+            self.messages.put(("progress", ("Repairing", percentage, detail)))
+        self._run(
+            "Repairing",
+            lambda: self.manager.install(config, progress=report),
+            determinate=True,
+        )
 
     def launch_game(self) -> None:
         """Save the current settings and start the selected GTA V installation."""
-        if self.busy:
+        if self.busy or self.launch_pending:
             return
+        self.launch_pending = True
+        self.launch_button.configure(state="disabled")
         config = self._current_config()
         gta_path = self.manager.resolve_path(config)
         if gta_path is None:
+            self._reset_launch_guard()
             messagebox.showerror("Game not found", "Select a GTA V installation first.")
             return
         try:
             self.manager.save_config(config)
             target = launch_gta(gta_path)
         except (FileNotFoundError, OSError, ValueError) as exc:
+            self._reset_launch_guard()
             self._append_log(f"Launch failed: {exc}")
             messagebox.showerror("Could not launch GTA V", str(exc))
             return
         self._clear_dirty("Launching GTA V")
         self._append_log(f"Launching {target.description}.")
+        # Ignore repeated clicks or key-repeat while Steam and Rockstar hand
+        # off the request. Reopening the URI can restart the game's intro.
+        self.root.after(15000, self._reset_launch_guard)
+
+    def _reset_launch_guard(self) -> None:
+        self.launch_pending = False
+        if not self.busy:
+            self.launch_button.configure(state="normal")
 
     def uninstall(self) -> None:
         if not messagebox.askyesno("Uninstall ALLIN1", "Remove ALLIN1 files and restore its game changes?"):
@@ -969,16 +994,22 @@ class ManagerWindow:
                 return
         self.root.destroy()
 
-    def _run(self, label: str, operation) -> None:
+    def _run(self, label: str, operation, *, determinate: bool = False) -> None:
         if self.busy:
             return
         self.busy = True
         self._set_actions(False)
         self._append_log(f"{label}…")
         self.notice_text.set("Working")
-        self.operation_text.set(label + "…")
+        self.operation_text.set(
+            _operation_progress_text(label, 0) if determinate else label + "…"
+        )
+        self.busy_progress.configure(
+            mode="determinate" if determinate else "indeterminate", value=0,
+        )
         self.busy_progress.pack(side="left", padx=12)
-        self.busy_progress.start(12)
+        if not determinate:
+            self.busy_progress.start(12)
 
         def worker() -> None:
             try:
@@ -997,10 +1028,16 @@ class ManagerWindow:
                 break
             if kind == "log":
                 self._append_log(str(payload))
+            elif kind == "progress":
+                label, percentage, detail = payload
+                percentage = max(0, min(100, int(percentage)))
+                self.busy_progress.configure(value=percentage)
+                self.operation_text.set(_operation_progress_text(label, percentage))
+                self.notice_text.set(str(detail))
             elif kind == "done":
                 label, _ = payload
                 self._finish()
-                if label == "Installing":
+                if label == "Repairing":
                     self._clear_dirty("Install / Repair complete")
                 self._append_log(f"{label} completed.")
                 messagebox.showinfo("GTA V ALLIN1", f"{label} completed successfully.")
@@ -1027,6 +1064,7 @@ class ManagerWindow:
     def _finish(self) -> None:
         self.busy = False
         self.busy_progress.stop()
+        self.busy_progress.configure(value=0)
         self.busy_progress.pack_forget()
         self.operation_text.set("")
         if not self.settings_dirty:
@@ -1051,7 +1089,11 @@ class ManagerWindow:
                 else None
             )
             self.launch_button.configure(
-                state="normal" if presentation and presentation.can_launch else "disabled"
+                state=(
+                    "normal"
+                    if presentation and presentation.can_launch and not self.launch_pending
+                    else "disabled"
+                )
             )
             self.install_button.configure(
                 state="normal" if presentation and presentation.can_install else "disabled"

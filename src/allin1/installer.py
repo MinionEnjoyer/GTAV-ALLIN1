@@ -23,12 +23,14 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from allin1 import asi_loader
 from allin1.config import Config
 from allin1.detector import detect_gta_path, validate_gta_path
 from allin1.health import inspect_windows_binary
 from allin1.preview_assets import GEAR_PREVIEW_ITEMS
+from allin1.processes import run_hidden
 from allin1.vehicles.database import VehicleDatabase
 from allin1.versioning import VERSION_FILE, write_installed_version
 
@@ -103,10 +105,26 @@ def resolve_gta_path(config: Config) -> Path:
     return detected
 
 
-def install(config: Config, db: VehicleDatabase) -> InstallResult:
+InstallProgress = Callable[[int, str], None]
+
+
+def _report_progress(
+    callback: InstallProgress | None, percentage: int, detail: str,
+) -> None:
+    if callback is not None:
+        callback(max(0, min(100, percentage)), detail)
+
+
+def install(
+    config: Config,
+    db: VehicleDatabase,
+    progress: InstallProgress | None = None,
+) -> InstallResult:
     """Run the full installation process."""
     log.info("=== Starting installation ===")
+    _report_progress(progress, 0, "Preparing repair")
     gta_path = resolve_gta_path(config)
+    _report_progress(progress, 5, "Game folder verified")
     enhanced = _is_enhanced(gta_path)
     result = InstallResult(gta_path=gta_path, is_enhanced=enhanced)
 
@@ -114,9 +132,11 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
 
     # --- Clean up files from previous ALLIN1 versions ---
     _clean_legacy_files(gta_path, result)
+    _report_progress(progress, 15, "Previous installation checked")
 
     # --- Deploy ALLIN1.dll script ---
     result.dll_deployed = _deploy_script(gta_path)
+    _report_progress(progress, 28, "Client files repaired")
 
     # --- Check for ScriptHookV ---
     result.scripthookv_found = _check_scripthookv(gta_path)
@@ -126,11 +146,13 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
 
     # --- Detect optional RPF loader; never install third-party executable code ---
     result.openrpf_found = _check_openrpf(gta_path, enhanced)
+    _report_progress(progress, 38, "Dependencies verified")
 
     # Remove any previous ALLIN1 preview pack before rebuilding it.  This also
     # clears the registration when previews have been disabled.
     _remove_preview_pack(gta_path)
     _unpatch_dlclist_rpf(gta_path)
+    _report_progress(progress, 45, "Preview registration refreshed")
 
     if config.general.enable_rpf_previews:
         if not result.openrpf_found:
@@ -140,7 +162,9 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
             )
         else:
             try:
-                result.rpf_previews_deployed = _deploy_preview_dlc(gta_path, result)
+                result.rpf_previews_deployed = _deploy_preview_dlc(
+                    gta_path, result, progress=progress,
+                )
             except Exception as exc:
                 log.error("Preview texture injection failed: %s", exc, exc_info=True)
                 result.warnings.append(f"Preview texture injection failed: {exc}")
@@ -149,8 +173,10 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
 
     # --- Write -nobattleye to commandline.txt (belt-and-suspenders) ---
     result.battleye_status = asi_loader.ensure_nobattleye(gta_path, enhanced)
+    _report_progress(progress, 96, "Finalizing Story Mode settings")
 
     log.info("=== Installation complete ===")
+    _report_progress(progress, 100, "Repair complete")
     return result
 
 
@@ -365,7 +391,11 @@ def _check_openrpf(gta_path: Path, enhanced: bool) -> bool:
     return True
 
 
-def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
+def _deploy_preview_dlc(
+    gta_path: Path,
+    result: InstallResult,
+    progress: InstallProgress | None = None,
+) -> bool:
     """Build and register a DLC pack containing streamed preview dictionaries."""
     from allin1.generators import dlc_previews
     from allin1.generators import ytd_builder
@@ -467,6 +497,7 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
             )
 
         # Step 1: Build .ytd files from PNGs
+        _report_progress(progress, 50, "Building preview textures")
         ytd_files = ytd_builder.build_ytd_files(
             preview_inputs,
             logo_src if logo_src.exists() else None,
@@ -479,11 +510,13 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
             log.warning("No .ytd files were built")
             result.warnings.append("Failed to build preview textures.")
             return False
+        _report_progress(progress, 64, "Preview textures built")
 
         # Step 1b: Convert .ytd files to Enhanced (gen9) format if needed
         if result.is_enhanced:
             log.info("Enhanced edition detected — converting .ytd files to gen9 format...")
-            proc = subprocess.run(
+            _report_progress(progress, 68, "Converting Enhanced textures")
+            proc = run_hidden(
                 [str(rpf_patcher), "convert-gen9", str(ytd_out)],
                 capture_output=True, text=True, timeout=300,
             )
@@ -504,7 +537,8 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
             ytd_files, dlc_work,
         )
         output_rpf = dlc_work / "allin1_previews.dlc.rpf"
-        proc = subprocess.run(
+        _report_progress(progress, 74, "Packaging preview DLC")
+        proc = run_hidden(
             [
                 str(rpf_patcher), "build-dlc", str(dlc_root), str(output_rpf),
                 "--embed-rpf", str(ytd_staging), "x64/textures/textures.rpf",
@@ -520,7 +554,8 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
         if not output_rpf.is_file() or output_rpf.stat().st_size == 0:
             raise RuntimeError("RpfPatcher build-dlc produced no archive")
 
-        verify = subprocess.run(
+        _report_progress(progress, 84, "Verifying preview DLC")
+        verify = run_hidden(
             [str(rpf_patcher), "verify-dlc", str(output_rpf), str(ytd_staging)],
             capture_output=True, text=True, timeout=300,
         )
@@ -532,6 +567,7 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
             raise RuntimeError(f"RpfPatcher verify-dlc failed: {error_msg}")
 
         deployed_dir = dlc_previews.deploy_dlc_rpf(output_rpf, gta_path)
+        _report_progress(progress, 90, "Registering preview DLC")
         if not _patch_dlclist_rpf(gta_path, result):
             shutil.rmtree(deployed_dir, ignore_errors=True)
             raise RuntimeError(
@@ -624,7 +660,7 @@ def _patch_dlclist_rpf(gta_path: Path, result: InstallResult) -> bool:
         return False
 
     try:
-        proc = subprocess.run(
+        proc = run_hidden(
             [str(rpf_patcher), "patch", str(gta_path)],
             capture_output=True, text=True, timeout=120,
         )
@@ -653,7 +689,7 @@ def _unpatch_dlclist_rpf(gta_path: Path) -> None:
         return
 
     try:
-        proc = subprocess.run(
+        proc = run_hidden(
             [str(rpf_patcher), "unpatch", str(gta_path)],
             capture_output=True, text=True, timeout=120,
         )
@@ -676,7 +712,7 @@ def _remove_preview_ytds(gta_path: Path) -> None:
 
     # Remove all .ytd files whose name starts with "allin1_"
     try:
-        proc = subprocess.run(
+        proc = run_hidden(
             [str(rpf_patcher), "remove-ytd", str(gta_path), "allin1_"],
             capture_output=True, text=True, timeout=120,
         )

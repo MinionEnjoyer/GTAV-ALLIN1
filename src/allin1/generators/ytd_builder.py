@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import logging
 import shutil
-import subprocess
 from pathlib import Path
 
 from PIL import Image
 
 from allin1.generators.vehiclelist import TEXTURES_PER_YTD, YTD_PREFIX
+from allin1.processes import run_hidden
 
 log = logging.getLogger("allin1.generators.ytd_builder")
 
@@ -26,8 +26,8 @@ log = logging.getLogger("allin1.generators.ytd_builder")
 def _run(cmd: list[str | Path], label: str, cwd: Path | None = None) -> None:
     """Run a subprocess, raising on failure."""
     log.debug("Running: %s", " ".join(str(c) for c in cmd))
-    result = subprocess.run(
-        [str(c) for c in cmd],
+    result = run_hidden(
+        cmd,
         capture_output=True,
         text=True,
         cwd=str(cwd) if cwd else None,

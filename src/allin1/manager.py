@@ -36,7 +36,7 @@ class ModManager:
         self,
         project_root: Path,
         *,
-        install_fn: Callable[[Config, VehicleDatabase], InstallResult] = install,
+        install_fn: Callable[..., InstallResult] = install,
         uninstall_fn: Callable[[Config], list[Path]] = uninstall,
     ) -> None:
         self.project_root = project_root
@@ -111,10 +111,16 @@ class ModManager:
             rpf_loader_status=rpf_status,
         )
 
-    def install(self, config: Config) -> InstallResult:
+    def install(
+        self,
+        config: Config,
+        progress: Callable[[int, str], None] | None = None,
+    ) -> InstallResult:
         self.save_config(config)
         database = VehicleDatabase.load(self.database_path)
-        return self._install(config, database)
+        if progress is None:
+            return self._install(config, database)
+        return self._install(config, database, progress=progress)
 
     def uninstall(self, config: Config) -> list[Path]:
         return self._uninstall(config)
