@@ -224,6 +224,7 @@ namespace ALLIN1
                 GarageManager.Initialize();
                 GarageManager.InitializeDavisGarage();
                 GarageManager.InitializeGarmentGarage();
+                GarageManager.InitializeRuralGarage();
                 if (!ClientWatchdog.SafeMode)
                     GarageManager.InitializeFloorGarage();
                 else
@@ -343,7 +344,7 @@ namespace ALLIN1
             {
                 Log($"DeliverToFloorGarage: full ({used}/{cap})");
                 GTA.UI.Screen.ShowSubtitle(
-                    $"~r~The three-floor garage is full.~w~ ({used}/{cap} spaces used)", 3000);
+                    $"~r~The Harmony Garage is full.~w~ ({used}/{cap} spaces used)", 3000);
                 return;
             }
 
@@ -357,7 +358,7 @@ namespace ALLIN1
                 if (!success)
                 {
                     Log($"DeliverToFloorGarage: failed for {model}");
-                    GTA.UI.Screen.ShowSubtitle("~r~Delivery to the three-floor garage failed.", 3000);
+                    GTA.UI.Screen.ShowSubtitle("~r~Delivery to the Harmony Garage failed.", 3000);
                     return;
                 }
 
@@ -367,8 +368,8 @@ namespace ALLIN1
                 string name = VehicleList.DisplayNames.ContainsKey(model)
                     ? VehicleList.DisplayNames[model] : model;
                 string msg = _freeMode || price <= 0
-                    ? $"~g~{name}~w~ delivered to the three-floor garage."
-                    : $"~g~{name}~w~ delivered to the three-floor garage for ~g~${price:N0}~w~.";
+                    ? $"~g~{name}~w~ delivered to the Harmony Garage."
+                    : $"~g~{name}~w~ delivered to the Harmony Garage for ~g~${price:N0}~w~.";
                 GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
                 Log($"DeliverToFloorGarage: {model}, price=${price}");
@@ -376,7 +377,7 @@ namespace ALLIN1
             catch (Exception ex)
             {
                 LogException("DeliverToFloorGarage", ex);
-                GTA.UI.Screen.ShowSubtitle("~r~Delivery to the three-floor garage failed.", 3000);
+                GTA.UI.Screen.ShowSubtitle("~r~Delivery to the Harmony Garage failed.", 3000);
             }
         }
 
@@ -671,6 +672,52 @@ namespace ALLIN1
             }
         }
 
+        internal void ExecuteDeliverToRuralGarage(string model, int price)
+        {
+            if (VehicleList.GetSizeTier(model) == 2)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~That vehicle is too large for the Grapeseed Garage.", 3000);
+                return;
+            }
+            int used = GarageManager.GetRuralGarageUsedSlots();
+            int cap = GarageManager.GetRuralGarageCapacity();
+            if (used >= cap)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~r~The Grapeseed Garage is full.~w~ ({used}/{cap} spaces used)",
+                    3000);
+                return;
+            }
+            var rng = new Random();
+            try
+            {
+                bool success = GarageManager.DeliverToRuralGarage(
+                    model, rng.Next(0, 160), rng.Next(0, 160));
+                if (!success)
+                {
+                    GTA.UI.Screen.ShowSubtitle(
+                        "~r~Delivery to the Grapeseed Garage failed.", 3000);
+                    return;
+                }
+                if (!_freeMode && price > 0) Game.Player.Money -= price;
+                string name = VehicleList.DisplayNames.TryGetValue(
+                    model, out string displayName) ? displayName : model;
+                GTA.UI.Screen.ShowSubtitle(
+                    _freeMode || price <= 0
+                        ? $"~g~{name}~w~ delivered to the Grapeseed Garage."
+                        : $"~g~{name}~w~ delivered to the Grapeseed Garage for ~g~${price:N0}~w~.",
+                    3000);
+                Log($"DeliverToRuralGarage: {model}, price=${price}");
+            }
+            catch (Exception ex)
+            {
+                LogException("DeliverToRuralGarage", ex);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Delivery to the Grapeseed Garage failed.", 3000);
+            }
+        }
+
         internal bool IsGearEquipped(string gearId)
         {
             return !string.IsNullOrWhiteSpace(gearId) &&
@@ -889,10 +936,13 @@ namespace ALLIN1
                     ? GarageManager.RemoveDavisGarageVehicle(listIndex)
                     : garageLocation == 3
                         ? GarageManager.RemoveGarmentGarageVehicle(listIndex)
+                    : garageLocation == 4
+                        ? GarageManager.RemoveRuralGarageVehicle(listIndex)
                     : GarageManager.RemoveVehicle(listIndex);
             string garageName = garageLocation == 1 ? "three_floor"
                 : garageLocation == 2 ? "davis"
-                : garageLocation == 3 ? "garment_factory" : "eclipse";
+                : garageLocation == 3 ? "garment_factory"
+                : garageLocation == 4 ? "rural" : "eclipse";
             if (!removed)
             {
                 GTA.UI.Screen.ShowSubtitle("~r~Sale failed; your garage and money were not changed.", 3500);
@@ -1350,12 +1400,14 @@ namespace ALLIN1
                     if (supportedCharacter || GarageManager.IsPlayerInGarage ||
                         GarageManager.IsPlayerInFloorGarage ||
                         GarageManager.IsPlayerInDavisGarage ||
-                        GarageManager.IsPlayerInGarmentGarage)
+                        GarageManager.IsPlayerInGarmentGarage ||
+                        GarageManager.IsPlayerInRuralGarage)
                     {
                         GarageManager.OnTick();
                         GarageManager.OnFloorGarageTick();
                         GarageManager.OnDavisGarageTick();
                         GarageManager.OnGarmentGarageTick();
+                        GarageManager.OnRuralGarageTick();
                     }
                 }
 

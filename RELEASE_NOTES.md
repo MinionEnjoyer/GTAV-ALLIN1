@@ -1,3 +1,39 @@
+# GTA V ALLIN1 0.4.3
+
+Version 0.4.3 adds a fifth persistent garage, standardizes garage identity across the client, and
+protects player and safehouse vehicles from DLC traffic replacement without reducing ambient
+parked-car variety.
+
+## Garage expansion and consistency
+
+- Added the six-car Grapeseed Garage with independent per-character persistence, exterior vehicle
+  and pedestrian access, GBAY delivery targeting, selling, recovery, map blips, and shared garage
+  entry rules.
+- Standardized the original locations as **Eclipse Garage** and **Harmony Garage** across GBAY,
+  diagnostics, map labels, prompts, and release documentation.
+- Applied the same mission, wanted-level, story-vehicle, capacity, size, and save-before-delete
+  policies to Grapeseed that protect every existing ALLIN1 garage.
+- Extended install, repair, diagnostics, backup recovery, and repository contracts to include the
+  Grapeseed save independently from Eclipse, Harmony, Davis, and the Garment Factory.
+
+## Traffic ownership protection
+
+- Added narrowly scoped Story Mode safehouse parking zones for Michael, Franklin, Trevor, Floyd,
+  and the Vanilla Unicorn so vehicles stored at those homes are never replaced by ALLIN1 traffic.
+- Protected the current, last-used, and recently interacted player vehicles, including Rockstar's
+  player-vehicle decorators, with a short identity cache that survives brief handle churn.
+- Revalidate replacement candidates immediately before and during replacement. Ordinary parked
+  vehicles outside protected safehouse storage remain eligible for ambient DLC replacement.
+
+## Release qualification
+
+- Bumped the desktop launcher and in-game client together to 0.4.3 and expanded automated
+  contracts for the fifth garage, save deployment, naming, and safehouse traffic policy.
+- Kept F10 World Vector as the sole production developer tool; retired labs and capture tools
+  remain excluded from the checksum-verified public archive.
+
+---
+
 # GTA V ALLIN1 0.4.2
 
 Version 0.4.2 completes the garage-grounding survey, retires the last temporary runtime

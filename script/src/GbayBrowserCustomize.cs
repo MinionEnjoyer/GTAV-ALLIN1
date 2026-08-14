@@ -45,8 +45,8 @@ namespace ALLIN1
                 BROWSER_LEFT + 0.21f, HEADER_CY,
                 0.23f, 0.044f, 0.34f);
 
-            // Eclipse Towers is one garage. Multi-floor tabs are only valid
-            // while the player is inside the dedicated three-floor garage.
+            // Eclipse Garage is one garage. Multi-floor tabs are only valid
+            // while the player is inside Harmony Garage.
             int floorCount = floorGarage ? 3 : 1;
             if (floorCount == 1) _customFloor = 0;
             float floorTabW = 0.08f;

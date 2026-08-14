@@ -2908,7 +2908,7 @@ namespace ALLIN1
             { "zorrusso", "allin1_prev_06" },
             { "zr350", "allin1_prev_06" },
         };
-        // Oversized vehicles (19) -- length > 8m, too large for Eclipse Towers
+        // Oversized vehicles (19) -- length > 8m, too large for Eclipse Garage
         internal static readonly HashSet<string> OversizedVehicles = new HashSet<string>
         {
             "benson2", "bruiser", "chernobog", "conada2", "flatbed2", "monster3", "mule3", "mule4",

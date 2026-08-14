@@ -166,7 +166,8 @@ namespace ALLIN1
         internal static void OnGarmentGarageTick()
         {
             if (!_garmentInitialized || _transitionInProgress) return;
-            if (_isPlayerInGarage || _isPlayerInFloorGarage || _isPlayerInDavisGarage)
+            if (_isPlayerInGarage || _isPlayerInFloorGarage || _isPlayerInDavisGarage ||
+                _isPlayerInRuralGarage)
                 return;
             if (_garmentExitCooldownFrames > 0)
             {

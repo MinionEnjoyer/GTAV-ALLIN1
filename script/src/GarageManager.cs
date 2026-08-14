@@ -3,7 +3,7 @@
 // Each character (Michael, Franklin, Trevor) has 10 personal vehicle slots
 // in a shared garage interior that exists permanently underground. Vehicles
 // are spawned when the player enters the garage and despawned on exit.
-// Entry/exit is via a marker near Eclipse Towers on Eclipse Boulevard.
+// Entry/exit is via the Eclipse Garage marker on Eclipse Boulevard.
 
 using System;
 using System.Collections.Generic;
@@ -252,16 +252,16 @@ namespace ALLIN1
                 _entranceBlip = World.CreateBlip(ENTRANCE_POS);
                 _entranceBlip.Sprite = BlipSprite.Garage;
                 _entranceBlip.Color = CharacterBlipColor();
-                _entranceBlip.Name = "ALLIN1 Garage (Vehicle)";
+                _entranceBlip.Name = "ALLIN1 Eclipse Garage (Vehicle)";
                 _entranceBlip.IsShortRange = true;
 
                 _pedEntranceBlip = World.CreateBlip(PED_EXIT_DEST);
                 _pedEntranceBlip.Sprite = BlipSprite.Garage;
                 _pedEntranceBlip.Color = CharacterBlipColor();
-                _pedEntranceBlip.Name = "ALLIN1 Garage (Pedestrian)";
+                _pedEntranceBlip.Name = "ALLIN1 Eclipse Garage (Pedestrian)";
                 _pedEntranceBlip.IsShortRange = true;
 
-                Log("GarageManager initialized (Eclipse Towers 10-car interior)");
+                Log("GarageManager initialized (Eclipse Garage 10-car interior)");
             }
             catch (Exception ex)
             {
@@ -279,13 +279,15 @@ namespace ALLIN1
         {
             try
             {
-                Vector3 recoveryPosition = _isPlayerInGarmentGarage
-                    ? GARMENT_PED_ENTRANCE_POS
+                Vector3 recoveryPosition = _isPlayerInRuralGarage
+                    ? RURAL_PED_ENTRANCE_POS
+                    : _isPlayerInGarmentGarage ? GARMENT_PED_ENTRANCE_POS
                     : _isPlayerInDavisGarage
                     ? DAVIS_PED_ENTRANCE_POS
                     : _isPlayerInFloorGarage ? FLOOR_GARAGE_PED_EXIT_DEST : PED_EXIT_DEST;
-                float recoveryHeading = _isPlayerInGarmentGarage
-                    ? GARMENT_PED_ENTRANCE_HEADING
+                float recoveryHeading = _isPlayerInRuralGarage
+                    ? RURAL_PED_ENTRANCE_HEADING
+                    : _isPlayerInGarmentGarage ? GARMENT_PED_ENTRANCE_HEADING
                     : _isPlayerInDavisGarage
                     ? DAVIS_PED_ENTRANCE_HEADING
                     : _isPlayerInFloorGarage
@@ -294,6 +296,7 @@ namespace ALLIN1
                 FloorGarageUpdateStoredFromLive();
                 DavisUpdateStoredFromLive();
                 GarmentUpdateStoredFromLive();
+                RuralUpdateStoredFromLive();
                 for (int i = 0; i < _handles.Length; i++)
                 {
                     if (_handles[i] != null && _handles[i].Exists()) _handles[i].Delete();
@@ -316,6 +319,12 @@ namespace ALLIN1
                     if (_garmentHandles[i] != null && _garmentHandles[i].Exists())
                         _garmentHandles[i].Delete();
                     _garmentHandles[i] = null;
+                }
+                for (int i = 0; i < _ruralHandles.Length; i++)
+                {
+                    if (_ruralHandles[i] != null && _ruralHandles[i].Exists())
+                        _ruralHandles[i].Delete();
+                    _ruralHandles[i] = null;
                 }
                 RecoverTransition("EmergencyRecover", recoveryPosition, recoveryHeading);
                 Log("EmergencyRecover: player returned outside and garage state reset");
@@ -349,7 +358,7 @@ namespace ALLIN1
             // Don't show garage markers while in another garage.
             if (_isPlayerInFloorGarage || _isPlayerInDavisGarage)
                 return;
-            if (_isPlayerInGarmentGarage)
+            if (_isPlayerInGarmentGarage || _isPlayerInRuralGarage)
                 return;
 
             if (_exitCooldownFrames > 0)
@@ -502,6 +511,8 @@ namespace ALLIN1
                 if (string.Equals(vehicle.Model, model, StringComparison.OrdinalIgnoreCase)) return true;
             foreach (StoredVehicle vehicle in GetGarmentGarageStoredVehicles())
                 if (string.Equals(vehicle.Model, model, StringComparison.OrdinalIgnoreCase)) return true;
+            foreach (StoredVehicle vehicle in GetRuralGarageStoredVehicles())
+                if (string.Equals(vehicle.Model, model, StringComparison.OrdinalIgnoreCase)) return true;
             return false;
         }
 
@@ -623,7 +634,7 @@ namespace ALLIN1
             }
             foreach (Vehicle[] handles in new[]
             {
-                _floorGarageHandles, _davisHandles, _garmentHandles,
+                _floorGarageHandles, _davisHandles, _garmentHandles, _ruralHandles,
             })
             {
                 foreach (Vehicle veh in handles)
@@ -678,15 +689,18 @@ namespace ALLIN1
                 UnloadFloorGarageInterior();
                 UnloadDavisAutoShopInterior();
                 UnloadGarmentInterior();
+                UnloadRuralInterior();
                 _isPlayerInGarage = false;
                 _isPlayerInFloorGarage = false;
                 _isPlayerInDavisGarage = false;
                 _isPlayerInGarmentGarage = false;
+                _isPlayerInRuralGarage = false;
                 _elevatorMenuActive = false;
                 _exitCooldownFrames = 120;
                 _floorGarageExitCooldownFrames = 120;
                 _davisExitCooldownFrames = 120;
                 _garmentExitCooldownFrames = 120;
+                _ruralExitCooldownFrames = 120;
                 try
                 {
                     Function.Call(Hash.DO_SCREEN_FADE_IN, 0);
@@ -811,7 +825,7 @@ namespace ALLIN1
                     string displayName = VehicleList.DisplayNames.ContainsKey(modelName)
                         ? VehicleList.DisplayNames[modelName] : modelName;
                     storedConfirmation =
-                        $"~g~{displayName}~w~ stored in the Eclipse Towers garage " +
+                        $"~g~{displayName}~w~ stored in the Eclipse Garage " +
                         $"(slot {slotIndex + 1}).";
                     Log($"EnterGarage: stored drive-in vehicle {modelName} -> slot {slotIndex}");
 
@@ -1267,6 +1281,8 @@ namespace ALLIN1
             SetBlipColor(_davisPedBlip, charColor);
             SetBlipColor(_garmentVehicleBlip, charColor);
             SetBlipColor(_garmentPedBlip, charColor);
+            SetBlipColor(_ruralVehicleBlip, charColor);
+            SetBlipColor(_ruralPedBlip, charColor);
 
             _lastBlipColor = charColor;
             _hasBlipColor = true;
@@ -1289,7 +1305,8 @@ namespace ALLIN1
                 return character;
             }
             if ((_isPlayerInGarage || _isPlayerInFloorGarage ||
-                _isPlayerInDavisGarage || _isPlayerInGarmentGarage) &&
+                _isPlayerInDavisGarage || _isPlayerInGarmentGarage ||
+                _isPlayerInRuralGarage) &&
                 _lastGarageCharacter != (PedHash)0)
                 return _lastGarageCharacter;
             return (PedHash)0;
@@ -2524,13 +2541,13 @@ namespace ALLIN1
                 _floorGarageEntranceBlip = World.CreateBlip(FLOOR_GARAGE_ENTRANCE_POS);
                 _floorGarageEntranceBlip.Sprite = BlipSprite.Garage;
                 _floorGarageEntranceBlip.Color = CharacterBlipColor();
-                _floorGarageEntranceBlip.Name = "ALLIN1 Three-Floor Garage (Vehicle)";
+                _floorGarageEntranceBlip.Name = "ALLIN1 Harmony Garage (Vehicle)";
                 _floorGarageEntranceBlip.IsShortRange = true;
 
                 _floorGaragePedBlip = World.CreateBlip(FLOOR_GARAGE_PED_EXIT_DEST);
                 _floorGaragePedBlip.Sprite = BlipSprite.Garage;
                 _floorGaragePedBlip.Color = CharacterBlipColor();
-                _floorGaragePedBlip.Name = "ALLIN1 Three-Floor Garage (Pedestrian)";
+                _floorGaragePedBlip.Name = "ALLIN1 Harmony Garage (Pedestrian)";
                 _floorGaragePedBlip.IsShortRange = true;
 
                 Log("Floor Garage initialized (3-floor oversized vehicle storage)");
@@ -2693,7 +2710,7 @@ namespace ALLIN1
 
             // Don't show floor garage markers while in garage (and vice versa)
             if (_isPlayerInGarage || _isPlayerInDavisGarage ||
-                _isPlayerInGarmentGarage) return;
+                _isPlayerInGarmentGarage || _isPlayerInRuralGarage) return;
 
             if (!_isPlayerInFloorGarage)
             {
@@ -2726,7 +2743,7 @@ namespace ALLIN1
                         else
                         {
                             GTA.UI.Screen.ShowHelpTextThisFrame(
-                                "Press ~INPUT_CONTEXT~ to enter the three-floor garage.");
+                                "Press ~INPUT_CONTEXT~ to enter the Harmony Garage.");
                             if (Game.IsControlJustPressed(GTA.Control.Context))
                                 EnterFloorGarage();
                         }
@@ -2754,7 +2771,7 @@ namespace ALLIN1
                         else
                         {
                             GTA.UI.Screen.ShowHelpTextThisFrame(
-                                "Press ~INPUT_CONTEXT~ to enter the three-floor garage.");
+                                "Press ~INPUT_CONTEXT~ to enter the Harmony Garage.");
                             if (Game.IsControlJustPressed(GTA.Control.Context))
                                 EnterFloorGarage();
                         }
@@ -2773,7 +2790,7 @@ namespace ALLIN1
                 if (inVehicle)
                 {
                     GTA.UI.Screen.ShowHelpTextThisFrame(
-                        "Press ~INPUT_CONTEXT~ to leave the three-floor garage with your vehicle.");
+                        "Press ~INPUT_CONTEXT~ to leave the Harmony Garage with your vehicle.");
                     if (Game.IsControlJustPressed(GTA.Control.Context))
                         LeaveFloorGarage();
                 }
@@ -2989,7 +3006,7 @@ namespace ALLIN1
                     if (storedList.Count >= FLOOR_GARAGE_SLOT_COUNT)
                     {
                         GTA.UI.Screen.ShowSubtitle(
-                            $"~r~The three-floor garage is full.~w~ " +
+                            $"~r~The Harmony Garage is full.~w~ " +
                             $"({storedList.Count}/{FLOOR_GARAGE_SLOT_COUNT} spaces used)", 3000);
                         return;
                     }
@@ -2998,7 +3015,7 @@ namespace ALLIN1
                     if (slotIndex < 0)
                     {
                         GTA.UI.Screen.ShowSubtitle(
-                            "~r~The three-floor garage is full; no spaces are available.", 3000);
+                            "~r~The Harmony Garage is full; no spaces are available.", 3000);
                         return;
                     }
 
@@ -3017,7 +3034,7 @@ namespace ALLIN1
                     int floor = slotIndex / FLOOR_GARAGE_SLOTS_PER_FLOOR + 1;
                     int spotOnFloor = slotIndex % FLOOR_GARAGE_SLOTS_PER_FLOOR + 1;
                     storedConfirmation =
-                        $"~g~{displayName}~w~ stored in the three-floor garage " +
+                        $"~g~{displayName}~w~ stored in the Harmony Garage " +
                         $"(floor {floor}, space {spotOnFloor}).";
                     Log($"EnterFloorGarage: stored drive-in vehicle {modelName} -> slot {slotIndex} (floor {floor})");
 

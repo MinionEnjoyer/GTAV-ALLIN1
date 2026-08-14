@@ -293,14 +293,19 @@ Automatically integrates DLC vehicles into Story Mode traffic. Two systems work 
 - Class-matched replacements (a vanilla sedan becomes a DLC sedan)
 - Minimum 50m distance before replacing
 
+Player-owned, current, last-used, and recently interacted vehicles are excluded.
+Vehicles parked in Story Mode safehouse garage zones are also protected, while
+ordinary ambient parked vehicles elsewhere remain eligible for replacement.
+
 When `rich_areas_only_supers` is enabled, super and sports cars only appear in wealthy neighborhoods like Vinewood.
 
 ### Personal Garages
 
 Garage storage is separate per character (Michael, Franklin, Trevor) and per
-location. Eclipse Towers provides the original 10-car underground garage, the
-three-floor garage provides oversized storage, Davis adds a 10-car Los Santos
-Tuners Auto Shop, and the Garment Factory adds another 10 native bays.
+location. Eclipse Garage provides the original 10-car underground space,
+Harmony Garage provides 15 oversized-capable spaces across three virtual floors,
+Davis adds a 10-car Los Santos Tuners Auto Shop, the Garment Factory adds 10
+native bays, and Grapeseed adds a compact six-car rural garage.
 
 Rockstar-managed story vehicles are excluded from every ALLIN1 garage and its
 sale flow, even when a mission temporarily removes the vehicle's decorator or
@@ -308,7 +313,7 @@ map blip. A model-plus-unique-plate fallback protects Franklin's Buffalo S and B
 Michael's Tailgater and temporary Premier, Amanda's Sentinel, Tracey's Issi,
 and Jimmy's BeeJay XL without blocking ordinary civilian copies of those models.
 
-**Eclipse access:** Use the markers near Eclipse Towers on Eclipse Boulevard.
+**Eclipse access:** Use the markers near Eclipse Tower on Eclipse Boulevard.
 
 ### Davis Auto Shop Garage
 
@@ -335,8 +340,8 @@ it outside the Davis vehicle door.
   saved per protagonist in `ALLIN1_davis_customization.json` and apply live
   while the player is inside Davis.
 - World markers and map blips follow the active protagonist: blue for Michael,
-  green for Franklin, and orange for Trevor. Eclipse Towers and the three-floor
-  garage use the same shared color behavior.
+  green for Franklin, and orange for Trevor. Eclipse, Harmony, Garment Factory,
+  and Grapeseed use the same shared color behavior.
 
 ### Garment Factory Garage
 
@@ -356,12 +361,22 @@ used; invalid add-on bounds fall back to the native spawn root instead of a
 vehicle-class average.
 
 The Davis and Garment Factory layouts use the exact paired roots Rockstar ships
-for standard and large vehicles. Eclipse and the three-floor Nightclub shell
+for standard and large vehicles. Eclipse and the Harmony Nightclub shell
 retain their existing surveyed bay centers—the Rockstar scripts do not expose
 equivalent literal personal-vehicle roots for those shared shells—but now use
 the same measured-floor and per-model grounding calculation.
 
-**Eclipse features:**
+### Grapeseed Garage
+
+- Vehicle entrance: `X 2551.4610, Y 4674.3250, Z 33.9819`, heading `0`.
+- Pedestrian entrance/exit: `X 2553.4590, Y 4650.6360, Z 34.0768`, heading `90`.
+- Six spaces in Rockstar's native `v_garagem` interior with shared measured
+  per-model grounding, size checks, and safe vehicle state restoration.
+- Independent per-character persistence in `ALLIN1_rural_garage.json`, with
+  complete GBAY delivery, browse, sale, recovery, blip-color, and entry-policy
+  integration.
+
+**Eclipse Garage features:**
 - 10 parking slots (two rows of 5, heading -105° and 134°)
 - Vehicles persist across game sessions via `ALLIN1_garage.json`
 - Vehicle colors are saved and restored
@@ -466,9 +481,10 @@ GTA_V_ALLIN1/
 │   │   ├── GbayBrowser.Gear.cs    # Gear storefront UI
 │   │   ├── GbayRenderer.cs        # Drawing primitives and theme colors
 │   │   ├── GbayInput.cs           # Input polling (keyboard + mouse)
-│   │   ├── GarageManager.cs       # Eclipse and three-floor garage systems
+│   │   ├── GarageManager.cs       # Eclipse and Harmony garage systems
 │   │   ├── GarageManager.Davis.cs # Davis Auto Shop 10-car garage
 │   │   ├── GarageManager.GarmentFactory.cs # Garment Factory 10-car garage
+│   │   ├── GarageManager.Rural.cs # Grapeseed six-car garage
 │   │   ├── VehiclePlacementMath.cs # Shared model-aware floor grounding
 │   │   ├── VehicleGroundingCatalog.cs # Measured root-to-floor catalog
 │   │   ├── TrafficSpawner.cs      # DLC traffic integration
@@ -789,10 +805,11 @@ Unlike VehicleList.cs and WeaponList.cs, `GearList.cs` is hand-written since the
 
 Garage state is split into independent files in the scripts directory:
 
-- `ALLIN1_garage.json` — Eclipse Towers.
-- `ALLIN1_floor_garage.json` — three-floor garage.
+- `ALLIN1_garage.json` — Eclipse Garage.
+- `ALLIN1_floor_garage.json` — Harmony Garage.
 - `ALLIN1_davis_garage.json` — Davis Auto Shop.
 - `ALLIN1_garment_factory_garage.json` — Garment Factory garage.
+- `ALLIN1_rural_garage.json` — Grapeseed Garage.
 - `ALLIN1_davis_customization.json` — per-character Davis Auto Shop themes and upgrades.
 
 Each file stores per-character vehicle data, including complete customization
@@ -843,9 +860,8 @@ Model names are stored as spawn names (e.g., `"zentorno"` not GXT labels). A mig
 
 ### Garage not saving vehicles
 
-- Check that the applicable `scripts/ALLIN1_garage.json`,
-  `scripts/ALLIN1_floor_garage.json`, or `scripts/ALLIN1_davis_garage.json` is writable
-- Each character (Michael, Franklin, Trevor) has a separate 10-slot garage
+- Check that the applicable `scripts/ALLIN1_*_garage.json` save is writable.
+- Each character (Michael, Franklin, Trevor) has separate storage at every location.
 - Vehicles must be purchased through GBAY and delivered to the garage
 
 ### Vehicles floating in garage
@@ -876,10 +892,11 @@ After `allin1 install`, the following files exist in the GTA V directory:
 │   ├── prices_gear.toml           # Gear price overrides
 │   ├── ALLIN1.log                 # Runtime log (if logging enabled)
 │   ├── ALLIN1_gbay.log            # GBAY shop log
-│   ├── ALLIN1_garage.json         # Eclipse Towers persistence
-│   ├── ALLIN1_floor_garage.json   # Three-floor garage persistence
+│   ├── ALLIN1_garage.json         # Eclipse Garage persistence
+│   ├── ALLIN1_floor_garage.json   # Harmony Garage persistence
 │   ├── ALLIN1_davis_garage.json   # Davis Auto Shop persistence
 │   ├── ALLIN1_garment_factory_garage.json # Garment Factory persistence
+│   ├── ALLIN1_rural_garage.json   # Grapeseed Garage persistence
 ├── mods/update/x64/dlcpacks/
 │   └── allin1_previews/
 │       └── dlc.rpf                # Preview texture DLC pack

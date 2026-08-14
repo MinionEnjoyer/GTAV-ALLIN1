@@ -9,8 +9,9 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   Franklin's Buffalo S and Bagger, Trevor's Bodhi, Michael's Tailgater and
   temporary Premier, plus Amanda's Sentinel, Tracey's Issi, and Jimmy's BeeJay
   XL. Confirm none can enter garage persistence or be sold through GBAY.
-- During an active Story Mode mission, approach Eclipse Towers, the three-floor
-  garage, and Davis both on foot and in a mission vehicle with passengers. Confirm
+- During an active Story Mode mission, approach Eclipse Garage, Harmony Garage,
+  Davis, the Garment Factory, and Grapeseed both on foot and in a mission vehicle
+  with passengers. Confirm
   no entrance marker or interaction prompt appears and no fade, teleport, vehicle
   storage, passenger separation, or mission failure occurs. Garage exits must
   remain usable if a mission flag becomes active while already inside.
@@ -20,7 +21,7 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   confirm entry immediately returns. Enable the launcher override and confirm
   wanted entry works, while mission, protected-story-vehicle, and size rules are
   still enforced. Garage exits must remain usable in either setting.
-- Enter and leave both DLC-backed garages (Davis and the three-floor garage),
+- Enter and leave the DLC-backed garages (Harmony, Davis, and the Garment Factory),
   then visit Michael's house and Floyd's apartment. Confirm Story Mode bedroom
   beds, sofas, and other furniture still render, and confirm the log records
   `multiplayer_map_acquired` followed by `story_map_restored` for each visit.
@@ -31,6 +32,10 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   red light or in stopped traffic. Bump several managed vehicles and confirm
   collision and physics are active; no road vehicle may remain frozen or lose
   its occupants during replacement. Parked source vehicles may remain parked.
+- Park a vehicle in each Story Mode safehouse garage and leave another ordinary
+  parked vehicle on a nearby public road. Confirm the safehouse vehicle, current
+  vehicle, last-used vehicle, and recently exited vehicle are never selected for
+  replacement while the unrelated public-road vehicle remains eligible.
 - Hold the selector key in 2-, 4-, and 6-seat vehicles; verify selection, cancellation, and occupied seats. In Franklin's Buffalo S, verify front -1/0 and rear 1/2 switches shuffle internally, while front/rear row changes exit and re-enter normally.
 - For every switch that requires an exit, park first in open space and then with
   the intended walk-around side against a wall or another vehicle. In open space,
@@ -71,7 +76,7 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   armor consumes the previously active armor, which must likewise be repurchased.
   Rapidly double-select one new item and confirm it is still charged only once.
   Repeat the duplicate check with a weapon.
-- At Eclipse Towers, the three-floor garage, Davis, and the Garment Factory, switch among Michael,
+- At Eclipse Garage, Harmony Garage, Davis, the Garment Factory, and Grapeseed, switch among Michael,
   Franklin, and Trevor. Verify every vehicle/pedestrian map blip and every visible
   world marker changes to blue, green, and orange respectively without a reload.
 - At Davis, verify the vehicle marker at `204.0661, -1466.4750, 29.1437`
@@ -87,37 +92,42 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   deeper than large vehicles. Confirm the pedestrian exit is centered at
   `751.0350, -975.4493, -67.5536` at heading 180, then verify both exit paths
   return to La Mesa.
+- At Grapeseed, verify the vehicle marker at
+  `2551.4610, 4674.3250, 33.9819`, heading 0, and pedestrian marker at
+  `2553.4590, 4650.6360, 34.0768`, heading 90. Enter on foot and in a standard
+  vehicle, confirm all six spaces are usable, and verify GBAY delivery, sale,
+  recovery, character-colored blips, and independent persistence.
 - On a clean install, confirm `scripts/ALLIN1_vehicle_grounding.json` contains
   the completed 827-model catalog and garages place a low sports car, an SUV,
   and a motorcycle on their tires without hovering or clipping. Confirm F11 no
   longer opens a developer tool and F10 remains the World Vector toggle.
-- In My Garage, switch among Eclipse Towers, Three-Floor Garage, Davis Auto
-  Shop, and Garment Factory. Deliver a standard vehicle to the Garment Factory,
+- In My Garage, switch among Eclipse Garage, Harmony Garage, Davis Auto Shop,
+  Garment Factory, and Grapeseed Garage. Deliver a standard vehicle to the Garment Factory,
   sell it, restart, and confirm its save remains independent. Then switch among
-  all four locations and confirm each list and capacity is correct.
+  all five locations and confirm each list and capacity is correct.
   Deliver a standard vehicle to Davis Auto
   Shop. Deliver a standard vehicle to Davis, sell it, restart, and confirm Davis
   storage remains independent. Confirm oversized vehicles still route to the
-  three-floor garage and cannot be delivered to Davis.
+  Harmony Garage and cannot be delivered to Davis or Grapeseed.
 - Store and sell a valid base-game vehicle that is not in the GBAY catalog (the
   Huntley in the current Davis save is suitable). Confirm it shows a dollar sale
   value instead of **Remove** or **This vehicle cannot be sold**.
-- Store a base-game Furore GT in Eclipse Towers. Confirm it is not incorrectly
+- Store a base-game Furore GT in Eclipse Garage. Confirm it is not incorrectly
   rejected as oversized, the outside car is deleted only after the save succeeds,
   it respawns as **Furore GT**, and its garage action is **Sell** rather than
   **Protected**. Restart once and confirm the same entry still respawns.
 - Open **Customize Auto Shop** for Davis. Cycle every style, tint, lift,
   quarters, work-area, and storage option; confirm changes apply live when
   inside, remain isolated per protagonist, and persist after a script/game restart.
-- In My Garage, confirm Eclipse Towers reports **Fixed Interior** and does not
+- In My Garage, confirm Eclipse Garage reports **Fixed Interior** and does not
   open the unrelated Nightclub Warehouse customization screen.
-- Open **Customize Three Floors** and test every option on all three virtual
+- Open **Customize Harmony Garage** and test every option on all three virtual
   floors. Confirm only one garage-level shell and one choice per category is
   visible, changes do not flicker or overlap, and each floor/character retains
   its choices after exiting and restarting. Confirm slot labels run F1-1 through
   F1-5, F2-1 through F2-5, and F3-1 through F3-5.
-- Place short, long, wide, and offset-origin vehicles in Eclipse, the
-  three-floor garage, Davis, and the Garment Factory. Confirm each body—not
+- Place short, long, wide, and offset-origin vehicles in Eclipse, Harmony,
+  Davis, the Garment Factory, and Grapeseed. Confirm each body—not
   merely its model origin—is centered over its native bay and the lowest model
   bound meets the raycast/configured floor. Wheels must remain on the floor,
   adjacent vehicles must not overlap, and the log must identify the Z source as

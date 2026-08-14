@@ -355,7 +355,7 @@ class ManagerWindow:
         ttk.Checkbutton(options, text="DLC traffic", variable=self.traffic).grid(row=0, column=1, sticky="w", padx=(0, 30))
         ttk.Checkbutton(options, text="DLC police", variable=self.police).grid(row=1, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Detailed script logging", variable=self.logging_enabled).grid(row=1, column=1, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Safe mode (disables traffic and three-floor garages)", variable=self.safe_mode).grid(row=2, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(options, text="Safe mode (disables traffic and Harmony Garage)", variable=self.safe_mode).grid(row=2, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Disable GBAY page-transition fades", variable=self.reduced_motion).grid(row=2, column=1, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Colorblind-safe palette", variable=self.colorblind_mode).grid(row=3, column=0, sticky="w", pady=(8, 0))
         ttk.Label(options, text="UI text scale").grid(row=3, column=1, sticky="w", pady=(8, 0))

@@ -13,7 +13,7 @@ ALLIN1 supports both GTA V Legacy and GTA V Enhanced. It is designed exclusively
 Mode**; the installer configures the game to launch without BattlEye and should never be used in
 GTA Online.
 
-> **Current public release:** **0.4.2**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
+> **Current public release:** **0.4.3**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
 > highlights and hardening work included in this build.
 
 ## Support
@@ -31,15 +31,18 @@ If GTA V ALLIN1 is useful to you, project support is available through
   desktop manager. Quantity-based items show and charge their full bundle total (for example,
   25 Sticky Bombs at $600 each cost $15,000). Unequipping gear discards it; equipping it again
   requires another purchase.
-- **Persistent garages** — maintain independent collections at Eclipse Towers, the oversized
-  three-floor garage, the 10-car Davis Auto Shop, and the 10-car Garment Factory; drive vehicles in, target delivery locations,
-  sell stored vehicles, recover interrupted transitions, customize garage floors, and configure
-  every Davis Auto Shop style, tint, lift, quarters, work-area, and storage option. Every ALLIN1
+- **Persistent garages** — maintain independent collections at the 10-car Eclipse Garage, the
+  oversized 15-car Harmony Garage, the 10-car Davis Auto Shop, the 10-car Garment Factory, and
+  the six-car Grapeseed Garage; drive vehicles in, target delivery locations, sell stored vehicles,
+  recover interrupted transitions, customize garage floors, and configure every Davis Auto Shop
+  style, tint, lift, quarters, work-area, and storage option. Every ALLIN1
   garage blip and world marker follows the active protagonist's blue, green, or orange color.
   Wanted players are denied entry by default, with an optional launcher override.
 - **DLC traffic integration** — adds Online vehicles to ambient traffic with class-aware
   replacements, road and visibility checks, mission/interior/wanted-level guards, distance-based
-  cleanup, and adaptive performance throttling.
+  cleanup, and adaptive performance throttling. Player-owned and recently used vehicles, plus
+  vehicles parked in Story Mode safehouse garages, are protected without excluding ordinary
+  ambient parked traffic.
 - **Vehicle seat selector** — choose a seat with the configurable selector key (default
   **L**). Accessible seats use native entry and shuffle animations.
 - **Character control** — manage Michael, Franklin, and Trevor independently, including money,

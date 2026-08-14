@@ -1,4 +1,5 @@
 using ALLIN1;
+using GTA.Math;
 using Xunit;
 
 namespace ALLIN1.Tests
@@ -63,6 +64,20 @@ namespace ALLIN1.Tests
         {
             Assert.Equal(expected,
                 TrafficSpawner.ShouldPurgeManagedTraffic(suppression));
+        }
+
+        [Theory]
+        [InlineData(-807.7f, 187.0f, 72.5f, true)]
+        [InlineData(-25.3f, -1431.1f, 30.8f, true)]
+        [InlineData(13.5f, 549.2f, 175.7f, true)]
+        [InlineData(1977.0f, 3823.0f, 32.5f, true)]
+        [InlineData(0f, 0f, 30f, false)]
+        [InlineData(-807.7f, 187.0f, 100f, false)]
+        public void Only_story_safehouse_parking_zones_are_spatially_protected(
+            float x, float y, float z, bool expected)
+        {
+            Assert.Equal(expected,
+                TrafficSpawner.IsInsideSafehouseGarageZone(new Vector3(x, y, z)));
         }
     }
 }

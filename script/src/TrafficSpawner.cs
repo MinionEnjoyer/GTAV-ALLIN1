@@ -86,6 +86,8 @@ namespace ALLIN1
         private readonly Dictionary<VehicleClass, List<string>> _classPools =
             new Dictionary<VehicleClass, List<string>>();
         private readonly HashSet<int> _replacedHandles = new HashSet<int>();
+        private readonly Dictionary<int, int> _recentPlayerVehicleHandles =
+            new Dictionary<int, int>();
         private readonly HashSet<int> _dlcModelHashes = new HashSet<int>();
         private readonly Random _rng = new Random();
         private int _lastDrivenTime;
@@ -94,6 +96,34 @@ namespace ALLIN1
         private bool _initialized;
         private bool _enabled = true;
         private string _lastSuppressionReason = "";
+        private const int PLAYER_INTERACTION_PROTECTION_MS = 120000;
+
+        private sealed class SafehouseGarageZone
+        {
+            internal readonly Vector3 Center;
+            internal readonly float Radius;
+            internal readonly float VerticalTolerance;
+
+            internal SafehouseGarageZone(
+                float x, float y, float z, float radius, float verticalTolerance)
+            {
+                Center = new Vector3(x, y, z);
+                Radius = radius;
+                VerticalTolerance = verticalTolerance;
+            }
+        }
+
+        // Tight zones around Story Mode storage, not general neighborhoods.
+        // Parked ambient traffic everywhere else remains eligible.
+        private static readonly SafehouseGarageZone[] SAFEHOUSE_GARAGE_ZONES =
+        {
+            new SafehouseGarageZone(-807.7f, 187.0f, 72.5f, 14f, 8f),
+            new SafehouseGarageZone(-25.3f, -1431.1f, 30.8f, 12f, 7f),
+            new SafehouseGarageZone(13.5f, 549.2f, 175.7f, 14f, 8f),
+            new SafehouseGarageZone(1977.0f, 3823.0f, 32.5f, 18f, 8f),
+            new SafehouseGarageZone(-1151.8f, -1518.1f, 10.6f, 16f, 8f),
+            new SafehouseGarageZone(98.0f, -1290.0f, 29.3f, 20f, 8f),
+        };
 
         private sealed class AmbientOccupant
         {
@@ -230,6 +260,7 @@ namespace ALLIN1
             }
 
             int now = Game.GameTime;
+            RememberPlayerVehicles(Game.Player.Character, now);
             _throttled = _adaptivePerformance && _smoothedFps < _minimumFps;
             IsThrottled = _throttled;
             if (now - _lastCleanupTime >= 1000)
@@ -561,6 +592,8 @@ namespace ALLIN1
                     continue;
 
                 string newModelName = pool[_rng.Next(pool.Count)];
+                if (IsProtectedFromTrafficReplacement(veh, player))
+                    continue;
                 Log($"ScanReplace: {cls} → {newModelName} (handle={veh.Handle})");
                 ReplaceVehicle(veh, newModelName);
             }
@@ -582,6 +615,9 @@ namespace ALLIN1
                 return false;
             Vehicle lastVeh = player.LastVehicle;
             if (lastVeh != null && veh == lastVeh)
+                return false;
+
+            if (IsProtectedFromTrafficReplacement(veh, player))
                 return false;
 
             // Mission / persistent entities
@@ -622,8 +658,69 @@ namespace ALLIN1
             return true;
         }
 
+        private void RememberPlayerVehicles(Ped player, int now)
+        {
+            if (player == null || !player.Exists()) return;
+            RememberPlayerVehicle(player.CurrentVehicle, now);
+            RememberPlayerVehicle(player.LastVehicle, now);
+
+            var expired = new List<int>();
+            foreach (var entry in _recentPlayerVehicleHandles)
+                if (now - entry.Value > PLAYER_INTERACTION_PROTECTION_MS)
+                    expired.Add(entry.Key);
+            foreach (int handle in expired)
+                _recentPlayerVehicleHandles.Remove(handle);
+        }
+
+        private void RememberPlayerVehicle(Vehicle vehicle, int now)
+        {
+            if (vehicle != null && vehicle.Exists())
+                _recentPlayerVehicleHandles[vehicle.Handle] = now;
+        }
+
+        private bool IsProtectedFromTrafficReplacement(Vehicle vehicle, Ped player)
+        {
+            if (vehicle == null || !vehicle.Exists()) return true;
+            if (vehicle.IsPersistent) return true;
+            if (player != null && player.Exists() &&
+                (vehicle == player.CurrentVehicle || vehicle == player.LastVehicle))
+                return true;
+            if (_recentPlayerVehicleHandles.ContainsKey(vehicle.Handle)) return true;
+            if (HasDecorator(vehicle, "Player_Vehicle") ||
+                HasDecorator(vehicle, "PV_Slot") ||
+                HasDecorator(vehicle, "Veh_Modded_By_Player")) return true;
+            return IsInsideSafehouseGarageZone(vehicle.Position);
+        }
+
+        private static bool HasDecorator(Vehicle vehicle, string name)
+        {
+            try
+            {
+                return Function.Call<bool>(
+                    (Hash)0x05661B80A8C9165F, vehicle.Handle, name);
+            }
+            catch { return false; }
+        }
+
+        internal static bool IsInsideSafehouseGarageZone(Vector3 position)
+        {
+            foreach (SafehouseGarageZone zone in SAFEHOUSE_GARAGE_ZONES)
+            {
+                if (Math.Abs(position.Z - zone.Center.Z) > zone.VerticalTolerance)
+                    continue;
+                float dx = position.X - zone.Center.X;
+                float dy = position.Y - zone.Center.Y;
+                if (dx * dx + dy * dy <= zone.Radius * zone.Radius)
+                    return true;
+            }
+            return false;
+        }
+
         private void ReplaceVehicle(Vehicle old, string newModelName)
         {
+            if (IsProtectedFromTrafficReplacement(old, Game.Player.Character))
+                return;
+
             // Capture state
             Vector3 pos = old.Position;
             float heading = old.Heading;

@@ -85,16 +85,16 @@ namespace ALLIN1
     internal static class GarageDefinitions
     {
         internal static readonly GarageDefinition Eclipse = new GarageDefinition(
-            "eclipse", "Eclipse Towers garage",
+            "eclipse", "Eclipse Garage",
             new GarageEntryRules(
                 disableDuringMissions: true,
                 blockWantedLevel: true,
                 blockStoryOwnedVehicles: true,
                 maximumVehicleSizeTier: 1,
-                oversizedVehicleHint: " Use the three-floor garage."));
+                oversizedVehicleHint: " Use the Harmony Garage."));
 
         internal static readonly GarageDefinition ThreeFloor = new GarageDefinition(
-            "three_floor", "three-floor garage",
+            "three_floor", "Harmony Garage",
             new GarageEntryRules(
                 disableDuringMissions: true,
                 blockWantedLevel: true,
@@ -119,5 +119,14 @@ namespace ALLIN1
                 blockStoryOwnedVehicles: true,
                 maximumVehicleSizeTier: 1),
             requiresMultiplayerMap: true);
+
+        internal static readonly GarageDefinition Rural = new GarageDefinition(
+            "rural", "Grapeseed Garage",
+            new GarageEntryRules(
+                disableDuringMissions: true,
+                blockWantedLevel: true,
+                blockStoryOwnedVehicles: true,
+                maximumVehicleSizeTier: 1),
+            requiresMultiplayerMap: false);
     }
 }

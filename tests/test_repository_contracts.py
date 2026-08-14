@@ -484,10 +484,11 @@ def test_all_garage_entrances_fail_closed_during_story_missions():
     garage = (ROOT / "script/src/GarageManager.cs").read_text()
     davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
     garment = (ROOT / "script/src/GarageManager.GarmentFactory.cs").read_text()
+    rural = (ROOT / "script/src/GarageManager.Rural.cs").read_text()
     definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
     assert "Hash.GET_MISSION_FLAG" in garage
-    assert definitions.count("disableDuringMissions: true") == 4
-    assert definitions.count("blockWantedLevel: true") == 4
+    assert definitions.count("disableDuringMissions: true") == 5
+    assert definitions.count("blockWantedLevel: true") == 5
     assert "rules.DisableDuringMissions && missionActive" in definitions
     assert "rules.BlockWantedLevel && wantedLevel > 0" in definitions
     assert "!garagesAlwaysAccessible" in definitions
@@ -501,14 +502,43 @@ def test_all_garage_entrances_fail_closed_during_story_missions():
     assert "RejectGarageEntry(THREE_FLOOR_GARAGE)" in garage
     assert "RejectGarageEntry(DAVIS_GARAGE)" in davis
     assert "RejectGarageEntry(GARMENT_GARAGE)" in garment
-    # All outside tick paths consult their assigned policy before markers draw.
+    assert "RejectGarageEntry(RURAL_GARAGE)" in rural
     assert "EvaluateGarageEntry(ECLIPSE_GARAGE)" in garage
     assert "EvaluateGarageEntry(THREE_FLOOR_GARAGE)" in garage
     assert "EvaluateGarageEntry(DAVIS_GARAGE)" in davis
     assert "EvaluateGarageEntry(GARMENT_GARAGE)" in garment
+    assert "EvaluateGarageEntry(RURAL_GARAGE)" in rural
     assert '"entry_blocked"' in garage
 
 
+def test_grapeseed_garage_is_fully_integrated_and_persistent():
+    rural = (ROOT / "script/src/GarageManager.Rural.cs").read_text()
+    manager = (ROOT / "script/src/GarageManager.cs").read_text()
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    installer = (ROOT / "src/allin1/installer.py").read_text()
+    assert "private const int RURAL_SLOT_COUNT = 6" in rural
+    assert "new Vector3(2551.4610f, 4674.3250f, 33.9819f)" in rural
+    assert "RURAL_VEHICLE_ENTRANCE_HEADING = 0f" in rural
+    assert "new Vector3(2553.4590f, 4650.6360f, 34.0768f)" in rural
+    assert "RURAL_PED_ENTRANCE_HEADING = 90f" in rural
+    assert '"ALLIN1_rural_garage.json"' in rural
+    assert "RuralUpdateStoredFromLive();" in manager
+    assert "GetRuralGarageStoredVehicles()" in manager
+    assert "Grapeseed" in browser
+    assert "ExecuteDeliverToRuralGarage" in shop
+    assert "OnRuralGarageTick" in shop
+    assert "ALLIN1_rural_garage.json" in installer
+
+
+def test_traffic_protects_safehouse_storage_without_excluding_all_parked_cars():
+    traffic = (ROOT / "script/src/TrafficSpawner.cs").read_text()
+    assert "SAFEHOUSE_GARAGE_ZONES" in traffic
+    assert "IsInsideSafehouseGarageZone(vehicle.Position)" in traffic
+    assert 'HasDecorator(vehicle, "Player_Vehicle")' in traffic
+    assert "PLAYER_INTERACTION_PROTECTION_MS" in traffic
+    assert "hadDriver" not in traffic[traffic.index("IsEligibleForReplacement"):
+                                      traffic.index("ReplaceVehicle")]
 def test_dlc_garages_restore_story_map_and_interior_furniture_on_exit():
     definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
     state = (ROOT / "script/src/DlcMapState.cs").read_text()
@@ -650,7 +680,7 @@ def test_floor_garage_drive_in_is_visible_and_markers_match_character():
     shop = (ROOT / "script/src/GbayShop.cs").read_text()
     assert "System.Drawing.Color.FromArgb(128, 200, 100, 0)" not in garage
     assert garage.count("var markerColor = CharacterMarkerColor();") >= 3
-    assert '"Eclipse Towers", "Three-Floor"' in browser
+    assert '"Eclipse", "Harmony"' in browser
     assert "GetFloorGarageStoredVehicles()" in browser
     assert "visibleGarageRows = 12" in browser
     assert "input.ScrollDelta" in browser
@@ -757,7 +787,7 @@ def test_story_owned_vehicles_cannot_enter_garage_persistence_or_sale_flow():
     ):
         assert f'"{plate}"' in manager
     assert "IsProtectedStoryVehicle(veh.Model.Hash, plate)" in manager
-    assert definitions.count("blockStoryOwnedVehicles: true") == 4
+    assert definitions.count("blockStoryOwnedVehicles: true") == 5
     assert "rules.BlockStoryOwnedVehicles && storyOwnedVehicle" in definitions
     assert "IsPersonalVehicle(vehicle);" in manager
     assert "RejectGarageEntry(\n                        ECLIPSE_GARAGE, rideIn" in manager
@@ -791,7 +821,7 @@ def test_davis_auto_shop_is_a_separate_persistent_ten_car_garage():
     assert "Customize Auto Shop" in browser
     assert "Fixed Auto Shop Interior" not in browser
     assert "DavisUpdateStoredFromLive();" in manager
-    assert '"Eclipse Towers", "Three-Floor", "Davis Auto Shop", "Garment Factory"' in browser
+    assert '"Eclipse", "Harmony", "Davis Auto Shop", "Garment Factory", "Grapeseed"' in browser
     assert "GetDavisGarageStoredVehicles()" in browser
     assert "ExecuteDeliverToDavisGarage" in shop
     assert "RemoveDavisGarageVehicle(listIndex)" in shop

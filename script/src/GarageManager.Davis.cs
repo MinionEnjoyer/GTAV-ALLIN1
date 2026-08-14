@@ -334,7 +334,7 @@ namespace ALLIN1
         {
             if (!_davisInitialized || _transitionInProgress) return;
             if (_isPlayerInGarage || _isPlayerInFloorGarage ||
-                _isPlayerInGarmentGarage) return;
+                _isPlayerInGarmentGarage || _isPlayerInRuralGarage) return;
             if (_davisExitCooldownFrames > 0)
             {
                 _davisExitCooldownFrames--;

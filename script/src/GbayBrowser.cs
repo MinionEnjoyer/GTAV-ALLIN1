@@ -580,7 +580,8 @@ namespace ALLIN1
                     _garageVehicleIdx = 0;
                     _garageLocationIndex = GarageManager.IsPlayerInFloorGarage ? 1
                         : GarageManager.IsPlayerInDavisGarage ? 2
-                        : GarageManager.IsPlayerInGarmentGarage ? 3 : 0;
+                        : GarageManager.IsPlayerInGarmentGarage ? 3
+                        : GarageManager.IsPlayerInRuralGarage ? 4 : 0;
                 }
                 else if (activateIdx == 4)
                 {
@@ -663,10 +664,11 @@ namespace ALLIN1
                 "ALLIN1 client " + version,
                 "Session duration: " + (Game.GameTime / 1000) + " seconds",
                 "Garage location: " + (GarageManager.IsPlayerInFloorGarage
-                    ? "three-floor garage"
+                    ? "Harmony Garage"
                     : GarageManager.IsPlayerInDavisGarage ? "Davis Auto Shop"
                     : GarageManager.IsPlayerInGarmentGarage ? "Garment Factory"
-                    : GarageManager.IsInGarage ? "Eclipse Towers" : "outside"),
+                    : GarageManager.IsPlayerInRuralGarage ? "Grapeseed Garage"
+                    : GarageManager.IsInGarage ? "Eclipse Garage" : "outside"),
                 "Traffic: " + TrafficSpawner.ManagedVehicleCount + " managed, " +
                     Math.Round(TrafficSpawner.SmoothedFps) + " FPS" +
                     (TrafficSpawner.IsThrottled ? " (adaptive throttle)" : "") +
@@ -1192,7 +1194,8 @@ namespace ALLIN1
             _pendingModel = model;
             _pendingPrice = price;
             _deliveryGarageIndex = GarageManager.IsPlayerInDavisGarage ? 1
-                : GarageManager.IsPlayerInGarmentGarage ? 2 : 0;
+                : GarageManager.IsPlayerInGarmentGarage ? 2
+                : GarageManager.IsPlayerInRuralGarage ? 3 : 0;
 
             GbayRenderer.PlaySelect();
             _state = BrowserState.DeliveryConfirm;
@@ -1237,28 +1240,33 @@ namespace ALLIN1
             {
                 int direction = input.DirX != 0 ? input.DirX
                     : input.CategoryNext || garageRightHover ? 1 : -1;
-                _deliveryGarageIndex = (_deliveryGarageIndex + direction + 3) % 3;
+                _deliveryGarageIndex = (_deliveryGarageIndex + direction + 4) % 4;
                 GbayRenderer.PlayNav();
             }
 
-            // Standard vehicles can be delivered to either ten-car garage.
-            // Oversized vehicles continue to route to the three-floor garage.
+            // Standard vehicles can target any compatible local garage.
+            // Oversized vehicles continue to route to the Harmony Garage.
             int used = oversized ? GarageManager.GetFloorGarageUsedSlots()
                 : _deliveryGarageIndex == 1
                     ? GarageManager.GetDavisGarageUsedSlots()
                     : _deliveryGarageIndex == 2
                         ? GarageManager.GetGarmentGarageUsedSlots()
+                    : _deliveryGarageIndex == 3
+                        ? GarageManager.GetRuralGarageUsedSlots()
                     : GarageManager.GetUsedSlots();
             int cap = oversized ? GarageManager.GetFloorGarageCapacity()
                 : _deliveryGarageIndex == 1
                     ? GarageManager.GetDavisGarageCapacity()
                     : _deliveryGarageIndex == 2
                         ? GarageManager.GetGarmentGarageCapacity()
+                    : _deliveryGarageIndex == 3
+                        ? GarageManager.GetRuralGarageCapacity()
                     : GarageManager.GetCapacity();
             bool isFull = used >= cap;
-            string garageName = oversized ? "Three-Floor Garage"
+            string garageName = oversized ? "Harmony Garage"
                 : _deliveryGarageIndex == 1 ? "Davis Auto Shop"
-                : _deliveryGarageIndex == 2 ? "Garment Factory" : "Eclipse Towers";
+                : _deliveryGarageIndex == 2 ? "Garment Factory"
+                : _deliveryGarageIndex == 3 ? "Grapeseed Garage" : "Eclipse Garage";
             string garageInfo = $"{garageName} ({used}/{cap})";
             Color garageColor = isFull ? GbayRenderer.TextDim : GbayRenderer.TextDark;
             GbayRenderer.DrawText(garageInfo, BROWSER_CX, modalTop + 0.09f,
@@ -1315,10 +1323,14 @@ namespace ALLIN1
             if ((input.Accept || (input.MouseClick && confirmHover)) && !isFull)
             {
                 GbayRenderer.PlaySelect();
-                if (!oversized && _deliveryGarageIndex == 1)
+                if (oversized)
+                    _shop.ExecuteDeliverToFloorGarage(_pendingModel, _pendingPrice);
+                else if (_deliveryGarageIndex == 1)
                     _shop.ExecuteDeliverToDavisGarage(_pendingModel, _pendingPrice);
-                else if (!oversized && _deliveryGarageIndex == 2)
+                else if (_deliveryGarageIndex == 2)
                     _shop.ExecuteDeliverToGarmentGarage(_pendingModel, _pendingPrice);
+                else if (_deliveryGarageIndex == 3)
+                    _shop.ExecuteDeliverToRuralGarage(_pendingModel, _pendingPrice);
                 else
                     _shop.ExecuteDeliverToGarage(_pendingModel, _pendingPrice);
                 ClosePreview();
@@ -1528,20 +1540,24 @@ namespace ALLIN1
             bool floorGarage = _garageLocationIndex == 1;
             bool davisGarage = _garageLocationIndex == 2;
             bool garmentGarage = _garageLocationIndex == 3;
+            bool ruralGarage = _garageLocationIndex == 4;
 
             // Capacity info (right side of header)
             int used = floorGarage ? GarageManager.GetFloorGarageUsedSlots()
                 : davisGarage ? GarageManager.GetDavisGarageUsedSlots()
                 : garmentGarage ? GarageManager.GetGarmentGarageUsedSlots()
+                : ruralGarage ? GarageManager.GetRuralGarageUsedSlots()
                 : GarageManager.GetUsedSlots();
             int cap = floorGarage ? GarageManager.GetFloorGarageCapacity()
                 : davisGarage ? GarageManager.GetDavisGarageCapacity()
                 : garmentGarage ? GarageManager.GetGarmentGarageCapacity()
+                : ruralGarage ? GarageManager.GetRuralGarageCapacity()
                 : GarageManager.GetCapacity();
-            string capText = floorGarage ? $"Three-Floor Garage ({used}/{cap})"
+            string capText = floorGarage ? $"Harmony Garage ({used}/{cap})"
                 : davisGarage ? $"Davis Auto Shop ({used}/{cap})"
                 : garmentGarage ? $"Garment Factory ({used}/{cap})"
-                : $"Eclipse Towers ({used}/{cap})";
+                : ruralGarage ? $"Grapeseed Garage ({used}/{cap})"
+                : $"Eclipse Garage ({used}/{cap})";
             GbayRenderer.DrawTextFit(capText, BROWSER_RIGHT - 0.01f, HEADER_Y + 0.018f,
                 0.32f, 0.23f, 0.25f, GbayRenderer.HeaderText,
                 GbayRenderer.FONT_CHALET, false, false, true);
@@ -1550,6 +1566,7 @@ namespace ALLIN1
             var vehicles = floorGarage ? GarageManager.GetFloorGarageStoredVehicles()
                 : davisGarage ? GarageManager.GetDavisGarageStoredVehicles()
                 : garmentGarage ? GarageManager.GetGarmentGarageStoredVehicles()
+                : ruralGarage ? GarageManager.GetRuralGarageStoredVehicles()
                 : GarageManager.GetStoredVehicles();
 
             float listTop = TAB_Y + TAB_H + 0.015f;
@@ -1558,7 +1575,7 @@ namespace ALLIN1
 
             _garageHoverIdx = -1;
 
-            // Keyboard and mouse-wheel navigation. The three-floor garage can
+            // Keyboard and mouse-wheel navigation. The Harmony Garage can
             // hold 15 vehicles, so keep the selected row inside a scrolling
             // 12-row viewport.
             int move = input.DirY != 0 ? input.DirY : input.ScrollDelta;
@@ -1586,11 +1603,13 @@ namespace ALLIN1
                     BROWSER_CX, listTop + 0.10f, 0.35f, GbayRenderer.TextDim,
                     GbayRenderer.FONT_CHALET, true);
                 string emptyHint = floorGarage
-                    ? "Drive a vehicle inside or deliver one to the three-floor garage."
+                    ? "Drive a vehicle inside or deliver one to the Harmony Garage."
                     : davisGarage
                         ? "Drive a vehicle inside or choose Davis during GBAY delivery."
                     : garmentGarage
                         ? "Drive a vehicle inside or choose Garment Factory during delivery."
+                    : ruralGarage
+                        ? "Drive a vehicle inside or choose Grapeseed during delivery."
                     : "Purchase a vehicle or drive one inside to store it here.";
                 GbayRenderer.DrawTextFit(emptyHint,
                     BROWSER_CX, listTop + 0.15f, 0.26f, 0.20f, 0.62f,
@@ -1674,8 +1693,8 @@ namespace ALLIN1
                 return;
             }
 
-            // Eclipse Towers uses a fixed Story Mode interior. The DLC
-            // three-floor garage and Davis Auto Shop expose real entity sets.
+            // Eclipse Garage uses a fixed Story Mode interior. Harmony and
+            // Davis expose real customization entity sets.
             bool customizationAvailable = floorGarage || davisGarage;
             if (input.PageLeft && customizationAvailable)
             {
@@ -1711,7 +1730,7 @@ namespace ALLIN1
                 : custHover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen;
             GbayRenderer.DrawRect(custBtnX, FOOTER_CY, custBtnW, FOOTER_H - 0.01f, custBg);
             string customizeLabel = !customizationAvailable ? "Fixed Interior"
-                : davisGarage ? "Customize Auto Shop" : "Customize Three Floors";
+                : davisGarage ? "Customize Auto Shop" : "Customize Harmony Garage";
             GbayRenderer.DrawTextFit(customizeLabel,
                 custBtnX, FOOTER_Y + 0.012f,
                 0.26f, 0.19f, custBtnW - 0.014f,
@@ -1739,15 +1758,15 @@ namespace ALLIN1
 
         private void DrawGarageLocationTabs(FrameInput input)
         {
-            const float tabW = 0.165f;
+            const float tabW = 0.132f;
             float[] tabX =
             {
-                BROWSER_CX - tabW * 1.5f, BROWSER_CX - tabW * 0.5f,
-                BROWSER_CX + tabW * 0.5f, BROWSER_CX + tabW * 1.5f,
+                BROWSER_CX - tabW * 2f, BROWSER_CX - tabW,
+                BROWSER_CX, BROWSER_CX + tabW, BROWSER_CX + tabW * 2f,
             };
             string[] labels =
             {
-                "Eclipse Towers", "Three-Floor", "Davis Auto Shop", "Garment Factory",
+                "Eclipse", "Harmony", "Davis Auto Shop", "Garment Factory", "Grapeseed",
             };
 
             for (int i = 0; i < labels.Length; i++)
@@ -1774,13 +1793,13 @@ namespace ALLIN1
 
             if ((input.DirX < 0 || input.CategoryPrev) && _garageLocationIndex > 0)
                 SetGarageLocation(_garageLocationIndex - 1);
-            else if ((input.DirX > 0 || input.CategoryNext) && _garageLocationIndex < 3)
+            else if ((input.DirX > 0 || input.CategoryNext) && _garageLocationIndex < 4)
                 SetGarageLocation(_garageLocationIndex + 1);
         }
 
         private void SetGarageLocation(int location)
         {
-            _garageLocationIndex = Math.Max(0, Math.Min(3, location));
+            _garageLocationIndex = Math.Max(0, Math.Min(4, location));
             _garageVehicleIdx = 0;
             _garageHoverIdx = -1;
             GbayRenderer.PlayNav();
