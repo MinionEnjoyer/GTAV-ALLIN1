@@ -89,6 +89,7 @@ def test_preview_deploy_builds_and_deploys_curated_assets(tmp_path, monkeypatch)
     assert merge.call_args_list[0].args[0] == [dist / "previews"]
     assert merge.call_args_list[1].args[0] == [dist / "weapon_previews"]
     assert merge.call_args_list[2].args[0] == [dist / "equipment_previews"]
+    assert merge.call_args_list[3].args[0] == [dist / "world_asset_previews"]
     assert any("build-dlc" in args for args in calls)
     assert any("verify-dlc" in args for args in calls)
     assert any("patch" in args for args in calls)

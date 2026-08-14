@@ -3,4 +3,6 @@
 # repository contract test.
 models = [
   "velenogt",
+  "horus",
+  "warden",
 ]

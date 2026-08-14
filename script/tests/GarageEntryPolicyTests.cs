@@ -15,7 +15,16 @@ namespace ALLIN1.Tests
         {
             Assert.Equal(GarageEntryDenial.MissionActive,
                 GarageEntryPolicy.Evaluate(
-                    Rules, true, 5, false, true, true, true, 2));
+                    Rules, true, true, 5, false, true, true, true, 2));
+        }
+
+        [Fact]
+        public void GameTransitionDenialPreventsInteriorMapSwitches()
+        {
+            Assert.Equal(GarageEntryDenial.GameTransitionActive,
+                GarageEntryPolicy.Evaluate(
+                    Rules, false, true, 0, false,
+                    false, false, false, 0));
         }
 
         [Theory]
@@ -28,7 +37,7 @@ namespace ALLIN1.Tests
         {
             Assert.Equal((GarageEntryDenial)expected,
                 GarageEntryPolicy.Evaluate(
-                    Rules, false, wantedLevel, alwaysAccessible,
+                    Rules, false, false, wantedLevel, alwaysAccessible,
                     false, false, false, 0));
         }
 
@@ -37,7 +46,7 @@ namespace ALLIN1.Tests
         {
             Assert.Equal(GarageEntryDenial.StoryOwnedVehicle,
                 GarageEntryPolicy.Evaluate(
-                    Rules, false, 0, false, true, true, true, 2));
+                    Rules, false, false, 0, false, true, true, true, 2));
         }
 
         [Theory]
@@ -50,7 +59,7 @@ namespace ALLIN1.Tests
         {
             Assert.Equal((GarageEntryDenial)expected,
                 GarageEntryPolicy.Evaluate(
-                    Rules, false, 0, false,
+                    Rules, false, false, 0, false,
                     present, false, known, tier));
         }
 
@@ -59,7 +68,63 @@ namespace ALLIN1.Tests
         {
             Assert.Equal(GarageEntryDenial.MissionActive,
                 GarageEntryPolicy.Evaluate(
-                    null, false, 0, false, false, false, false, 0));
+                    null, false, false, 0, false, false, false, false, 0));
+        }
+
+        [Fact]
+        public void GarageVehiclesCommitWhenStorySaveStarts()
+        {
+            var observed = new System.DateTime(2026, 8, 14, 1, 0, 0,
+                System.DateTimeKind.Utc);
+            Assert.True(GarageStorySavePolicy.HasSaveEvent(
+                true, false, observed, observed));
+        }
+
+        [Fact]
+        public void GarageVehiclesCommitWhenStorySaveFileAdvances()
+        {
+            var observed = new System.DateTime(2026, 8, 14, 1, 0, 0,
+                System.DateTimeKind.Utc);
+            Assert.True(GarageStorySavePolicy.HasSaveEvent(
+                false, false, observed.AddSeconds(1), observed));
+        }
+
+        [Fact]
+        public void GarageVehiclesDoNotCommitDuringOrdinaryGameplay()
+        {
+            var observed = new System.DateTime(2026, 8, 14, 1, 0, 0,
+                System.DateTimeKind.Utc);
+            Assert.False(GarageStorySavePolicy.HasSaveEvent(
+                false, false, observed, observed));
+            Assert.False(GarageStorySavePolicy.HasSaveEvent(
+                true, true, observed, observed));
+        }
+
+        [Fact]
+        public void EnhancedInteriorFallbackAcceptsAStableResolvedInterior()
+        {
+            Assert.False(GarageInteriorReadinessPolicy.IsUsable(
+                95234, false, false, false, 999, 1000));
+            Assert.True(GarageInteriorReadinessPolicy.IsUsable(
+                95234, false, false, false, 1000, 1000));
+        }
+
+        [Fact]
+        public void OnlineInteriorFallbackStillRequiresItsIpl()
+        {
+            Assert.False(GarageInteriorReadinessPolicy.IsUsable(
+                275457, true, false, false, 5000, 1500));
+            Assert.True(GarageInteriorReadinessPolicy.IsUsable(
+                275457, true, true, false, 1500, 1500));
+        }
+
+        [Fact]
+        public void NativeReadySignalDoesNotNeedFallbackDelay()
+        {
+            Assert.True(GarageInteriorReadinessPolicy.IsUsable(
+                275457, true, true, true, 0, 1500));
+            Assert.False(GarageInteriorReadinessPolicy.IsUsable(
+                0, true, true, true, 5000, 1500));
         }
     }
 }

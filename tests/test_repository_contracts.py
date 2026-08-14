@@ -6,6 +6,7 @@ try:
 except ModuleNotFoundError:
     import tomli as tomllib
 from pathlib import Path
+from PIL import Image
 
 from allin1.config import load_prices
 from allin1.vehicles.database import VehicleDatabase
@@ -25,9 +26,21 @@ def test_every_vehicle_price_and_catalog_entry_refers_to_a_model():
     db = VehicleDatabase.load(ROOT / "data/vehicles.toml")
     models = {vehicle.model for vehicle in db}
     prices = load_prices(ROOT / "prices_vehicles.toml")
-    assert set(prices) <= models
+    assert set(prices) == models
+    assert all(price > 0 for price in prices.values())
     catalog = json.loads((ROOT / "catalog/vehicles.json").read_text())
     assert {item["model"] for item in catalog} == models
+    assert all(item["price"] > 0 for item in catalog)
+
+
+def test_latest_dlc_purchase_catalog_is_complete():
+    models = {
+        vehicle.model for vehicle in VehicleDatabase.load(ROOT / "data/vehicles.toml")
+    }
+    assert {
+        "velenogt", "caracara3", "merula", "laufer", "lrcgt",
+        "cartuccia", "estride", "polignus", "horus", "warden",
+    } <= models
 
 
 def test_generated_seat_catalog_covers_base_game_and_all_supported_dlc_models():
@@ -84,6 +97,27 @@ def test_vehicle_previews_cover_database():
     pending = set(tomllib.loads((ROOT / "data/preview_pending.toml").read_text())["models"])
     assert models - previews == pending
     assert pending <= models
+    source = (ROOT / "script/src/VehicleList.cs").read_text()
+    preview_source = source[source.index("PreviewDict"):]
+    for model in pending:
+        assert f'{{ "{model}", "allin1_prev_' not in preview_source
+
+
+def test_world_asset_preview_is_packaged_and_streamed_separately():
+    preview = ROOT / "script/dist/world_asset_previews/allin1_super_yacht.png"
+    assert preview.is_file()
+    with Image.open(preview) as image:
+        assert image.size == (512, 288)
+        assert image.format == "PNG"
+    asset_list = (ROOT / "script/src/WorldAssetList.cs").read_text()
+    renderer = (ROOT / "script/src/GbayRenderer.cs").read_text()
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    installer = (ROOT / "src/allin1/installer.py").read_text()
+    assert '"allin1_asset_01"' in asset_list
+    assert "WorldAssetList.PreviewDict.TryGetValue" in renderer
+    assert "GbayRenderer.TryGetPreviewDict" in browser
+    assert '"allin1_asset"' in installer
+    assert '"world_asset_previews"' in installer
 
 
 def test_generated_csharp_contains_every_data_model():
@@ -157,6 +191,41 @@ def test_garage_persistence_uses_atomic_backup_replacement():
     assert "private static void AtomicWriteText" in garage
     assert "File.Replace(tmp, path, backup, true)" in garage
     assert 'SAVE_PATH + ".bak"' in garage
+
+
+def test_garage_vehicle_progress_only_commits_on_story_saves():
+    garage = (ROOT / "script/src/GarageManager.cs").read_text()
+    davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
+    garment = (ROOT / "script/src/GarageManager.GarmentFactory.cs").read_text()
+    rural = (ROOT / "script/src/GarageManager.Rural.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()
+    definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
+
+    assert "GarageStorySavePolicy.HasSaveEvent(" in garage
+    assert "Hash.IS_AUTO_SAVE_IN_PROGRESS" in garage
+    assert "CharacterInventory.LatestStorySaveWriteUtc()" in garage
+    assert "PersistVehiclesForStorySave(" in garage
+    assert '"vehicle_state_backed_up"' in garage
+    assert "if (!_vehicleSaveCommitInProgress)" in garage
+    assert "Aborted += OnAborted" in shop
+    assert "GarageManager.OnScriptAborted();" in shop
+    assert "internal static DateTime LatestStorySaveWriteUtc()" in inventory
+    assert "latestStorySaveWriteUtc > lastObservedStorySaveWriteUtc" in definitions
+
+    assert "StageOrWriteVehicleSave(SAVE_PATH, BuildJson" in garage
+    assert "FLOOR_GARAGE_SAVE_PATH, FloorGarageBuildJson" in garage
+    assert "DAVIS_SAVE_PATH, DavisBuildJson" in davis
+    assert "GARMENT_SAVE_PATH, GarmentBuildJson" in garment
+    assert "RURAL_SAVE_PATH, RuralBuildJson" in rural
+
+    commit = garage[garage.index("private static void PersistVehiclesForStorySave"):
+                    garage.index("private static bool IsPersonalVehicle")]
+    for save_call in (
+        "Save();", "FloorGarageSave();", "DavisSave();",
+        "GarmentSave();", "RuralSave();",
+    ):
+        assert save_call in commit
 
 
 def test_content_audit_models_are_in_catalog():
@@ -285,7 +354,7 @@ def test_watchdog_recovery_and_traffic_diagnostics_are_bounded():
     assert "RequiresDriver = true" in traffic
     assert "keepPersistent: true" in traffic
     assert "ShouldPurgeManagedTraffic(suppression)" in traffic
-    assert "managed_driver_lost" in traffic
+    assert "managed_occupancy_released" in traffic
     assert "DecideManagedTrafficAction" in traffic
     assert "paused: " in browser
 
@@ -465,19 +534,36 @@ def test_runtime_hot_paths_are_throttled_and_cached():
     assert "_lastFloorBlipColor" not in garage
 
 
-def test_traffic_replacements_preserve_occupants_and_release_physics():
+def test_traffic_replacements_clone_occupants_before_atomic_commit():
     traffic = (ROOT / "script/src/TrafficSpawner.cs").read_text()
-    replace = traffic[traffic.index("private void ReplaceVehicle"):]
-    transfer = replace.index("TryTransferOccupants")
+    replace = traffic[traffic.index("private bool ReplaceVehicle"):]
+    clone = replace.index("TryCloneOccupants")
     delete = replace.index("old.Delete()")
-    assert transfer < delete
-    assert "SET_PED_INTO_VEHICLE" in traffic
-    assert "CanCommitReplacement(hadDriver, driverTransferred)" in traffic
-    assert "driver.Task.WarpIntoVehicle(replacement" not in traffic
+    assert clone < delete
+    assert "occupant.SourcePed.Clone" in traffic
+    assert "clone.SetIntoVehicle" in traffic
+    assert "SourceOccupantsUnchanged(occupants, old)" in replace
+    assert "CleanupStagedReplacement" in replace
+    assert "CanCommitReplacement(hadDriver, clonedDriver != null)" in traffic
+    assert "SET_PED_INTO_VEHICLE" not in traffic
     assert "SET_ENTITY_DYNAMIC" in traffic
     assert "ACTIVATE_PHYSICS" in traffic
     assert "SET_VEHICLE_HANDBRAKE" in traffic
     assert "GetTrafficCruiseSpeed(capturedSpeed)" in traffic
+
+
+def test_traffic_replacement_scan_has_bounded_work_and_expiring_seen_cache():
+    traffic = (ROOT / "script/src/TrafficSpawner.cs").read_text()
+    scan = traffic[traffic.index("private void ScanAndReplace"):
+                   traffic.index("private bool IsEligibleForReplacement")]
+    assert "MAX_SCAN_CANDIDATES = 24" in traffic
+    assert "THROTTLED_SCAN_CANDIDATES = 12" in traffic
+    assert "MAX_REPLACEMENTS_PER_SCAN = 1" in traffic
+    assert "replacementAttempts >= MAX_REPLACEMENTS_PER_SCAN" in scan
+    assert "_seenVehicleOrder" in traffic
+    assert "SEEN_HANDLE_TTL_MS" in traffic
+    assert "DOES_ENTITY_EXIST" not in scan
+    assert "_replacedHandles" not in traffic
 
 
 def test_all_garage_entrances_fail_closed_during_story_missions():
@@ -485,10 +571,11 @@ def test_all_garage_entrances_fail_closed_during_story_missions():
     davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
     garment = (ROOT / "script/src/GarageManager.GarmentFactory.cs").read_text()
     rural = (ROOT / "script/src/GarageManager.Rural.cs").read_text()
+    paleto = (ROOT / "script/src/GarageManager.Paleto.cs").read_text()
     definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
     assert "Hash.GET_MISSION_FLAG" in garage
-    assert definitions.count("disableDuringMissions: true") == 5
-    assert definitions.count("blockWantedLevel: true") == 5
+    assert definitions.count("disableDuringMissions: true") == 6
+    assert definitions.count("blockWantedLevel: true") == 6
     assert "rules.DisableDuringMissions && missionActive" in definitions
     assert "rules.BlockWantedLevel && wantedLevel > 0" in definitions
     assert "!garagesAlwaysAccessible" in definitions
@@ -503,16 +590,43 @@ def test_all_garage_entrances_fail_closed_during_story_missions():
     assert "RejectGarageEntry(DAVIS_GARAGE)" in davis
     assert "RejectGarageEntry(GARMENT_GARAGE)" in garment
     assert "RejectGarageEntry(RURAL_GARAGE)" in rural
+    assert "RejectGarageEntry(PALETO_GARAGE)" in paleto
     assert "EvaluateGarageEntry(ECLIPSE_GARAGE)" in garage
     assert "EvaluateGarageEntry(THREE_FLOOR_GARAGE)" in garage
     assert "EvaluateGarageEntry(DAVIS_GARAGE)" in davis
     assert "EvaluateGarageEntry(GARMENT_GARAGE)" in garment
     assert "EvaluateGarageEntry(RURAL_GARAGE)" in rural
+    assert "EvaluateGarageEntry(PALETO_GARAGE)" in paleto
     assert '"entry_blocked"' in garage
+
+
+def test_all_garages_block_unsafe_game_transitions_before_mp_map_switch():
+    garage = (ROOT / "script/src/GarageManager.cs").read_text()
+    definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
+    assert "GameTransitionActive" in definitions
+    assert "gameTransitionActive" in definitions
+    assert "IsUnsafeGarageTransitionActive()" in garage
+    assert "Hash.IS_CUTSCENE_ACTIVE" in garage
+    assert "Hash.IS_PLAYER_SWITCH_IN_PROGRESS" in garage
+    assert "Hash.IS_SCREEN_FADING_IN" in garage
+    assert "Hash.IS_SCREEN_FADING_OUT" in garage
+
+    loader = garage[garage.index("private static bool LoadFloorGarageInterior"):
+                    garage.index("private static void UnloadFloorGarageInterior")]
+    assert loader.index("IsUnsafeGarageTransitionActive()") < loader.index(
+        "DlcMapState.Acquire(THREE_FLOOR_GARAGE)")
+    assert "UnloadFloorGarageInterior();" in loader
+
+    entry = garage[garage.index("private static void EnterFloorGarageCore"):
+                   garage.index("private static void LeaveFloorGarage()")]
+    assert "if (!LoadFloorGarageInterior())" in entry
+    assert "storedListDuringEntry.Remove(storedDuringEntry)" in entry
+    assert "rolled back drive-in storage after interior load failure" in entry
 
 
 def test_grapeseed_garage_is_fully_integrated_and_persistent():
     rural = (ROOT / "script/src/GarageManager.Rural.cs").read_text()
+    definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
     manager = (ROOT / "script/src/GarageManager.cs").read_text()
     browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
     shop = (ROOT / "script/src/GbayShop.cs").read_text()
@@ -529,6 +643,89 @@ def test_grapeseed_garage_is_fully_integrated_and_persistent():
     assert "ExecuteDeliverToRuralGarage" in shop
     assert "OnRuralGarageTick" in shop
     assert "ALLIN1_rural_garage.json" in installer
+    rural_definition = definitions[
+        definitions.index("GarageDefinition Rural"):
+        definitions.index("GarageDefinition Paleto")
+    ]
+    assert "requiresMultiplayerMap: true" not in rural_definition
+
+
+def test_grapeseed_entry_streams_the_explicit_six_car_milo():
+    rural = (ROOT / "script/src/GarageManager.Rural.cs").read_text()
+    loader = rural[rural.index("private static bool LoadRuralInterior"):
+                   rural.index("private static void UnloadRuralInterior")]
+    entry = rural[rural.index("private static void EnterRuralGarageCore"):
+                  rural.index("private static void LeaveRuralGarage")]
+
+    assert '"hw1_blimp_interior_v_garagem_milo_"' in rural
+    assert '"v_garagem",' not in rural
+    assert "new Vector3(199.9716f, -999.6678f, -99.0000f)" in rural
+    assert "Hash.REQUEST_IPL" in loader
+    assert "Hash.SET_FOCUS_POS_AND_VEL" in loader
+    assert "Hash.REQUEST_COLLISION_AT_COORD" in loader
+    assert "IS_INTERIOR_READY" in loader
+    assert "IS_IPL_ACTIVE" in loader
+    assert "GarageInteriorReadinessPolicy.IsUsable" in loader
+    assert "interior, true, iplActive" in loader
+    assert "RURAL_INTERIOR_FALLBACK_SETTLE_MS" in loader
+    assert "PIN_INTERIOR_IN_MEMORY" in loader
+    assert "DISABLE_INTERIOR" in loader
+    assert "DlcMapState.Acquire(RURAL_GARAGE)" not in loader
+    assert "ON_ENTER_MP" not in loader
+    assert "RURAL_INTERIOR_LOAD_TIMEOUT_MS" in loader
+    assert "if (!interiorLoaded && !LoadRuralInterior())" in entry
+    assert "DlcMapState.Release(RURAL_GARAGE)" not in rural
+    assert "Hash.REMOVE_IPL" in rural
+
+
+def test_paleto_bay_garage_uses_native_casino_layout_and_full_integration():
+    paleto = (ROOT / "script/src/GarageManager.Paleto.cs").read_text()
+    definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
+    manager = (ROOT / "script/src/GarageManager.cs").read_text()
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    installer = (ROOT / "src/allin1/installer.py").read_text()
+    diagnostics = (ROOT / "src/allin1/diagnostics.py").read_text()
+
+    assert "private const int PALETO_SLOT_COUNT = 10" in paleto
+    assert "new Vector3(-221.9008f, 6252.8020f, 31.4894f)" in paleto
+    assert "PALETO_VEHICLE_ENTRANCE_HEADING = 45f" in paleto
+    assert "new Vector3(-224.5180f, 6244.2620f, 31.4926f)" in paleto
+    assert "PALETO_PED_ENTRANCE_HEADING = 45f" in paleto
+    assert "new Vector3(1295.3110f, 221.1703f, -49.0574f)" in paleto
+    assert "new Vector3(1295.3350f, 260.7359f, -49.0574f)" in paleto
+    assert "PALETO_INTERIOR_PED_EXITS.Length" in paleto
+    exit_headings = paleto[
+        paleto.index("PALETO_INTERIOR_PED_EXIT_HEADINGS"):
+        paleto.index("private const float PALETO_FLOOR_Z")
+    ]
+    assert "0f," in exit_headings
+    assert "180f," in exit_headings
+    assert '"vw_casino_garage"' in paleto
+    assert "new Vector3(1295.0000f, 230.0000f, -50.0000f)" in paleto
+    assert paleto.count("new ParkingSlot(") == 10
+    assert "1281.4710f, 241.6617f, -49.3467f, 270f" in paleto
+    assert "1309.3640f, 232.0345f, -49.3470f, 90f" in paleto
+    assert "1295.5920f, 249.7942f, -49.3470f, 211.32f" in paleto
+    assert "PlaceVehicleInParkingSpace(" in paleto
+    assert "ReleaseGarageVehicleForDriving(playerVehicle" in paleto
+    assert '"ALLIN1_paleto_garage.json"' in paleto
+    assert "PaletoUpdateStoredFromLive();" in manager
+    assert "GetPaletoGarageStoredVehicles()" in manager
+    assert '"Paleto Bay Garage"' in browser
+    assert "ExecuteDeliverToPaletoGarage" in shop
+    assert "RemovePaletoGarageVehicle(listIndex)" in shop
+    assert "OnPaletoGarageTick" in shop
+    assert "ALLIN1_paleto_garage.json" in installer
+    assert "ALLIN1_paleto_garage.json" in diagnostics
+
+    paleto_definition = definitions[definitions.index("GarageDefinition Paleto"):]
+    assert "requiresMultiplayerMap: true" in paleto_definition
+    assert "DlcMapState.Acquire(PALETO_GARAGE)" in paleto
+    assert "DlcMapState.Release(PALETO_GARAGE)" in paleto
+    assert "GarageInteriorReadinessPolicy.IsUsable" in paleto
+    assert "PALETO_INTERIOR_FALLBACK_SETTLE_MS" in paleto
+    assert "ON_ENTER_MP" not in paleto
 
 
 def test_traffic_protects_safehouse_storage_without_excluding_all_parked_cars():
@@ -544,8 +741,10 @@ def test_dlc_garages_restore_story_map_and_interior_furniture_on_exit():
     state = (ROOT / "script/src/DlcMapState.cs").read_text()
     garage = (ROOT / "script/src/GarageManager.cs").read_text()
     davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
+    paleto = (ROOT / "script/src/GarageManager.Paleto.cs").read_text()
     garment = (ROOT / "script/src/GarageManager.GarmentFactory.cs").read_text()
-    assert definitions.count("requiresMultiplayerMap: true") == 3
+    rural = (ROOT / "script/src/GarageManager.Rural.cs").read_text()
+    assert definitions.count("requiresMultiplayerMap: true") == 4
     assert "0x0888C3502DBBEEF5" in state  # ON_ENTER_MP
     assert "0xD7C10C4A637992C9" in state  # ON_ENTER_SP
     assert '"multiplayer_map_acquired"' in state
@@ -556,6 +755,10 @@ def test_dlc_garages_restore_story_map_and_interior_furniture_on_exit():
     assert "DlcMapState.Release(DAVIS_GARAGE)" in davis
     assert "DlcMapState.Acquire(GARMENT_GARAGE)" in garment
     assert "DlcMapState.Release(GARMENT_GARAGE)" in garment
+    assert "DlcMapState.Acquire(PALETO_GARAGE)" in paleto
+    assert "DlcMapState.Release(PALETO_GARAGE)" in paleto
+    assert "DlcMapState.Acquire(RURAL_GARAGE)" not in rural
+    assert "DlcMapState.Release(RURAL_GARAGE)" not in rural
     assert "UnloadFloorGarageInterior();" in garage
     assert "UnloadDavisAutoShopInterior();" in davis
     assert "0x0888C3502DBBEEF5" not in garage
@@ -573,7 +776,8 @@ def test_issue_five_playtest_regressions_are_guarded():
     for guard in ("GET_MISSION_FLAG", "WantedLevel", "GET_INTERIOR_FROM_ENTITY",
                   "IS_POINT_ON_ROAD", "IS_ANY_VEHICLE_NEAR_POINT", "IS_SPHERE_VISIBLE"):
         assert guard in traffic
-    assert "int floorCount = floorGarage ? 3 : 1" in customize
+    assert "if (!davisGarage)" in customize
+    assert "int floorCount = 1" in customize
     assert "GarageSellConfirm" in browser and "CONFIRM VEHICLE SALE" in browser
     assert "progress_applied" in inventory and "STAT_SET_INT" in inventory
 
@@ -604,7 +808,8 @@ def test_gbay_pages_share_back_navigation_and_visible_focus():
     assert "return 0.003f" in browser
     assert "return GbayRenderer.CardBorderSel" in browser
     assert "Math.Sin(Game.GameTime / 170.0)" not in browser
-    assert browser.count("DrawCenteredBackButton(") >= 7
+    # The retired 3D showroom was one former full-screen page.
+    assert browser.count("DrawCenteredBackButton(") >= 6
     assert browser.count("DrawFocusedRect(") >= 7
     assert "hasKeyboardFocus" in customize
     assert "HandleGarageCustomizeInput(input, backClicked, davisGarage" in customize
@@ -641,6 +846,127 @@ def test_gbay_main_menu_uses_clean_rounded_green_header():
     assert "TextWhite" in renderer
 
 
+def test_gbay_vehicle_purchase_chooses_a_destination_without_a_3d_showroom():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+
+    assert "VehiclePreview" not in browser
+    assert "OpenPreview" not in browser
+    assert "World.RenderingCamera" not in browser
+    assert "OpenDeliveryConfirm(card.Model, card.Price)" in browser
+    assert "CHOOSE DESTINATION GARAGE" in browser
+    assert "GARAGE_LOCATION_NAMES" in browser
+    assert "GarageAcceptsVehicle" in browser
+    assert "GetGarageUsedSlots" in browser
+    assert "GetGarageCapacity" in browser
+    assert "ExecuteVehicleDelivery(_deliveryGarageIndex)" in browser
+    eclipse_delivery = shop[
+        shop.index("internal void ExecuteDeliverToGarage"):
+        shop.index("internal void ExecuteDeliverToFloorGarage")
+    ]
+    assert "ExecuteDeliverToFloorGarage(model, price)" not in eclipse_delivery
+    assert "too large for the Eclipse Garage" in eclipse_delivery
+
+
+def test_gbay_world_property_purchase_bypasses_vehicle_delivery():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    assets = (ROOT / "script/src/WorldAssetList.cs").read_text()
+    yacht = (ROOT / "script/src/YachtManager.cs").read_text()
+
+    assert "WorldAssetList.Special" not in browser
+    assert "WorldAssetList.All" in browser
+    assert "WorldAssetList.IsWorldAsset(model)" in browser
+    assert "DrawWorldAssetModal(input)" in browser
+    world_modal = browser[
+        browser.index("private void DrawWorldAssetModal"):
+        browser.index("//  Garage View")
+    ]
+    assert "CHOOSE DESTINATION GARAGE" not in world_modal
+    assert "ExecutePurchaseWorldAsset" in world_modal
+    assert "ExecutePurchaseWorldAsset" in shop
+    assert 'SuperYacht = "allin1_super_yacht"' in assets
+    assert "CharacterInventory.IsPropertyOwned" in yacht
+    assert '"hei_yacht_heist"' in yacht
+    assert "Hash.REQUEST_IPL" in yacht
+    assert "YachtManager.Initialize();" in shop
+    assert "YachtManager.OnTick();" in shop
+    assert "RequestWorld();" in yacht
+    assert "_nextStreamCheck = Game.GameTime + 1000" in yacht
+    assert "YachtStreamingPolicy.ShouldAcquire" in yacht
+    # Distance streaming must not toggle the global MP/SP map state. Those
+    # transitions cause visible loading screens and can hide Story interiors.
+    assert "DlcMapState.Acquire" not in yacht
+    assert "DlcMapState.Release" not in yacht
+    assert "Hash.SET_INSTANCE_PRIORITY_MODE" not in yacht
+    assert "IS_IPL_ACTIVE" in yacht
+
+
+def test_yacht_helipad_is_a_persistent_specialized_garage():
+    helipad = (ROOT / "script/src/GarageManager.Yacht.cs").read_text()
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    manager = (ROOT / "script/src/GarageManager.cs").read_text()
+    installer = (ROOT / "src/allin1/installer.py").read_text()
+    diagnostics = (ROOT / "src/allin1/diagnostics.py").read_text()
+
+    assert "-2043.9200f" in helipad
+    assert "-1031.4230f" in helipad
+    assert "11.9807f" in helipad
+    assert "YACHT_HELIPAD_HEADING = 255.76f" in helipad
+    assert 'string.Equals(model, "swift2"' in helipad
+    assert 'string.Equals(model, "supervolito2"' in helipad
+    assert "YACHT_HELIPAD_SLOT_COUNT = 1" in helipad
+    assert '"ALLIN1_yacht_helipad.json"' in helipad
+    assert '"Yacht Helipad"' in browser
+    assert "ExecuteDeliverToYachtHelipad" in shop
+    assert "RemoveYachtHelipadVehicle(listIndex)" in shop
+    assert "YachtHelipadUpdateStoredFromLive();" in manager
+    assert "YachtHelipadSave();" in manager
+    assert "ALLIN1_yacht_helipad.json" in installer
+    assert "ALLIN1_yacht_helipad.json" in diagnostics
+
+
+def test_gbay_delivery_modal_does_not_redraw_browser_behind_text():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    delivery_case = browser[
+        browser.index("case BrowserState.DeliveryConfirm"):
+        browser.index("case BrowserState.GarageView")
+    ]
+    renderer = (ROOT / "script/src/GbayRenderer.cs").read_text()
+    assert "DrawBrowser" not in delivery_case
+    assert "DrawDeliveryModal(input)" in delivery_case
+    assert "ModalBg        = Color.FromArgb(255, 255, 255, 255)" in renderer
+
+
+def test_gbay_sale_modal_does_not_bleed_selected_vehicle_text():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    sale_modal = browser[
+        browser.index("private void DrawGarageSellConfirm"):
+        browser.index("//  Weapon Browser")
+    ]
+    assert "DrawGarageView" not in sale_modal
+    assert "DrawBorderedRect(BROWSER_CX, 0.5f, MODAL_W, modalH" in sale_modal
+    assert "DrawTextFit(name" in sale_modal
+    assert '"CONFIRM VEHICLE SALE"' in sale_modal
+
+
+def test_gbay_my_garage_is_a_scalable_two_pane_browser():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    garage_view = browser[
+        browser.index("private void DrawGarageView"):
+        browser.index("private void BeginSell")
+    ]
+
+    assert 'DrawText("GARAGES"' in garage_view
+    assert "_garageLocationScrollOffset" in garage_view
+    assert "visibleGarageRows" in garage_view
+    assert "visibleVehicleRows" in garage_view
+    assert "GetGarageVehicles(_garageLocationIndex)" in garage_view
+    assert "_garagePane = 1" in garage_view
+    assert "_garagePane = 0" in garage_view
+
+
 def test_every_gbay_screen_uses_the_shared_green_title_badge():
     browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
     gear = (ROOT / "script/src/GbayBrowser.Gear.cs").read_text()
@@ -656,7 +982,7 @@ def test_every_gbay_screen_uses_the_shared_green_title_badge():
     ):
         assert f"DrawTitleBadge(\n                {title}" in browser
     assert "DrawTitleBadge(displayName" in browser
-    assert "DrawTitleBadge(_previewDisplayName" in browser
+    assert "DrawTitleBadge(displayName" in browser
     assert 'DrawTitleBadge(\n                "GEAR"' in gear
     assert 'davisGarage ? "CUSTOMIZE AUTO SHOP" : "CUSTOMIZE THREE FLOORS"' in customize
 
@@ -680,9 +1006,12 @@ def test_floor_garage_drive_in_is_visible_and_markers_match_character():
     shop = (ROOT / "script/src/GbayShop.cs").read_text()
     assert "System.Drawing.Color.FromArgb(128, 200, 100, 0)" not in garage
     assert garage.count("var markerColor = CharacterMarkerColor();") >= 3
-    assert '"Eclipse", "Harmony"' in browser
+    assert '"Eclipse Garage"' in browser
+    assert '"Harmony Garage"' in browser
     assert "GetFloorGarageStoredVehicles()" in browser
-    assert "visibleGarageRows = 12" in browser
+    assert "visibleVehicleRows = 11" in browser
+    assert "_garageLocationScrollOffset" in browser
+    assert "_garagePane" in browser
     assert "input.ScrollDelta" in browser
     assert "_pendingSellGarageLocation" in browser
     assert "RemoveFloorGarageVehicle(listIndex)" in shop
@@ -736,7 +1065,8 @@ def test_gbay_control_legends_are_high_contrast_and_shared_across_pages():
     assert "GbayRenderer.BtnGreen" in browser
     assert "GbayRenderer.TextWhite" in browser
     assert "0.31f, 0.235f" in browser
-    assert browser.count("DrawControlHint(") >= 6
+    # The retired 3D showroom supplied one former control legend.
+    assert browser.count("DrawControlHint(") >= 5
     assert "DrawControlHint(" in gear_browser
     assert "DrawControlHint(" in customize
     assert "BROWSER_LEFT + 0.10f" in browser
@@ -775,6 +1105,7 @@ def test_story_owned_vehicles_cannot_enter_garage_persistence_or_sale_flow():
     manager = (ROOT / "script/src/GarageManager.cs").read_text()
     shop = (ROOT / "script/src/GbayShop.cs").read_text()
     davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
+    paleto = (ROOT / "script/src/GarageManager.Paleto.cs").read_text()
     definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
     for model in (
         "buffalo2", "bagger", "bodhi2", "tailgater", "premier",
@@ -787,12 +1118,13 @@ def test_story_owned_vehicles_cannot_enter_garage_persistence_or_sale_flow():
     ):
         assert f'"{plate}"' in manager
     assert "IsProtectedStoryVehicle(veh.Model.Hash, plate)" in manager
-    assert definitions.count("blockStoryOwnedVehicles: true") == 5
+    assert definitions.count("blockStoryOwnedVehicles: true") == 6
     assert "rules.BlockStoryOwnedVehicles && storyOwnedVehicle" in definitions
     assert "IsPersonalVehicle(vehicle);" in manager
     assert "RejectGarageEntry(\n                        ECLIPSE_GARAGE, rideIn" in manager
     assert "RejectGarageEntry(\n                        THREE_FLOOR_GARAGE, rideIn" in manager
     assert "RejectGarageEntry(\n                        DAVIS_GARAGE, rideIn" in davis
+    assert "RejectGarageEntry(\n                        PALETO_GARAGE, rideIn" in paleto
     assert "model, plateText, modelHash" in shop
     assert '"protected_story_vehicle"' in shop
 
@@ -821,7 +1153,12 @@ def test_davis_auto_shop_is_a_separate_persistent_ten_car_garage():
     assert "Customize Auto Shop" in browser
     assert "Fixed Auto Shop Interior" not in browser
     assert "DavisUpdateStoredFromLive();" in manager
-    assert '"Eclipse", "Harmony", "Davis Auto Shop", "Garment Factory", "Grapeseed"' in browser
+    assert '"Eclipse Garage"' in browser
+    assert '"Harmony Garage"' in browser
+    assert '"Davis Auto Shop"' in browser
+    assert '"Garment Factory"' in browser
+    assert '"Grapeseed Garage"' in browser
+    assert '"Paleto Bay Garage"' in browser
     assert "GetDavisGarageStoredVehicles()" in browser
     assert "ExecuteDeliverToDavisGarage" in shop
     assert "RemoveDavisGarageVehicle(listIndex)" in shop
@@ -830,7 +1167,7 @@ def test_davis_auto_shop_is_a_separate_persistent_ten_car_garage():
     assert "maxCorrection = 1.25f" in manager
 
 
-def test_legacy_garages_use_real_customization_sets_and_model_aware_placement():
+def test_legacy_garages_use_finished_harmony_sets_and_model_aware_placement():
     manager = (ROOT / "script/src/GarageManager.cs").read_text()
     browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
     customize = (ROOT / "script/src/GbayBrowserCustomize.cs").read_text()
@@ -845,7 +1182,6 @@ def test_legacy_garages_use_real_customization_sets_and_model_aware_placement():
     assert '"Int02_ba_equipment_upgrade"' in manager
     assert '"Int02_ba_sec_desks_L1", "Int02_ba_sec_desks_L2345"' in manager
     assert '"Int02_ba_clutterstuff"' in manager
-    assert manager.count('ACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_sec_upgrade_grg"') == 0
     for invalid_set in (
         "Int02_ba_Style01", "Int02_ba_walls_01",
         "Int02_ba_decor_01", "Int02_ba_trad_lights",
@@ -854,13 +1190,20 @@ def test_legacy_garages_use_real_customization_sets_and_model_aware_placement():
     apply_sets = manager[manager.index("private static void ApplyFloorEntitySets"):]
     assert apply_sets.index("DEACTIVATE_INTERIOR_ENTITY_SET") < apply_sets.index(
         "ACTIVATE_INTERIOR_ENTITY_SET")
-    assert "GetFloorCustomizationOptionCount" in manager
-    assert "DrawFloorCustomizationCarousel" in customize
+    assert '"Int02_ba_sec_upgrade_grg"' in apply_sets
+    assert '"Int02_ba_equipment_upgrade"' in apply_sets
+    assert '"Int02_ba_clutterstuff"' in apply_sets
+    assert 'floor == 0 ? "Int02_ba_sec_desks_L1"' in apply_sets
+    assert "private const int FLOOR_GARAGE_FLOOR_COUNT = 5" in manager
+    assert "FLOOR_GARAGE_FLOOR_COUNT * FLOOR_GARAGE_SLOTS_PER_FLOOR" in manager
+    assert "BuildFloorGarageSlots()" in manager
+    assert '"Floor 4", "Floor 5", "Exit Garage"' in manager
     assert 'F{sv.Slot / 5 + 1}-{sv.Slot % 5 + 1}' in browser
     assert '"Fixed Interior"' in browser
-    assert "bool customizationAvailable = floorGarage || davisGarage" in browser
-    assert manager.count("new ParkingSlot(-1517.0f") == 20
-    assert manager.count("-80.2422f)") == 20
+    assert "bool customizationAvailable = _garageLocationIndex == 2" in browser
+    assert "if (!davisGarage)" in customize
+    assert manager.count("new ParkingSlot(-1517.0f") == 5
+    assert manager.count("-80.2422f)") == 5
 
 
 def test_garment_factory_uses_native_ten_car_layout_and_shared_grounding():
@@ -885,7 +1228,50 @@ def test_garment_factory_uses_native_ten_car_layout_and_shared_grounding():
     assert "TryProbeParkingFloor" in manager
     assert "World.Raycast" in manager
     assert "CalculateRootZ" in placement
+
+
+def test_garage_settle_correction_sets_the_exact_entity_root():
+    manager = (ROOT / "script/src/GarageManager.cs").read_text()
+    start = manager.index("if (corrected)")
+    placement = manager[start:manager.index("Log($\"PlaceVehicleInParkingSpace", start)]
+
+    assert "SET_ENTITY_COORDS_NO_OFFSET" in placement
+    assert "SET_ENTITY_COORDS, vehicle" not in placement
     assert "GetSpawnDeltaZ" not in manager
+    parking = manager[
+        manager.index("private static void PlaceVehicleInParkingSpace"):
+        manager.index("private static void ReleaseGarageVehicleForDriving")
+    ]
+    assert "SET_VEHICLE_ON_GROUND_PROPERLY" not in parking
+    assert "NeedsSettledRootCorrection" in parking
+    assert "vehicle.IsPositionFrozen = true" in parking
+
+
+def test_every_garage_vehicle_exit_restores_full_drivability():
+    manager = (ROOT / "script/src/GarageManager.cs").read_text()
+    davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
+    garment = (ROOT / "script/src/GarageManager.GarmentFactory.cs").read_text()
+    rural = (ROOT / "script/src/GarageManager.Rural.cs").read_text()
+    paleto = (ROOT / "script/src/GarageManager.Paleto.cs").read_text()
+    start = manager.index("private static void ReleaseGarageVehicleForDriving")
+    helper = manager[start:manager.index("private static bool TryProbeParkingFloor", start)]
+
+    for operation in (
+        "SET_VEHICLE_HANDBRAKE",
+        "SET_VEHICLE_UNDRIVEABLE",
+        "FREEZE_ENTITY_POSITION",
+        "SET_ENTITY_DYNAMIC",
+        "ACTIVATE_PHYSICS",
+        "SET_VEHICLE_ON_GROUND_PROPERLY",
+        "SET_VEHICLE_ENGINE_ON",
+    ):
+        assert operation in helper
+    assert helper.index("SET_VEHICLE_HANDBRAKE") < helper.index("ACTIVATE_PHYSICS")
+    assert manager.count("ReleaseGarageVehicleForDriving(") == 3  # helper + Eclipse + Harmony
+    assert "ReleaseGarageVehicleForDriving(playerVehicle" in davis
+    assert "ReleaseGarageVehicleForDriving(playerVehicle" in garment
+    assert "ReleaseGarageVehicleForDriving(playerVehicle" in rural
+    assert "ReleaseGarageVehicleForDriving(playerVehicle" in paleto
 
 
 def test_rpf_diagnostics_distinguish_plugin_from_asi_host_and_disabled_state():

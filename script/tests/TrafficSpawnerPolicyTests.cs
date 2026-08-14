@@ -31,16 +31,42 @@ namespace ALLIN1.Tests
         }
 
         [Theory]
+        [InlineData(true, true, 15f, true)]
+        [InlineData(true, true, 0f, true)]
+        [InlineData(false, false, 0f, true)]
+        [InlineData(false, false, 0.75f, true)]
+        [InlineData(false, false, 0.76f, false)]
+        [InlineData(false, true, 0f, false)]
+        [InlineData(false, false, float.NaN, false)]
+        public void Driven_and_stationary_sources_remain_replaceable_without_ghosts(
+            bool hasDriver, bool hasAnyOccupant, float speed, bool expected)
+        {
+            Assert.Equal(expected,
+                TrafficSpawner.CanStageSourceReplacement(
+                    hasDriver, hasAnyOccupant, speed));
+        }
+
+        [Theory]
+        [InlineData(false, 24)]
+        [InlineData(true, 12)]
+        public void Replacement_scan_work_is_strictly_bounded(
+            bool throttled, int expected)
+        {
+            Assert.Equal(expected,
+                TrafficSpawner.GetScanCandidateBudget(throttled));
+        }
+
+        [Theory]
         [InlineData(false, true, false, false, false, false, false, false, 1)]
-        [InlineData(true, true, false, false, false, false, false, false, 2)]
-        [InlineData(true, true, true, false, false, false, false, false, 2)]
+        [InlineData(true, true, false, false, false, false, false, false, 1)]
+        [InlineData(true, true, true, false, false, false, false, false, 1)]
         [InlineData(true, true, true, true, true, true, false, false, 1)]
         [InlineData(true, true, true, true, false, true, false, false, 2)]
         [InlineData(true, true, true, true, false, true, true, false, 0)]
         [InlineData(true, true, true, true, false, false, false, true, 1)]
         [InlineData(true, true, true, true, false, false, false, false, 0)]
         [InlineData(true, false, false, false, false, false, false, false, 0)]
-        public void Managed_traffic_never_keeps_a_driverless_moving_vehicle(
+        public void Managed_traffic_releases_normal_occupancy_changes_without_deleting(
             bool vehicleExists, bool requiresDriver, bool driverExists,
             bool driverInSeat, bool claimedByPlayer, bool purge,
             bool vehicleOnScreen, bool tooFar, int expected)

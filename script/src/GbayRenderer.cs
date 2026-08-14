@@ -62,7 +62,7 @@ namespace ALLIN1
         internal static readonly Color FooterBg       = Color.FromArgb(255, 225, 233, 228);
 
         // Modal overlay
-        internal static readonly Color ModalBg        = Color.FromArgb(250, 255, 255, 255);
+        internal static readonly Color ModalBg        = Color.FromArgb(255, 255, 255, 255);
         internal static readonly Color ModalScrim     = Color.FromArgb(210, 0, 0, 0);
 
         // Buttons
@@ -318,16 +318,23 @@ namespace ALLIN1
         /// <summary>Check if a preview texture exists for this model.</summary>
         internal static bool HasPreviewTexture(string model)
         {
-            if (!VehicleList.PreviewDict.TryGetValue(model, out string dict))
+            if (!TryGetPreviewDict(model, out string dict))
                 return false;
             return IsDictLoaded(dict);
+        }
+
+        internal static bool TryGetPreviewDict(string model, out string dict)
+        {
+            if (WorldAssetList.PreviewDict.TryGetValue(model, out dict))
+                return true;
+            return VehicleList.PreviewDict.TryGetValue(model, out dict);
         }
 
         /// <summary>Draw a vehicle preview via DRAW_SPRITE. Returns true if drawn.</summary>
         internal static bool DrawPreviewTexture(string model,
                                                  float x, float y, float w, float h)
         {
-            if (!VehicleList.PreviewDict.TryGetValue(model, out string dict))
+            if (!TryGetPreviewDict(model, out string dict))
                 return false;
             if (!IsDictLoaded(dict))
             {

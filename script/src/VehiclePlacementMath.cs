@@ -10,6 +10,7 @@ namespace ALLIN1
     internal static class VehiclePlacementMath
     {
         internal const float DefaultGroundClearance = 0.015f;
+        internal const float MaximumSettledRootDrift = 0.08f;
         internal const float MaximumNativeRootCorrection = 2.5f;
         internal const float MinimumMeasuredRootOffset = -2.5f;
         internal const float MaximumMeasuredRootOffset = 5.0f;
@@ -69,6 +70,14 @@ namespace ALLIN1
                     > MaximumNativeRootCorrection)
                 return nativeRootZ;
             return calculated;
+        }
+
+        internal static bool NeedsSettledRootCorrection(
+            float targetRootZ, float settledRootZ)
+        {
+            return !IsFinite(settledRootZ)
+                || Math.Abs(settledRootZ - targetRootZ)
+                    > MaximumSettledRootDrift;
         }
 
     }

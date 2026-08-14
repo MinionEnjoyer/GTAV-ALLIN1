@@ -57,7 +57,15 @@ namespace ALLIN1
         {
             Tick += OnTick;
             KeyDown += OnKeyDown;
+            Aborted += OnAborted;
             Interval = 0;
+        }
+
+        private void OnAborted(object sender, EventArgs args)
+        {
+            GarageManager.OnScriptAborted();
+            YachtManager.Shutdown();
+            DlcMapState.ReleaseAll("script_aborted");
         }
 
         // ------------------------------------------------------------------ //
@@ -217,6 +225,8 @@ namespace ALLIN1
             LoadGearPrices();
             Log($"=== GBAY Initialized: key={_openKey} freeMode={_freeMode} ===");
 
+            YachtManager.Initialize();
+
             try
             {
                 GarageManager.Configure(
@@ -225,6 +235,8 @@ namespace ALLIN1
                 GarageManager.InitializeDavisGarage();
                 GarageManager.InitializeGarmentGarage();
                 GarageManager.InitializeRuralGarage();
+                GarageManager.InitializePaletoGarage();
+                GarageManager.InitializeYachtHelipad();
                 if (!ClientWatchdog.SafeMode)
                     GarageManager.InitializeFloorGarage();
                 else
@@ -284,10 +296,12 @@ namespace ALLIN1
 
         internal void ExecuteDeliverToGarage(string model, int price)
         {
-            // Oversized vehicles route to floor garage instead
+            // The buyer explicitly selected Eclipse in the destination modal.
+            // Never silently reroute the purchase to a different garage.
             if (VehicleList.GetSizeTier(model) == 2)
             {
-                ExecuteDeliverToFloorGarage(model, price);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~That vehicle is too large for the Eclipse Garage.", 3000);
                 return;
             }
 
@@ -626,6 +640,49 @@ namespace ALLIN1
                 player.Handle, itemHash, false);
         }
 
+        internal bool IsWorldAssetOwned(string assetId)
+        {
+            return WorldAssetList.IsWorldAsset(assetId) &&
+                CharacterInventory.IsPropertyOwned(assetId);
+        }
+
+        internal bool ExecutePurchaseWorldAsset(string assetId, int price)
+        {
+            if (!WorldAssetList.IsWorldAsset(assetId))
+            {
+                Log($"PurchaseWorldAsset: rejected unknown asset {assetId}");
+                return false;
+            }
+            if (IsWorldAssetOwned(assetId))
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~y~Already owned.~w~ Yacht features are unlocked.", 3000);
+                return false;
+            }
+            if (!_freeMode && price > 0 && Game.Player.Money < price)
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~Insufficient funds.", 3000);
+                return false;
+            }
+            if (!CharacterInventory.RecordPropertyOwned(assetId))
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~The yacht purchase could not be saved.", 3000);
+                return false;
+            }
+
+            if (!_freeMode && price > 0)
+                Game.Player.Money -= price;
+            string name = WorldAssetList.DisplayName(assetId);
+            GTA.UI.Screen.ShowSubtitle(
+                _freeMode
+                    ? $"~g~{name} acquired.~w~ Yacht features are unlocked."
+                    : $"~g~{name} purchased for ${price:N0}.~w~ Yacht features are unlocked.",
+                4500);
+            Log($"PurchaseWorldAsset: {assetId}, price=${price}");
+            return true;
+        }
+
         internal void ExecuteDeliverToGarmentGarage(string model, int price)
         {
             if (VehicleList.GetSizeTier(model) == 2)
@@ -715,6 +772,106 @@ namespace ALLIN1
                 LogException("DeliverToRuralGarage", ex);
                 GTA.UI.Screen.ShowSubtitle(
                     "~r~Delivery to the Grapeseed Garage failed.", 3000);
+            }
+        }
+
+        internal void ExecuteDeliverToPaletoGarage(string model, int price)
+        {
+            if (VehicleList.GetSizeTier(model) == 2)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~That vehicle is too large for the Paleto Bay Garage.", 3000);
+                return;
+            }
+            int used = GarageManager.GetPaletoGarageUsedSlots();
+            int cap = GarageManager.GetPaletoGarageCapacity();
+            if (used >= cap)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~r~The Paleto Bay Garage is full.~w~ ({used}/{cap} spaces used)",
+                    3000);
+                return;
+            }
+            var rng = new Random();
+            try
+            {
+                bool success = GarageManager.DeliverToPaletoGarage(
+                    model, rng.Next(0, 160), rng.Next(0, 160));
+                if (!success)
+                {
+                    GTA.UI.Screen.ShowSubtitle(
+                        "~r~Delivery to the Paleto Bay Garage failed.", 3000);
+                    return;
+                }
+                if (!_freeMode && price > 0) Game.Player.Money -= price;
+                string name = VehicleList.DisplayNames.TryGetValue(
+                    model, out string displayName) ? displayName : model;
+                GTA.UI.Screen.ShowSubtitle(
+                    _freeMode || price <= 0
+                        ? $"~g~{name}~w~ delivered to the Paleto Bay Garage."
+                        : $"~g~{name}~w~ delivered to the Paleto Bay Garage for ~g~${price:N0}~w~.",
+                    3000);
+                Log($"DeliverToPaletoGarage: {model}, price=${price}");
+            }
+            catch (Exception ex)
+            {
+                LogException("DeliverToPaletoGarage", ex);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Delivery to the Paleto Bay Garage failed.", 3000);
+            }
+        }
+
+        internal void ExecuteDeliverToYachtHelipad(string model, int price)
+        {
+            if (!YachtManager.FeaturesUnlocked)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Purchase the Galaxy Super Yacht before using its helipad.",
+                    3500);
+                return;
+            }
+            if (!GarageManager.IsYachtHelipadVehicleEligible(model))
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~The yacht helipad accepts only the Swift Deluxe and SuperVolito Carbon.",
+                    4000);
+                return;
+            }
+            int used = GarageManager.GetYachtHelipadUsedSlots();
+            int cap = GarageManager.GetYachtHelipadCapacity();
+            if (used >= cap)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~The Yacht Helipad is occupied.~w~ Sell or remove its aircraft first.",
+                    3500);
+                return;
+            }
+            var rng = new Random();
+            try
+            {
+                bool success = GarageManager.DeliverToYachtHelipad(
+                    model, rng.Next(0, 160), rng.Next(0, 160));
+                if (!success)
+                {
+                    GTA.UI.Screen.ShowSubtitle(
+                        "~r~Delivery to the Yacht Helipad failed.", 3000);
+                    return;
+                }
+                if (!_freeMode && price > 0) Game.Player.Money -= price;
+                string name = VehicleList.DisplayNames.TryGetValue(
+                    model, out string displayName) ? displayName : model;
+                GTA.UI.Screen.ShowSubtitle(
+                    _freeMode || price <= 0
+                        ? $"~g~{name}~w~ assigned to the Yacht Helipad."
+                        : $"~g~{name}~w~ assigned to the Yacht Helipad for ~g~${price:N0}~w~.",
+                    3500);
+                Log($"DeliverToYachtHelipad: {model}, price=${price}");
+            }
+            catch (Exception ex)
+            {
+                LogException("DeliverToYachtHelipad", ex);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Delivery to the Yacht Helipad failed.", 3000);
             }
         }
 
@@ -938,11 +1095,17 @@ namespace ALLIN1
                         ? GarageManager.RemoveGarmentGarageVehicle(listIndex)
                     : garageLocation == 4
                         ? GarageManager.RemoveRuralGarageVehicle(listIndex)
+                    : garageLocation == 5
+                        ? GarageManager.RemovePaletoGarageVehicle(listIndex)
+                    : garageLocation == 6
+                        ? GarageManager.RemoveYachtHelipadVehicle(listIndex)
                     : GarageManager.RemoveVehicle(listIndex);
             string garageName = garageLocation == 1 ? "three_floor"
                 : garageLocation == 2 ? "davis"
                 : garageLocation == 3 ? "garment_factory"
-                : garageLocation == 4 ? "rural" : "eclipse";
+                : garageLocation == 4 ? "rural"
+                : garageLocation == 5 ? "paleto"
+                : garageLocation == 6 ? "yacht_helipad" : "eclipse";
             if (!removed)
             {
                 GTA.UI.Screen.ShowSubtitle("~r~Sale failed; your garage and money were not changed.", 3500);
@@ -1387,6 +1550,7 @@ namespace ALLIN1
 
                 if (_initialized)
                 {
+                    YachtManager.OnTick();
                     // A crash-recovery session suppresses the multi-floor
                     // garage for its first 30 seconds. Initialize it as soon
                     // as that temporary window closes; otherwise its map
@@ -1401,13 +1565,16 @@ namespace ALLIN1
                         GarageManager.IsPlayerInFloorGarage ||
                         GarageManager.IsPlayerInDavisGarage ||
                         GarageManager.IsPlayerInGarmentGarage ||
-                        GarageManager.IsPlayerInRuralGarage)
+                        GarageManager.IsPlayerInRuralGarage ||
+                        GarageManager.IsPlayerInPaletoGarage)
                     {
                         GarageManager.OnTick();
                         GarageManager.OnFloorGarageTick();
                         GarageManager.OnDavisGarageTick();
                         GarageManager.OnGarmentGarageTick();
                         GarageManager.OnRuralGarageTick();
+                        GarageManager.OnPaletoGarageTick();
+                        GarageManager.OnYachtHelipadTick();
                     }
                 }
 

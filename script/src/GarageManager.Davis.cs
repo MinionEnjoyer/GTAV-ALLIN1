@@ -334,7 +334,8 @@ namespace ALLIN1
         {
             if (!_davisInitialized || _transitionInProgress) return;
             if (_isPlayerInGarage || _isPlayerInFloorGarage ||
-                _isPlayerInGarmentGarage || _isPlayerInRuralGarage) return;
+                _isPlayerInGarmentGarage || _isPlayerInRuralGarage ||
+                _isPlayerInPaletoGarage) return;
             if (_davisExitCooldownFrames > 0)
             {
                 _davisExitCooldownFrames--;
@@ -566,15 +567,10 @@ namespace ALLIN1
                 for (int i = list.Count - 1; i >= 0; i--)
                     if (list[i].Slot == playerSlot) { list.RemoveAt(i); break; }
 
-                playerVehicle.IsPositionFrozen = false;
                 playerVehicle.IsPersistent = true;
-                Function.Call(Hash.SET_ENTITY_COORDS, playerVehicle,
-                    DAVIS_VEHICLE_ENTRANCE_POS.X, DAVIS_VEHICLE_ENTRANCE_POS.Y,
-                    DAVIS_VEHICLE_ENTRANCE_POS.Z, false, false, false, true);
-                Function.Call(Hash.SET_ENTITY_HEADING, playerVehicle,
-                    DAVIS_VEHICLE_ENTRANCE_HEADING);
-                Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, playerVehicle);
-                playerVehicle.IsEngineRunning = true;
+                ReleaseGarageVehicleForDriving(playerVehicle,
+                    DAVIS_VEHICLE_ENTRANCE_POS,
+                    DAVIS_VEHICLE_ENTRANCE_HEADING, "Davis");
             }
             else
             {
@@ -858,16 +854,8 @@ namespace ALLIN1
 
         private static bool DavisSave()
         {
-            try
-            {
-                AtomicWriteText(DAVIS_SAVE_PATH, DavisBuildJson());
-                return true;
-            }
-            catch (Exception ex)
-            {
-                LogException("DavisSave", ex);
-                return false;
-            }
+            return StageOrWriteVehicleSave(
+                DAVIS_SAVE_PATH, DavisBuildJson, "DavisSave");
         }
 
         private static string DavisBuildJson()

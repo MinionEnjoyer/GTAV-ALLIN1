@@ -30,7 +30,7 @@ from allin1 import asi_loader
 from allin1.config import Config
 from allin1.detector import detect_gta_path, validate_gta_path
 from allin1.health import inspect_windows_binary
-from allin1.preview_assets import GEAR_PREVIEW_ITEMS
+from allin1.preview_assets import GEAR_PREVIEW_ITEMS, WORLD_ASSET_PREVIEW_ITEMS
 from allin1.processes import run_hidden
 from allin1.vehicles.database import VehicleDatabase
 from allin1.versioning import VERSION_FILE, write_installed_version
@@ -243,6 +243,8 @@ def uninstall(config: Config) -> list[Path]:
                     "ALLIN1_garment_factory_garage.json",
                     "ALLIN1_garment_factory_garage.json.bak",
                     "ALLIN1_rural_garage.json", "ALLIN1_rural_garage.json.bak",
+                    "ALLIN1_paleto_garage.json", "ALLIN1_paleto_garage.json.bak",
+                    "ALLIN1_yacht_helipad.json", "ALLIN1_yacht_helipad.json.bak",
                    GROUNDING_CATALOG_FILENAME,
                    GROUNDING_CATALOG_FILENAME + ".bak",
                    *RETIRED_DEVELOPER_ARTIFACTS,
@@ -280,7 +282,10 @@ def uninstall(config: Config) -> list[Path]:
         log.info("Removed %s/ data folder", ALLIN1_DATA_DIR)
 
     # Remove legacy loose preview images (from SHV-era installs)
-    for preview_folder in ("previews", "weapon_previews", "equipment_previews"):
+    for preview_folder in (
+        "previews", "weapon_previews", "equipment_previews",
+        "world_asset_previews",
+    ):
         scripts_dir_previews = scripts_dir / preview_folder
         if scripts_dir_previews.exists():
             shutil.rmtree(scripts_dir_previews)
@@ -549,6 +554,7 @@ def _deploy_preview_dlc(
     brand_logo_src = _SCRIPT_DIST_DIR / "ALLIN1.png"
     weapon_previews_src = _SCRIPT_DIST_DIR / "weapon_previews"
     equipment_previews_src = _SCRIPT_DIST_DIR / "equipment_previews"
+    world_asset_previews_src = _SCRIPT_DIST_DIR / "world_asset_previews"
 
     if not previews_src.is_dir():
         log.warning("No previews/ directory found — skipping preview build")
@@ -574,6 +580,7 @@ def _deploy_preview_dlc(
             item["name"] for item in tomllib.load(stream).get("weapons", [])
         )
     gear_ids = sorted(GEAR_PREVIEW_ITEMS)
+    world_asset_ids = sorted(WORLD_ASSET_PREVIEW_ITEMS)
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -581,6 +588,7 @@ def _deploy_preview_dlc(
         preview_inputs = tmp_path / "preview_inputs"
         weapon_preview_inputs = tmp_path / "weapon_preview_inputs"
         equipment_preview_inputs = tmp_path / "equipment_preview_inputs"
+        world_asset_preview_inputs = tmp_path / "world_asset_preview_inputs"
 
         # Raw captures are source material, not approved catalog art. Package
         # only the reviewed repository assets so an old or incomplete capture
@@ -615,12 +623,19 @@ def _deploy_preview_dlc(
             equipment_preview_inputs,
             gear_ids,
         )
-        if weapon_merged.rejected or equipment_merged.rejected:
+        world_asset_merged = merge_previews(
+            [world_asset_previews_src],
+            world_asset_preview_inputs,
+            world_asset_ids,
+        )
+        if (weapon_merged.rejected or equipment_merged.rejected
+                or world_asset_merged.rejected):
             rejected_count = (
                 len(weapon_merged.rejected) + len(equipment_merged.rejected)
+                + len(world_asset_merged.rejected)
             )
             result.warnings.append(
-                f"Ignored {rejected_count} invalid weapon/equipment preview capture(s)."
+                f"Ignored {rejected_count} invalid catalog preview capture(s)."
             )
         if weapon_merged.copied:
             log.info("Building preview textures for %d/%d weapons...",
@@ -628,6 +643,9 @@ def _deploy_preview_dlc(
         if equipment_merged.copied:
             log.info("Building preview textures for %d/%d equipment items...",
                      equipment_merged.copied, len(gear_ids))
+        if world_asset_merged.copied:
+            log.info("Building preview textures for %d/%d world assets...",
+                     world_asset_merged.copied, len(world_asset_ids))
 
         preview_groups = []
         if weapon_merged.copied:
@@ -637,6 +655,10 @@ def _deploy_preview_dlc(
         if equipment_merged.copied:
             preview_groups.append(
                 ("allin1_gear", equipment_preview_inputs, gear_ids)
+            )
+        if world_asset_merged.copied:
+            preview_groups.append(
+                ("allin1_asset", world_asset_preview_inputs, world_asset_ids)
             )
 
         # Step 1: Build .ytd files from PNGs

@@ -4286,7 +4286,7 @@
     "name": "Brute RCV",
     "class": "emergency",
     "manufacturer": "Brute",
-    "price": 0,
+    "price": 3125500,
     "traffic": []
   },
   {
@@ -4294,7 +4294,7 @@
     "name": "Bravado Gauntlet Interceptor",
     "class": "emergency",
     "manufacturer": "Bravado",
-    "price": 0,
+    "price": 5420000,
     "traffic": []
   },
   {
@@ -4302,7 +4302,7 @@
     "name": "Vapid Stanier LE Cruiser",
     "class": "emergency",
     "manufacturer": "Vapid",
-    "price": 0,
+    "price": 4690000,
     "traffic": []
   },
   {
@@ -4310,7 +4310,7 @@
     "name": "Bravado Buffalo Cruiser",
     "class": "emergency",
     "manufacturer": "Bravado",
-    "price": 0,
+    "price": 4435000,
     "traffic": []
   },
   {
@@ -4318,7 +4318,7 @@
     "name": "Bravado Buffalo STX Pursuit",
     "class": "emergency",
     "manufacturer": "Bravado",
-    "price": 0,
+    "price": 5370000,
     "traffic": []
   },
   {
@@ -4326,7 +4326,7 @@
     "name": "Vapid Police Transporter",
     "class": "emergency",
     "manufacturer": "Vapid",
-    "price": 0,
+    "price": 650000,
     "traffic": []
   },
   {
@@ -4334,7 +4334,7 @@
     "name": "Western Police Bike",
     "class": "emergency",
     "manufacturer": "Western",
-    "price": 0,
+    "price": 4960000,
     "traffic": []
   },
   {
@@ -4342,7 +4342,7 @@
     "name": "Invetero Coquette D10 Cruiser",
     "class": "emergency",
     "manufacturer": "Invetero",
-    "price": 0,
+    "price": 5620000,
     "traffic": []
   },
   {
@@ -4350,7 +4350,7 @@
     "name": "Vapid Caracara Cruiser",
     "class": "emergency",
     "manufacturer": "Vapid",
-    "price": 0,
+    "price": 5335000,
     "traffic": []
   },
   {
@@ -4358,7 +4358,7 @@
     "name": "Willard Faction Cruiser",
     "class": "emergency",
     "manufacturer": "Willard",
-    "price": 0,
+    "price": 4150000,
     "traffic": []
   },
   {
@@ -4366,7 +4366,7 @@
     "name": "Canis Terminus Cruiser",
     "class": "emergency",
     "manufacturer": "Canis",
-    "price": 0,
+    "price": 5125000,
     "traffic": []
   },
   {
@@ -4534,7 +4534,7 @@
     "name": "Vapid Dominator FX Interceptor",
     "class": "emergency",
     "manufacturer": "Vapid",
-    "price": 0,
+    "price": 4950000,
     "traffic": []
   },
   {
@@ -4542,7 +4542,7 @@
     "name": "Bravado Dorado Cruiser",
     "class": "emergency",
     "manufacturer": "Bravado",
-    "price": 0,
+    "price": 5005000,
     "traffic": []
   },
   {
@@ -4550,7 +4550,7 @@
     "name": "Bravado Greenwood Cruiser",
     "class": "emergency",
     "manufacturer": "Bravado",
-    "price": 0,
+    "price": 3946000,
     "traffic": []
   },
   {
@@ -4558,7 +4558,7 @@
     "name": "Declasse Impaler SZ Cruiser",
     "class": "emergency",
     "manufacturer": "Declasse",
-    "price": 0,
+    "price": 4720000,
     "traffic": []
   },
   {
@@ -4566,7 +4566,7 @@
     "name": "Declasse Impaler LX Cruiser",
     "class": "emergency",
     "manufacturer": "Declasse",
-    "price": 0,
+    "price": 4800000,
     "traffic": []
   },
   {
@@ -4628,7 +4628,7 @@
     "name": "Grotti Veleno GT",
     "class": "super",
     "manufacturer": "Grotti",
-    "price": 2995000,
+    "price": 3090000,
     "traffic": []
   },
   {
@@ -4636,7 +4636,7 @@
     "name": "Vapid Caracara (Armored)",
     "class": "offroad",
     "manufacturer": "Vapid",
-    "price": 0,
+    "price": 2250000,
     "traffic": []
   },
   {
@@ -4655,7 +4655,7 @@
     "name": "Benefactor L\u00e4ufer",
     "class": "vans",
     "manufacturer": "Benefactor",
-    "price": 1250000,
+    "price": 645000,
     "traffic": [
       "veh_mid",
       "veh_rich"
@@ -4666,7 +4666,7 @@
     "name": "Benefactor LRC GT",
     "class": "super",
     "manufacturer": "Benefactor",
-    "price": 3200000,
+    "price": 2650000,
     "traffic": []
   },
   {
@@ -4697,5 +4697,23 @@
     "manufacturer": "Pegassi",
     "price": 5835000,
     "traffic": []
+  },
+  {
+    "model": "horus",
+    "name": "Pegassi Horus",
+    "class": "super",
+    "manufacturer": "Pegassi",
+    "price": 2810000,
+    "traffic": []
+  },
+  {
+    "model": "warden",
+    "name": "Gallivanter Warden",
+    "class": "suvs",
+    "manufacturer": "Gallivanter",
+    "price": 1597500,
+    "traffic": [
+      "veh_rich"
+    ]
   }
 ]

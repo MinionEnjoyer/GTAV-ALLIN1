@@ -1,3 +1,43 @@
+# GTA V ALLIN1 0.4.4
+
+Version 0.4.4 expands the persistent garage network, adds the purchasable Galaxy
+Super Yacht and its specialized helipad, and hardens GBAY, vehicle grounding,
+traffic replacement, and Story Mode map streaming for general release.
+
+## Garage and yacht expansion
+
+- Added the 10-car Paleto Bay Garage using the Casino Penthouse Garage shell,
+  with two internal elevator exits and separate exterior pedestrian and vehicle
+  anchors at the Paleto Bay repair shop.
+- Promoted Harmony Garage to five fully detailed floors and standardized
+  collision-aware vehicle grounding across every garage.
+- Added the Galaxy Super Yacht as a GBAY world asset. Its per-character,
+  save-backed helipad accepts the two GTA Online yacht aircraft: the Swift
+  Deluxe and SuperVolito Carbon.
+- Streamed the yacht IPL directly in Story Mode without crossing the global
+  multiplayer-map boundary, eliminating approach/departure loading screens and
+  avoiding missing Story interior furniture.
+
+## GBAY and catalog refinement
+
+- Replaced temporary 3D purchasing with an explicit destination picker covering
+  every compatible garage and the Yacht Helipad.
+- Reworked My Garage into a scrollable garage list and stored-vehicle panel,
+  repaired confirmation layering, and completed vehicle sale-price fallbacks.
+- Audited DLC vehicle listings and prices, added Special-world-asset purchasing,
+  and preserved independent native-resolution preview assets.
+
+## Runtime hardening
+
+- Tightened traffic replacement ownership, driver, physics, mission, recent-use,
+  and safehouse protections while retaining moving and parked ambient variety.
+- Vehicles and yacht aircraft are staged immediately but committed only with a
+  genuine Story Mode save, matching normal game persistence behavior.
+- Expanded release coverage to 149 C# tests and 380 passing Python tests, with
+  one intentional environment-specific skip.
+
+---
+
 # GTA V ALLIN1 0.4.3
 
 Version 0.4.3 adds a fifth persistent garage, standardizes garage identity across the client, and

@@ -16,17 +16,34 @@ namespace ALLIN1
         internal bool IsAcquired(GarageDefinition garage) =>
             garage != null && _owners.Contains(garage.Id);
 
+        internal bool IsAcquired(string owner) =>
+            !string.IsNullOrWhiteSpace(owner) && _owners.Contains(owner);
+
         internal bool Acquire(GarageDefinition garage)
         {
             if (garage == null || !garage.RequiresMultiplayerMap ||
-                !_owners.Add(garage.Id)) return false;
+                string.IsNullOrWhiteSpace(garage.Id)) return false;
+            return Acquire(garage.Id);
+        }
+
+        internal bool Acquire(string owner)
+        {
+            if (string.IsNullOrWhiteSpace(owner) || !_owners.Add(owner))
+                return false;
             return _owners.Count == 1;
         }
 
         internal bool Release(GarageDefinition garage)
         {
             if (garage == null || !garage.RequiresMultiplayerMap ||
-                !_owners.Remove(garage.Id)) return false;
+                string.IsNullOrWhiteSpace(garage.Id)) return false;
+            return Release(garage.Id);
+        }
+
+        internal bool Release(string owner)
+        {
+            if (string.IsNullOrWhiteSpace(owner) || !_owners.Remove(owner))
+                return false;
             return _owners.Count == 0;
         }
 
@@ -46,6 +63,9 @@ namespace ALLIN1
         internal static bool IsAcquired(GarageDefinition garage) =>
             Registry.IsAcquired(garage);
 
+        internal static bool IsAcquired(string owner) =>
+            Registry.IsAcquired(owner);
+
         internal static void Acquire(GarageDefinition garage)
         {
             if (Registry.Acquire(garage))
@@ -56,6 +76,16 @@ namespace ALLIN1
             }
         }
 
+        internal static void Acquire(string owner)
+        {
+            if (Registry.Acquire(owner))
+            {
+                Function.Call((Hash)0x0888C3502DBBEEF5); // ON_ENTER_MP
+                ClientLog.Info("World", "multiplayer_map_acquired",
+                    new Dictionary<string, object> { { "owner", owner } });
+            }
+        }
+
         internal static void Release(GarageDefinition garage)
         {
             if (Registry.Release(garage))
@@ -63,6 +93,16 @@ namespace ALLIN1
                 Function.Call((Hash)0xD7C10C4A637992C9); // ON_ENTER_SP
                 ClientLog.Info("Garage", "story_map_restored",
                     new Dictionary<string, object> { { "garage", garage.Id } });
+            }
+        }
+
+        internal static void Release(string owner)
+        {
+            if (Registry.Release(owner))
+            {
+                Function.Call((Hash)0xD7C10C4A637992C9); // ON_ENTER_SP
+                ClientLog.Info("World", "story_map_restored",
+                    new Dictionary<string, object> { { "owner", owner } });
             }
         }
 

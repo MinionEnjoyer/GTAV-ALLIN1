@@ -38,5 +38,17 @@ namespace ALLIN1.Tests
             Assert.Contains("ARMOR_HEAVY", inventory.gear);
             Assert.Contains("ARMOR_HEAVY", inventory.equipped_gear);
         }
+
+        [Fact]
+        public void World_asset_catalog_keeps_yacht_out_of_vehicle_delivery()
+        {
+            Assert.True(WorldAssetList.IsWorldAsset(WorldAssetList.SuperYacht));
+            Assert.Equal("Galaxy Super Yacht",
+                WorldAssetList.DisplayName(WorldAssetList.SuperYacht));
+            Assert.Equal(8000000, WorldAssetList.Price(WorldAssetList.SuperYacht));
+            Assert.Equal("allin1_asset_01",
+                WorldAssetList.PreviewDict[WorldAssetList.SuperYacht]);
+            Assert.False(WorldAssetList.IsWorldAsset("caracara3"));
+        }
     }
 }

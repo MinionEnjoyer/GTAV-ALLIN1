@@ -4,6 +4,19 @@ GTA V ALLIN1 is a mod installer that ports 461 GTA Online DLC vehicles, 100+ wea
 
 Supports both GTA V Legacy and GTA V Enhanced editions.
 
+## Galaxy Super Yacht helipad
+
+The Galaxy Super Yacht is a persistent world asset purchased from GBAY's
+Special catalog. After purchase, **Yacht Helipad** appears as a one-aircraft
+delivery location and in **My Garage**. In keeping with GTA Online's yacht
+packages, it accepts only the Buckingham Swift Deluxe (`swift2`) and Buckingham
+SuperVolito Carbon (`supervolito2`). Helipad storage is independent for Michael,
+Franklin, and Trevor and is committed with normal Story Mode saves.
+
+The yacht IPL streams directly in Story Mode. ALLIN1 does not switch the global
+map state to multiplayer as the player approaches or leaves the yacht, avoiding
+mid-flight loading screens and Story-interior asset loss.
+
 ---
 
 ## Table of Contents
@@ -236,15 +249,15 @@ change, and the former per-frame GBAY texture-debug overlay has been removed.
 - **Vehicles** — browse and purchase 461 DLC vehicles
 - **Weapons** — browse and purchase 100+ weapons
 - **Gear** — purchase body armor, parachute, and utility items
-- **My Garage** — manage and sell stored vehicles
+- **My Garage** — choose a garage in the scrollable left pane, then manage and sell its stored vehicles in the right pane
 
 **Vehicle Browser:**
 - 22 category tabs (All, Compacts, Coupes, Sedans, SUVs, Muscle, Sports Classics, Super, Off-Road, Motorcycles, Vans, Boats, Helicopters, Planes, Military, Industrial, Open Wheel, Emergency, Cycles, Service, Special, Weaponized) with scroll arrows
 - 3x3 card grid per page with vehicle preview images, manufacturer, name, and price
 - Vehicle names wrap to a second line when too long for the card width
 - Full keyboard and mouse navigation
-- Click a vehicle to open a 3D preview with orbiting camera and zoom
-- Purchase and deliver to your garage
+- Select a vehicle to purchase it without spawning a temporary in-world preview
+- Choose a compatible destination garage before confirming the purchase; capacity and size limits are shown for every location
 
 **Weapon Browser:**
 - 11 category tabs (All, Pistols, SMGs, Shotguns, Assault Rifles, Machine Guns, Sniper Rifles, Heavy Weapons, Melee, Throwables, Miscellaneous)
@@ -303,9 +316,10 @@ When `rich_areas_only_supers` is enabled, super and sports cars only appear in w
 
 Garage storage is separate per character (Michael, Franklin, Trevor) and per
 location. Eclipse Garage provides the original 10-car underground space,
-Harmony Garage provides 15 oversized-capable spaces across three virtual floors,
+Harmony Garage provides 25 oversized-capable spaces across five virtual floors,
 Davis adds a 10-car Los Santos Tuners Auto Shop, the Garment Factory adds 10
-native bays, and Grapeseed adds a compact six-car rural garage.
+native bays, Grapeseed adds a compact six-car rural garage, and Paleto Bay adds
+10 native Casino Penthouse Garage bays at the north end of the map.
 
 Rockstar-managed story vehicles are excluded from every ALLIN1 garage and its
 sale flow, even when a mission temporarily removes the vehicle's decorator or
@@ -366,15 +380,31 @@ retain their existing surveyed bay centers—the Rockstar scripts do not expose
 equivalent literal personal-vehicle roots for those shared shells—but now use
 the same measured-floor and per-model grounding calculation.
 
+Harmony's elevator exposes all five native garage levels. Security, equipment,
+the appropriate floor-specific workstation set, and stocked storage detail are
+enabled as part of the finished interior rather than optional upgrades.
+
 ### Grapeseed Garage
 
 - Vehicle entrance: `X 2551.4610, Y 4674.3250, Z 33.9819`, heading `0`.
 - Pedestrian entrance/exit: `X 2553.4590, Y 4650.6360, Z 34.0768`, heading `90`.
-- Six spaces in Rockstar's native `v_garagem` interior with shared measured
+- Six spaces in Rockstar's base-game medium `v_garagem` apartment interior,
+  streamed directly without switching Story Mode into the multiplayer map, with shared measured
   per-model grounding, size checks, and safe vehicle state restoration.
 - Independent per-character persistence in `ALLIN1_rural_garage.json`, with
   complete GBAY delivery, browse, sale, recovery, blip-color, and entry-policy
   integration.
+
+### Paleto Bay Garage
+
+- Vehicle entrance: `X -221.9008, Y 6252.8020, Z 31.4894`, heading `45`.
+- Pedestrian entrance/exit: `X -224.5180, Y 6244.2620, Z 31.4926`, heading `45`.
+- Ten exact parking roots and headings from Rockstar's Casino Penthouse Garage
+  script, streamed through the dedicated `vw_casino_garage` IPL without
+  switching the global Story Mode map to multiplayer.
+- Independent per-character persistence in `ALLIN1_paleto_garage.json`, with
+  full GBAY destination, browse, sale, recovery, protagonist-color, and shared
+  garage-entry-policy integration.
 
 **Eclipse Garage features:**
 - 10 parking slots (two rows of 5, heading -105° and 134°)
@@ -485,6 +515,7 @@ GTA_V_ALLIN1/
 │   │   ├── GarageManager.Davis.cs # Davis Auto Shop 10-car garage
 │   │   ├── GarageManager.GarmentFactory.cs # Garment Factory 10-car garage
 │   │   ├── GarageManager.Rural.cs # Grapeseed six-car garage
+│   │   ├── GarageManager.Paleto.cs # Paleto Bay ten-car garage
 │   │   ├── VehiclePlacementMath.cs # Shared model-aware floor grounding
 │   │   ├── VehicleGroundingCatalog.cs # Measured root-to-floor catalog
 │   │   ├── TrafficSpawner.cs      # DLC traffic integration
@@ -810,6 +841,7 @@ Garage state is split into independent files in the scripts directory:
 - `ALLIN1_davis_garage.json` — Davis Auto Shop.
 - `ALLIN1_garment_factory_garage.json` — Garment Factory garage.
 - `ALLIN1_rural_garage.json` — Grapeseed Garage.
+- `ALLIN1_paleto_garage.json` — Paleto Bay Garage.
 - `ALLIN1_davis_customization.json` — per-character Davis Auto Shop themes and upgrades.
 
 Each file stores per-character vehicle data, including complete customization
@@ -897,6 +929,7 @@ After `allin1 install`, the following files exist in the GTA V directory:
 │   ├── ALLIN1_davis_garage.json   # Davis Auto Shop persistence
 │   ├── ALLIN1_garment_factory_garage.json # Garment Factory persistence
 │   ├── ALLIN1_rural_garage.json   # Grapeseed Garage persistence
+│   ├── ALLIN1_paleto_garage.json  # Paleto Bay Garage persistence
 ├── mods/update/x64/dlcpacks/
 │   └── allin1_previews/
 │       └── dlc.rpf                # Preview texture DLC pack
@@ -914,7 +947,7 @@ After `allin1 install`, the following files exist in the GTA V directory:
 The browser UI (`GbayBrowser.cs`) uses a simple state enum to manage navigation:
 
 ```
-Closed → TopMenu → VehicleBrowser → VehiclePreview → DeliveryConfirm
+Closed → TopMenu → VehicleBrowser → DeliveryConfirm (choose garage)
                  → WeaponBrowser
                  → GearBrowser
                  → GarageView

@@ -3375,7 +3375,21 @@ class = "emergency"
 manufacturer = "Pegassi"
 traffic = []
 
+[[vehicles]]
+model = "horus"
+name = "Pegassi Horus"
+class = "super"
+manufacturer = "Pegassi"
+traffic = []
+
+[[vehicles]]
+model = "warden"
+name = "Gallivanter Warden"
+class = "suvs"
+manufacturer = "Gallivanter"
+traffic = ["veh_rich"]
+
 # =============================================================================
 # END OF VEHICLE DATABASE
-# Total vehicles: 461
+# Total vehicles: 463
 # =============================================================================

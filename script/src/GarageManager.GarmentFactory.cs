@@ -167,7 +167,7 @@ namespace ALLIN1
         {
             if (!_garmentInitialized || _transitionInProgress) return;
             if (_isPlayerInGarage || _isPlayerInFloorGarage || _isPlayerInDavisGarage ||
-                _isPlayerInRuralGarage)
+                _isPlayerInRuralGarage || _isPlayerInPaletoGarage)
                 return;
             if (_garmentExitCooldownFrames > 0)
             {
@@ -379,17 +379,10 @@ namespace ALLIN1
                 List<StoredVehicle> list = GetGarmentGarageStoredVehicles();
                 for (int i = list.Count - 1; i >= 0; i--)
                     if (list[i].Slot == playerSlot) { list.RemoveAt(i); break; }
-                playerVehicle.IsPositionFrozen = false;
                 playerVehicle.IsPersistent = true;
-                Function.Call(Hash.SET_ENTITY_COORDS, playerVehicle,
-                    GARMENT_VEHICLE_ENTRANCE_POS.X,
-                    GARMENT_VEHICLE_ENTRANCE_POS.Y,
-                    GARMENT_VEHICLE_ENTRANCE_POS.Z,
-                    false, false, false, true);
-                Function.Call(Hash.SET_ENTITY_HEADING, playerVehicle,
-                    GARMENT_VEHICLE_ENTRANCE_HEADING);
-                Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, playerVehicle);
-                playerVehicle.IsEngineRunning = true;
+                ReleaseGarageVehicleForDriving(playerVehicle,
+                    GARMENT_VEHICLE_ENTRANCE_POS,
+                    GARMENT_VEHICLE_ENTRANCE_HEADING, "Garment Factory");
             }
             else
             {
@@ -571,16 +564,8 @@ namespace ALLIN1
 
         private static bool GarmentSave()
         {
-            try
-            {
-                AtomicWriteText(GARMENT_SAVE_PATH, GarmentBuildJson());
-                return true;
-            }
-            catch (Exception ex)
-            {
-                LogException("GarmentSave", ex);
-                return false;
-            }
+            return StageOrWriteVehicleSave(
+                GARMENT_SAVE_PATH, GarmentBuildJson, "GarmentSave");
         }
 
         private static string GarmentBuildJson()

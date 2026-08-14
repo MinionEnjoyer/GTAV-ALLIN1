@@ -1,5 +1,5 @@
 // VehicleList.cs - Auto-generated from data/vehicles.toml + prices_vehicles.toml
-// 461 GTA Online DLC vehicles by class.
+// 463 GTA Online DLC vehicles by class.
 using System.Collections.Generic;
 
 namespace ALLIN1
@@ -468,6 +468,8 @@ namespace ALLIN1
             "cartuccia",
             "estride",
             "polignus",
+            "horus",
+            "warden",
         };
 
         internal static readonly string[] Boats = {
@@ -787,6 +789,10 @@ namespace ALLIN1
             "dune5",
         };
 
+        internal static readonly string[] Sports = {
+            "cartuccia",
+        };
+
         internal static readonly string[] Sportsclassics = {
             "everon2",
             "panthere",
@@ -944,6 +950,7 @@ namespace ALLIN1
             "xtreme",
             "velenogt",
             "lrcgt",
+            "horus",
         };
 
         internal static readonly string[] Suvs = {
@@ -975,6 +982,7 @@ namespace ALLIN1
             "everon3",
             "woodlander",
             "estride",
+            "warden",
         };
 
         internal static readonly string[] Vans = {
@@ -1512,6 +1520,8 @@ namespace ALLIN1
             { "cartuccia", "Grotti Cartuccia GT" },
             { "estride", "Ocelot E-Stride" },
             { "polignus", "Pegassi Ignus Pursuit" },
+            { "horus", "Pegassi Horus" },
+            { "warden", "Gallivanter Warden" },
         };
 
         internal static readonly Dictionary<string, int> Prices = new Dictionary<string, int>
@@ -1929,17 +1939,17 @@ namespace ALLIN1
             { "rumpo3", 52000 },
             { "minivan2", 39500 },
             { "boxville6", 21500 },
-            { "riot2", 0 },
-            { "polgauntlet", 0 },
-            { "police5", 0 },
-            { "polbuffalo", 0 },
-            { "polbuffalo6", 0 },
-            { "policet3", 0 },
-            { "policeb2", 0 },
-            { "polcoquette4", 0 },
-            { "polcaracara", 0 },
-            { "polfaction2", 0 },
-            { "polterminus", 0 },
+            { "riot2", 3125500 },
+            { "polgauntlet", 5420000 },
+            { "police5", 4690000 },
+            { "polbuffalo", 4435000 },
+            { "polbuffalo6", 5370000 },
+            { "policet3", 650000 },
+            { "policeb2", 4960000 },
+            { "polcoquette4", 5620000 },
+            { "polcaracara", 5335000 },
+            { "polfaction2", 4150000 },
+            { "polterminus", 5125000 },
             { "inductor", 5000 },
             { "inductor2", 25000 },
             { "pbus2", 32000 },
@@ -1958,25 +1968,27 @@ namespace ALLIN1
             { "rrocket", 571500 },
             { "shotaro", 706000 },
             { "dune5", 435000 },
-            { "poldominator10", 0 },
-            { "poldorado", 0 },
-            { "polgreenwood", 0 },
-            { "polimpaler5", 0 },
-            { "polimpaler6", 0 },
+            { "poldominator10", 4950000 },
+            { "poldorado", 5005000 },
+            { "polgreenwood", 3946000 },
+            { "polimpaler5", 4720000 },
+            { "polimpaler6", 4800000 },
             { "cargobob5", 455000 },
             { "maverick2", 185000 },
             { "duster2", 165000 },
             { "titan2", 925000 },
             { "youga5", 112500 },
             { "vivanite2", 94500 },
-            { "velenogt", 2995000 },
-            { "caracara3", 0 },
+            { "velenogt", 3090000 },
+            { "caracara3", 2250000 },
             { "merula", 1394000 },
-            { "laufer", 1250000 },
-            { "lrcgt", 3200000 },
+            { "laufer", 645000 },
+            { "lrcgt", 2650000 },
             { "cartuccia", 2395000 },
             { "estride", 1425000 },
             { "polignus", 5835000 },
+            { "horus", 2810000 },
+            { "warden", 1597500 },
         };
 
         internal static readonly Dictionary<string, string> ClassNames = new Dictionary<string, string>
@@ -2442,6 +2454,8 @@ namespace ALLIN1
             { "cartuccia", "Sports" },
             { "estride", "Suvs" },
             { "polignus", "Emergency" },
+            { "horus", "Super" },
+            { "warden", "Suvs" },
         };
 
         internal static readonly Dictionary<string, string> PreviewDict = new Dictionary<string, string>
@@ -2623,7 +2637,7 @@ namespace ALLIN1
             { "insurgent", "allin1_prev_02" },
             { "insurgent3", "allin1_prev_02" },
             { "issi3", "allin1_prev_02" },
-            { "issi7", "allin1_prev_02" },
+            { "issi7", "allin1_prev_03" },
             { "issi8", "allin1_prev_03" },
             { "itali2", "allin1_prev_03" },
             { "italigtb", "allin1_prev_03" },
@@ -2712,7 +2726,7 @@ namespace ALLIN1
             { "penetrator", "allin1_prev_03" },
             { "penumbra2", "allin1_prev_03" },
             { "peyote2", "allin1_prev_03" },
-            { "pfister811", "allin1_prev_03" },
+            { "pfister811", "allin1_prev_04" },
             { "phantom2", "allin1_prev_04" },
             { "phantom3", "allin1_prev_04" },
             { "pipistrello", "allin1_prev_04" },
@@ -2801,7 +2815,7 @@ namespace ALLIN1
             { "streamer216", "allin1_prev_04" },
             { "streiter", "allin1_prev_04" },
             { "stretch", "allin1_prev_04" },
-            { "strikeforce", "allin1_prev_04" },
+            { "strikeforce", "allin1_prev_05" },
             { "stromberg", "allin1_prev_05" },
             { "stryder", "allin1_prev_05" },
             { "sugoi", "allin1_prev_05" },
@@ -2857,7 +2871,6 @@ namespace ALLIN1
             { "valkyrie", "allin1_prev_05" },
             { "vamos", "allin1_prev_05" },
             { "vectre", "allin1_prev_05" },
-            { "velenogt", "allin1_prev_05" },
             { "velum2", "allin1_prev_05" },
             { "verlierer2", "allin1_prev_05" },
             { "verus", "allin1_prev_05" },
@@ -2889,8 +2902,8 @@ namespace ALLIN1
             { "winky", "allin1_prev_05" },
             { "wolfsbane", "allin1_prev_05" },
             { "woodlander", "allin1_prev_05" },
-            { "xa21", "allin1_prev_05" },
-            { "xls2", "allin1_prev_05" },
+            { "xa21", "allin1_prev_06" },
+            { "xls2", "allin1_prev_06" },
             { "xtreme", "allin1_prev_06" },
             { "yosemite", "allin1_prev_06" },
             { "yosemite1500", "allin1_prev_06" },
@@ -2916,14 +2929,14 @@ namespace ALLIN1
             "streamer216", "stretch", "terbyte", "wastelander"
         };
 
-        // Large vehicles (30) -- length 6-8m or collide in both rows, left row only
+        // Large vehicles -- length 6-8m or collide in both rows, left row only
         internal static readonly HashSet<string> LargeVehicles = new HashSet<string>
         {
             "apc", "avarus", "barrage", "boxville4", "boxville6", "brutus", "caracara",
-            "caracara2", "cognoscenti", "cognoscenti2", "contender", "guardian", "halftrack",
-            "hauler2", "imperator", "insurgent", "insurgent3", "journey2", "kamacho", "khanjali",
-            "limo2", "polcaracara", "scarab", "slamtruck", "speedo4", "stockade4", "thruster",
-            "towtruck4", "vetir", "vigilante"
+            "caracara2", "caracara3", "cognoscenti", "cognoscenti2", "contender", "guardian",
+            "halftrack", "hauler2", "imperator", "insurgent", "insurgent3", "journey2", "kamacho",
+            "khanjali", "limo2", "polcaracara", "scarab", "slamtruck", "speedo4", "stockade4",
+            "thruster", "towtruck4", "vetir", "vigilante"
         };
 
         /// <summary>

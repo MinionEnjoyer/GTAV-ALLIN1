@@ -7,7 +7,6 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using GTA;
-using GTA.Math;
 using GTA.Native;
 
 namespace ALLIN1
@@ -18,7 +17,6 @@ namespace ALLIN1
         Loading,
         TopMenu,
         VehicleBrowser,
-        VehiclePreview,
         DeliveryConfirm,
         GarageView,
         GarageSellConfirm,
@@ -119,6 +117,19 @@ namespace ALLIN1
         private int _garageLocationIndex;
         private int _deliveryGarageIndex;
 
+        private static readonly string[] GARAGE_LOCATION_NAMES =
+        {
+            "Eclipse Garage",
+            "Harmony Garage",
+            "Davis Auto Shop",
+            "Garment Factory",
+            "Grapeseed Garage",
+            "Paleto Bay Garage",
+            "Yacht Helipad",
+        };
+        private const int HARMONY_GARAGE_INDEX = 1;
+        private const int YACHT_HELIPAD_INDEX = 6;
+
         // ------------------------------------------------------------------ //
         //  Category Definitions                                               //
         // ------------------------------------------------------------------ //
@@ -146,6 +157,7 @@ namespace ALLIN1
             new Category("Sedans",          VehicleList.Sedans),
             new Category("SUVs",            VehicleList.Suvs),
             new Category("Muscle",          VehicleList.Muscle),
+            new Category("Sports",          VehicleList.Sports),
             new Category("Sports Classics", VehicleList.Sportsclassics),
             new Category("Super",           VehicleList.Super),
             new Category("Off-Road",        VehicleList.Offroad),
@@ -160,8 +172,17 @@ namespace ALLIN1
             new Category("Emergency",       VehicleList.Emergency),
             new Category("Cycles",          VehicleList.Cycles),
             new Category("Service",         VehicleList.Service),
-            new Category("Special",         VehicleList.Special),
+            new Category("Special",         CombineModels(
+                VehicleList.Special, WorldAssetList.All)),
         };
+
+        private static string[] CombineModels(string[] first, string[] second)
+        {
+            string[] combined = new string[first.Length + second.Length];
+            Array.Copy(first, 0, combined, 0, first.Length);
+            Array.Copy(second, 0, combined, first.Length, second.Length);
+            return combined;
+        }
 
         private struct WeaponCategory
         {
@@ -231,6 +252,8 @@ namespace ALLIN1
         // Garage view
         private int _garageVehicleIdx;
         private int _garageHoverIdx = -1;
+        private int _garageLocationScrollOffset;
+        private int _garagePane; // 0 = garage list, 1 = stored vehicle list
 
         // Weapon browser
         private int _weaponCategoryIndex;
@@ -251,24 +274,6 @@ namespace ALLIN1
         private int _ammoConfirmCost;
         private int _ammoConfirmRounds;
         private int _ammoConfirmCardIdx;
-
-        // Vehicle preview (3D showroom)
-        private Vehicle _previewVehicle;
-        private Camera _previewCamera;
-        private float _previewAngle;
-        private float _previewRadius;
-        private float _previewHeight;
-        private float _previewZoom = 1.0f;
-        private string _previewModel;
-        private string _previewDisplayName;
-        private string _previewManufacturer;
-        private int _previewPrice;
-        private static readonly Vector3 PREVIEW_POS = new Vector3(0f, 0f, 1000f);
-        private const float AUTO_ORBIT_SPEED = 0.4f; // radians per second
-        private const float MANUAL_ORBIT_SPEED = 2.5f;
-        private const float ZOOM_SPEED = 0.1f;
-        private const float ZOOM_MIN = 0.5f;
-        private const float ZOOM_MAX = 2.0f;
 
         // ------------------------------------------------------------------ //
         //  Constructor                                                        //
@@ -297,7 +302,6 @@ namespace ALLIN1
             }
             else
             {
-                ClosePreview();
                 ReleaseAllDicts();
                 _state = BrowserState.Closed;
             }
@@ -305,7 +309,6 @@ namespace ALLIN1
 
         internal void Close()
         {
-            ClosePreview();
             ReleaseAllDicts();
             _state = BrowserState.Closed;
         }
@@ -321,7 +324,6 @@ namespace ALLIN1
 
             if (Game.Player.Character.IsDead || Game.IsLoading)
             {
-                ClosePreview();
                 ReleaseAllDicts();
                 _state = BrowserState.Closed;
                 return;
@@ -339,13 +341,7 @@ namespace ALLIN1
                 });
             }
 
-            // Preview and delivery states handle their own background
-            if (_state != BrowserState.VehiclePreview &&
-                _state != BrowserState.DeliveryConfirm ||
-                _state == BrowserState.DeliveryConfirm && _previewVehicle == null)
-            {
-                GbayRenderer.DrawScrim();
-            }
+            GbayRenderer.DrawScrim();
 
             switch (_state)
             {
@@ -358,14 +354,7 @@ namespace ALLIN1
                 case BrowserState.VehicleBrowser:
                     DrawBrowser(input);
                     break;
-                case BrowserState.VehiclePreview:
-                    DrawPreview(input);
-                    break;
                 case BrowserState.DeliveryConfirm:
-                    if (_previewVehicle != null)
-                        UpdatePreviewCamera(); // keep camera orbiting behind modal
-                    else
-                        DrawBrowser(new FrameInput());
                     DrawDeliveryModal(input);
                     break;
                 case BrowserState.GarageView:
@@ -578,10 +567,13 @@ namespace ALLIN1
                 {
                     _state = BrowserState.GarageView;
                     _garageVehicleIdx = 0;
+                    _garagePane = 0;
+                    _garageLocationScrollOffset = 0;
                     _garageLocationIndex = GarageManager.IsPlayerInFloorGarage ? 1
                         : GarageManager.IsPlayerInDavisGarage ? 2
                         : GarageManager.IsPlayerInGarmentGarage ? 3
-                        : GarageManager.IsPlayerInRuralGarage ? 4 : 0;
+                        : GarageManager.IsPlayerInRuralGarage ? 4
+                        : GarageManager.IsPlayerInPaletoGarage ? 5 : 0;
                 }
                 else if (activateIdx == 4)
                 {
@@ -668,6 +660,7 @@ namespace ALLIN1
                     : GarageManager.IsPlayerInDavisGarage ? "Davis Auto Shop"
                     : GarageManager.IsPlayerInGarmentGarage ? "Garment Factory"
                     : GarageManager.IsPlayerInRuralGarage ? "Grapeseed Garage"
+                    : GarageManager.IsPlayerInPaletoGarage ? "Paleto Bay Garage"
                     : GarageManager.IsInGarage ? "Eclipse Garage" : "outside"),
                 "Traffic: " + TrafficSpawner.ManagedVehicleCount + " managed, " +
                     Math.Round(TrafficSpawner.SmoothedFps) + " FPS" +
@@ -910,9 +903,10 @@ namespace ALLIN1
                 GbayRenderer.DrawRect(cx, topAreaCY, cardW - 0.004f, topAreaH - 0.004f,
                     topColor);
 
-                string className = VehicleList.ClassNames.ContainsKey(card.Model)
-                    ? VehicleList.ClassNames[card.Model]
-                    : "";
+                string className = WorldAssetList.IsWorldAsset(card.Model)
+                    ? WorldAssetList.ClassName(card.Model)
+                    : VehicleList.ClassNames.ContainsKey(card.Model)
+                        ? VehicleList.ClassNames[card.Model] : "";
                 if (className.Length > 0)
                 {
                     GbayRenderer.DrawText(className, cx, top + topAreaH * 0.35f,
@@ -1169,7 +1163,8 @@ namespace ALLIN1
                 if (idx < _filtered.Count)
                 {
                     VehicleCard card = _filtered[idx];
-                    OpenPreview(card);
+                    GbayPreferences.RecordVehicle(card.Model);
+                    OpenDeliveryConfirm(card.Model, card.Price);
                 }
             }
         }
@@ -1178,10 +1173,102 @@ namespace ALLIN1
         //  Delivery Confirm Modal                                             //
         // ------------------------------------------------------------------ //
 
+        private static int GetGarageUsedSlots(int location)
+        {
+            switch (location)
+            {
+                case 1: return GarageManager.GetFloorGarageUsedSlots();
+                case 2: return GarageManager.GetDavisGarageUsedSlots();
+                case 3: return GarageManager.GetGarmentGarageUsedSlots();
+                case 4: return GarageManager.GetRuralGarageUsedSlots();
+                case 5: return GarageManager.GetPaletoGarageUsedSlots();
+                case 6: return GarageManager.GetYachtHelipadUsedSlots();
+                default: return GarageManager.GetUsedSlots();
+            }
+        }
+
+        private static int GetGarageCapacity(int location)
+        {
+            switch (location)
+            {
+                case 1: return GarageManager.GetFloorGarageCapacity();
+                case 2: return GarageManager.GetDavisGarageCapacity();
+                case 3: return GarageManager.GetGarmentGarageCapacity();
+                case 4: return GarageManager.GetRuralGarageCapacity();
+                case 5: return GarageManager.GetPaletoGarageCapacity();
+                case 6: return GarageManager.GetYachtHelipadCapacity();
+                default: return GarageManager.GetCapacity();
+            }
+        }
+
+        private static List<GarageManager.StoredVehicle> GetGarageVehicles(int location)
+        {
+            switch (location)
+            {
+                case 1: return GarageManager.GetFloorGarageStoredVehicles();
+                case 2: return GarageManager.GetDavisGarageStoredVehicles();
+                case 3: return GarageManager.GetGarmentGarageStoredVehicles();
+                case 4: return GarageManager.GetRuralGarageStoredVehicles();
+                case 5: return GarageManager.GetPaletoGarageStoredVehicles();
+                case 6: return GarageManager.GetYachtHelipadStoredVehicles();
+                default: return GarageManager.GetStoredVehicles();
+            }
+        }
+
+        private static bool GarageAcceptsVehicle(int location, string model)
+        {
+            if (location == YACHT_HELIPAD_INDEX)
+                return YachtManager.FeaturesUnlocked &&
+                    GarageManager.IsYachtHelipadVehicleEligible(model);
+            int maximumSizeTier = location == HARMONY_GARAGE_INDEX ? 2 : 1;
+            return VehicleList.GetSizeTier(model) <= maximumSizeTier;
+        }
+
+        private static int CurrentGarageLocation()
+        {
+            if (GarageManager.IsPlayerInFloorGarage) return 1;
+            if (GarageManager.IsPlayerInDavisGarage) return 2;
+            if (GarageManager.IsPlayerInGarmentGarage) return 3;
+            if (GarageManager.IsPlayerInRuralGarage) return 4;
+            if (GarageManager.IsPlayerInPaletoGarage) return 5;
+            return 0;
+        }
+
+        private void ExecuteVehicleDelivery(int location)
+        {
+            switch (location)
+            {
+                case 1:
+                    _shop.ExecuteDeliverToFloorGarage(_pendingModel, _pendingPrice);
+                    break;
+                case 2:
+                    _shop.ExecuteDeliverToDavisGarage(_pendingModel, _pendingPrice);
+                    break;
+                case 3:
+                    _shop.ExecuteDeliverToGarmentGarage(_pendingModel, _pendingPrice);
+                    break;
+                case 4:
+                    _shop.ExecuteDeliverToRuralGarage(_pendingModel, _pendingPrice);
+                    break;
+                case 5:
+                    _shop.ExecuteDeliverToPaletoGarage(_pendingModel, _pendingPrice);
+                    break;
+                case 6:
+                    _shop.ExecuteDeliverToYachtHelipad(_pendingModel, _pendingPrice);
+                    break;
+                default:
+                    _shop.ExecuteDeliverToGarage(_pendingModel, _pendingPrice);
+                    break;
+            }
+        }
+
         private void OpenDeliveryConfirm(string model, int price)
         {
+            bool worldAsset = WorldAssetList.IsWorldAsset(model);
+
             // Check funds
-            if (!_shop.FreeMode && price > 0 && Game.Player.Money < price)
+            if ((!worldAsset || !_shop.IsWorldAssetOwned(model)) &&
+                !_shop.FreeMode && price > 0 && Game.Player.Money < price)
             {
                 GbayRenderer.PlayError();
                 GTA.UI.Screen.ShowSubtitle(
@@ -1193,9 +1280,16 @@ namespace ALLIN1
 
             _pendingModel = model;
             _pendingPrice = price;
-            _deliveryGarageIndex = GarageManager.IsPlayerInDavisGarage ? 1
-                : GarageManager.IsPlayerInGarmentGarage ? 2
-                : GarageManager.IsPlayerInRuralGarage ? 3 : 0;
+            if (worldAsset)
+            {
+                GbayRenderer.PlaySelect();
+                _state = BrowserState.DeliveryConfirm;
+                return;
+            }
+
+            _deliveryGarageIndex = CurrentGarageLocation();
+            if (!GarageAcceptsVehicle(_deliveryGarageIndex, model))
+                _deliveryGarageIndex = HARMONY_GARAGE_INDEX;
 
             GbayRenderer.PlaySelect();
             _state = BrowserState.DeliveryConfirm;
@@ -1203,11 +1297,17 @@ namespace ALLIN1
 
         private void DrawDeliveryModal(FrameInput input)
         {
+            if (WorldAssetList.IsWorldAsset(_pendingModel))
+            {
+                DrawWorldAssetModal(input);
+                return;
+            }
+
             // Modal scrim
             GbayRenderer.DrawRect(0.5f, 0.5f, 1f, 1f, GbayRenderer.ModalScrim);
 
             // Modal panel
-            float modalH = 0.26f;
+            float modalH = 0.62f;
             float modalTop = 0.5f - modalH / 2f;
 
             GbayRenderer.DrawBorderedRect(BROWSER_CX, 0.5f, MODAL_W, modalH,
@@ -1226,78 +1326,79 @@ namespace ALLIN1
             GbayRenderer.DrawText(priceText, BROWSER_CX, modalTop + 0.06f,
                 0.30f, GbayRenderer.TextPrice, GbayRenderer.FONT_CHALET, true);
 
-            bool oversized = VehicleList.GetSizeTier(_pendingModel) == 2;
-            float garageArrowY = modalTop + 0.105f;
-            float garageLeftX = BROWSER_CX - 0.19f;
-            float garageRightX = BROWSER_CX + 0.19f;
-            bool garageLeftHover = !oversized && GbayRenderer.HitTest(
-                input.MouseX, input.MouseY, garageLeftX, garageArrowY, 0.035f, 0.035f);
-            bool garageRightHover = !oversized && GbayRenderer.HitTest(
-                input.MouseX, input.MouseY, garageRightX, garageArrowY, 0.035f, 0.035f);
-            if (!oversized && (input.DirX != 0 || input.CategoryPrev ||
-                input.CategoryNext || input.MouseClick &&
-                (garageLeftHover || garageRightHover)))
+            GbayRenderer.DrawText("CHOOSE DESTINATION GARAGE", BROWSER_CX,
+                modalTop + 0.095f, 0.27f, GbayRenderer.TextMfg,
+                GbayRenderer.FONT_CONDENSED, true);
+
+            if (input.DirY != 0 || input.ScrollDelta != 0)
             {
-                int direction = input.DirX != 0 ? input.DirX
-                    : input.CategoryNext || garageRightHover ? 1 : -1;
-                _deliveryGarageIndex = (_deliveryGarageIndex + direction + 4) % 4;
+                int direction = input.DirY != 0 ? input.DirY : input.ScrollDelta;
+                _deliveryGarageIndex = (_deliveryGarageIndex + direction +
+                    GARAGE_LOCATION_NAMES.Length) % GARAGE_LOCATION_NAMES.Length;
                 GbayRenderer.PlayNav();
             }
 
-            // Standard vehicles can target any compatible local garage.
-            // Oversized vehicles continue to route to the Harmony Garage.
-            int used = oversized ? GarageManager.GetFloorGarageUsedSlots()
-                : _deliveryGarageIndex == 1
-                    ? GarageManager.GetDavisGarageUsedSlots()
-                    : _deliveryGarageIndex == 2
-                        ? GarageManager.GetGarmentGarageUsedSlots()
-                    : _deliveryGarageIndex == 3
-                        ? GarageManager.GetRuralGarageUsedSlots()
-                    : GarageManager.GetUsedSlots();
-            int cap = oversized ? GarageManager.GetFloorGarageCapacity()
-                : _deliveryGarageIndex == 1
-                    ? GarageManager.GetDavisGarageCapacity()
-                    : _deliveryGarageIndex == 2
-                        ? GarageManager.GetGarmentGarageCapacity()
-                    : _deliveryGarageIndex == 3
-                        ? GarageManager.GetRuralGarageCapacity()
-                    : GarageManager.GetCapacity();
+            const float destinationRowH = 0.055f;
+            const float destinationRowW = 0.38f;
+            float destinationTop = modalTop + 0.125f;
+            for (int i = 0; i < GARAGE_LOCATION_NAMES.Length; i++)
+            {
+                int usedForRow = GetGarageUsedSlots(i);
+                int capacityForRow = GetGarageCapacity(i);
+                bool compatibleForRow = GarageAcceptsVehicle(i, _pendingModel);
+                bool fullForRow = usedForRow >= capacityForRow;
+                float rowCY = destinationTop + i * destinationRowH +
+                    destinationRowH / 2f;
+                bool hover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
+                    BROWSER_CX, rowCY, destinationRowW, destinationRowH - 0.005f);
+                bool selected = i == _deliveryGarageIndex;
+                Color fill = selected ? GbayRenderer.CardSelected
+                    : hover ? GbayRenderer.CardHover : GbayRenderer.CardBg;
+                if (selected)
+                    DrawFocusedRect(BROWSER_CX, rowCY, destinationRowW,
+                        destinationRowH - 0.006f, fill);
+                else
+                    GbayRenderer.DrawBorderedRect(BROWSER_CX, rowCY,
+                        destinationRowW, destinationRowH - 0.006f, fill,
+                        GbayRenderer.CardBorder, 0.002f);
+
+                bool yachtLocked = i == YACHT_HELIPAD_INDEX &&
+                    !YachtManager.FeaturesUnlocked;
+                bool yachtWrongType = i == YACHT_HELIPAD_INDEX &&
+                    YachtManager.FeaturesUnlocked &&
+                    !GarageManager.IsYachtHelipadVehicleEligible(_pendingModel);
+                string status = yachtLocked ? "YACHT REQUIRED"
+                    : yachtWrongType ? "YACHT HELIS ONLY"
+                    : !compatibleForRow ? "TOO LARGE"
+                    : fullForRow ? $"FULL {usedForRow}/{capacityForRow}"
+                    : $"{usedForRow}/{capacityForRow} USED";
+                Color statusColor = !compatibleForRow || fullForRow
+                    ? Color.FromArgb(255, 190, 75, 75) : GbayRenderer.TextPrice;
+                GbayRenderer.DrawTextFit(GARAGE_LOCATION_NAMES[i],
+                    BROWSER_CX - destinationRowW / 2f + 0.014f,
+                    rowCY - 0.014f, 0.29f, 0.21f, 0.19f,
+                    GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+                GbayRenderer.DrawTextFit(status,
+                    BROWSER_CX + destinationRowW / 2f - 0.014f,
+                    rowCY - 0.013f, 0.25f, 0.17f, 0.16f,
+                    statusColor, GbayRenderer.FONT_CONDENSED,
+                    false, false, true);
+
+                if (hover && input.MouseClick && !selected)
+                {
+                    _deliveryGarageIndex = i;
+                    GbayRenderer.PlayNav();
+                }
+            }
+
+            int used = GetGarageUsedSlots(_deliveryGarageIndex);
+            int cap = GetGarageCapacity(_deliveryGarageIndex);
+            bool compatible = GarageAcceptsVehicle(
+                _deliveryGarageIndex, _pendingModel);
             bool isFull = used >= cap;
-            string garageName = oversized ? "Harmony Garage"
-                : _deliveryGarageIndex == 1 ? "Davis Auto Shop"
-                : _deliveryGarageIndex == 2 ? "Garment Factory"
-                : _deliveryGarageIndex == 3 ? "Grapeseed Garage" : "Eclipse Garage";
-            string garageInfo = $"{garageName} ({used}/{cap})";
-            Color garageColor = isFull ? GbayRenderer.TextDim : GbayRenderer.TextDark;
-            GbayRenderer.DrawText(garageInfo, BROWSER_CX, modalTop + 0.09f,
-                0.32f, garageColor, GbayRenderer.FONT_CHALET, true);
+            bool canDeliver = compatible && !isFull;
 
-            if (!oversized)
-            {
-                GbayRenderer.DrawBorderedRect(garageLeftX, garageArrowY,
-                    0.035f, 0.035f,
-                    garageLeftHover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen,
-                    GbayRenderer.CardBorderSel, 0.002f);
-                GbayRenderer.DrawBorderedRect(garageRightX, garageArrowY,
-                    0.035f, 0.035f,
-                    garageRightHover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen,
-                    GbayRenderer.CardBorderSel, 0.002f);
-                GbayRenderer.DrawText("<", garageLeftX, garageArrowY - 0.013f,
-                    0.28f, GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
-                GbayRenderer.DrawText(">", garageRightX, garageArrowY - 0.013f,
-                    0.28f, GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
-                GbayRenderer.DrawText("Left/Right or Z/X: Choose garage",
-                    BROWSER_CX, modalTop + 0.125f, 0.24f,
-                    GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
-            }
-
-            if (isFull)
-            {
-                GbayRenderer.DrawText("The garage is full.", BROWSER_CX, modalTop + 0.155f,
-                    0.28f, Color.FromArgb(255, 200, 80, 80), GbayRenderer.FONT_CONDENSED, true);
-            }
-
-            float actionY = modalTop + 0.215f;
+            float actionY = modalTop + 0.565f;
             float actionW = 0.15f;
             float confirmX = BROWSER_CX - 0.09f;
             float backX = BROWSER_CX + 0.09f;
@@ -1305,7 +1406,7 @@ namespace ALLIN1
                 confirmX, actionY, actionW, BACK_BTN_H);
             bool backHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
                 backX, actionY, actionW, BACK_BTN_H);
-            Color confirmFill = isFull ? GbayRenderer.BtnGray
+            Color confirmFill = !canDeliver ? GbayRenderer.BtnGray
                 : confirmHover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen;
             GbayRenderer.DrawBorderedRect(confirmX, actionY, actionW, BACK_BTN_H,
                 confirmFill, confirmHover ? FocusBorderColor() : GbayRenderer.CardBorderSel,
@@ -1320,197 +1421,108 @@ namespace ALLIN1
                 GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
 
             // Accept
-            if ((input.Accept || (input.MouseClick && confirmHover)) && !isFull)
+            if ((input.Accept || (input.MouseClick && confirmHover)) && canDeliver)
             {
                 GbayRenderer.PlaySelect();
-                if (oversized)
-                    _shop.ExecuteDeliverToFloorGarage(_pendingModel, _pendingPrice);
-                else if (_deliveryGarageIndex == 1)
-                    _shop.ExecuteDeliverToDavisGarage(_pendingModel, _pendingPrice);
-                else if (_deliveryGarageIndex == 2)
-                    _shop.ExecuteDeliverToGarmentGarage(_pendingModel, _pendingPrice);
-                else if (_deliveryGarageIndex == 3)
-                    _shop.ExecuteDeliverToRuralGarage(_pendingModel, _pendingPrice);
-                else
-                    _shop.ExecuteDeliverToGarage(_pendingModel, _pendingPrice);
-                ClosePreview();
+                ExecuteVehicleDelivery(_deliveryGarageIndex);
                 _state = BrowserState.VehicleBrowser;
+            }
+            else if ((input.Accept || (input.MouseClick && confirmHover)) &&
+                !canDeliver)
+            {
+                GbayRenderer.PlayError();
+                GTA.UI.Screen.ShowSubtitle(!compatible
+                    ? _deliveryGarageIndex == YACHT_HELIPAD_INDEX
+                        ? !YachtManager.FeaturesUnlocked
+                            ? "~r~Purchase the Galaxy Super Yacht first."
+                            : "~r~The yacht accepts only its Swift Deluxe or SuperVolito Carbon."
+                        : "~r~That vehicle is too large for the selected garage."
+                    : "~r~The selected garage is full.", 3000);
             }
 
             if (input.Back || input.MouseRightClick || (input.MouseClick && backHover))
             {
                 GbayRenderer.PlayBack();
-                _state = _previewVehicle != null
-                    ? BrowserState.VehiclePreview
-                    : BrowserState.VehicleBrowser;
+                _state = BrowserState.VehicleBrowser;
             }
         }
 
-        // ------------------------------------------------------------------ //
-        //  Vehicle Preview (3D Showroom)                                      //
-        // ------------------------------------------------------------------ //
-
-        private void OpenPreview(VehicleCard card)
+        private void DrawWorldAssetModal(FrameInput input)
         {
-            GbayRenderer.PlaySelect();
-            GbayPreferences.RecordVehicle(card.Model);
+            GbayRenderer.DrawRect(0.5f, 0.5f, 1f, 1f,
+                GbayRenderer.ModalScrim);
 
-            _previewModel = card.Model;
-            _previewDisplayName = card.DisplayName;
-            _previewManufacturer = card.Manufacturer;
-            _previewPrice = card.Price;
-            _previewAngle = 0f;
-            _previewZoom = 1.0f;
+            const float modalH = 0.34f;
+            const float actionY = 0.60f;
+            GbayRenderer.DrawBorderedRect(BROWSER_CX, 0.5f, MODAL_W, modalH,
+                GbayRenderer.ModalBg, GbayRenderer.CardBorderSel, 0.003f);
 
-            // Load model and get dimensions for camera framing
-            var model = new Model(_previewModel);
-            model.Request(5000);
-            int hash = model.Hash;
+            string name = WorldAssetList.DisplayName(_pendingModel);
+            bool owned = _shop.IsWorldAssetOwned(_pendingModel);
+            GbayRenderer.DrawTitleBadge(name, BROWSER_CX, 0.375f,
+                0.34f, 0.05f, 0.35f, GbayRenderer.FONT_CHALET);
+            GbayRenderer.DrawText(
+                owned ? "OWNED - FEATURES UNLOCKED"
+                    : _shop.FreeMode ? "FREE" : $"${_pendingPrice:N0}",
+                BROWSER_CX, 0.417f, 0.31f,
+                owned ? GbayRenderer.TextPrice : GbayRenderer.TextDark,
+                GbayRenderer.FONT_CHALET, true);
+            GbayRenderer.DrawTextFit(
+                "Permanent world property - not delivered to a garage.",
+                BROWSER_CX, 0.468f, 0.28f, 0.20f, MODAL_W - 0.055f,
+                GbayRenderer.TextDim, GbayRenderer.FONT_CHALET, true, true);
+            GbayRenderer.DrawTextFit(
+                "Purchase unlocks yacht interactions and specialized storage.",
+                BROWSER_CX, 0.505f, 0.28f, 0.20f, MODAL_W - 0.055f,
+                GbayRenderer.TextDim, GbayRenderer.FONT_CHALET, true, true);
 
-            OutputArgument minArg = new OutputArgument();
-            OutputArgument maxArg = new OutputArgument();
-            Function.Call(Hash.GET_MODEL_DIMENSIONS, hash, minArg, maxArg);
-            Vector3 vMin = minArg.GetResult<Vector3>();
-            Vector3 vMax = maxArg.GetResult<Vector3>();
+            float confirmX = BROWSER_CX - 0.09f;
+            float backX = BROWSER_CX + 0.09f;
+            const float actionW = 0.15f;
+            bool confirmHover = !owned && GbayRenderer.HitTest(
+                input.MouseX, input.MouseY, confirmX, actionY,
+                actionW, BACK_BTN_H);
+            bool backHover = GbayRenderer.HitTest(
+                input.MouseX, input.MouseY, backX, actionY,
+                actionW, BACK_BTN_H);
+            GbayRenderer.DrawBorderedRect(confirmX, actionY, actionW, BACK_BTN_H,
+                owned ? GbayRenderer.BtnGray
+                    : confirmHover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen,
+                confirmHover ? FocusBorderColor() : GbayRenderer.CardBorderSel,
+                confirmHover ? FocusBorderWidth() : 0.002f);
+            GbayRenderer.DrawText(owned ? "Owned" : "Purchase", confirmX,
+                actionY - 0.014f, 0.28f, GbayRenderer.TextWhite,
+                GbayRenderer.FONT_CHALET, true);
+            GbayRenderer.DrawBorderedRect(backX, actionY, actionW, BACK_BTN_H,
+                backHover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen,
+                backHover ? FocusBorderColor() : GbayRenderer.CardBorderSel,
+                backHover ? FocusBorderWidth() : 0.002f);
+            GbayRenderer.DrawText("Back", backX, actionY - 0.014f, 0.28f,
+                GbayRenderer.TextWhite, GbayRenderer.FONT_CHALET, true);
 
-            float length = Math.Max(vMax.Y - vMin.Y, 3f);
-            float width = Math.Max(vMax.X - vMin.X, 2f);
-            float height = Math.Max(vMax.Z - vMin.Z, 1.5f);
-            float extent = (float)Math.Sqrt(length * length + width * width);
-
-            _previewRadius = extent * 1.2f;
-            _previewHeight = height * 0.5f;
-
-            // Spawn vehicle at preview position
-            _previewVehicle = VehicleHelper.CreateVehicle(
-                _previewModel, PREVIEW_POS, 0f);
-
-            if (_previewVehicle == null)
+            if ((input.Accept || (input.MouseClick && confirmHover)) && !owned)
+            {
+                if (_shop.ExecutePurchaseWorldAsset(_pendingModel, _pendingPrice))
+                {
+                    GbayRenderer.PlaySelect();
+                    _state = BrowserState.VehicleBrowser;
+                    RebuildFilteredList();
+                }
+                else
+                {
+                    GbayRenderer.PlayError();
+                }
+            }
+            else if (input.Accept && owned)
             {
                 GbayRenderer.PlayError();
-                GTA.UI.Screen.ShowSubtitle("~r~Failed to load vehicle model.", 3000);
-                return;
             }
 
-            _previewVehicle.IsPositionFrozen = true;
-            _previewVehicle.IsCollisionEnabled = false;
-            _previewVehicle.IsInvincible = true;
-            Function.Call(Hash.SET_VEHICLE_DIRT_LEVEL, _previewVehicle, 0f);
-            Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, _previewVehicle);
-
-            // Create camera
-            Vector3 camPos = GetOrbitPosition();
-            _previewCamera = World.CreateCamera(camPos, Vector3.Zero, 50f);
-            _previewCamera.PointAt(_previewVehicle);
-            World.RenderingCamera = _previewCamera;
-
-            _state = BrowserState.VehiclePreview;
-        }
-
-        private Vector3 GetOrbitPosition()
-        {
-            float r = _previewRadius * _previewZoom;
-            float x = PREVIEW_POS.X + r * (float)Math.Cos(_previewAngle);
-            float y = PREVIEW_POS.Y + r * (float)Math.Sin(_previewAngle);
-            float z = PREVIEW_POS.Z + _previewHeight;
-            return new Vector3(x, y, z);
-        }
-
-        private void UpdatePreviewCamera()
-        {
-            if (_previewCamera == null || _previewVehicle == null)
-                return;
-
-            // Auto-orbit
-            _previewAngle += Game.LastFrameTime * AUTO_ORBIT_SPEED;
-
-            _previewCamera.Position = GetOrbitPosition();
-            _previewCamera.PointAt(_previewVehicle);
-        }
-
-        private void DrawPreview(FrameInput input)
-        {
-            if (_previewVehicle == null || _previewCamera == null)
-            {
-                _state = BrowserState.VehicleBrowser;
-                return;
-            }
-
-            // Manual orbit (Left/Right arrows or mouse drag)
-            if (input.DirX != 0)
-                _previewAngle += input.DirX * MANUAL_ORBIT_SPEED * Game.LastFrameTime * 4f;
-
-            // Zoom (Q/E or scroll)
-            if (input.PageLeft)
-                _previewZoom = Math.Max(ZOOM_MIN, _previewZoom - ZOOM_SPEED);
-            if (input.PageRight)
-                _previewZoom = Math.Min(ZOOM_MAX, _previewZoom + ZOOM_SPEED);
-
-            // Auto orbit + update camera
-            UpdatePreviewCamera();
-
-            // --- HUD overlay on top of 3D view ---
-
-            // Top bar with vehicle info
-            float barH = 0.09f;
-            GbayRenderer.DrawRect(0.5f, barH / 2f, 1f, barH,
-                Color.FromArgb(180, 0, 0, 0));
-
-            // Manufacturer (small, above name)
-            GbayRenderer.DrawText(_previewManufacturer, 0.04f, 0.026f,
-                0.30f, GbayRenderer.TextWhite, GbayRenderer.FONT_CONDENSED);
-
-            // Vehicle name
-            GbayRenderer.DrawTitleBadge(_previewDisplayName, 0.5f, 0.045f,
-                0.40f, 0.064f, 0.48f, GbayRenderer.FONT_CHALET);
-
-            // Price (right side)
-            string priceText = _previewPrice <= 0 ? "FREE" : $"${_previewPrice:N0}";
-            GbayRenderer.DrawText(priceText, 0.92f, 0.025f,
-                0.42f, GbayRenderer.TextPrice, GbayRenderer.FONT_CHALET,
-                false, false, true);
-
-            // Bottom bar with controls and the same centered Back action used
-            // throughout GBAY.
-            float footerY = 0.93f;
-            float footerH = 0.07f;
-            GbayRenderer.DrawRect(0.5f, footerY + footerH / 2f, 1f, footerH,
-                Color.FromArgb(180, 0, 0, 0));
-            DrawControlHint("LEFT/RIGHT ROTATE   Q/E ZOOM",
-                0.40f, footerY + footerH / 2f, 0.35f, 0.042f);
-            DrawControlHint("ENTER PURCHASE",
-                0.97f, footerY + footerH / 2f, 0.22f, 0.042f);
-            bool backClicked = DrawCenteredBackButton(
-                input, footerY + footerH / 2f, 0.14f, "Back", false);
-
-            // Input: Buy
-            if (input.Accept)
-            {
-                OpenDeliveryConfirm(_previewModel, _previewPrice);
-            }
-
-            // Input: Back
-            if (input.Back || input.MouseRightClick || backClicked)
+            if (input.Back || input.MouseRightClick ||
+                (input.MouseClick && backHover))
             {
                 GbayRenderer.PlayBack();
-                ClosePreview();
                 _state = BrowserState.VehicleBrowser;
-            }
-        }
-
-        private void ClosePreview()
-        {
-            if (_previewCamera != null)
-            {
-                World.RenderingCamera = null;
-                _previewCamera.Delete();
-                _previewCamera = null;
-            }
-
-            if (_previewVehicle != null)
-            {
-                _previewVehicle.Delete();
-                _previewVehicle = null;
             }
         }
 
@@ -1520,13 +1532,10 @@ namespace ALLIN1
 
         private void DrawGarageView(FrameInput input)
         {
-            // Background
             float bgCY = (BROWSER_TOP + BROWSER_BOTTOM) / 2f;
             float bgH = BROWSER_BOTTOM - BROWSER_TOP;
             GbayRenderer.DrawRect(BROWSER_CX, bgCY, BROWSER_W, bgH,
                 GbayRenderer.BodyBg);
-
-            // Header
             GbayRenderer.DrawRect(BROWSER_CX, HEADER_CY, BROWSER_W, HEADER_H,
                 GbayRenderer.HeaderBg);
             GbayRenderer.DrawGbayWordmark(
@@ -1534,55 +1543,123 @@ namespace ALLIN1
             GbayRenderer.DrawTitleBadge(
                 "MY GARAGE", BROWSER_LEFT + 0.19f, HEADER_CY,
                 0.19f, 0.044f, 0.35f);
+            const float leftPanelW = 0.25f;
+            const float panelGap = 0.015f;
+            const float rightPanelW = 0.535f;
+            const float panelTop = 0.12f;
+            const float panelBottom = 0.87f;
+            const float panelHeaderH = 0.055f;
+            const float leftRowH = 0.070f;
+            const float vehicleRowH = 0.058f;
+            const int visibleGarageRows = 9;
+            const int visibleVehicleRows = 11;
+            float leftPanelX = BROWSER_LEFT + 0.02f + leftPanelW / 2f;
+            float rightPanelX = BROWSER_LEFT + 0.02f + leftPanelW + panelGap +
+                rightPanelW / 2f;
+            float panelCY = (panelTop + panelBottom) / 2f;
+            float panelH = panelBottom - panelTop;
 
-            DrawGarageLocationTabs(input);
+            GbayRenderer.DrawBorderedRect(leftPanelX, panelCY, leftPanelW, panelH,
+                GbayRenderer.CardBg, GbayRenderer.CardBorder, 0.002f);
+            GbayRenderer.DrawBorderedRect(rightPanelX, panelCY, rightPanelW, panelH,
+                GbayRenderer.CardBg, GbayRenderer.CardBorder, 0.002f);
+            GbayRenderer.DrawRect(leftPanelX, panelTop + panelHeaderH / 2f,
+                leftPanelW, panelHeaderH, GbayRenderer.BtnGreen);
+            GbayRenderer.DrawRect(rightPanelX, panelTop + panelHeaderH / 2f,
+                rightPanelW, panelHeaderH, GbayRenderer.BtnGreen);
+            GbayRenderer.DrawText("GARAGES", leftPanelX,
+                panelTop + 0.014f, 0.31f, GbayRenderer.TextWhite,
+                GbayRenderer.FONT_CONDENSED, true);
 
-            bool floorGarage = _garageLocationIndex == 1;
-            bool davisGarage = _garageLocationIndex == 2;
-            bool garmentGarage = _garageLocationIndex == 3;
-            bool ruralGarage = _garageLocationIndex == 4;
+            int used = GetGarageUsedSlots(_garageLocationIndex);
+            int cap = GetGarageCapacity(_garageLocationIndex);
+            GbayRenderer.DrawTextFit(
+                $"{GARAGE_LOCATION_NAMES[_garageLocationIndex]}   {used}/{cap} USED",
+                rightPanelX, panelTop + 0.014f, 0.31f, 0.22f,
+                rightPanelW - 0.03f, GbayRenderer.TextWhite,
+                GbayRenderer.FONT_CONDENSED, true);
 
-            // Capacity info (right side of header)
-            int used = floorGarage ? GarageManager.GetFloorGarageUsedSlots()
-                : davisGarage ? GarageManager.GetDavisGarageUsedSlots()
-                : garmentGarage ? GarageManager.GetGarmentGarageUsedSlots()
-                : ruralGarage ? GarageManager.GetRuralGarageUsedSlots()
-                : GarageManager.GetUsedSlots();
-            int cap = floorGarage ? GarageManager.GetFloorGarageCapacity()
-                : davisGarage ? GarageManager.GetDavisGarageCapacity()
-                : garmentGarage ? GarageManager.GetGarmentGarageCapacity()
-                : ruralGarage ? GarageManager.GetRuralGarageCapacity()
-                : GarageManager.GetCapacity();
-            string capText = floorGarage ? $"Harmony Garage ({used}/{cap})"
-                : davisGarage ? $"Davis Auto Shop ({used}/{cap})"
-                : garmentGarage ? $"Garment Factory ({used}/{cap})"
-                : ruralGarage ? $"Grapeseed Garage ({used}/{cap})"
-                : $"Eclipse Garage ({used}/{cap})";
-            GbayRenderer.DrawTextFit(capText, BROWSER_RIGHT - 0.01f, HEADER_Y + 0.018f,
-                0.32f, 0.23f, 0.25f, GbayRenderer.HeaderText,
-                GbayRenderer.FONT_CHALET, false, false, true);
-
-            // Vehicle list
-            var vehicles = floorGarage ? GarageManager.GetFloorGarageStoredVehicles()
-                : davisGarage ? GarageManager.GetDavisGarageStoredVehicles()
-                : garmentGarage ? GarageManager.GetGarmentGarageStoredVehicles()
-                : ruralGarage ? GarageManager.GetRuralGarageStoredVehicles()
-                : GarageManager.GetStoredVehicles();
-
-            float listTop = TAB_Y + TAB_H + 0.015f;
-            float itemH = 0.055f;
-            const int visibleGarageRows = 12;
-
-            _garageHoverIdx = -1;
-
-            // Keyboard and mouse-wheel navigation. The Harmony Garage can
-            // hold 15 vehicles, so keep the selected row inside a scrolling
-            // 12-row viewport.
-            int move = input.DirY != 0 ? input.DirY : input.ScrollDelta;
-            if (move != 0 && vehicles.Count > 0)
+            bool mouseOverLeft = GbayRenderer.HitTest(input.MouseX, input.MouseY,
+                leftPanelX, panelCY, leftPanelW, panelH);
+            bool mouseOverRight = GbayRenderer.HitTest(input.MouseX, input.MouseY,
+                rightPanelX, panelCY, rightPanelW, panelH);
+            if (input.ScrollDelta != 0)
             {
-                int next = Math.Max(0, Math.Min(
-                    vehicles.Count - 1, _garageVehicleIdx + move));
+                if (mouseOverLeft) _garagePane = 0;
+                else if (mouseOverRight) _garagePane = 1;
+            }
+            if (input.DirX > 0 && _garagePane == 0)
+            {
+                _garagePane = 1;
+                GbayRenderer.PlayNav();
+            }
+            else if (input.DirX < 0 && _garagePane == 1)
+            {
+                _garagePane = 0;
+                GbayRenderer.PlayNav();
+            }
+
+            int verticalMove = input.DirY != 0 ? input.DirY : input.ScrollDelta;
+            if (_garagePane == 0 && verticalMove != 0)
+            {
+                int next = Math.Max(0, Math.Min(GARAGE_LOCATION_NAMES.Length - 1,
+                    _garageLocationIndex + verticalMove));
+                if (next != _garageLocationIndex)
+                    SetGarageLocation(next);
+            }
+
+            _garageLocationScrollOffset = Math.Min(_garageLocationScrollOffset,
+                Math.Max(0, GARAGE_LOCATION_NAMES.Length - visibleGarageRows));
+            if (_garageLocationIndex < _garageLocationScrollOffset)
+                _garageLocationScrollOffset = _garageLocationIndex;
+            if (_garageLocationIndex >= _garageLocationScrollOffset + visibleGarageRows)
+                _garageLocationScrollOffset = _garageLocationIndex - visibleGarageRows + 1;
+
+            float leftRowsTop = panelTop + panelHeaderH + 0.009f;
+            int garageLast = Math.Min(GARAGE_LOCATION_NAMES.Length,
+                _garageLocationScrollOffset + visibleGarageRows);
+            for (int i = _garageLocationScrollOffset; i < garageLast; i++)
+            {
+                float rowCY = leftRowsTop + (i - _garageLocationScrollOffset) *
+                    leftRowH + leftRowH / 2f;
+                bool hover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
+                    leftPanelX, rowCY, leftPanelW - 0.014f, leftRowH - 0.006f);
+                bool selected = i == _garageLocationIndex;
+                Color fill = selected ? GbayRenderer.CardSelected
+                    : hover ? GbayRenderer.CardHover : GbayRenderer.CardBg;
+                if (selected && _garagePane == 0)
+                    DrawFocusedRect(leftPanelX, rowCY, leftPanelW - 0.014f,
+                        leftRowH - 0.006f, fill);
+                else
+                    GbayRenderer.DrawBorderedRect(leftPanelX, rowCY,
+                        leftPanelW - 0.014f, leftRowH - 0.006f, fill,
+                        GbayRenderer.CardBorder, 0.0015f);
+                int garageUsed = GetGarageUsedSlots(i);
+                int garageCap = GetGarageCapacity(i);
+                GbayRenderer.DrawTextFit(GARAGE_LOCATION_NAMES[i],
+                    leftPanelX - leftPanelW / 2f + 0.014f, rowCY - 0.020f,
+                    0.285f, 0.205f, leftPanelW - 0.085f,
+                    GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
+                GbayRenderer.DrawText($"{garageUsed}/{garageCap}",
+                    leftPanelX + leftPanelW / 2f - 0.016f, rowCY - 0.019f,
+                    0.25f, garageUsed >= garageCap
+                        ? Color.FromArgb(255, 190, 75, 75) : GbayRenderer.TextPrice,
+                    GbayRenderer.FONT_CONDENSED, false, false, true);
+                if (hover && input.MouseClick)
+                {
+                    if (!selected) SetGarageLocation(i);
+                    _garagePane = 0;
+                }
+            }
+
+            List<GarageManager.StoredVehicle> vehicles =
+                GetGarageVehicles(_garageLocationIndex);
+            if (_garageVehicleIdx >= vehicles.Count)
+                _garageVehicleIdx = Math.Max(0, vehicles.Count - 1);
+            if (_garagePane == 1 && verticalMove != 0 && vehicles.Count > 0)
+            {
+                int next = Math.Max(0, Math.Min(vehicles.Count - 1,
+                    _garageVehicleIdx + verticalMove));
                 if (next != _garageVehicleIdx)
                 {
                     _garageVehicleIdx = next;
@@ -1590,89 +1667,93 @@ namespace ALLIN1
                 }
             }
 
-            if (_garageVehicleIdx >= vehicles.Count)
-                _garageVehicleIdx = Math.Max(0, vehicles.Count - 1);
-            int firstVisible = Math.Max(0, _garageVehicleIdx - visibleGarageRows + 1);
-            firstVisible = Math.Min(firstVisible,
-                Math.Max(0, vehicles.Count - visibleGarageRows));
-            int lastVisible = Math.Min(vehicles.Count, firstVisible + visibleGarageRows);
+            int firstVehicle = Math.Max(0,
+                _garageVehicleIdx - visibleVehicleRows + 1);
+            firstVehicle = Math.Min(firstVehicle,
+                Math.Max(0, vehicles.Count - visibleVehicleRows));
+            int lastVehicle = Math.Min(vehicles.Count,
+                firstVehicle + visibleVehicleRows);
+            float vehicleRowsTop = panelTop + panelHeaderH + 0.009f;
+            _garageHoverIdx = -1;
 
             if (vehicles.Count == 0)
             {
-                GbayRenderer.DrawText("No vehicles stored.",
-                    BROWSER_CX, listTop + 0.10f, 0.35f, GbayRenderer.TextDim,
+                bool yachtLocked = _garageLocationIndex == YACHT_HELIPAD_INDEX &&
+                    !YachtManager.FeaturesUnlocked;
+                GbayRenderer.DrawText(yachtLocked
+                    ? "Galaxy Super Yacht required." : "No vehicles stored.", rightPanelX,
+                    vehicleRowsTop + 0.10f, 0.35f, GbayRenderer.TextDim,
                     GbayRenderer.FONT_CHALET, true);
-                string emptyHint = floorGarage
-                    ? "Drive a vehicle inside or deliver one to the Harmony Garage."
-                    : davisGarage
-                        ? "Drive a vehicle inside or choose Davis during GBAY delivery."
-                    : garmentGarage
-                        ? "Drive a vehicle inside or choose Garment Factory during delivery."
-                    : ruralGarage
-                        ? "Drive a vehicle inside or choose Grapeseed during delivery."
-                    : "Purchase a vehicle or drive one inside to store it here.";
-                GbayRenderer.DrawTextFit(emptyHint,
-                    BROWSER_CX, listTop + 0.15f, 0.26f, 0.20f, 0.62f,
-                    GbayRenderer.TextDim, GbayRenderer.FONT_CONDENSED, true);
+                GbayRenderer.DrawTextFit(
+                    yachtLocked
+                        ? "Purchase the yacht in GBAY's Special tab to unlock this helipad."
+                        : _garageLocationIndex == YACHT_HELIPAD_INDEX
+                            ? "Purchase a Swift Deluxe or SuperVolito Carbon and select Yacht Helipad."
+                            : "Drive a vehicle inside or select this garage when purchasing from GBAY.",
+                    rightPanelX, vehicleRowsTop + 0.15f, 0.26f, 0.20f,
+                    rightPanelW - 0.08f, GbayRenderer.TextDim,
+                    GbayRenderer.FONT_CONDENSED, true);
             }
             else
             {
-                for (int i = firstVisible; i < lastVisible; i++)
+                for (int i = firstVehicle; i < lastVehicle; i++)
                 {
-                    var sv = vehicles[i];
-                    float itemY = listTop + (i - firstVisible) * itemH;
-                    float itemCY = itemY + itemH / 2f;
-                    bool isSel = i == _garageVehicleIdx;
-                    bool isHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
-                        BROWSER_CX, itemCY, BROWSER_W - 0.08f, itemH);
+                    GarageManager.StoredVehicle sv = vehicles[i];
+                    float rowCY = vehicleRowsTop + (i - firstVehicle) *
+                        vehicleRowH + vehicleRowH / 2f;
+                    bool hover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
+                        rightPanelX, rowCY, rightPanelW - 0.014f,
+                        vehicleRowH - 0.004f);
+                    bool selected = i == _garageVehicleIdx;
+                    Color fill = selected ? GbayRenderer.CardSelected
+                        : hover ? GbayRenderer.CardHover : GbayRenderer.CardBg;
+                    if (selected && _garagePane == 1)
+                        DrawFocusedRect(rightPanelX, rowCY,
+                            rightPanelW - 0.014f, vehicleRowH - 0.005f, fill);
+                    else
+                        GbayRenderer.DrawBorderedRect(rightPanelX, rowCY,
+                            rightPanelW - 0.014f, vehicleRowH - 0.005f, fill,
+                            GbayRenderer.CardBorder, 0.0015f);
 
-                    if (isHover)
-                        _garageHoverIdx = i;
-
-                    if (isSel)
-                        DrawFocusedRect(BROWSER_CX, itemCY,
-                            BROWSER_W - 0.08f, itemH - 0.006f,
-                            GbayRenderer.CardSelected);
-                    else if (isHover)
-                        GbayRenderer.DrawRect(BROWSER_CX, itemCY,
-                            BROWSER_W - 0.08f, itemH, GbayRenderer.CardHover);
-
-                    string name = GarageManager.GetVehicleDisplayName(
-                        sv.Model, sv.ModelHash);
-
-                    // Slot number
-                    string slotLabel = floorGarage
+                    string slotLabel = _garageLocationIndex == HARMONY_GARAGE_INDEX
                         ? $"F{sv.Slot / 5 + 1}-{sv.Slot % 5 + 1}"
                         : $"#{sv.Slot + 1}";
-                    GbayRenderer.DrawText(slotLabel, BROWSER_LEFT + 0.06f, itemY + 0.012f,
-                        0.28f, GbayRenderer.TextMfg, GbayRenderer.FONT_CONDENSED);
-
-                    // Vehicle name
-                    GbayRenderer.DrawTextFit(name, BROWSER_LEFT + 0.10f, itemY + 0.012f,
-                        0.32f, 0.22f, 0.58f, GbayRenderer.TextDark,
+                    string name = GarageManager.GetVehicleDisplayName(
+                        sv.Model, sv.ModelHash);
+                    GbayRenderer.DrawText(slotLabel,
+                        rightPanelX - rightPanelW / 2f + 0.018f,
+                        rowCY - 0.017f, 0.25f, GbayRenderer.TextMfg,
+                        GbayRenderer.FONT_CONDENSED);
+                    GbayRenderer.DrawTextFit(name,
+                        rightPanelX - rightPanelW / 2f + 0.062f,
+                        rowCY - 0.017f, 0.30f, 0.21f,
+                        rightPanelW - 0.20f, GbayRenderer.TextDark,
                         GbayRenderer.FONT_CHALET);
 
-                    // Sell button
-                    float removeBtnX = BROWSER_RIGHT - 0.08f;
-                    bool removeHover = GbayRenderer.HitTest(input.MouseX, input.MouseY,
-                        removeBtnX, itemCY, 0.08f, itemH);
-
-                    Color removeBg = removeHover
-                        ? Color.FromArgb(255, 200, 60, 60)
-                        : Color.FromArgb(255, 180, 80, 80);
-                    GbayRenderer.DrawRect(removeBtnX, itemCY, 0.07f, itemH - 0.01f,
-                        removeBg);
                     bool protectedStory = GarageManager.IsProtectedStoryVehicle(
                         sv.Model, sv.PlateText, sv.ModelHash);
                     int sellPrice = _shop.GetSellPrice(
                         sv.Model, sv.PlateText, sv.ModelHash);
                     string sellLabel = protectedStory ? "Protected"
                         : sellPrice > 0 ? $"Sell ${sellPrice:N0}" : "Remove";
-                    GbayRenderer.DrawTextFit(sellLabel, removeBtnX, itemY + 0.012f,
-                        0.25f, 0.18f, 0.062f, GbayRenderer.TextWhite,
+                    float sellX = rightPanelX + rightPanelW / 2f - 0.060f;
+                    bool sellHover = GbayRenderer.HitTest(input.MouseX,
+                        input.MouseY, sellX, rowCY, 0.105f, vehicleRowH - 0.012f);
+                    GbayRenderer.DrawRect(sellX, rowCY, 0.105f,
+                        vehicleRowH - 0.012f, sellHover
+                            ? Color.FromArgb(255, 200, 60, 60)
+                            : Color.FromArgb(255, 180, 80, 80));
+                    GbayRenderer.DrawTextFit(sellLabel, sellX, rowCY - 0.013f,
+                        0.235f, 0.18f, 0.095f, GbayRenderer.TextWhite,
                         GbayRenderer.FONT_CONDENSED, true);
 
-                    if (removeHover && input.MouseClick)
+                    if (hover) _garageHoverIdx = i;
+                    if (hover && input.MouseClick)
+                    {
+                        _garageVehicleIdx = i;
+                        _garagePane = 1;
+                    }
+                    if (sellHover && input.MouseClick)
                     {
                         BeginSell(sv.Model, sv.PlateText, sv.ModelHash,
                             i, _garageLocationIndex);
@@ -1681,21 +1762,25 @@ namespace ALLIN1
                 }
             }
 
-            if (_garageHoverIdx >= 0)
-                _garageVehicleIdx = _garageHoverIdx;
-
-            // Keyboard remove
-            if (input.Accept && vehicles.Count > 0 && _garageVehicleIdx < vehicles.Count)
+            if (input.Accept)
             {
-                var selected = vehicles[_garageVehicleIdx];
-                BeginSell(selected.Model, selected.PlateText, selected.ModelHash,
-                    _garageVehicleIdx, _garageLocationIndex);
-                return;
+                if (_garagePane == 0)
+                {
+                    _garagePane = 1;
+                    GbayRenderer.PlaySelect();
+                }
+                else if (vehicles.Count > 0)
+                {
+                    GarageManager.StoredVehicle selected =
+                        vehicles[_garageVehicleIdx];
+                    BeginSell(selected.Model, selected.PlateText,
+                        selected.ModelHash, _garageVehicleIdx,
+                        _garageLocationIndex);
+                    return;
+                }
             }
 
-            // Eclipse Garage uses a fixed Story Mode interior. Harmony and
-            // Davis expose real customization entity sets.
-            bool customizationAvailable = floorGarage || davisGarage;
+            bool customizationAvailable = _garageLocationIndex == 2;
             if (input.PageLeft && customizationAvailable)
             {
                 GbayRenderer.PlaySelect();
@@ -1729,8 +1814,8 @@ namespace ALLIN1
                 ? GbayRenderer.CardBorder
                 : custHover ? GbayRenderer.BtnGreenHover : GbayRenderer.BtnGreen;
             GbayRenderer.DrawRect(custBtnX, FOOTER_CY, custBtnW, FOOTER_H - 0.01f, custBg);
-            string customizeLabel = !customizationAvailable ? "Fixed Interior"
-                : davisGarage ? "Customize Auto Shop" : "Customize Harmony Garage";
+            string customizeLabel = customizationAvailable
+                ? "Customize Auto Shop" : "Fixed Interior";
             GbayRenderer.DrawTextFit(customizeLabel,
                 custBtnX, FOOTER_Y + 0.012f,
                 0.26f, 0.19f, custBtnW - 0.014f,
@@ -1747,59 +1832,22 @@ namespace ALLIN1
             }
 
             DrawControlHint(
-                "ARROWS BROWSE/GARAGE   ENTER SELL   Y RECOVER");
+                "ARROWS SWITCH/BROWSE   ENTER SELECT/SELL   Y RECOVER");
 
             if (input.Back || input.MouseRightClick || backClicked)
             {
                 GbayRenderer.PlayBack();
-                _state = BrowserState.TopMenu;
+                if (_garagePane == 1 && !backClicked)
+                    _garagePane = 0;
+                else
+                    _state = BrowserState.TopMenu;
             }
-        }
-
-        private void DrawGarageLocationTabs(FrameInput input)
-        {
-            const float tabW = 0.132f;
-            float[] tabX =
-            {
-                BROWSER_CX - tabW * 2f, BROWSER_CX - tabW,
-                BROWSER_CX, BROWSER_CX + tabW, BROWSER_CX + tabW * 2f,
-            };
-            string[] labels =
-            {
-                "Eclipse", "Harmony", "Davis Auto Shop", "Garment Factory", "Grapeseed",
-            };
-
-            for (int i = 0; i < labels.Length; i++)
-            {
-                bool hover = GbayRenderer.HitTest(
-                    input.MouseX, input.MouseY, tabX[i], TAB_CY, tabW, TAB_H);
-                if (i == _garageLocationIndex)
-                    DrawFocusedRect(tabX[i], TAB_CY, tabW - 0.006f,
-                        TAB_H - 0.006f, GbayRenderer.BtnGreenHover);
-                else if (hover)
-                    GbayRenderer.DrawRect(
-                        tabX[i], TAB_CY, tabW - 0.004f, TAB_H, GbayRenderer.TabHover);
-                if (i == _garageLocationIndex)
-                    GbayRenderer.DrawRect(tabX[i], TAB_Y + TAB_H - 0.004f,
-                        tabW - 0.01f, 0.004f, GbayRenderer.TabIndicator);
-                GbayRenderer.DrawText(labels[i], tabX[i], TAB_Y + 0.012f, 0.28f,
-                    i == _garageLocationIndex
-                        ? GbayRenderer.TabActive : GbayRenderer.TabInactive,
-                    GbayRenderer.FONT_CONDENSED, true);
-
-                if (hover && input.MouseClick && i != _garageLocationIndex)
-                    SetGarageLocation(i);
-            }
-
-            if ((input.DirX < 0 || input.CategoryPrev) && _garageLocationIndex > 0)
-                SetGarageLocation(_garageLocationIndex - 1);
-            else if ((input.DirX > 0 || input.CategoryNext) && _garageLocationIndex < 4)
-                SetGarageLocation(_garageLocationIndex + 1);
         }
 
         private void SetGarageLocation(int location)
         {
-            _garageLocationIndex = Math.Max(0, Math.Min(4, location));
+            _garageLocationIndex = Math.Max(0,
+                Math.Min(GARAGE_LOCATION_NAMES.Length - 1, location));
             _garageVehicleIdx = 0;
             _garageHoverIdx = -1;
             GbayRenderer.PlayNav();
@@ -1829,21 +1877,34 @@ namespace ALLIN1
 
         private void DrawGarageSellConfirm(FrameInput input)
         {
-            DrawGarageView(new FrameInput());
+            // Do not redraw the garage browser behind the modal. GTA text can
+            // be submitted after native rectangles, which allowed the selected
+            // vehicle row to bleed through the dialog title.
             GbayRenderer.DrawRect(BROWSER_CX, 0.5f, 1f, 1f, GbayRenderer.ModalScrim);
-            GbayRenderer.DrawRect(BROWSER_CX, 0.5f, MODAL_W, 0.30f, GbayRenderer.ModalBg);
+            const float modalH = 0.32f;
+            const float modalTop = 0.34f;
+            GbayRenderer.DrawBorderedRect(BROWSER_CX, 0.5f, MODAL_W, modalH,
+                GbayRenderer.ModalBg, GbayRenderer.CardBorderSel, 0.003f);
             string name = GarageManager.GetVehicleDisplayName(
                 _pendingSellModel, _pendingSellModelHash);
             int value = _shop.GetSellPrice(
                 _pendingSellModel, _pendingSellPlate, _pendingSellModelHash);
             GbayRenderer.DrawTitleBadge(
-                "CONFIRM VEHICLE SALE", BROWSER_CX, 0.405f,
+                "CONFIRM VEHICLE SALE", BROWSER_CX, modalTop + 0.040f,
                 0.30f, 0.055f, 0.40f);
-            GbayRenderer.DrawText(name, BROWSER_CX, 0.46f, 0.38f,
-                GbayRenderer.TextDark, GbayRenderer.FONT_CHALET, true);
-            GbayRenderer.DrawText(value > 0 ? $"Sale value: ${value:N0}" : "Remove from garage (no credit)",
-                BROWSER_CX, 0.52f, 0.34f, GbayRenderer.TextDark, GbayRenderer.FONT_CHALET, true);
-            const float sellActionY = 0.61f;
+            GbayRenderer.DrawTextFit(name, BROWSER_CX, modalTop + 0.095f,
+                0.38f, 0.25f, MODAL_W - 0.07f, GbayRenderer.TextDark,
+                GbayRenderer.FONT_CHALET, true);
+            GbayRenderer.DrawRect(BROWSER_CX, modalTop + 0.145f,
+                MODAL_W - 0.08f, 0.002f, GbayRenderer.CardBorder);
+            GbayRenderer.DrawTextFit(
+                value > 0 ? $"Sale value: ${value:N0}"
+                    : "Remove from garage (no credit)",
+                BROWSER_CX, modalTop + 0.165f, 0.34f, 0.24f,
+                MODAL_W - 0.07f, value > 0 ? GbayRenderer.TextPrice
+                    : GbayRenderer.TextDim,
+                GbayRenderer.FONT_CHALET, true);
+            const float sellActionY = 0.615f;
             const float sellActionW = 0.15f;
             float sellConfirmX = BROWSER_CX - 0.09f;
             float sellBackX = BROWSER_CX + 0.09f;
@@ -2611,9 +2672,14 @@ namespace ALLIN1
             string[] models = activeCategory.Models;
             foreach (string model in models)
             {
-                string displayName = VehicleList.DisplayNames.ContainsKey(model)
-                    ? VehicleList.DisplayNames[model] : model;
-                bool owned = GarageManager.IsVehicleOwned(model);
+                bool worldAsset = WorldAssetList.IsWorldAsset(model);
+                string displayName = worldAsset
+                    ? WorldAssetList.DisplayName(model)
+                    : VehicleList.DisplayNames.ContainsKey(model)
+                        ? VehicleList.DisplayNames[model] : model;
+                bool owned = worldAsset
+                    ? _shop.IsWorldAssetOwned(model)
+                    : GarageManager.IsVehicleOwned(model);
                 if (_vehicleOwnershipFilter == 1 && !owned) continue;
                 if (_vehicleOwnershipFilter == 2 && owned) continue;
                 if (activeCategory.FavoritesOnly &&
@@ -2624,17 +2690,18 @@ namespace ALLIN1
                     continue;
 
                 // Split display name into manufacturer and vehicle name
-                string mfg = "";
+                string mfg = worldAsset
+                    ? WorldAssetList.Manufacturer(model) : "";
                 string name = displayName;
-                int spaceIdx = displayName.IndexOf(' ');
+                int spaceIdx = worldAsset ? -1 : displayName.IndexOf(' ');
                 if (spaceIdx > 0)
                 {
                     mfg = displayName.Substring(0, spaceIdx);
                     name = displayName.Substring(spaceIdx + 1);
                 }
 
-                int price = 0;
-                if (VehicleList.Prices.ContainsKey(model))
+                int price = worldAsset ? WorldAssetList.Price(model) : 0;
+                if (!worldAsset && VehicleList.Prices.ContainsKey(model))
                     price = VehicleList.Prices[model];
 
                 _filtered.Add(new VehicleCard
@@ -2673,7 +2740,7 @@ namespace ALLIN1
                 int count = Math.Min(PAGE_SIZE, _filtered.Count - start);
                 for (int i = 0; i < count; i++)
                 {
-                    if (VehicleList.PreviewDict.TryGetValue(
+                    if (GbayRenderer.TryGetPreviewDict(
                             _filtered[start + i].Model, out string dict))
                         needed.Add(dict);
                 }

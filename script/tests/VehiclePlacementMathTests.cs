@@ -75,5 +75,18 @@ namespace ALLIN1.Tests
                     -100f, offset, nativeRoot));
         }
 
+        [Theory]
+        [InlineData(-99.426f, -99.426f, false)]
+        [InlineData(-99.426f, -99.38f, false)]
+        [InlineData(-99.426f, -98.877f, true)]
+        [InlineData(-99.426f, float.NaN, true)]
+        public void SettledRootCorrection_RejectsInteriorCollisionLift(
+            float targetRootZ, float settledRootZ, bool expected)
+        {
+            Assert.Equal(expected,
+                VehiclePlacementMath.NeedsSettledRootCorrection(
+                    targetRootZ, settledRootZ));
+        }
+
     }
 }

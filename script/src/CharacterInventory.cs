@@ -29,12 +29,13 @@ namespace ALLIN1
 
         public sealed class Inventory
         {
-            public int schema_version { get; set; } = 6;
+            public int schema_version { get; set; } = 7;
             public List<string> weapons { get; set; } = new List<string>();
             public Dictionary<string, int> weapon_ammo { get; set; } =
                 new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             public List<string> gear { get; set; } = new List<string>();
             public List<string> equipped_gear { get; set; } = new List<string>();
+            public List<string> properties { get; set; } = new List<string>();
             public bool managed { get; set; }
             public Outfit outfit { get; set; } = new Outfit();
             public Progress progress { get; set; } = new Progress();
@@ -126,6 +127,20 @@ namespace ALLIN1
                     if (string.Equals(equipped, item, StringComparison.OrdinalIgnoreCase))
                         return true;
                 return false;
+            }
+        }
+
+        internal static bool IsPropertyOwned(string propertyId)
+        {
+            if (string.IsNullOrWhiteSpace(propertyId)) return false;
+            string character = CurrentCharacter();
+            if (character.Length == 0) return false;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory))
+                    return false;
+                NormalizeInventory(inventory);
+                return ContainsIgnoreCase(inventory.properties, propertyId);
             }
         }
 
@@ -350,6 +365,40 @@ namespace ALLIN1
             }
         }
 
+        internal static bool RecordPropertyOwned(string propertyId)
+        {
+            if (string.IsNullOrWhiteSpace(propertyId)) return false;
+            string character = CurrentCharacter();
+            if (character.Length == 0) return false;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory))
+                    _state[character] = inventory = new Inventory();
+                NormalizeInventory(inventory);
+                if (ContainsIgnoreCase(inventory.properties, propertyId))
+                    return true;
+
+                inventory.properties.Add(propertyId);
+                try
+                {
+                    SaveStateLocked();
+                    ClientLog.Info("Character", "property_ownership_synced",
+                        new Dictionary<string, object> {
+                            { "character", character },
+                            { "property", propertyId }
+                        });
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    inventory.properties.RemoveAll(value => string.Equals(
+                        value, propertyId, StringComparison.OrdinalIgnoreCase));
+                    ClientLog.Error("Character", "property_save_failed", ex);
+                    return false;
+                }
+            }
+        }
+
         internal static void SetGearEquipped(string item, bool equipped)
         {
             if (string.IsNullOrWhiteSpace(item)) return;
@@ -424,7 +473,7 @@ namespace ALLIN1
             CaptureWeaponAmmo(character, player, "story_save_written");
         }
 
-        private static DateTime LatestStorySaveWriteUtc()
+        internal static DateTime LatestStorySaveWriteUtc()
         {
             DateTime latest = DateTime.MinValue;
             string documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
@@ -534,6 +583,11 @@ namespace ALLIN1
             bool changed = false;
             if (inventory.weapons == null) { inventory.weapons = new List<string>(); changed = true; }
             if (inventory.gear == null) { inventory.gear = new List<string>(); changed = true; }
+            if (inventory.properties == null)
+            {
+                inventory.properties = new List<string>();
+                changed = true;
+            }
 
             if (inventory.schema_version < 4 || inventory.equipped_gear == null)
             {
@@ -595,9 +649,9 @@ namespace ALLIN1
             inventory.gear.RemoveAll(item =>
                 !ContainsIgnoreCase(inventory.equipped_gear, item));
             if (inventory.gear.Count != ownedBefore) changed = true;
-            if (inventory.schema_version != 6)
+            if (inventory.schema_version != 7)
             {
-                inventory.schema_version = 6;
+                inventory.schema_version = 7;
                 changed = true;
             }
             return changed;

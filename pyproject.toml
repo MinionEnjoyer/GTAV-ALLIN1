@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gta-v-allin1"
-version = "0.4.3"
+version = "0.4.4"
 description = "Unlock all GTA Online vehicles in GTA V single player"
 requires-python = ">=3.10"
 license = "GPL-3.0-or-later"

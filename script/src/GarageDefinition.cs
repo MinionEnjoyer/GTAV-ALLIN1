@@ -2,12 +2,15 @@
 // implementations should define one profile here and route every entrance
 // through GarageManager's common policy evaluator.
 
+using System;
+
 namespace ALLIN1
 {
     internal enum GarageEntryDenial
     {
         None,
         MissionActive,
+        GameTransitionActive,
         WantedLevel,
         StoryOwnedVehicle,
         VehicleTooLarge,
@@ -59,6 +62,7 @@ namespace ALLIN1
         internal static GarageEntryDenial Evaluate(
             GarageEntryRules rules,
             bool missionActive,
+            bool gameTransitionActive,
             int wantedLevel,
             bool garagesAlwaysAccessible,
             bool vehiclePresent,
@@ -70,6 +74,8 @@ namespace ALLIN1
                 return GarageEntryDenial.MissionActive;
             if (rules.DisableDuringMissions && missionActive)
                 return GarageEntryDenial.MissionActive;
+            if (gameTransitionActive)
+                return GarageEntryDenial.GameTransitionActive;
             if (rules.BlockWantedLevel && wantedLevel > 0
                 && !garagesAlwaysAccessible)
                 return GarageEntryDenial.WantedLevel;
@@ -79,6 +85,40 @@ namespace ALLIN1
                 vehicleSizeTier > rules.MaximumVehicleSizeTier)
                 return GarageEntryDenial.VehicleTooLarge;
             return GarageEntryDenial.None;
+        }
+    }
+
+    internal static class GarageStorySavePolicy
+    {
+        internal static bool HasSaveEvent(
+            bool saveInProgress,
+            bool saveWasInProgress,
+            DateTime latestStorySaveWriteUtc,
+            DateTime lastObservedStorySaveWriteUtc)
+        {
+            return (saveInProgress && !saveWasInProgress)
+                || latestStorySaveWriteUtc > lastObservedStorySaveWriteUtc;
+        }
+    }
+
+    internal static class GarageInteriorReadinessPolicy
+    {
+        /// <summary>
+        /// Enhanced can keep IS_INTERIOR_READY false for valid Online and
+        /// apartment garage shells. Prefer the native ready signal, but accept
+        /// a stable, resolved interior after a bounded settle interval.
+        /// </summary>
+        internal static bool IsUsable(
+            int interior,
+            bool requireIplActive,
+            bool iplActive,
+            bool interiorReady,
+            int resolvedForMs,
+            int fallbackSettleMs)
+        {
+            if (interior == 0) return false;
+            if (requireIplActive && !iplActive) return false;
+            return interiorReady || resolvedForMs >= fallbackSettleMs;
         }
     }
 
@@ -126,7 +166,15 @@ namespace ALLIN1
                 disableDuringMissions: true,
                 blockWantedLevel: true,
                 blockStoryOwnedVehicles: true,
+                maximumVehicleSizeTier: 1));
+
+        internal static readonly GarageDefinition Paleto = new GarageDefinition(
+            "paleto", "Paleto Bay Garage",
+            new GarageEntryRules(
+                disableDuringMissions: true,
+                blockWantedLevel: true,
+                blockStoryOwnedVehicles: true,
                 maximumVehicleSizeTier: 1),
-            requiresMultiplayerMap: false);
+            requiresMultiplayerMap: true);
     }
 }

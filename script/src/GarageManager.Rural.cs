@@ -24,15 +24,23 @@ namespace ALLIN1
             new Vector3(2553.4590f, 4650.6360f, 34.0768f);
         private const float RURAL_PED_ENTRANCE_HEADING = 90f;
 
-        // Native six-car pedestrian exit, using the v_garagem doorway.
+        // Verified safe point inside the native six-car shell. The interior
+        // door marker can be moved to its final doorway vector after the
+        // visible shell has been playtested.
         private static readonly Vector3 RURAL_INTERIOR_PED =
-            new Vector3(212.4000f, -998.9700f, -99.0000f);
-        private const float RURAL_INTERIOR_PED_HEADING = 90f;
+            new Vector3(199.9716f, -999.6678f, -99.0000f);
+        private const float RURAL_INTERIOR_PED_HEADING = 0f;
         private const float RURAL_FLOOR_Z = -100.0000f;
+        private static readonly Vector3 RURAL_INTERIOR_CENTER =
+            new Vector3(199.9716f, -999.6678f, -99.0000f);
+        private const int RURAL_INTERIOR_LOAD_TIMEOUT_MS = 6000;
+        private const int RURAL_INTERIOR_FALLBACK_SETTLE_MS = 1000;
 
         private static readonly string[] RURAL_IPLS =
         {
-            "v_garagem",
+            // v_garagem is the interior type/name, not a requestable IPL.
+            // Enhanced's six-car shell is this explicit High Life MILO.
+            "hw1_blimp_interior_v_garagem_milo_",
         };
 
         // Native v_garagem six-car layout. The shared garage placement helper
@@ -160,7 +168,7 @@ namespace ALLIN1
         {
             if (!_ruralInitialized || _transitionInProgress) return;
             if (_isPlayerInGarage || _isPlayerInFloorGarage || _isPlayerInDavisGarage ||
-                _isPlayerInGarmentGarage)
+                _isPlayerInGarmentGarage || _isPlayerInPaletoGarage)
                 return;
             if (_ruralExitCooldownFrames > 0)
             {
@@ -272,6 +280,7 @@ namespace ALLIN1
             Ped player = Game.Player.Character;
             Vehicle rideInToDelete = null;
             string confirmation = null;
+            bool interiorLoaded = false;
             if (player.IsInVehicle())
             {
                 Vehicle rideIn = player.CurrentVehicle;
@@ -292,10 +301,18 @@ namespace ALLIN1
                     if (slotIndex < 0) return;
                     StoredVehicle stored = CaptureVehicleState(
                         rideIn, modelName, slotIndex);
+                    if (!LoadRuralInterior())
+                    {
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~r~The Grapeseed Garage interior could not be loaded.", 4000);
+                        return;
+                    }
+                    interiorLoaded = true;
                     list.Add(stored);
                     if (!RuralSave())
                     {
                         list.Remove(stored);
+                        UnloadRuralInterior();
                         GTA.UI.Screen.ShowSubtitle(
                             "~r~The vehicle could not be saved.", 3000);
                         return;
@@ -308,7 +325,12 @@ namespace ALLIN1
                 }
             }
 
-            LoadRuralInterior();
+            if (!interiorLoaded && !LoadRuralInterior())
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~The Grapeseed Garage interior could not be loaded.", 4000);
+                return;
+            }
             ClearRuralHandles();
             _isPlayerInRuralGarage = true;
             Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
@@ -372,17 +394,10 @@ namespace ALLIN1
                 List<StoredVehicle> list = GetRuralGarageStoredVehicles();
                 for (int i = list.Count - 1; i >= 0; i--)
                     if (list[i].Slot == playerSlot) { list.RemoveAt(i); break; }
-                playerVehicle.IsPositionFrozen = false;
                 playerVehicle.IsPersistent = true;
-                Function.Call(Hash.SET_ENTITY_COORDS, playerVehicle,
-                    RURAL_VEHICLE_ENTRANCE_POS.X,
-                    RURAL_VEHICLE_ENTRANCE_POS.Y,
-                    RURAL_VEHICLE_ENTRANCE_POS.Z,
-                    false, false, false, true);
-                Function.Call(Hash.SET_ENTITY_HEADING, playerVehicle,
-                    RURAL_VEHICLE_ENTRANCE_HEADING);
-                Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, playerVehicle);
-                playerVehicle.IsEngineRunning = true;
+                ReleaseGarageVehicleForDriving(playerVehicle,
+                    RURAL_VEHICLE_ENTRANCE_POS,
+                    RURAL_VEHICLE_ENTRANCE_HEADING, "Grapeseed");
             }
             else
             {
@@ -402,26 +417,91 @@ namespace ALLIN1
             Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
         }
 
-        private static void LoadRuralInterior()
+        private static bool LoadRuralInterior()
         {
-            foreach (string ipl in RURAL_IPLS)
-                Function.Call(Hash.REQUEST_IPL, ipl);
-            Script.Wait(1000);
-            int interior = Function.Call<int>(Hash.GET_INTERIOR_AT_COORDS,
-                199.9715f, -999.6678f, -100.0000f);
-            if (interior != 0)
+            bool focusSet = false;
+            try
             {
-                Function.Call(Hash.DISABLE_INTERIOR, interior, false);
-                Function.Call(Hash.REFRESH_INTERIOR, interior);
-                Function.Call(Hash.PIN_INTERIOR_IN_MEMORY, interior);
+                // The six-car garage can be loaded directly through its High
+                // Life MILO without switching the session-wide MP map. Do not
+                // accept a merely resolved interior ID unless the actual MILO
+                // IPL is active; the old behavior admitted the player into an
+                // unloaded void below the map.
+                foreach (string ipl in RURAL_IPLS)
+                    Function.Call(Hash.REQUEST_IPL, ipl);
+
+                Function.Call(Hash.SET_FOCUS_POS_AND_VEL,
+                    RURAL_INTERIOR_CENTER.X, RURAL_INTERIOR_CENTER.Y,
+                    RURAL_INTERIOR_CENTER.Z, 0f, 0f, 0f);
+                focusSet = true;
+
+                Function.Call(Hash.REQUEST_COLLISION_AT_COORD,
+                    RURAL_INTERIOR_CENTER.X, RURAL_INTERIOR_CENTER.Y,
+                    RURAL_INTERIOR_CENTER.Z);
+
+                int startedAt = Game.GameTime;
+                int interior = 0;
+                bool interiorReady = false;
+                bool iplActive = false;
+                int firstResolvedAt = -1;
+                while (Game.GameTime - startedAt < RURAL_INTERIOR_LOAD_TIMEOUT_MS)
+                {
+                    foreach (string ipl in RURAL_IPLS)
+                        Function.Call(Hash.REQUEST_IPL, ipl);
+                    Function.Call(Hash.REQUEST_COLLISION_AT_COORD,
+                        RURAL_INTERIOR_CENTER.X, RURAL_INTERIOR_CENTER.Y,
+                        RURAL_INTERIOR_CENTER.Z);
+                    interior = Function.Call<int>(Hash.GET_INTERIOR_AT_COORDS,
+                        RURAL_INTERIOR_CENTER.X, RURAL_INTERIOR_CENTER.Y,
+                        RURAL_INTERIOR_CENTER.Z);
+                    if (interior != 0)
+                    {
+                        Function.Call(Hash.DISABLE_INTERIOR, interior, false);
+                        Function.Call(Hash.PIN_INTERIOR_IN_MEMORY, interior);
+                        Function.Call(Hash.REFRESH_INTERIOR, interior);
+                        interiorReady = Function.Call<bool>(
+                            Hash.IS_INTERIOR_READY, interior);
+                        if (firstResolvedAt < 0)
+                            firstResolvedAt = Game.GameTime;
+                    }
+                    else firstResolvedAt = -1;
+                    iplActive = true;
+                    foreach (string ipl in RURAL_IPLS)
+                        iplActive &= Function.Call<bool>(Hash.IS_IPL_ACTIVE, ipl);
+                    int resolvedForMs = firstResolvedAt < 0 ? 0
+                        : Game.GameTime - firstResolvedAt;
+                    if (GarageInteriorReadinessPolicy.IsUsable(
+                        interior, true, iplActive, interiorReady,
+                        resolvedForMs, RURAL_INTERIOR_FALLBACK_SETTLE_MS))
+                    {
+                        Log($"LoadRuralInterior: interior={interior} ready " +
+                            $"readySignal={interiorReady} iplActive={iplActive} " +
+                            $"fallback={!interiorReady} " +
+                            $"elapsed={Game.GameTime - startedAt}ms");
+                        return true;
+                    }
+                    Script.Wait(100);
+                }
+
+                Log($"LoadRuralInterior: FAILED interior={interior} " +
+                    $"interiorReady={interiorReady} iplActive={iplActive}");
             }
-            else Log("LoadRuralInterior: WARNING - interior not found");
+            catch (Exception ex)
+            {
+                LogException("LoadRuralInterior", ex);
+            }
+            finally
+            {
+                if (focusSet)
+                    Function.Call(Hash.CLEAR_FOCUS);
+            }
+            return false;
         }
 
         private static void UnloadRuralInterior()
         {
-            // v_garagem is shared native content. Keep it requested so another
-            // script or later transition cannot lose the interior underneath it.
+            foreach (string ipl in RURAL_IPLS)
+                Function.Call(Hash.REMOVE_IPL, ipl);
         }
 
         private static ParkingSlot ResolveRuralSlot(StoredVehicle stored)
@@ -546,16 +626,8 @@ namespace ALLIN1
 
         private static bool RuralSave()
         {
-            try
-            {
-                AtomicWriteText(RURAL_SAVE_PATH, RuralBuildJson());
-                return true;
-            }
-            catch (Exception ex)
-            {
-                LogException("RuralSave", ex);
-                return false;
-            }
+            return StageOrWriteVehicleSave(
+                RURAL_SAVE_PATH, RuralBuildJson, "RuralSave");
         }
 
         private static string RuralBuildJson()
