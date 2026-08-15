@@ -1,8 +1,7 @@
 // GbayBrowserCustomize.cs -- Garage floor customization UI (partial class).
 //
-// Allows players to customize the visual theme of the regular garages and the
-// Davis Auto Shop.  Davis uses its own variable-length categories because the
-// Tuners interior has nine styles/tints plus optional upgrade entity sets.
+// Davis Auto Shop customization UI. Harmony uses its complete native detail
+// package on every floor and is intentionally not exposed as an upgrade menu.
 
 using System.Drawing;
 using GTA;
@@ -12,21 +11,18 @@ namespace ALLIN1
     internal partial class GbayBrowser
     {
         // Garage customization state
-        private int _customFloor;      // which floor is being edited (0-2)
+        private int _customFloor;      // retained for save/UI compatibility
         private int _customCatIdx;     // selected category row (0-4)
 
         private void DrawGarageCustomize(FrameInput input)
         {
-            bool floorGarage = _garageLocationIndex == 1;
             bool davisGarage = _garageLocationIndex == 2;
-            if (!floorGarage && !davisGarage)
+            if (!davisGarage)
             {
                 _state = BrowserState.GarageView;
                 return;
             }
-            int categoryCount = davisGarage
-                ? GarageManager.DAVIS_CUSTOM_CATEGORY_COUNT
-                : GarageManager.CUSTOM_CATEGORY_COUNT;
+            int categoryCount = GarageManager.DAVIS_CUSTOM_CATEGORY_COUNT;
             if (_customCatIdx >= categoryCount) _customCatIdx = categoryCount - 1;
 
             // Background
@@ -45,9 +41,9 @@ namespace ALLIN1
                 BROWSER_LEFT + 0.21f, HEADER_CY,
                 0.23f, 0.044f, 0.34f);
 
-            // Eclipse Towers is one garage. Multi-floor tabs are only valid
-            // while the player is inside the dedicated three-floor garage.
-            int floorCount = floorGarage ? 3 : 1;
+            // Eclipse Garage is one garage. Multi-floor tabs are only valid
+            // while the player is inside Harmony Garage.
+            int floorCount = 1;
             if (floorCount == 1) _customFloor = 0;
             float floorTabW = 0.08f;
             float floorTabStartX = BROWSER_RIGHT - (floorCount == 1 ? 0.10f : 0.28f);

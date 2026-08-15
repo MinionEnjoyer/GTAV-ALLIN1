@@ -1,5 +1,7 @@
 """Command-level tests for every public CLI operation."""
 
+import hashlib
+import json
 from pathlib import Path
 import struct
 from unittest.mock import Mock
@@ -21,6 +23,15 @@ class="super"
 manufacturer="Maker"
 traffic=["veh_rich"]
 '''
+
+
+def _write_pe(path, *, size=4096):
+    payload = bytearray(size)
+    payload[:2] = b"MZ"
+    struct.pack_into("<I", payload, 0x3C, 0x80)
+    payload[0x80:0x84] = b"PE\0\0"
+    struct.pack_into("<H", payload, 0x84, 0x8664)
+    path.write_bytes(payload)
 
 
 def _project(tmp_path: Path, monkeypatch) -> Path:
@@ -207,11 +218,27 @@ def test_health_repair_and_qualification_commands(tmp_path, monkeypatch):
     assert repaired.exit_code == 0 and "quarantined 1" in repaired.output
 
     report = tmp_path / "qualification.json"
+    coverage = tmp_path / "coverage.json"
+    coverage.write_text(json.dumps({"totals": {"percent_covered": 92.0}}))
+    assembly = tmp_path / "ALLIN1.dll"
+    _write_pe(assembly)
+    source_log = tmp_path / "client.log"
+    source_log.write_text("qualified session")
+    smoke = tmp_path / "smoke.json"
+    smoke.write_text(json.dumps({
+        "schema": 2, "passed": True, "session": "session-1",
+        "source_log": str(source_log.resolve()),
+        "source_log_sha256": hashlib.sha256(source_log.read_bytes()).hexdigest(),
+        "checks": [{"name": "session_integrity", "passed": True}],
+    }))
     passed = CliRunner().invoke(cli.main, ["qualification-report", str(report),
-        "--coverage", "92", "--smoke-pass"])
+        "--coverage-report", str(coverage), "--script-assembly", str(assembly),
+        "--smoke-report", str(smoke)])
     assert passed.exit_code == 0 and "PASS" in passed.output
+    coverage.write_text(json.dumps({"totals": {"percent_covered": 80.0}}))
     failed = CliRunner().invoke(cli.main, ["qualification-report", str(report),
-        "--coverage", "80", "--no-script-build"])
+        "--coverage-report", str(coverage), "--script-assembly", str(assembly),
+        "--smoke-report", str(smoke)])
     assert failed.exit_code == 1 and "FAIL" in failed.output
 
 

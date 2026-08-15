@@ -78,3 +78,5 @@ hold_duration_ms = 350
 
 # When true, all GBAY purchases are free and vehicle sales have no payout.
 gbay_free_mode = false
+# Default false: wanted players cannot enter, while garage exits stay usable.
+garages_always_accessible = false

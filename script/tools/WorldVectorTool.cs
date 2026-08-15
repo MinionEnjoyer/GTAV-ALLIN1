@@ -68,11 +68,8 @@ namespace ALLIN1
                 foreach (string raw in File.ReadAllLines(path))
                 {
                     string line = raw.Trim();
-                    bool currentName = line.StartsWith(
-                        "world_vector_key", StringComparison.OrdinalIgnoreCase);
-                    bool legacyName = line.StartsWith(
-                        "preview_capture_key", StringComparison.OrdinalIgnoreCase);
-                    if (!currentName && !legacyName)
+                    if (!line.StartsWith(
+                        "world_vector_key", StringComparison.OrdinalIgnoreCase))
                         continue;
 
                     int equals = line.IndexOf('=');

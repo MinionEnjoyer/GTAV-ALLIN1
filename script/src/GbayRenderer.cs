@@ -62,7 +62,7 @@ namespace ALLIN1
         internal static readonly Color FooterBg       = Color.FromArgb(255, 225, 233, 228);
 
         // Modal overlay
-        internal static readonly Color ModalBg        = Color.FromArgb(250, 255, 255, 255);
+        internal static readonly Color ModalBg        = Color.FromArgb(255, 255, 255, 255);
         internal static readonly Color ModalScrim     = Color.FromArgb(210, 0, 0, 0);
 
         // Buttons
@@ -207,31 +207,46 @@ namespace ALLIN1
         {
             get
             {
+                bool streamingVerified = false;
+                foreach (string dict in _loadedDicts)
+                {
+                    if (dict.StartsWith("allin1_", StringComparison.OrdinalIgnoreCase))
+                    {
+                        streamingVerified = true;
+                        break;
+                    }
+                }
+
                 string scripts = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
                 string root = Directory.GetParent(scripts)?.FullName ?? scripts;
                 string openRpf = Path.Combine(root, "OpenRPF.asi");
                 string openIv = Path.Combine(root, "OpenIV.asi");
-                if (IsUsablePlugin(openRpf) || IsUsablePlugin(openIv))
-                    return "plug-in detected";
+                bool pluginInstalled = IsUsablePlugin(openRpf) || IsUsablePlugin(openIv);
 
                 string disabledRoot = Path.Combine(
                     root, "allin1_backups", "DisabledPlugins");
-                if (File.Exists(Path.Combine(disabledRoot, "OpenRPF.asi.disabled")) ||
-                    File.Exists(Path.Combine(disabledRoot, "OpenIV.asi.disabled")))
-                    return "OpenRPF plug-in disabled (fallback active)";
+                bool pluginDisabled =
+                    File.Exists(Path.Combine(disabledRoot, "OpenRPF.asi.disabled")) ||
+                    File.Exists(Path.Combine(disabledRoot, "OpenIV.asi.disabled"));
 
                 bool asiLoader = File.Exists(Path.Combine(root, "dinput8.dll")) ||
                     File.Exists(Path.Combine(root, "dsound.dll")) ||
                     File.Exists(Path.Combine(root, "xinput1_4.dll"));
-                return asiLoader
-                    ? "ASI loader detected; OpenRPF plug-in missing"
-                    : "ASI loader and OpenRPF plug-in missing";
+                return PreviewRuntimeStatus.Describe(
+                    streamingVerified, pluginInstalled, pluginDisabled, asiLoader);
             }
         }
 
         private static bool IsUsablePlugin(string path)
         {
-            try { return File.Exists(path) && new FileInfo(path).Length > 0; }
+            try
+            {
+                var info = new FileInfo(path);
+                if (!info.Exists || info.Length < 4096)
+                    return false;
+                using (var stream = File.OpenRead(path))
+                    return stream.ReadByte() == 'M' && stream.ReadByte() == 'Z';
+            }
             catch (IOException) { return false; }
             catch (UnauthorizedAccessException) { return false; }
         }
@@ -303,16 +318,23 @@ namespace ALLIN1
         /// <summary>Check if a preview texture exists for this model.</summary>
         internal static bool HasPreviewTexture(string model)
         {
-            if (!VehicleList.PreviewDict.TryGetValue(model, out string dict))
+            if (!TryGetPreviewDict(model, out string dict))
                 return false;
             return IsDictLoaded(dict);
+        }
+
+        internal static bool TryGetPreviewDict(string model, out string dict)
+        {
+            if (WorldAssetList.PreviewDict.TryGetValue(model, out dict))
+                return true;
+            return VehicleList.PreviewDict.TryGetValue(model, out dict);
         }
 
         /// <summary>Draw a vehicle preview via DRAW_SPRITE. Returns true if drawn.</summary>
         internal static bool DrawPreviewTexture(string model,
                                                  float x, float y, float w, float h)
         {
-            if (!VehicleList.PreviewDict.TryGetValue(model, out string dict))
+            if (!TryGetPreviewDict(model, out string dict))
                 return false;
             if (!IsDictLoaded(dict))
             {

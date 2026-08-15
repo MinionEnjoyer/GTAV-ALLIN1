@@ -3319,7 +3319,7 @@ traffic = ["veh_mid", "veh_rich"]
 
 # GTA Online 1.73 / The Kortz Center Heist (July 2026).
 [[vehicles]]
-model = "veleno"
+model = "velenogt"
 name = "Grotti Veleno GT"
 class = "super"
 manufacturer = "Grotti"
@@ -3375,7 +3375,21 @@ class = "emergency"
 manufacturer = "Pegassi"
 traffic = []
 
+[[vehicles]]
+model = "horus"
+name = "Pegassi Horus"
+class = "super"
+manufacturer = "Pegassi"
+traffic = []
+
+[[vehicles]]
+model = "warden"
+name = "Gallivanter Warden"
+class = "suvs"
+manufacturer = "Gallivanter"
+traffic = ["veh_rich"]
+
 # =============================================================================
 # END OF VEHICLE DATABASE
-# Total vehicles: 461
+# Total vehicles: 463
 # =============================================================================

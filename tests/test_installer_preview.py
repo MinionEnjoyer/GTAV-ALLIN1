@@ -1,12 +1,23 @@
 """End-to-end orchestration tests for preview packaging and helper tools."""
 
 from pathlib import Path
+import struct
 from unittest.mock import Mock
 
 import pytest
 
 from allin1 import installer
+from allin1.generators import dlc_maps
 from allin1.preview_assets import PreviewMergeResult
+
+
+def _write_pe(path, *, size=4096):
+    payload = bytearray(size)
+    payload[:2] = b"MZ"
+    struct.pack_into("<I", payload, 0x3C, 0x80)
+    payload[0x80:0x84] = b"PE\0\0"
+    struct.pack_into("<H", payload, 0x84, 0x8664)
+    path.write_bytes(payload)
 
 
 def _layout(tmp_path, monkeypatch):
@@ -79,6 +90,7 @@ def test_preview_deploy_builds_and_deploys_curated_assets(tmp_path, monkeypatch)
     assert merge.call_args_list[0].args[0] == [dist / "previews"]
     assert merge.call_args_list[1].args[0] == [dist / "weapon_previews"]
     assert merge.call_args_list[2].args[0] == [dist / "equipment_previews"]
+    assert merge.call_args_list[3].args[0] == [dist / "world_asset_previews"]
     assert any("build-dlc" in args for args in calls)
     assert any("verify-dlc" in args for args in calls)
     assert any("patch" in args for args in calls)
@@ -109,11 +121,11 @@ def test_preview_deploy_surfaces_tool_failures(tmp_path, monkeypatch, stage):
 
 
 def test_openrpf_detection_requires_nonempty_plugin_and_loader(tmp_path):
-    (tmp_path / "OpenRPF.asi").write_bytes(b"asi")
+    _write_pe(tmp_path / "OpenRPF.asi")
     assert installer._check_openrpf(tmp_path, enhanced=True) is False
-    (tmp_path / "xinput1_4.dll").write_bytes(b"loader")
+    _write_pe(tmp_path / "xinput1_4.dll")
     assert installer._check_openrpf(tmp_path, enhanced=True) is True
-    (tmp_path / "OpenIV.asi").write_bytes(b"legacy")
+    _write_pe(tmp_path / "OpenIV.asi")
     assert installer._check_openrpf(tmp_path, enhanced=True) is False
 
 
@@ -124,6 +136,52 @@ def test_remove_preview_pack_only_removes_owned_directories(tmp_path):
     removed = installer._remove_preview_pack(tmp_path)
     assert removed == [owned]
     assert not owned.exists() and unrelated.exists()
+
+
+def test_map_deploy_imports_installed_assets_before_packaging(tmp_path, monkeypatch):
+    _project, _dist, _tools = _layout(tmp_path, monkeypatch)
+    calls = []
+    for asset in dlc_maps.MAP_ASSETS:
+        source = asset.source_archive(tmp_path)
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(b"installed-rockstar-archive")
+
+    def run(args, **_kwargs):
+        calls.append(args)
+        if "extract-entries" in args:
+            manifest = Path(args[4])
+            output_root = Path(args[5])
+            for line in manifest.read_text(encoding="utf-8").splitlines():
+                _source, destination = line.split("\t", 1)
+                output = output_root / destination
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(
+                    b"RPF7-local-asset" if output.suffix == ".rpf" else b"meta"
+                )
+        if "build-dlc" in args:
+            Path(args[3]).write_bytes(b"valid-map-dlc")
+        return Mock(returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(installer.subprocess, "run", run)
+    filter_proxies = Mock(return_value=[])
+    monkeypatch.setattr(dlc_maps, "filter_staged_proxy_assets", filter_proxies)
+    result = installer.InstallResult(tmp_path, is_enhanced=True)
+    assert installer._deploy_standalone_map_dlc(tmp_path, result) is True
+    filter_proxies.assert_called_once()
+    extracts = [args for args in calls if "extract-entries" in args]
+    expected_source_groups = {
+        (asset.source_pack, asset.source_archive_name)
+        for asset in dlc_maps.MAP_ASSETS
+    }
+    assert len(extracts) == len(expected_source_groups)
+    assert any("open-rpfs" in args for args in calls)
+    assert any("build-dlc" in args for args in calls)
+    assert any("verify-map-dlc" in args for args in calls)
+    patch_call = next(args for args in calls if "patch" in args)
+    assert patch_call[-1] == "allin1_maps"
+    deployed = tmp_path / "mods/update/x64/dlcpacks/allin1_maps/dlc.rpf"
+    assert deployed.read_bytes() == b"valid-map-dlc"
+    assert (deployed.parent / dlc_maps.ACTIVE_MARKER).is_file()
 
 
 def test_preview_archive_rollback_restores_existing_bytes(tmp_path):

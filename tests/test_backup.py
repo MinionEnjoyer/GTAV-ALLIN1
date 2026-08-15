@@ -39,6 +39,12 @@ def test_restore_without_backups_raises(tmp_path):
         restore_backup(tmp_path)
 
 
+def test_restore_with_empty_backups_directory_raises(tmp_path):
+    (tmp_path / "allin1_backups").mkdir()
+    with pytest.raises(FileNotFoundError, match="No backups found"):
+        restore_backup(tmp_path)
+
+
 def test_restore_rejects_non_directory(tmp_path):
     invalid = tmp_path / "backup.zip"
     invalid.write_bytes(b"not a directory")

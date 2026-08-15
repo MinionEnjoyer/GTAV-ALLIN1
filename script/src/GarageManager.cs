@@ -3,7 +3,7 @@
 // Each character (Michael, Franklin, Trevor) has 10 personal vehicle slots
 // in a shared garage interior that exists permanently underground. Vehicles
 // are spawned when the player enters the garage and despawned on exit.
-// Entry/exit is via a marker near Eclipse Towers on Eclipse Boulevard.
+// Entry/exit is via the Eclipse Garage marker on Eclipse Boulevard.
 
 using System;
 using System.Collections.Generic;
@@ -25,17 +25,28 @@ namespace ALLIN1
         {
             internal Vector3 Position;
             internal float Heading;
+            internal float FloorZ;
 
             internal ParkingSlot(float x, float y, float z, float h)
+                : this(x, y, z, h, float.NaN)
+            {
+            }
+
+            internal ParkingSlot(float x, float y, float z, float h, float floorZ)
             {
                 Position = new Vector3(x, y, z);
                 Heading = h;
+                FloorZ = floorZ;
             }
         }
 
         internal class StoredVehicle
         {
             internal string Model;
+            // Preserve the native identity for base-game/add-on vehicles whose
+            // GXT display label is not their spawn name (for example Furore GT:
+            // `furore` vs `furoregt`). Zero means a legacy save entry.
+            internal int ModelHash;
             internal int Slot;
             internal int Color1;
             internal int Color2;
@@ -65,6 +76,8 @@ namespace ALLIN1
         private const int SLOT_COUNT = 10;
         private const float ENTER_RADIUS = 2.5f;
         private const float EXIT_RADIUS = 4.0f;
+        private static readonly GarageDefinition ECLIPSE_GARAGE =
+            GarageDefinitions.Eclipse;
 
         // Outside entrance/exit positions (shared by all characters)
         private static readonly Vector3 ENTRANCE_POS =
@@ -87,27 +100,29 @@ namespace ALLIN1
             new Vector3(240.7f, -1004.8f, -99f);
         private const float PED_EXIT_HEADING = 82.8f;
 
-        // 10 vehicle parking positions (from SPGR data -- two rows of 5)
+        // Ten surveyed parking bays in the apartment garage shell. FloorZ is
+        // the physical plane; Position.Z remains the audited root fallback.
         internal static readonly ParkingSlot[] Slots =
         {
             // Left row (facing heading -105)
-            new ParkingSlot(224.57f, -1002.75f, -99.0f, -105f),
-            new ParkingSlot(224.36f, -998.87f,  -99.0f, -105f),
-            new ParkingSlot(223.61f, -993.94f,  -99.0f, -105f),
-            new ParkingSlot(223.65f, -989.04f,  -99.0f, -105f),
-            new ParkingSlot(224.18f, -983.51f,  -99.0f, -105f),
+            new ParkingSlot(224.57f, -1002.75f, -99.56f, -105f, -100.0f),
+            new ParkingSlot(224.36f, -998.87f,  -99.56f, -105f, -100.0f),
+            new ParkingSlot(223.61f, -993.94f,  -99.56f, -105f, -100.0f),
+            new ParkingSlot(223.65f, -989.04f,  -99.56f, -105f, -100.0f),
+            new ParkingSlot(224.18f, -983.51f,  -99.56f, -105f, -100.0f),
             // Right row (facing heading 134) -- shifted -0.5 X for wall clearance
-            new ParkingSlot(233.94f, -1000.90f, -99.0f, 134f),
-            new ParkingSlot(233.18f, -995.90f,  -99.0f, 134f),
-            new ParkingSlot(232.50f, -991.15f,  -99.0f, 134f),
-            new ParkingSlot(232.44f, -985.76f,  -99.0f, 134f),
-            new ParkingSlot(231.89f, -981.39f,  -99.0f, 134f),
+            new ParkingSlot(233.94f, -1000.90f, -99.56f, 134f, -100.0f),
+            new ParkingSlot(233.18f, -995.90f,  -99.56f, 134f, -100.0f),
+            new ParkingSlot(232.50f, -991.15f,  -99.56f, 134f, -100.0f),
+            new ParkingSlot(232.44f, -985.76f,  -99.56f, 134f, -100.0f),
+            new ParkingSlot(231.89f, -981.39f,  -99.56f, 134f, -100.0f),
         };
 
         // Character keys for save file
         private const string KEY_MICHAEL  = "michael";
         private const string KEY_FRANKLIN = "franklin";
         private const string KEY_TREVOR   = "trevor";
+        private const string KEY_UNSUPPORTED = "__unsupported__";
 
         // Story vehicles are owned and restored by Rockstar's scripts. Their
         // model/plate pairs provide a fallback when mission transitions remove
@@ -163,9 +178,26 @@ namespace ALLIN1
 
         // Reverse lookup: model hash -> spawn name (built from VehicleList.All)
         private static Dictionary<int, string> _hashToSpawnName;
+        private static readonly Dictionary<string, string> LegacyModelAliases =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "furore", "furoregt" },
+            };
+        private static readonly Dictionary<string, string> LegacyModelDisplayNames =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "furoregt", "Furore GT" },
+            };
 
         private static bool _enableLogging = true;
+        private static bool _garagesAlwaysAccessible;
         private static bool _initialized;
+        private static PedHash _lastGarageCharacter;
+        private static bool _vehicleSavesDirty;
+        private static bool _vehicleSaveCommitInProgress;
+        private static bool _storySaveWasInProgress;
+        private static DateTime _lastStorySaveWriteUtc;
+        private static DateTime _nextStorySavePollUtc;
 
         // ------------------------------------------------------------------ //
         //  Logging                                                            //
@@ -187,9 +219,11 @@ namespace ALLIN1
         //  Public API                                                         //
         // ------------------------------------------------------------------ //
 
-        internal static void Configure(bool enableLogging)
+        internal static void Configure(
+            bool enableLogging, bool garagesAlwaysAccessible = false)
         {
             _enableLogging = enableLogging;
+            _garagesAlwaysAccessible = garagesAlwaysAccessible;
         }
 
         internal static bool IsInGarage => _isPlayerInGarage;
@@ -213,6 +247,8 @@ namespace ALLIN1
                 Log($"Built hash->spawn lookup: {_hashToSpawnName.Count} entries");
 
                 Load();
+                _lastStorySaveWriteUtc =
+                    CharacterInventory.LatestStorySaveWriteUtc();
 
                 int total = 0;
                 foreach (var list in _stored.Values)
@@ -223,16 +259,16 @@ namespace ALLIN1
                 _entranceBlip = World.CreateBlip(ENTRANCE_POS);
                 _entranceBlip.Sprite = BlipSprite.Garage;
                 _entranceBlip.Color = CharacterBlipColor();
-                _entranceBlip.Name = "ALLIN1 Garage (Vehicle)";
+                _entranceBlip.Name = "ALLIN1 Eclipse Garage (Vehicle)";
                 _entranceBlip.IsShortRange = true;
 
                 _pedEntranceBlip = World.CreateBlip(PED_EXIT_DEST);
                 _pedEntranceBlip.Sprite = BlipSprite.Garage;
                 _pedEntranceBlip.Color = CharacterBlipColor();
-                _pedEntranceBlip.Name = "ALLIN1 Garage (Pedestrian)";
+                _pedEntranceBlip.Name = "ALLIN1 Eclipse Garage (Pedestrian)";
                 _pedEntranceBlip.IsShortRange = true;
 
-                Log("GarageManager initialized (Eclipse Towers 10-car interior)");
+                Log("GarageManager initialized (Eclipse Garage 10-car interior)");
             }
             catch (Exception ex)
             {
@@ -250,16 +286,27 @@ namespace ALLIN1
         {
             try
             {
-                Vector3 recoveryPosition = _isPlayerInDavisGarage
+                Vector3 recoveryPosition = _isPlayerInPaletoGarage
+                    ? PALETO_PED_ENTRANCE_POS
+                    : _isPlayerInRuralGarage ? RURAL_PED_ENTRANCE_POS
+                    : _isPlayerInGarmentGarage ? GARMENT_PED_ENTRANCE_POS
+                    : _isPlayerInDavisGarage
                     ? DAVIS_PED_ENTRANCE_POS
                     : _isPlayerInFloorGarage ? FLOOR_GARAGE_PED_EXIT_DEST : PED_EXIT_DEST;
-                float recoveryHeading = _isPlayerInDavisGarage
+                float recoveryHeading = _isPlayerInPaletoGarage
+                    ? PALETO_PED_ENTRANCE_HEADING
+                    : _isPlayerInRuralGarage ? RURAL_PED_ENTRANCE_HEADING
+                    : _isPlayerInGarmentGarage ? GARMENT_PED_ENTRANCE_HEADING
+                    : _isPlayerInDavisGarage
                     ? DAVIS_PED_ENTRANCE_HEADING
                     : _isPlayerInFloorGarage
                         ? FLOOR_GARAGE_PED_EXIT_DEST_HEADING : PED_EXIT_DEST_HEADING;
                 UpdateStoredFromLive();
                 FloorGarageUpdateStoredFromLive();
                 DavisUpdateStoredFromLive();
+                GarmentUpdateStoredFromLive();
+                RuralUpdateStoredFromLive();
+                PaletoUpdateStoredFromLive();
                 for (int i = 0; i < _handles.Length; i++)
                 {
                     if (_handles[i] != null && _handles[i].Exists()) _handles[i].Delete();
@@ -276,6 +323,24 @@ namespace ALLIN1
                     if (_davisHandles[i] != null && _davisHandles[i].Exists())
                         _davisHandles[i].Delete();
                     _davisHandles[i] = null;
+                }
+                for (int i = 0; i < _garmentHandles.Length; i++)
+                {
+                    if (_garmentHandles[i] != null && _garmentHandles[i].Exists())
+                        _garmentHandles[i].Delete();
+                    _garmentHandles[i] = null;
+                }
+                for (int i = 0; i < _ruralHandles.Length; i++)
+                {
+                    if (_ruralHandles[i] != null && _ruralHandles[i].Exists())
+                        _ruralHandles[i].Delete();
+                    _ruralHandles[i] = null;
+                }
+                for (int i = 0; i < _paletoHandles.Length; i++)
+                {
+                    if (_paletoHandles[i] != null && _paletoHandles[i].Exists())
+                        _paletoHandles[i].Delete();
+                    _paletoHandles[i] = null;
                 }
                 RecoverTransition("EmergencyRecover", recoveryPosition, recoveryHeading);
                 Log("EmergencyRecover: player returned outside and garage state reset");
@@ -298,11 +363,21 @@ namespace ALLIN1
             if (!_initialized)
                 return;
 
+            PollStorySaveAndPersistVehicles();
+
+            // Every ALLIN1 location follows the active protagonist. Keep this
+            // before the garage/transition guards so switching characters in
+            // an interior cannot leave another location with a stale color.
+            UpdateLocationBlipColors();
+
             if (_transitionInProgress)
                 return;
 
             // Don't show garage markers while in another garage.
             if (_isPlayerInFloorGarage || _isPlayerInDavisGarage)
+                return;
+            if (_isPlayerInGarmentGarage || _isPlayerInRuralGarage ||
+                _isPlayerInPaletoGarage)
                 return;
 
             if (_exitCooldownFrames > 0)
@@ -314,21 +389,17 @@ namespace ALLIN1
             Ped player = Game.Player.Character;
             if (player == null || player.IsDead)
                 return;
-
-            // Update blip colors to match current character
-            BlipColor charColor = CharacterBlipColor();
-            if (!_hasBlipColor || charColor != _lastBlipColor)
-            {
-                if (_entranceBlip != null && _entranceBlip.Exists())
-                    _entranceBlip.Color = charColor;
-                if (_pedEntranceBlip != null && _pedEntranceBlip.Exists())
-                    _pedEntranceBlip.Color = charColor;
-                _lastBlipColor = charColor;
-                _hasBlipColor = true;
-            }
+            if (!_isPlayerInGarage && !GbayShop.TryGetCurrentCharacter(out _))
+                return;
 
             if (!_isPlayerInGarage)
             {
+                // Never detach the player, passengers, or a mission vehicle
+                // from Rockstar's active mission script. Exits stay available
+                // if a mission flag appears while already inside a garage.
+                if (EvaluateGarageEntry(ECLIPSE_GARAGE) ==
+                    GarageEntryDenial.MissionActive) return;
+
                 bool inVehicle = player.IsInVehicle();
 
                 // ---- Vehicle entrance — only when in a vehicle ----
@@ -339,16 +410,18 @@ namespace ALLIN1
                         ENTRANCE_POS - new Vector3(0f, 0f, 1f),
                         Vector3.Zero, Vector3.Zero,
                         new Vector3(2f, 2f, 1.5f),
-                        System.Drawing.Color.FromArgb(128, 0, 200, 0));
+                        CharacterMarkerColor());
 
                     float vehDist = player.Position.DistanceTo(ENTRANCE_POS);
                     if (vehDist < ENTER_RADIUS)
                     {
                         Vehicle veh = player.CurrentVehicle;
-                        if (veh != null && veh.Exists() && IsPersonalVehicle(veh))
+                        GarageEntryDenial denial = EvaluateGarageEntry(
+                            ECLIPSE_GARAGE, veh);
+                        if (denial != GarageEntryDenial.None)
                         {
                             GTA.UI.Screen.ShowHelpTextThisFrame(
-                                "You cannot store your personal vehicle in the garage.");
+                                GarageEntryMessage(ECLIPSE_GARAGE, denial));
                         }
                         else
                         {
@@ -368,15 +441,23 @@ namespace ALLIN1
                         PED_EXIT_DEST - new Vector3(0f, 0f, 1f),
                         Vector3.Zero, Vector3.Zero,
                         new Vector3(1.5f, 1.5f, 1.2f),
-                        System.Drawing.Color.FromArgb(128, 0, 200, 0));
+                        CharacterMarkerColor());
 
                     float pedDist = player.Position.DistanceTo(PED_EXIT_DEST);
                     if (pedDist < ENTER_RADIUS)
                     {
-                        GTA.UI.Screen.ShowHelpTextThisFrame(
-                            "Press ~INPUT_CONTEXT~ to enter your garage.");
-                        if (Game.IsControlJustPressed(GTA.Control.Context))
-                            EnterGarage();
+                        GarageEntryDenial denial = EvaluateGarageEntry(
+                            ECLIPSE_GARAGE);
+                        if (denial != GarageEntryDenial.None)
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                GarageEntryMessage(ECLIPSE_GARAGE, denial));
+                        else
+                        {
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                "Press ~INPUT_CONTEXT~ to enter your garage.");
+                            if (Game.IsControlJustPressed(GTA.Control.Context))
+                                EnterGarage();
+                        }
                     }
                 }
             }
@@ -404,7 +485,7 @@ namespace ALLIN1
                         PED_EXIT - new Vector3(0f, 0f, 1f),
                         Vector3.Zero, Vector3.Zero,
                         new Vector3(1.5f, 1.5f, 1.2f),
-                        System.Drawing.Color.FromArgb(128, 0, 200, 0));
+                        CharacterMarkerColor());
 
                     float pedExitDist = player.Position.DistanceTo(PED_EXIT);
                     if (pedExitDist < EXIT_RADIUS)
@@ -447,6 +528,14 @@ namespace ALLIN1
                 if (string.Equals(vehicle.Model, model, StringComparison.OrdinalIgnoreCase)) return true;
             foreach (StoredVehicle vehicle in GetDavisGarageStoredVehicles())
                 if (string.Equals(vehicle.Model, model, StringComparison.OrdinalIgnoreCase)) return true;
+            foreach (StoredVehicle vehicle in GetGarmentGarageStoredVehicles())
+                if (string.Equals(vehicle.Model, model, StringComparison.OrdinalIgnoreCase)) return true;
+            foreach (StoredVehicle vehicle in GetRuralGarageStoredVehicles())
+                if (string.Equals(vehicle.Model, model, StringComparison.OrdinalIgnoreCase)) return true;
+            foreach (StoredVehicle vehicle in GetPaletoGarageStoredVehicles())
+                if (string.Equals(vehicle.Model, model, StringComparison.OrdinalIgnoreCase)) return true;
+            foreach (StoredVehicle vehicle in GetYachtHelipadStoredVehicles())
+                if (string.Equals(vehicle.Model, model, StringComparison.OrdinalIgnoreCase)) return true;
             return false;
         }
 
@@ -465,7 +554,8 @@ namespace ALLIN1
                 return false;
             }
 
-            int slotIndex = FindEmptySlot(list, model);
+            int modelHash = Game.GenerateHash(model);
+            int slotIndex = FindEmptySlot(list, model, modelHash);
             if (slotIndex < 0)
             {
                 Log($"DeliverVehicle: no empty slot for {model} (sizeTier={VehicleList.GetSizeTier(model)})");
@@ -475,6 +565,7 @@ namespace ALLIN1
             var stored = new StoredVehicle
             {
                 Model = model,
+                ModelHash = modelHash,
                 Slot = slotIndex,
                 Color1 = color1,
                 Color2 = color2,
@@ -493,13 +584,8 @@ namespace ALLIN1
                     {
                         veh.IsPersistent = true;
                         veh.IsEngineRunning = false;
-                        float deltaZ = VehicleList.GetSpawnDeltaZ(model);
-                        Function.Call(Hash.SET_ENTITY_COORDS, veh,
-                            slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
-                            false, false, false, true);
-                        Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
-                        CenterVehicleInParkingSpace(
-                            veh, slot, deltaZ, model, "Eclipse");
+                        PlaceVehicleInParkingSpace(
+                            veh, slot, model, "Eclipse");
                         veh.IsPositionFrozen = true;
                         _handles[slotIndex] = veh;
                     }
@@ -569,6 +655,20 @@ namespace ALLIN1
                 Function.Call(Hash.SET_VEHICLE_FIXED, veh);
                 cleaned++;
             }
+            foreach (Vehicle[] handles in new[]
+            {
+                _floorGarageHandles, _davisHandles, _garmentHandles, _ruralHandles,
+                _paletoHandles,
+            })
+            {
+                foreach (Vehicle veh in handles)
+                {
+                    if (veh == null || !veh.Exists()) continue;
+                    Function.Call(Hash.SET_VEHICLE_DIRT_LEVEL, veh, 0f);
+                    Function.Call(Hash.SET_VEHICLE_FIXED, veh);
+                    cleaned++;
+                }
+            }
             Log($"DetailVehicles: cleaned {cleaned} vehicles");
         }
 
@@ -610,13 +710,24 @@ namespace ALLIN1
             }
             finally
             {
+                UnloadFloorGarageInterior();
+                UnloadDavisAutoShopInterior();
+                UnloadGarmentInterior();
+                UnloadRuralInterior();
+                UnloadPaletoInterior();
                 _isPlayerInGarage = false;
                 _isPlayerInFloorGarage = false;
                 _isPlayerInDavisGarage = false;
+                _isPlayerInGarmentGarage = false;
+                _isPlayerInRuralGarage = false;
+                _isPlayerInPaletoGarage = false;
                 _elevatorMenuActive = false;
                 _exitCooldownFrames = 120;
                 _floorGarageExitCooldownFrames = 120;
                 _davisExitCooldownFrames = 120;
+                _garmentExitCooldownFrames = 120;
+                _ruralExitCooldownFrames = 120;
+                _paletoExitCooldownFrames = 120;
                 try
                 {
                     Function.Call(Hash.DO_SCREEN_FADE_IN, 0);
@@ -638,7 +749,6 @@ namespace ALLIN1
                     Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
                     player.IsPositionFrozen = false;
                 }
-                Function.Call(Hash.DO_SCREEN_FADE_IN, 250);
             }
             catch (Exception ex)
             {
@@ -648,8 +758,102 @@ namespace ALLIN1
             Log($"{name}: transition lock released");
         }
 
+        private const int GARAGE_FADE_TIMEOUT_MS = 1500;
+        private const int GARAGE_DESTINATION_TIMEOUT_MS = 8000;
+        private const int GARAGE_DESTINATION_STABLE_MS = 250;
+
+        private static void BeginGarageBlackTransition(string name)
+        {
+            if (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT))
+                Function.Call(Hash.DO_SCREEN_FADE_OUT, 350);
+
+            int startedAt = Game.GameTime;
+            while (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT) &&
+                Game.GameTime - startedAt < GARAGE_FADE_TIMEOUT_MS)
+                Script.Wait(0);
+
+            if (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT))
+            {
+                Function.Call(Hash.DO_SCREEN_FADE_OUT, 0);
+                Script.Wait(0);
+            }
+            Log($"{name}: black transition acquired in " +
+                $"{Game.GameTime - startedAt}ms");
+        }
+
+        private static bool IsPlayerInReadyInterior(Ped player)
+        {
+            if (player == null || !player.Exists()) return false;
+            int interior = Function.Call<int>(Hash.GET_INTERIOR_FROM_ENTITY, player);
+            return interior != 0 &&
+                Function.Call<bool>(Hash.IS_INTERIOR_READY, interior);
+        }
+
+        private static bool AreGarageVehiclesReady(Vehicle[] handles)
+        {
+            if (handles == null) return true;
+            foreach (Vehicle vehicle in handles)
+            {
+                if (vehicle == null || !vehicle.Exists()) continue;
+                if (!Function.Call<bool>(
+                    Hash.HAS_COLLISION_LOADED_AROUND_ENTITY, vehicle.Handle))
+                    return false;
+            }
+            return true;
+        }
+
+        private static void CompleteGarageBlackTransition(
+            string name,
+            Ped player,
+            Vehicle focusVehicle,
+            Func<bool> destinationReady,
+            Vehicle[] garageVehicles = null)
+        {
+            if (player == null || !player.Exists())
+                throw new InvalidOperationException(
+                    $"{name} lost the player during transition");
+
+            int startedAt = Game.GameTime;
+            int stableAt = -1;
+            bool locationReady = false;
+            bool collisionReady = false;
+            bool vehiclesReady = false;
+            while (Game.GameTime - startedAt < GARAGE_DESTINATION_TIMEOUT_MS)
+            {
+                Entity focus = focusVehicle != null && focusVehicle.Exists()
+                    ? (Entity)focusVehicle : player;
+                Vector3 position = focus.Position;
+                Function.Call(Hash.REQUEST_COLLISION_AT_COORD,
+                    position.X, position.Y, position.Z);
+                collisionReady = Function.Call<bool>(
+                    Hash.HAS_COLLISION_LOADED_AROUND_ENTITY, focus.Handle);
+                locationReady = destinationReady == null || destinationReady();
+                vehiclesReady = AreGarageVehiclesReady(garageVehicles);
+
+                if (locationReady && collisionReady && vehiclesReady)
+                {
+                    if (stableAt < 0) stableAt = Game.GameTime;
+                    if (Game.GameTime - stableAt >= GARAGE_DESTINATION_STABLE_MS)
+                    {
+                        Log($"{name}: destination ready after " +
+                            $"{Game.GameTime - startedAt}ms");
+                        Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+                        return;
+                    }
+                }
+                else stableAt = -1;
+                Script.Wait(50);
+            }
+
+            throw new InvalidOperationException(
+                $"{name} destination timed out while black " +
+                $"(locationReady={locationReady}, " +
+                $"collisionReady={collisionReady}, vehiclesReady={vehiclesReady})");
+        }
+
         private static void EnterGarage()
         {
+            if (RejectGarageEntry(ECLIPSE_GARAGE)) return;
             if (!BeginTransition("EnterGarage")) return;
             try
             {
@@ -682,13 +886,6 @@ namespace ALLIN1
                 Vehicle rideIn = player.CurrentVehicle;
                 if (rideIn != null && rideIn.Exists())
                 {
-                    if (IsPersonalVehicle(rideIn))
-                    {
-                        GTA.UI.Screen.ShowSubtitle(
-                            "~r~You cannot bring your personal vehicle into the garage.", 3000);
-                        return;
-                    }
-
                     // Resolve spawn name from model hash before slot assignment
                     int modelHash = rideIn.Model.Hash;
                     string modelName;
@@ -708,15 +905,8 @@ namespace ALLIN1
                         Log($"EnterGarage: vehicle hash {modelHash} not in VehicleList, fallback name={modelName}");
                     }
 
-                    // Reject oversized vehicles
-                    if (GetGarageSizeTier(modelName) == 2)
-                    {
-                        string ovName = VehicleList.DisplayNames.ContainsKey(modelName)
-                            ? VehicleList.DisplayNames[modelName] : modelName;
-                        GTA.UI.Screen.ShowSubtitle(
-                            $"~r~{ovName}~w~ is too large for this garage. Use the three-floor garage.", 3000);
-                        return;
-                    }
+                    if (RejectGarageEntry(
+                        ECLIPSE_GARAGE, rideIn, modelName, modelHash)) return;
 
                     // Try to store the vehicle in the garage
                     string charKey = CharacterKey();
@@ -733,7 +923,7 @@ namespace ALLIN1
                         return;
                     }
 
-                    int slotIndex = FindEmptySlot(storedList, modelName);
+                    int slotIndex = FindEmptySlot(storedList, modelName, modelHash);
                     if (slotIndex < 0)
                     {
                         GTA.UI.Screen.ShowSubtitle("~r~The garage is full; no spaces are available.", 3000);
@@ -743,12 +933,18 @@ namespace ALLIN1
                     // Capture full vehicle state (colors, mods, etc.)
                     StoredVehicle sv = CaptureVehicleState(rideIn, modelName, slotIndex);
                     storedList.Add(sv);
-                    Save();
+                    if (!Save())
+                    {
+                        storedList.Remove(sv);
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~r~The vehicle could not be saved; it was left outside.", 3000);
+                        return;
+                    }
 
                     string displayName = VehicleList.DisplayNames.ContainsKey(modelName)
                         ? VehicleList.DisplayNames[modelName] : modelName;
                     storedConfirmation =
-                        $"~g~{displayName}~w~ stored in the Eclipse Towers garage " +
+                        $"~g~{displayName}~w~ stored in the Eclipse Garage " +
                         $"(slot {slotIndex + 1}).";
                     Log($"EnterGarage: stored drive-in vehicle {modelName} -> slot {slotIndex}");
 
@@ -770,9 +966,9 @@ namespace ALLIN1
             _isPlayerInGarage = true; // set early to block re-entry during fade
             Log("EnterGarage: flag set, starting fade out");
 
-            // Fade to black before teleporting
-            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            Script.Wait(600);
+            // Hold black until the destination room, collision, and stored
+            // vehicles have all remained ready for a stable interval.
+            BeginGarageBlackTransition("EnterGarage");
             Log("EnterGarage: fade out done, teleporting");
 
             // Freeze player and teleport to safe interior position
@@ -798,7 +994,7 @@ namespace ALLIN1
                 Log($"EnterGarage: pre-loading {list.Count} vehicle models");
                 foreach (var sv in list)
                 {
-                    var m = new Model(sv.Model);
+                    var m = GetStoredModel(sv);
                     m.Request();
                     models.Add(m);
                 }
@@ -828,7 +1024,7 @@ namespace ALLIN1
                     ParkingSlot slot = Slots[sv.Slot];
                     try
                     {
-                        var model = new Model(sv.Model);
+                        var model = GetStoredModel(sv);
                         Vehicle veh = World.CreateVehicle(model, slot.Position, slot.Heading);
                         model.MarkAsNoLongerNeeded();
 
@@ -837,16 +1033,11 @@ namespace ALLIN1
                             ApplyVehicleState(veh, sv);
                             veh.IsPersistent = true;
                             veh.IsEngineRunning = false;
-                            float deltaZ = VehicleList.GetSpawnDeltaZ(sv.Model);
-                            Function.Call(Hash.SET_ENTITY_COORDS, veh,
-                                slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
-                                false, false, false, true);
-                            Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
-                            CenterVehicleInParkingSpace(
-                                veh, slot, deltaZ, sv.Model, "Eclipse");
+                            PlaceVehicleInParkingSpace(
+                                veh, slot, sv.Model, "Eclipse");
                             veh.IsPositionFrozen = true;
                             _handles[sv.Slot] = veh;
-                            Log($"EnterGarage: spawned {sv.Model} at slot {sv.Slot} (deltaZ={deltaZ:F3})");
+                            Log($"EnterGarage: spawned {sv.Model} at slot {sv.Slot}");
                         }
                         else
                         {
@@ -868,9 +1059,10 @@ namespace ALLIN1
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
             player.IsPositionFrozen = false;
 
-            // Fade back in
-            Log("EnterGarage: fading in");
-            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+            Log("EnterGarage: waiting for destination readiness");
+            CompleteGarageBlackTransition(
+                "EnterGarage", player, null,
+                () => IsPlayerInReadyInterior(player), _handles);
 
             if (!string.IsNullOrEmpty(storedConfirmation))
                 GTA.UI.Screen.ShowSubtitle(storedConfirmation, 4000);
@@ -939,9 +1131,7 @@ namespace ALLIN1
             }
 
             Log("LeaveGarage: vehicles cleaned, starting fade out");
-            // Fade to black before teleporting outside
-            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            Script.Wait(600);
+            BeginGarageBlackTransition("LeaveGarage");
             Log("LeaveGarage: fade done, teleporting");
 
             if (playerVehicle != null)
@@ -963,15 +1153,9 @@ namespace ALLIN1
                     }
                 }
 
-                // Teleport vehicle (with player inside) to vehicle entrance
-                playerVehicle.IsPositionFrozen = false;
                 playerVehicle.IsPersistent = true;
-                Function.Call(Hash.SET_ENTITY_COORDS, playerVehicle,
-                    ENTRANCE_POS.X, ENTRANCE_POS.Y, ENTRANCE_POS.Z,
-                    false, false, false, true);
-                Function.Call(Hash.SET_ENTITY_HEADING, playerVehicle, 180f);
-                playerVehicle.IsEngineRunning = true;
-                Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, playerVehicle);
+                ReleaseGarageVehicleForDriving(
+                    playerVehicle, ENTRANCE_POS, 180f, "Eclipse");
 
                 Save();
                 Log("LeaveGarage: drove out in vehicle");
@@ -996,15 +1180,215 @@ namespace ALLIN1
             _isPlayerInGarage = false;
             _exitCooldownFrames = 60; // ~1 second cooldown
 
-            // Fade back in
-            Log("LeaveGarage: fading in");
-            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+            Log("LeaveGarage: waiting for exterior readiness");
+            CompleteGarageBlackTransition(
+                "LeaveGarage", player, playerVehicle,
+                () => Function.Call<int>(
+                    Hash.GET_INTERIOR_FROM_ENTITY, player) == 0);
             Log("LeaveGarage: COMPLETE");
         }
 
         // ------------------------------------------------------------------ //
         //  Helpers                                                            //
         // ------------------------------------------------------------------ //
+
+        private static bool IsMissionActive()
+        {
+            try { return Function.Call<bool>(Hash.GET_MISSION_FLAG); }
+            catch (Exception ex)
+            {
+                // Fail closed. Entering a scripted interior without knowing
+                // mission state is riskier than temporarily hiding a marker.
+                LogException("IsMissionActive", ex);
+                return true;
+            }
+        }
+
+        private static void PollStorySaveAndPersistVehicles()
+        {
+            if (Game.IsLoading)
+            {
+                _storySaveWasInProgress = false;
+                return;
+            }
+
+            try
+            {
+                bool saveInProgress =
+                    Function.Call<bool>(Hash.IS_AUTO_SAVE_IN_PROGRESS);
+                DateTime latestWrite = _lastStorySaveWriteUtc;
+                DateTime now = DateTime.UtcNow;
+                if (now >= _nextStorySavePollUtc)
+                {
+                    _nextStorySavePollUtc = now.AddMilliseconds(500);
+                    latestWrite = CharacterInventory.LatestStorySaveWriteUtc();
+                }
+
+                bool saveFileAdvanced = latestWrite > _lastStorySaveWriteUtc;
+                bool hasSaveEvent = GarageStorySavePolicy.HasSaveEvent(
+                    saveInProgress, _storySaveWasInProgress,
+                    latestWrite, _lastStorySaveWriteUtc);
+                _storySaveWasInProgress = saveInProgress;
+                if (saveFileAdvanced)
+                    _lastStorySaveWriteUtc = latestWrite;
+                if (hasSaveEvent)
+                    PersistVehiclesForStorySave(saveFileAdvanced
+                        ? "story_save_written" : "story_save_started");
+            }
+            catch (Exception ex)
+            {
+                LogException("PollStorySaveAndPersistVehicles", ex);
+            }
+        }
+
+        internal static void OnScriptAborted()
+        {
+            if (!_initialized) return;
+            try
+            {
+                DateTime latestWrite =
+                    CharacterInventory.LatestStorySaveWriteUtc();
+                if (latestWrite <= _lastStorySaveWriteUtc) return;
+                _lastStorySaveWriteUtc = latestWrite;
+                PersistVehiclesForStorySave("story_save_written_on_shutdown");
+            }
+            catch (Exception ex)
+            {
+                LogException("OnScriptAborted", ex);
+            }
+        }
+
+        private static void PersistVehiclesForStorySave(string reason)
+        {
+            // Capture live customization only at a genuine Story save. These
+            // helpers return immediately for garages that are not occupied.
+            UpdateStoredFromLive();
+            FloorGarageUpdateStoredFromLive();
+            DavisUpdateStoredFromLive();
+            GarmentUpdateStoredFromLive();
+            RuralUpdateStoredFromLive();
+            PaletoUpdateStoredFromLive();
+            YachtHelipadUpdateStoredFromLive();
+            if (!_vehicleSavesDirty) return;
+
+            bool eclipseSaved;
+            bool harmonySaved;
+            bool davisSaved;
+            bool garmentSaved;
+            bool ruralSaved;
+            bool paletoSaved;
+            bool yachtHelipadSaved;
+            _vehicleSaveCommitInProgress = true;
+            try
+            {
+                eclipseSaved = Save();
+                harmonySaved = !_floorGarageInitialized || FloorGarageSave();
+                davisSaved = !_davisInitialized || DavisSave();
+                garmentSaved = !_garmentInitialized || GarmentSave();
+                ruralSaved = !_ruralInitialized || RuralSave();
+                paletoSaved = !_paletoInitialized || PaletoSave();
+                yachtHelipadSaved = !_yachtHelipadInitialized ||
+                    YachtHelipadSave();
+            }
+            finally
+            {
+                _vehicleSaveCommitInProgress = false;
+            }
+
+            bool success = eclipseSaved && harmonySaved && davisSaved
+                && garmentSaved && ruralSaved && paletoSaved &&
+                yachtHelipadSaved;
+            if (success)
+            {
+                _vehicleSavesDirty = false;
+                ClientLog.Info("Garage", "vehicle_state_backed_up",
+                    new Dictionary<string, object> { { "reason", reason } });
+            }
+            else
+            {
+                ClientLog.Warn("Garage", "vehicle_state_backup_failed",
+                    new Dictionary<string, object> { { "reason", reason } });
+            }
+        }
+
+        private static GarageEntryDenial EvaluateGarageEntry(
+            GarageDefinition garage, Vehicle vehicle = null,
+            string modelName = null, int modelHash = 0)
+        {
+            GarageEntryRules rules = garage.EntryRules;
+            bool vehiclePresent = vehicle != null && vehicle.Exists();
+            bool storyOwned = vehiclePresent && rules.BlockStoryOwnedVehicles &&
+                IsPersonalVehicle(vehicle);
+            bool sizeKnown = vehiclePresent && modelName != null;
+            int sizeTier = sizeKnown ? GetGarageSizeTier(modelName, modelHash) : 0;
+            return GarageEntryPolicy.Evaluate(
+                rules,
+                IsMissionActive(),
+                IsUnsafeGarageTransitionActive(),
+                Game.Player.WantedLevel,
+                _garagesAlwaysAccessible,
+                vehiclePresent,
+                storyOwned,
+                sizeKnown,
+                sizeTier);
+        }
+
+        private static string GarageEntryMessage(
+            GarageDefinition garage, GarageEntryDenial denial,
+            string vehicleName = null)
+        {
+            if (denial == GarageEntryDenial.MissionActive)
+                return "~y~ALLIN1 garages are unavailable during missions.";
+            if (denial == GarageEntryDenial.GameTransitionActive)
+                return "~y~Wait for the current cutscene or game transition to finish.";
+            if (denial == GarageEntryDenial.WantedLevel)
+                return "~r~Lose your wanted level before entering an ALLIN1 garage.";
+            if (denial == GarageEntryDenial.StoryOwnedVehicle)
+                return $"~r~Story-owned personal vehicles cannot enter the {garage.DisplayName}.";
+            if (denial == GarageEntryDenial.VehicleTooLarge)
+                return $"~r~{vehicleName ?? "That vehicle"}~w~ is too large for the " +
+                    $"{garage.DisplayName}.{garage.EntryRules.OversizedVehicleHint}";
+            return "";
+        }
+
+        private static bool RejectGarageEntry(
+            GarageDefinition garage, Vehicle vehicle = null,
+            string modelName = null, int modelHash = 0)
+        {
+            GarageEntryDenial denial = EvaluateGarageEntry(
+                garage, vehicle, modelName, modelHash);
+            if (denial == GarageEntryDenial.None) return false;
+
+            string displayName = modelName != null &&
+                VehicleList.DisplayNames.TryGetValue(modelName, out string knownName)
+                ? knownName : modelName;
+            GTA.UI.Screen.ShowSubtitle(
+                GarageEntryMessage(garage, denial, displayName), 3000);
+            ClientLog.Warn("Garage", "entry_blocked",
+                new Dictionary<string, object> {
+                    { "garage", garage.Id }, { "reason", denial.ToString() },
+                    { "model", modelName ?? "" }
+                });
+            return true;
+        }
+
+        private static bool IsUnsafeGarageTransitionActive()
+        {
+            try
+            {
+                return Function.Call<bool>(Hash.IS_CUTSCENE_ACTIVE)
+                    || Function.Call<bool>(Hash.IS_PLAYER_SWITCH_IN_PROGRESS)
+                    || Function.Call<bool>(Hash.IS_SCREEN_FADING_IN)
+                    || Function.Call<bool>(Hash.IS_SCREEN_FADING_OUT);
+            }
+            catch (Exception ex)
+            {
+                // Map switching during an unknown transition can assert inside
+                // GTA itself, so fail closed if transition state cannot be read.
+                LogException("IsUnsafeGarageTransitionActive", ex);
+                return true;
+            }
+        }
 
         /// <summary>
         /// Check if a vehicle is the character's assigned personal vehicle
@@ -1068,10 +1452,13 @@ namespace ALLIN1
         }
 
         /// <summary>Protect story-owned entries already present in older saves.</summary>
-        internal static bool IsProtectedStoryVehicle(string model, string plateText)
+        internal static bool IsProtectedStoryVehicle(
+            string model, string plateText, int modelHash = 0)
         {
-            return !string.IsNullOrWhiteSpace(model) &&
-                IsProtectedStoryVehicle(Game.GenerateHash(model), plateText);
+            int resolvedHash = modelHash != 0 ? modelHash
+                : !string.IsNullOrWhiteSpace(model) ? Game.GenerateHash(model) : 0;
+            return resolvedHash != 0 &&
+                IsProtectedStoryVehicle(resolvedHash, plateText);
         }
 
         /// <summary>
@@ -1106,35 +1493,86 @@ namespace ALLIN1
 
         private static BlipColor CharacterBlipColor()
         {
-            PedHash ch = GbayShop.GetCurrentCharacter();
+            PedHash ch = GarageCharacter();
             if (ch == PedHash.Franklin) return BlipColor.Green;
             if (ch == PedHash.Trevor)   return BlipColor.Orange;
-            return BlipColor.Blue; // Michael
+            if (ch == PedHash.Michael)  return BlipColor.Blue;
+            return (BlipColor)0;
+        }
+
+        private static void SetBlipColor(Blip blip, BlipColor color)
+        {
+            if (blip != null && blip.Exists()) blip.Color = color;
+        }
+
+        /// <summary>
+        /// Apply the active protagonist's color to every ALLIN1 map location.
+        /// A single cache prevents the three garage implementations from
+        /// drifting apart or doing redundant native calls every frame.
+        /// </summary>
+        private static void UpdateLocationBlipColors()
+        {
+            BlipColor charColor = CharacterBlipColor();
+            if (_hasBlipColor && charColor == _lastBlipColor) return;
+
+            SetBlipColor(_entranceBlip, charColor);
+            SetBlipColor(_pedEntranceBlip, charColor);
+            SetBlipColor(_floorGarageEntranceBlip, charColor);
+            SetBlipColor(_floorGaragePedBlip, charColor);
+            SetBlipColor(_davisVehicleBlip, charColor);
+            SetBlipColor(_davisPedBlip, charColor);
+            SetBlipColor(_garmentVehicleBlip, charColor);
+            SetBlipColor(_garmentPedBlip, charColor);
+            SetBlipColor(_ruralVehicleBlip, charColor);
+            SetBlipColor(_ruralPedBlip, charColor);
+            SetBlipColor(_paletoVehicleBlip, charColor);
+            SetBlipColor(_paletoPedBlip, charColor);
+
+            _lastBlipColor = charColor;
+            _hasBlipColor = true;
         }
 
         private static System.Drawing.Color CharacterMarkerColor()
         {
-            PedHash ch = GbayShop.GetCurrentCharacter();
+            PedHash ch = GarageCharacter();
             if (ch == PedHash.Franklin) return System.Drawing.Color.FromArgb(128, 100, 255, 100);
             if (ch == PedHash.Trevor)   return System.Drawing.Color.FromArgb(128, 255, 170, 50);
-            return System.Drawing.Color.FromArgb(128, 100, 100, 255); // Michael
+            if (ch == PedHash.Michael)  return System.Drawing.Color.FromArgb(128, 100, 100, 255);
+            return System.Drawing.Color.FromArgb(128, 180, 180, 180);
+        }
+
+        private static PedHash GarageCharacter()
+        {
+            if (GbayShop.TryGetCurrentCharacter(out PedHash character))
+            {
+                _lastGarageCharacter = character;
+                return character;
+            }
+            if ((_isPlayerInGarage || _isPlayerInFloorGarage ||
+                _isPlayerInDavisGarage || _isPlayerInGarmentGarage ||
+                _isPlayerInRuralGarage || _isPlayerInPaletoGarage) &&
+                _lastGarageCharacter != (PedHash)0)
+                return _lastGarageCharacter;
+            return (PedHash)0;
         }
 
         private static string CharacterKey()
         {
-            PedHash ch = GbayShop.GetCurrentCharacter();
+            PedHash ch = GarageCharacter();
             if (ch == PedHash.Franklin) return KEY_FRANKLIN;
             if (ch == PedHash.Trevor) return KEY_TREVOR;
-            return KEY_MICHAEL;
+            if (ch == PedHash.Michael) return KEY_MICHAEL;
+            return KEY_UNSUPPORTED;
         }
 
-        private static int FindEmptySlot(List<StoredVehicle> list, string model = null)
+        private static int FindEmptySlot(
+            List<StoredVehicle> list, string model = null, int modelHash = 0)
         {
             var occupied = new HashSet<int>();
             foreach (var sv in list)
                 occupied.Add(sv.Slot);
 
-            int sizeTier = model != null ? GetGarageSizeTier(model) : 0;
+            int sizeTier = model != null ? GetGarageSizeTier(model, modelHash) : 0;
 
             if (sizeTier >= 1) // large vehicles: left row only (slots 0-4)
             {
@@ -1153,7 +1591,7 @@ namespace ALLIN1
             return -1;
         }
 
-        private static int GetGarageSizeTier(string model)
+        private static int GetGarageSizeTier(string model, int modelHash = 0)
         {
             int configuredTier = VehicleList.GetSizeTier(model);
             if (configuredTier >= 2 || string.IsNullOrWhiteSpace(model))
@@ -1164,7 +1602,7 @@ namespace ALLIN1
             // assigned to Eclipse's tighter right row by accident.
             try
             {
-                int hash = Game.GenerateHash(model);
+                int hash = modelHash != 0 ? modelHash : Game.GenerateHash(model);
                 var minArg = new OutputArgument();
                 var maxArg = new OutputArgument();
                 Function.Call(Hash.GET_MODEL_DIMENSIONS, hash, minArg, maxArg);
@@ -1186,19 +1624,26 @@ namespace ALLIN1
             return configuredTier;
         }
 
-        private static void CenterVehicleInParkingSpace(
-            Vehicle vehicle, ParkingSlot slot, float deltaZ,
+        private static void PlaceVehicleInParkingSpace(
+            Vehicle vehicle, ParkingSlot slot,
             string modelName, string garageName, float maxCorrection = 1.25f)
         {
             if (vehicle == null || !vehicle.Exists()) return;
             try
             {
+                Function.Call(Hash.SET_ENTITY_HEADING, vehicle, slot.Heading);
+                Function.Call(Hash.SET_ENTITY_COORDS, vehicle,
+                    slot.Position.X, slot.Position.Y, slot.Position.Z,
+                    false, false, false, true);
+
                 var minArg = new OutputArgument();
                 var maxArg = new OutputArgument();
                 Function.Call(Hash.GET_MODEL_DIMENSIONS,
                     vehicle.Model.Hash, minArg, maxArg);
                 Vector3 min = minArg.GetResult<Vector3>();
                 Vector3 max = maxArg.GetResult<Vector3>();
+                bool usableBounds = VehiclePlacementMath.HasUsableBounds(
+                    min.Z, max.Z);
                 Vector3 localCenter = new Vector3(
                     (min.X + max.X) * 0.5f,
                     (min.Y + max.Y) * 0.5f,
@@ -1219,17 +1664,201 @@ namespace ALLIN1
                     correctionY *= scale;
                 }
 
+                float floorZ = slot.FloorZ;
+                string floorSource = "configured";
+                if (TryProbeParkingFloor(vehicle, slot, out float probedFloorZ))
+                {
+                    floorZ = probedFloorZ;
+                    floorSource = "raycast";
+                }
+                else if (!VehiclePlacementMath.IsFinite(floorZ))
+                {
+                    // Layouts without a measured floor keep Rockstar's native
+                    // spawn root until their anchor can be audited in game.
+                    floorSource = "native-root";
+                }
+
+                float rootZ = slot.Position.Z;
+                string heightSource = "native-root";
+                if (VehiclePlacementMath.IsFinite(floorZ)
+                    && VehicleGroundingCatalog.TryGetStableRootOffset(
+                        modelName, vehicle.Model.Hash, out float measuredOffset))
+                {
+                    rootZ = VehiclePlacementMath.CalculateMeasuredRootZ(
+                        floorZ, measuredOffset, slot.Position.Z);
+                    heightSource = "measured";
+                }
+                else if (usableBounds && VehiclePlacementMath.IsFinite(floorZ))
+                {
+                    rootZ = VehiclePlacementMath.CalculateRootZ(
+                        floorZ, min.Z, slot.Position.Z);
+                    heightSource = "bounds";
+                }
+
+                // Stored vehicle state can retain a road pitch from before it
+                // entered the garage. Always level the body, then give its
+                // suspension one short physics settle. Do not call the native
+                // ground-placement helper in an underground interior:
+                // GTA can resolve against the wrong collision layer and lift a
+                // correctly measured car well above the garage floor.
+                vehicle.IsPositionFrozen = true;
+                Function.Call(Hash.SET_ENTITY_ROTATION,
+                    vehicle.Handle, 0f, 0f, slot.Heading, 2, true);
                 Function.Call(Hash.SET_ENTITY_COORDS, vehicle,
                     root.X + correctionX, root.Y + correctionY,
-                    slot.Position.Z + deltaZ,
+                    rootZ,
                     false, false, false, true);
                 Function.Call(Hash.SET_ENTITY_HEADING, vehicle, slot.Heading);
-                Log($"CenterVehicleInParkingSpace: {garageName}/{modelName} " +
-                    $"correction=({correctionX:F3},{correctionY:F3})");
+                vehicle.IsCollisionEnabled = true;
+                vehicle.IsPositionFrozen = false;
+                Function.Call(Hash.SET_ENTITY_DYNAMIC, vehicle.Handle, true);
+                Function.Call(Hash.ACTIVATE_PHYSICS, vehicle.Handle);
+                Function.Call(Hash.SET_VEHICLE_HANDBRAKE,
+                    vehicle.Handle, true);
+                Script.Wait(180);
+                float physicsSettledZ = vehicle.Position.Z;
+                bool corrected = VehiclePlacementMath.NeedsSettledRootCorrection(
+                    rootZ, physicsSettledZ);
+                if (corrected)
+                {
+                    vehicle.IsPositionFrozen = true;
+                    Function.Call(Hash.SET_ENTITY_ROTATION,
+                        vehicle.Handle, 0f, 0f, slot.Heading, 2, true);
+                    // SET_ENTITY_COORDS may reapply the vehicle's collision
+                    // placement offset, which leaves some models roughly half
+                    // a wheel above an interior floor even while frozen.  The
+                    // measured catalog stores an exact entity-root offset, so
+                    // the final correction must use the no-offset native.
+                    Function.Call(Hash.SET_ENTITY_COORDS_NO_OFFSET, vehicle,
+                        root.X + correctionX, root.Y + correctionY,
+                        rootZ,
+                        false, false, true);
+                    Function.Call(Hash.SET_ENTITY_HEADING,
+                        vehicle, slot.Heading);
+                    vehicle.IsCollisionEnabled = true;
+                }
+                vehicle.IsPositionFrozen = true;
+                Log($"PlaceVehicleInParkingSpace: {garageName}/{modelName} " +
+                    $"center=({correctionX:F3},{correctionY:F3}) " +
+                    $"rootZ={rootZ:F3} floorZ={floorZ:F3} minZ={min.Z:F3} " +
+                    $"floorSource={floorSource} heightSource={heightSource} " +
+                    $"physicsZ={physicsSettledZ:F3} corrected={corrected} " +
+                    $"settledZ={vehicle.Position.Z:F3} " +
+                    $"pitch={vehicle.Rotation.X:F2} roll={vehicle.Rotation.Y:F2}");
             }
             catch (Exception ex)
             {
-                LogException($"CenterVehicleInParkingSpace({garageName}/{modelName})", ex);
+                LogException($"PlaceVehicleInParkingSpace({garageName}/{modelName})", ex);
+            }
+        }
+
+        /// <summary>
+        /// Transfer a parked garage vehicle back to normal gameplay. Parking
+        /// applies both an entity freeze and the vehicle handbrake; clearing
+        /// only one leaves the car apparently running but unable to move.
+        /// Every garage exit must use this shared release path.
+        /// </summary>
+        private static void ReleaseGarageVehicleForDriving(
+            Vehicle vehicle, Vector3 destination, float heading,
+            string garageName)
+        {
+            if (vehicle == null || !vehicle.Exists()) return;
+
+            vehicle.IsPositionFrozen = true;
+            Function.Call(Hash.SET_FOCUS_POS_AND_VEL,
+                destination.X, destination.Y, destination.Z,
+                0f, 0f, 0f);
+            Function.Call(Hash.REQUEST_COLLISION_AT_COORD,
+                destination.X, destination.Y, destination.Z);
+            Function.Call(Hash.SET_ENTITY_COORDS, vehicle,
+                destination.X, destination.Y, destination.Z,
+                false, false, false, true);
+            Function.Call(Hash.SET_ENTITY_HEADING, vehicle, heading);
+            vehicle.IsCollisionEnabled = true;
+
+            int collisionStartedAt = Game.GameTime;
+            bool collisionLoaded = Function.Call<bool>(
+                Hash.HAS_COLLISION_LOADED_AROUND_ENTITY, vehicle.Handle);
+            while (!collisionLoaded &&
+                   Game.GameTime - collisionStartedAt < 2500)
+            {
+                Function.Call(Hash.REQUEST_COLLISION_AT_COORD,
+                    destination.X, destination.Y, destination.Z);
+                Script.Wait(50);
+                collisionLoaded = Function.Call<bool>(
+                    Hash.HAS_COLLISION_LOADED_AROUND_ENTITY,
+                    vehicle.Handle);
+            }
+
+            Function.Call(Hash.SET_VEHICLE_HANDBRAKE, vehicle.Handle, false);
+            Function.Call(Hash.SET_VEHICLE_UNDRIVEABLE, vehicle.Handle, false);
+            Function.Call(Hash.SET_ENTITY_DYNAMIC, vehicle.Handle, true);
+            Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, vehicle.Handle);
+            Function.Call(Hash.FREEZE_ENTITY_POSITION, vehicle.Handle, false);
+            vehicle.IsPositionFrozen = false;
+            Function.Call(Hash.ACTIVATE_PHYSICS, vehicle.Handle);
+            Function.Call(Hash.SET_VEHICLE_ENGINE_ON,
+                vehicle.Handle, true, true, false);
+            vehicle.IsEngineRunning = true;
+            Function.Call(Hash.CLEAR_FOCUS);
+
+            Log($"ReleaseGarageVehicleForDriving: {garageName} " +
+                $"handle={vehicle.Handle} frozen={vehicle.IsPositionFrozen} " +
+                $"collisionLoaded={collisionLoaded} " +
+                $"collisionWaitMs={Game.GameTime - collisionStartedAt} " +
+                $"position=({vehicle.Position.X:F3},{vehicle.Position.Y:F3}," +
+                $"{vehicle.Position.Z:F3})");
+        }
+
+        private static bool TryProbeParkingFloor(
+            Vehicle vehicle, ParkingSlot slot, out float floorZ)
+        {
+            floorZ = 0f;
+            try
+            {
+                Vector3 start = new Vector3(
+                    slot.Position.X, slot.Position.Y, slot.Position.Z + 1.75f);
+                Vector3 end = new Vector3(
+                    slot.Position.X, slot.Position.Y, slot.Position.Z - 2.5f);
+                RaycastResult result = World.Raycast(
+                    start, end, IntersectFlags.Map | IntersectFlags.Objects,
+                    vehicle);
+                if (!result.DidHit || result.SurfaceNormal.Z < 0.55f)
+                    return false;
+                if (Math.Abs(result.HitPosition.Z - slot.Position.Z) > 2.25f)
+                    return false;
+                floorZ = result.HitPosition.Z;
+                return VehiclePlacementMath.IsFinite(floorZ);
+            }
+            catch (Exception ex)
+            {
+                LogException("TryProbeParkingFloor", ex);
+                return false;
+            }
+        }
+
+        private static bool TryProbeInteriorFloor(
+            Vector3 position, out float floorZ)
+        {
+            floorZ = 0f;
+            try
+            {
+                Vector3 start = new Vector3(
+                    position.X, position.Y, position.Z + 2.5f);
+                Vector3 end = new Vector3(
+                    position.X, position.Y, position.Z - 4.0f);
+                RaycastResult result = World.Raycast(
+                    start, end, IntersectFlags.Map | IntersectFlags.Objects,
+                    null);
+                if (!result.DidHit || result.SurfaceNormal.Z < 0.55f)
+                    return false;
+                floorZ = result.HitPosition.Z;
+                return VehiclePlacementMath.IsFinite(floorZ);
+            }
+            catch (Exception ex)
+            {
+                LogException("TryProbeInteriorFloor", ex);
+                return false;
             }
         }
 
@@ -1246,8 +1875,6 @@ namespace ALLIN1
             try
             {
                 string json = File.ReadAllText(loadPath);
-                if (!IsCompleteJson(json))
-                    throw new InvalidDataException($"Incomplete garage save: {loadPath}");
                 ParseJson(json);
                 MigrateModelNames();
                 if (loadPath.EndsWith(".bak", StringComparison.OrdinalIgnoreCase))
@@ -1265,8 +1892,6 @@ namespace ALLIN1
                     try
                     {
                         string json = File.ReadAllText(backup);
-                        if (!IsCompleteJson(json))
-                            throw new InvalidDataException("Incomplete garage backup");
                         ParseJson(json);
                         Log("Load: primary save failed; recovered from backup");
                     }
@@ -1298,8 +1923,24 @@ namespace ALLIN1
             {
                 foreach (var sv in kvp.Value)
                 {
+                    if (LegacyModelAliases.TryGetValue(sv.Model, out string alias))
+                    {
+                        Log($"Migrate: {sv.Model} -> {alias} (known GXT alias)");
+                        sv.Model = alias;
+                        sv.ModelHash = Game.GenerateHash(alias);
+                        changed = true;
+                        continue;
+                    }
+
                     if (validNames.Contains(sv.Model))
+                    {
+                        if (sv.ModelHash == 0)
+                        {
+                            sv.ModelHash = Game.GenerateHash(sv.Model);
+                            changed = true;
+                        }
                         continue; // already a valid spawn name
+                    }
 
                     // Try to resolve: compute hash of stored name and see if
                     // it maps to a known vehicle (it won't if the GXT label
@@ -1309,6 +1950,7 @@ namespace ALLIN1
                     {
                         Log($"Migrate: {sv.Model} -> {correctName} (hash match)");
                         sv.Model = correctName;
+                        sv.ModelHash = Game.GenerateHash(correctName);
                         changed = true;
                     }
                     else
@@ -1322,26 +1964,52 @@ namespace ALLIN1
                 Save();
         }
 
+        private static int GetStoredModelHash(StoredVehicle stored)
+        {
+            if (stored == null) return 0;
+            return stored.ModelHash != 0
+                ? stored.ModelHash : Game.GenerateHash(stored.Model);
+        }
+
+        private static Model GetStoredModel(StoredVehicle stored)
+        {
+            return new Model(GetStoredModelHash(stored));
+        }
+
+        internal static string GetVehicleDisplayName(
+            string model, int modelHash = 0)
+        {
+            if (!string.IsNullOrWhiteSpace(model) &&
+                VehicleList.DisplayNames.TryGetValue(model, out string catalogName))
+                return catalogName;
+            if (!string.IsNullOrWhiteSpace(model) &&
+                LegacyModelDisplayNames.TryGetValue(model, out string legacyName))
+                return legacyName;
+            return string.IsNullOrWhiteSpace(model) ? "Unknown vehicle" : model;
+        }
+
         private static bool Save()
         {
+            return StageOrWriteVehicleSave(SAVE_PATH, BuildJson, "Save");
+        }
+
+        private static bool StageOrWriteVehicleSave(
+            string path, Func<string> buildJson, string context)
+        {
+            _vehicleSavesDirty = true;
+            if (!_vehicleSaveCommitInProgress)
+                return true;
+
             try
             {
-                string json = BuildJson();
-                AtomicWriteText(SAVE_PATH, json);
+                AtomicWriteText(path, buildJson());
                 return true;
             }
             catch (Exception ex)
             {
-                LogException("Save", ex);
+                LogException(context, ex);
                 return false;
             }
-        }
-
-        private static bool IsCompleteJson(string json)
-        {
-            if (string.IsNullOrWhiteSpace(json)) return false;
-            string trimmed = json.Trim();
-            return trimmed.StartsWith("{") && trimmed.EndsWith("}");
         }
 
         private static void AtomicWriteText(string path, string content)
@@ -1395,7 +2063,8 @@ namespace ALLIN1
                     {
                         var sv = list[i];
                         sb.Append("    { ");
-                        sb.Append($"\"model\": \"{sv.Model}\", ");
+                        sb.Append($"\"model\": \"{EscapeJson(sv.Model)}\", ");
+                        sb.Append($"\"modelHash\": {GetStoredModelHash(sv)}, ");
                         sb.Append($"\"slot\": {sv.Slot}, ");
                         sb.Append($"\"color1\": {sv.Color1}, ");
                         sb.Append($"\"color2\": {sv.Color2}");
@@ -1458,7 +2127,27 @@ namespace ALLIN1
         private static string EscapeJson(string s)
         {
             if (s == null) return "";
-            return s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            var escaped = new StringBuilder(s.Length + 8);
+            foreach (char value in s)
+            {
+                switch (value)
+                {
+                    case '\\': escaped.Append("\\\\"); break;
+                    case '"': escaped.Append("\\\""); break;
+                    case '\b': escaped.Append("\\b"); break;
+                    case '\f': escaped.Append("\\f"); break;
+                    case '\n': escaped.Append("\\n"); break;
+                    case '\r': escaped.Append("\\r"); break;
+                    case '\t': escaped.Append("\\t"); break;
+                    default:
+                        if (value < 0x20)
+                            escaped.Append("\\u").Append(((int)value).ToString("x4"));
+                        else
+                            escaped.Append(value);
+                        break;
+                }
+            }
+            return escaped.ToString();
         }
 
         private static int[] BoolArrayToInts(bool[] arr)
@@ -1471,6 +2160,16 @@ namespace ALLIN1
         }
 
         private static void ParseJson(string json)
+        {
+            var parsed = GarageSaveCodec.Parse(
+                json, new[] { KEY_MICHAEL, KEY_FRANKLIN, KEY_TREVOR }, SLOT_COUNT);
+            foreach (var entry in parsed)
+                _stored[entry.Key] = entry.Value;
+        }
+
+        // Kept temporarily for backward-comparison during the 0.4.0 parser
+        // migration. Runtime loading exclusively uses GarageSaveCodec above.
+        private static void LegacyParseJson(string json)
         {
             string currentKey = null;
 
@@ -1618,6 +2317,7 @@ namespace ALLIN1
                             switch (key)
                             {
                                 case "slot": slot = val; break;
+                                case "modelHash": sv.ModelHash = val; break;
                                 case "color1": sv.Color1 = val; break;
                                 case "color2": sv.Color2 = val; break;
                                 case "wheelType": sv.WheelType = val; break;
@@ -1698,7 +2398,13 @@ namespace ALLIN1
         /// </summary>
         internal static StoredVehicle CaptureVehicleState(Vehicle veh, string model, int slotIndex)
         {
-            var sv = new StoredVehicle { Model = model, Slot = slotIndex };
+            var sv = new StoredVehicle
+            {
+                Model = model,
+                ModelHash = veh != null && veh.Exists()
+                    ? veh.Model.Hash : Game.GenerateHash(model),
+                Slot = slotIndex,
+            };
 
             try
             {
@@ -1910,6 +2616,7 @@ namespace ALLIN1
 
                 // Re-capture state from the live vehicle
                 var updated = CaptureVehicleState(veh, sv.Model, sv.Slot);
+                sv.ModelHash = updated.ModelHash;
                 sv.Color1 = updated.Color1;
                 sv.Color2 = updated.Color2;
                 sv.Mods = updated.Mods;
@@ -1936,12 +2643,18 @@ namespace ALLIN1
 
         // ================================================================== //
         //                                                                    //
-        //  3-FLOOR GARAGE — Oversized vehicle storage (location TBD)         //
+        //  HARMONY GARAGE — five-floor oversized vehicle storage             //
         //                                                                    //
         // ================================================================== //
 
-        private const int FLOOR_GARAGE_SLOT_COUNT = 15; // 3 floors x 5 slots
+        private const int FLOOR_GARAGE_FLOOR_COUNT = 5;
         private const int FLOOR_GARAGE_SLOTS_PER_FLOOR = 5;
+        private const int FLOOR_GARAGE_SLOT_COUNT =
+            FLOOR_GARAGE_FLOOR_COUNT * FLOOR_GARAGE_SLOTS_PER_FLOOR;
+        private const int FLOOR_GARAGE_ELEVATOR_OPTION_COUNT =
+            FLOOR_GARAGE_FLOOR_COUNT + 1;
+        private static readonly GarageDefinition THREE_FLOOR_GARAGE =
+            GarageDefinitions.ThreeFloor;
 
         // Outside entrance/exit — placeholder coordinates, will be set later
         private static readonly Vector3 FLOOR_GARAGE_ENTRANCE_POS =
@@ -1957,13 +2670,23 @@ namespace ALLIN1
         private static readonly string[] FLOOR_GARAGE_IPLS =
         {
             "ba_int_placement_ba_interior_1_dlc_int_02_ba_milo_", // garage & storage
-            "ba_int_placement_ba_interior_0_dlc_int_01_ba_milo_", // main nightclub
-            "ba_int_placement_ba_interior_2_dlc_int_03_ba_milo_", // terrorbyte bay
         };
+        private static readonly string[] FLOOR_GARAGE_REQUIRED_IPLS =
+        {
+            "ba_int_placement_ba_interior_1_dlc_int_02_ba_milo_",
+        };
+        private static readonly Vector3 FLOOR_GARAGE_INTERIOR_CENTER =
+            new Vector3(-1505.782f, -3012.587f, -80.0f);
+        private const string FLOOR_GARAGE_INTERIOR_TYPE = "ba_dlc_int_02_ba";
+        private const int FLOOR_GARAGE_INTERIOR_LOAD_TIMEOUT_MS = 8000;
+        private const int FLOOR_GARAGE_ENTITY_SET_CLEAR_MS = 150;
+        private const int FLOOR_GARAGE_ENTITY_SET_SETTLE_MS = 350;
 
         // Interior ped spawn — at elevator 1 position
+        // Interior-side floor anchor. The elevator interaction marker is a
+        // room-volume boundary and is not safe after physics resumes.
         private static readonly Vector3 FLOOR_GARAGE_INTERIOR_PED =
-            new Vector3(-1507.55f, -3014.50f, -79.24f);
+            new Vector3(-1507.721f, -3011.700f, -80.2419f);
         private const float FLOOR_GARAGE_INTERIOR_PED_HEADING = 0f;
 
         // Elevator positions inside the garage (for floor switching + exit)
@@ -1975,12 +2698,13 @@ namespace ALLIN1
 
         private const float ELEVATOR_INTERACT_RADIUS = 1.8f;
 
-        // Virtual floor system — all 3 floors share the same 5 physical positions
+        // Virtual floor system — all 5 floors share the same 5 physical positions
         // within the nightclub garage interior. Only the current floor's vehicles
         // are spawned at a time; switching floors despawns/respawns.
-        private static int _currentFloor; // 0, 1, or 2
+        private static int _currentFloor; // 0 through 4
+        private static int _floorGarageInteriorId;
         private static bool _elevatorMenuActive;
-        private static int _elevatorMenuSelection; // 0=Floor1, 1=Floor2, 2=Floor3, 3=Exit
+        private static int _elevatorMenuSelection; // floors 0-4, exit=5
 
         // Garage customization — 5 categories, each with 3 options
         // Players pick one option per category per floor via GBay menu
@@ -1999,12 +2723,30 @@ namespace ALLIN1
         // Entity set name per [category][option]
         private static readonly string[][] CUSTOM_ENTITY_SETS =
         {
-            new[] { "Int02_ba_floor01", "Int02_ba_floor02", "Int02_ba_floor03",
-                "Int02_ba_floor04", "Int02_ba_floor05" },
-            new[] { "", "Int02_ba_sec_upgrade_grg" },
-            new[] { "", "Int02_ba_equipment_upgrade" },
-            new[] { "", "Int02_ba_sec_desks_L1", "Int02_ba_sec_desks_L2345" },
-            new[] { "", "Int02_ba_clutterstuff" },
+            // Keep the exact lowercase names stored in Rockstar's
+            // ba_int_02_ba.ytyp rather than relying on name normalization that
+            // is not consistent across the Legacy and Enhanced native paths.
+            new[] { "int02_ba_floor01", "int02_ba_floor02", "int02_ba_floor03",
+                "int02_ba_floor04", "int02_ba_floor05" },
+            new[] { "", "int02_ba_sec_upgrade_grg" },
+            new[] { "", "int02_ba_equipment_upgrade" },
+            new[] { "", "int02_ba_sec_desks_l1", "int02_ba_sec_desks_l2345" },
+            new[] { "", "int02_ba_clutterstuff" },
+        };
+
+        // Harmony is presented as a finished garage rather than an Online
+        // business upgrade screen. These native detail packages are therefore
+        // always enabled on every virtual floor.
+        private static readonly string[] FLOOR_GARAGE_FIXED_ENTITY_SETS =
+        {
+            "int02_ba_sec_upgrade_grg",
+            "int02_ba_equipment_upgrade",
+            "int02_ba_truckmod",
+            "int02_ba_deskpc",
+            "int02_ba_sec_upgrade_strg",
+            "int02_ba_sec_upgrade_desk",
+            "int02_ba_sec_upgrade_desk02",
+            "int02_ba_clutterstuff",
         };
 
         internal const int CUSTOM_CATEGORY_COUNT = 5;
@@ -2016,7 +2758,8 @@ namespace ALLIN1
         }
 
         // Per-floor theme choices: _floorThemes[charKey][floor] = int[5] (one choice per category)
-        // Default: floor 0 = all 0s, floor 1 = all 1s, floor 2 = all 2s
+        // Legacy theme values remain readable for save compatibility. Harmony
+        // now uses a fixed, fully detailed interior on every floor.
         private static readonly Dictionary<string, int[][]> _floorThemes =
             new Dictionary<string, int[][]>
             {
@@ -2032,6 +2775,8 @@ namespace ALLIN1
                 new[] { 0, 1, 1, 1, 1 }, // virtual floor 1
                 new[] { 1, 1, 1, 2, 1 }, // virtual floor 2
                 new[] { 2, 1, 1, 2, 1 }, // virtual floor 3
+                new[] { 3, 1, 1, 2, 1 }, // virtual floor 4
+                new[] { 4, 1, 1, 2, 1 }, // virtual floor 5
             };
         }
 
@@ -2053,43 +2798,31 @@ namespace ALLIN1
             return sets;
         }
 
-        // Five physical bays laid out along Y. Vehicles face east into the
-        // aisle so their length runs across the bay instead of nose-to-tail
-        // along the row; the prior 0-degree heading caused long cars to crowd
-        // adjacent spaces.
+        // Five surveyed positions in the Nightclub warehouse shell, reused by
+        // each virtual floor. Vehicles face east into the aisle and remain six
+        // metres apart so oversized bodies do not overlap adjacent vehicles.
         private static readonly ParkingSlot[] _floorGaragePhysicalSlots =
         {
-            new ParkingSlot(-1517.0f, -3022.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3016.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3010.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3004.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -2998.0f, -80.0f, 90f),
+            new ParkingSlot(-1517.0f, -3022.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -3016.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -3010.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -3004.0f, -79.69f, 90f, -80.2422f),
+            new ParkingSlot(-1517.0f, -2998.0f, -79.69f, 90f, -80.2422f),
         };
 
-        // 15 logical slots across 3 virtual floors (5 per floor)
-        // Floor 0 = slots 0-4, Floor 1 = slots 5-9, Floor 2 = slots 10-14
+        // 25 logical slots across 5 virtual floors (5 per floor).
         // All floors share the same physical positions — only current floor is spawned
         internal static readonly ParkingSlot[] FloorGarageSlots =
+            BuildFloorGarageSlots();
+
+        private static ParkingSlot[] BuildFloorGarageSlots()
         {
-            // Floor 0 — 5 slots (physical positions 0-4)
-            new ParkingSlot(-1517.0f, -3022.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3016.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3010.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3004.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -2998.0f, -80.0f, 90f),
-            // Floor 1 — 5 slots (same physical positions)
-            new ParkingSlot(-1517.0f, -3022.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3016.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3010.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3004.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -2998.0f, -80.0f, 90f),
-            // Floor 2 — 5 slots (same physical positions)
-            new ParkingSlot(-1517.0f, -3022.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3016.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3010.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -3004.0f, -80.0f, 90f),
-            new ParkingSlot(-1517.0f, -2998.0f, -80.0f, 90f),
-        };
+            var slots = new ParkingSlot[FLOOR_GARAGE_SLOT_COUNT];
+            for (int i = 0; i < slots.Length; i++)
+                slots[i] = _floorGaragePhysicalSlots[
+                    i % FLOOR_GARAGE_SLOTS_PER_FLOOR];
+            return slots;
+        }
 
         private static readonly string FLOOR_GARAGE_SAVE_PATH =
             Path.Combine(SCRIPTS_DIR, "ALLIN1_floor_garage.json");
@@ -2116,8 +2849,6 @@ namespace ALLIN1
         private static Blip _floorGarageEntranceBlip;
         private static Blip _floorGaragePedBlip;
         private static bool _floorGarageInitialized;
-        private static BlipColor _lastFloorBlipColor;
-        private static bool _hasFloorBlipColor;
 
         // ------------------------------------------------------------------ //
         //  Floor Garage Public API                                                  //
@@ -2130,20 +2861,23 @@ namespace ALLIN1
         /// <summary>Get the theme choice for a specific floor and category.</summary>
         internal static int GetFloorThemeChoice(int floor, int category)
         {
+            if (floor < 0 || floor >= FLOOR_GARAGE_FLOOR_COUNT ||
+                category < 0 || category >= CUSTOM_CATEGORY_COUNT) return 0;
             string key = FloorGarageCharacterKey();
-            if (!_floorThemes.TryGetValue(key, out var themes)) return floor;
-            if (floor < 0 || floor >= 3 || category < 0 || category >= CUSTOM_CATEGORY_COUNT) return 0;
+            if (!_floorThemes.TryGetValue(key, out var themes))
+                return DefaultThemes()[floor][category];
             return themes[floor][category];
         }
 
         /// <summary>Set the theme choice for a specific floor and category. Applies live if in garage.</summary>
         internal static void SetFloorThemeChoice(int floor, int category, int option)
         {
-            if (floor < 0 || floor >= 3) return;
+            if (floor < 0 || floor >= FLOOR_GARAGE_FLOOR_COUNT) return;
             if (category < 0 || category >= CUSTOM_CATEGORY_COUNT) return;
             if (option < 0 || option >= GetFloorCustomizationOptionCount(category)) return;
 
             string key = FloorGarageCharacterKey();
+            if (key == KEY_UNSUPPORTED) return;
             if (!_floorThemes.TryGetValue(key, out var themes))
             {
                 themes = DefaultThemes();
@@ -2189,16 +2923,16 @@ namespace ALLIN1
                 _floorGarageEntranceBlip = World.CreateBlip(FLOOR_GARAGE_ENTRANCE_POS);
                 _floorGarageEntranceBlip.Sprite = BlipSprite.Garage;
                 _floorGarageEntranceBlip.Color = CharacterBlipColor();
-                _floorGarageEntranceBlip.Name = "ALLIN1 Three-Floor Garage (Vehicle)";
+                _floorGarageEntranceBlip.Name = "ALLIN1 Harmony Garage (Vehicle)";
                 _floorGarageEntranceBlip.IsShortRange = true;
 
                 _floorGaragePedBlip = World.CreateBlip(FLOOR_GARAGE_PED_EXIT_DEST);
                 _floorGaragePedBlip.Sprite = BlipSprite.Garage;
                 _floorGaragePedBlip.Color = CharacterBlipColor();
-                _floorGaragePedBlip.Name = "ALLIN1 Three-Floor Garage (Pedestrian)";
+                _floorGaragePedBlip.Name = "ALLIN1 Harmony Garage (Pedestrian)";
                 _floorGaragePedBlip.IsShortRange = true;
 
-                Log("Floor Garage initialized (3-floor oversized vehicle storage)");
+                Log("Floor Garage initialized (5-floor oversized vehicle storage)");
             }
             catch (Exception ex)
             {
@@ -2248,6 +2982,7 @@ namespace ALLIN1
             var stored = new StoredVehicle
             {
                 Model = model,
+                ModelHash = Game.GenerateHash(model),
                 Slot = slotIndex,
                 Color1 = color1,
                 Color2 = color2,
@@ -2271,13 +3006,8 @@ namespace ALLIN1
                         {
                             veh.IsPersistent = true;
                             veh.IsEngineRunning = false;
-                            float deltaZ = VehicleList.GetSpawnDeltaZ(model);
-                            Function.Call(Hash.SET_ENTITY_COORDS, veh,
-                                slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
-                                false, false, false, true);
-                            Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
-                            CenterVehicleInParkingSpace(
-                                veh, slot, deltaZ, model, "ThreeFloor", 2.0f);
+                            PlaceVehicleInParkingSpace(
+                                veh, slot, model, "ThreeFloor", 2.0f);
                             veh.IsPositionFrozen = true;
                             _floorGarageHandles[slotIndex] = veh;
                         }
@@ -2358,23 +3088,18 @@ namespace ALLIN1
 
             Ped player = Game.Player.Character;
             if (player == null || player.IsDead) return;
+            if (!_isPlayerInFloorGarage && !GbayShop.TryGetCurrentCharacter(out _)) return;
 
             // Don't show floor garage markers while in garage (and vice versa)
-            if (_isPlayerInGarage || _isPlayerInDavisGarage) return;
-
-            BlipColor charColor = CharacterBlipColor();
-            if (!_hasFloorBlipColor || charColor != _lastFloorBlipColor)
-            {
-                if (_floorGarageEntranceBlip != null && _floorGarageEntranceBlip.Exists())
-                    _floorGarageEntranceBlip.Color = charColor;
-                if (_floorGaragePedBlip != null && _floorGaragePedBlip.Exists())
-                    _floorGaragePedBlip.Color = charColor;
-                _lastFloorBlipColor = charColor;
-                _hasFloorBlipColor = true;
-            }
+            if (_isPlayerInGarage || _isPlayerInDavisGarage ||
+                _isPlayerInGarmentGarage || _isPlayerInRuralGarage ||
+                _isPlayerInPaletoGarage) return;
 
             if (!_isPlayerInFloorGarage)
             {
+                if (EvaluateGarageEntry(THREE_FLOOR_GARAGE) ==
+                    GarageEntryDenial.MissionActive) return;
+
                 bool inVehicle = player.IsInVehicle();
 
                 if (inVehicle)
@@ -2390,10 +3115,21 @@ namespace ALLIN1
                     float dist = player.Position.DistanceTo(FLOOR_GARAGE_ENTRANCE_POS);
                     if (dist < ENTER_RADIUS + 1f)
                     {
-                        GTA.UI.Screen.ShowHelpTextThisFrame(
-                            "Press ~INPUT_CONTEXT~ to enter the three-floor garage.");
-                        if (Game.IsControlJustPressed(GTA.Control.Context))
-                            EnterFloorGarage();
+                        Vehicle vehicle = player.CurrentVehicle;
+                        GarageEntryDenial denial = EvaluateGarageEntry(
+                            THREE_FLOOR_GARAGE, vehicle);
+                        if (denial != GarageEntryDenial.None)
+                        {
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                GarageEntryMessage(THREE_FLOOR_GARAGE, denial));
+                        }
+                        else
+                        {
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                "Press ~INPUT_CONTEXT~ to enter the Harmony Garage.");
+                            if (Game.IsControlJustPressed(GTA.Control.Context))
+                                EnterFloorGarage();
+                        }
                     }
                 }
 
@@ -2410,10 +3146,18 @@ namespace ALLIN1
                     float dist = player.Position.DistanceTo(FLOOR_GARAGE_PED_EXIT_DEST);
                     if (dist < ENTER_RADIUS)
                     {
-                        GTA.UI.Screen.ShowHelpTextThisFrame(
-                            "Press ~INPUT_CONTEXT~ to enter the three-floor garage.");
-                        if (Game.IsControlJustPressed(GTA.Control.Context))
-                            EnterFloorGarage();
+                        GarageEntryDenial denial = EvaluateGarageEntry(
+                            THREE_FLOOR_GARAGE);
+                        if (denial != GarageEntryDenial.None)
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                GarageEntryMessage(THREE_FLOOR_GARAGE, denial));
+                        else
+                        {
+                            GTA.UI.Screen.ShowHelpTextThisFrame(
+                                "Press ~INPUT_CONTEXT~ to enter the Harmony Garage.");
+                            if (Game.IsControlJustPressed(GTA.Control.Context))
+                                EnterFloorGarage();
+                        }
                     }
                 }
             }
@@ -2424,12 +3168,12 @@ namespace ALLIN1
 
                 // Floor indicator (always show)
                 GTA.UI.Screen.ShowSubtitle(
-                    $"~b~Floor {_currentFloor + 1}/3", 1);
+                    $"~b~Floor {_currentFloor + 1}/{FLOOR_GARAGE_FLOOR_COUNT}", 1);
 
                 if (inVehicle)
                 {
                     GTA.UI.Screen.ShowHelpTextThisFrame(
-                        "Press ~INPUT_CONTEXT~ to leave the three-floor garage with your vehicle.");
+                        "Press ~INPUT_CONTEXT~ to leave the Harmony Garage with your vehicle.");
                     if (Game.IsControlJustPressed(GTA.Control.Context))
                         LeaveFloorGarage();
                 }
@@ -2442,14 +3186,17 @@ namespace ALLIN1
                         DrawElevatorMenu();
 
                         if (Game.IsControlJustPressed(GTA.Control.FrontendUp))
-                            _elevatorMenuSelection = (_elevatorMenuSelection + 3) % 4; // wrap up
+                            _elevatorMenuSelection = (_elevatorMenuSelection +
+                                FLOOR_GARAGE_ELEVATOR_OPTION_COUNT - 1) %
+                                FLOOR_GARAGE_ELEVATOR_OPTION_COUNT;
                         else if (Game.IsControlJustPressed(GTA.Control.FrontendDown))
-                            _elevatorMenuSelection = (_elevatorMenuSelection + 1) % 4; // wrap down
+                            _elevatorMenuSelection = (_elevatorMenuSelection + 1) %
+                                FLOOR_GARAGE_ELEVATOR_OPTION_COUNT;
                         else if (Game.IsControlJustPressed(GTA.Control.FrontendAccept)
                               || Game.IsControlJustPressed(GTA.Control.Context))
                         {
                             _elevatorMenuActive = false;
-                            if (_elevatorMenuSelection == 3) // Exit
+                            if (_elevatorMenuSelection == FLOOR_GARAGE_FLOOR_COUNT)
                                 LeaveFloorGarage();
                             else
                                 SwitchFloorGarageFloor(_elevatorMenuSelection);
@@ -2514,10 +3261,10 @@ namespace ALLIN1
         // ------------------------------------------------------------------ //
 
         private static readonly string[] _elevatorLabels =
-            { "Floor 1", "Floor 2", "Floor 3", "Exit Garage" };
+            { "Floor 1", "Floor 2", "Floor 3", "Floor 4", "Floor 5", "Exit Garage" };
 
         /// <summary>
-        /// Draws a simple centered elevator menu on screen with 4 options.
+        /// Draws a simple centered elevator menu for five floors and the exit.
         /// The currently selected option is highlighted.
         /// </summary>
         private static void DrawElevatorMenu()
@@ -2527,7 +3274,7 @@ namespace ALLIN1
             const float titleH = 0.04f;
             const float pad = 0.005f;
             const float menuX = 0.5f; // centered
-            float totalH = titleH + rowH * 4 + pad * 2;
+            float totalH = titleH + rowH * FLOOR_GARAGE_ELEVATOR_OPTION_COUNT + pad * 2;
             float menuTop = 0.5f - totalH / 2f;
 
             // Background
@@ -2540,13 +3287,13 @@ namespace ALLIN1
                 font: 0, centered: true, shadow: true);
 
             // Options
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < FLOOR_GARAGE_ELEVATOR_OPTION_COUNT; i++)
             {
                 float rowY = menuTop + titleH + rowH * i;
                 float rowCY = rowY + rowH / 2f;
 
                 bool selected = (i == _elevatorMenuSelection);
-                bool isCurrent = (i < 3 && i == _currentFloor);
+                bool isCurrent = (i < FLOOR_GARAGE_FLOOR_COUNT && i == _currentFloor);
 
                 if (selected)
                 {
@@ -2581,6 +3328,7 @@ namespace ALLIN1
 
         private static void EnterFloorGarage()
         {
+            if (RejectGarageEntry(THREE_FLOOR_GARAGE)) return;
             if (!BeginTransition("EnterFloorGarage")) return;
             try
             {
@@ -2605,6 +3353,8 @@ namespace ALLIN1
             Ped player = Game.Player.Character;
             Vehicle rideInToDelete = null;
             string storedConfirmation = null;
+            StoredVehicle storedDuringEntry = null;
+            List<StoredVehicle> storedListDuringEntry = null;
 
             // This garage always opens on floor one. Set the virtual floor
             // before loading its entity sets so a prior visit cannot apply the
@@ -2617,13 +3367,6 @@ namespace ALLIN1
                 Vehicle rideIn = player.CurrentVehicle;
                 if (rideIn != null && rideIn.Exists())
                 {
-                    if (IsPersonalVehicle(rideIn))
-                    {
-                        GTA.UI.Screen.ShowSubtitle(
-                            "~r~You cannot bring your personal vehicle into the three-floor garage.", 3000);
-                        return;
-                    }
-
                     int modelHash = rideIn.Model.Hash;
                     string modelName;
                     if (_hashToSpawnName != null && _hashToSpawnName.TryGetValue(modelHash, out string spawnName))
@@ -2638,6 +3381,9 @@ namespace ALLIN1
                             modelName = modelHash.ToString();
                     }
 
+                    if (RejectGarageEntry(
+                        THREE_FLOOR_GARAGE, rideIn, modelName, modelHash)) return;
+
                     string hKey = FloorGarageCharacterKey();
                     if (!_floorGarageStored.TryGetValue(hKey, out var storedList))
                     {
@@ -2648,7 +3394,7 @@ namespace ALLIN1
                     if (storedList.Count >= FLOOR_GARAGE_SLOT_COUNT)
                     {
                         GTA.UI.Screen.ShowSubtitle(
-                            $"~r~The three-floor garage is full.~w~ " +
+                            $"~r~The Harmony Garage is full.~w~ " +
                             $"({storedList.Count}/{FLOOR_GARAGE_SLOT_COUNT} spaces used)", 3000);
                         return;
                     }
@@ -2657,20 +3403,28 @@ namespace ALLIN1
                     if (slotIndex < 0)
                     {
                         GTA.UI.Screen.ShowSubtitle(
-                            "~r~The three-floor garage is full; no spaces are available.", 3000);
+                            "~r~The Harmony Garage is full; no spaces are available.", 3000);
                         return;
                     }
 
                     StoredVehicle sv = CaptureVehicleState(rideIn, modelName, slotIndex);
                     storedList.Add(sv);
-                    FloorGarageSave();
+                    if (!FloorGarageSave())
+                    {
+                        storedList.Remove(sv);
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~r~The vehicle could not be saved; it was left outside.", 3000);
+                        return;
+                    }
+                    storedDuringEntry = sv;
+                    storedListDuringEntry = storedList;
 
                     string displayName = VehicleList.DisplayNames.ContainsKey(modelName)
                         ? VehicleList.DisplayNames[modelName] : modelName;
                     int floor = slotIndex / FLOOR_GARAGE_SLOTS_PER_FLOOR + 1;
                     int spotOnFloor = slotIndex % FLOOR_GARAGE_SLOTS_PER_FLOOR + 1;
                     storedConfirmation =
-                        $"~g~{displayName}~w~ stored in the three-floor garage " +
+                        $"~g~{displayName}~w~ stored in the Harmony Garage " +
                         $"(floor {floor}, space {spotOnFloor}).";
                     Log($"EnterFloorGarage: stored drive-in vehicle {modelName} -> slot {slotIndex} (floor {floor})");
 
@@ -2681,7 +3435,20 @@ namespace ALLIN1
 
             Log("EnterFloorGarage: loading IPL");
             // Load the nightclub garage IPL
-            LoadFloorGarageInterior();
+            if (!LoadFloorGarageInterior())
+            {
+                if (storedDuringEntry != null && storedListDuringEntry != null)
+                {
+                    storedListDuringEntry.Remove(storedDuringEntry);
+                    if (!FloorGarageSave())
+                        Log("EnterFloorGarage: WARNING - entry rollback save failed");
+                    Log("EnterFloorGarage: rolled back drive-in storage after interior load failure");
+                }
+                GTA.UI.Screen.ShowSubtitle(
+                    "~y~The Harmony Garage is unavailable during the current game transition.",
+                    3500);
+                return;
+            }
             Log("EnterFloorGarage: IPL loaded");
 
             // Clear existing handles
@@ -2695,9 +3462,7 @@ namespace ALLIN1
             _isPlayerInFloorGarage = true; // set early to block re-entry during fade
             Log("EnterFloorGarage: flag set, starting fade out");
 
-            // Fade to black before teleporting
-            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            Script.Wait(600);
+            BeginGarageBlackTransition("EnterFloorGarage");
             Log("EnterFloorGarage: fade done, teleporting");
 
             // Freeze and teleport player
@@ -2713,6 +3478,25 @@ namespace ALLIN1
                 rideInToDelete.Delete();
                 Log("EnterFloorGarage: deleted drive-in vehicle after player extraction");
             }
+
+            // The standalone MLO can resolve before the player is attached to
+            // one of its rooms. Reapply only after attachment so Enhanced
+            // instantiates the selected floor and detail drawables rather
+            // than merely remembering their active flags on a bare shell.
+            int attachedInterior = WaitForFloorGaragePlayerInterior(
+                player, _floorGarageInteriorId, 3500);
+            if (attachedInterior == 0)
+                throw new InvalidOperationException(
+                    "Player did not attach to the loaded Harmony interior room");
+
+            bool setsReady = ApplyFloorEntitySets(
+                attachedInterior, _currentFloor);
+            Log($"EnterFloorGarage: post-teleport interior={attachedInterior} " +
+                $"setsReady={setsReady}");
+            if (!setsReady)
+                throw new InvalidOperationException(
+                    "Harmony interior entity sets did not finish loading");
+
             Log("EnterFloorGarage: teleported, spawning vehicles");
 
             // Spawn vehicles for the current floor only
@@ -2722,9 +3506,14 @@ namespace ALLIN1
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
             player.IsPositionFrozen = false;
 
-            // Fade back in
-            Log("EnterFloorGarage: fading in");
-            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+            Log("EnterFloorGarage: waiting for destination readiness");
+            CompleteGarageBlackTransition(
+                "EnterFloorGarage", player, null,
+                () => Function.Call<bool>(Hash.IS_INTERIOR_READY,
+                        _floorGarageInteriorId) &&
+                    IsFloorGaragePlayerAttached(
+                        player, _floorGarageInteriorId, out _),
+                _floorGarageHandles);
 
             if (!string.IsNullOrEmpty(storedConfirmation))
                 GTA.UI.Screen.ShowSubtitle(storedConfirmation, 4000);
@@ -2792,10 +3581,14 @@ namespace ALLIN1
             }
 
             Log("LeaveFloorGarage: vehicles cleaned, starting fade out");
-            // Fade to black before teleporting outside
-            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            Script.Wait(600);
+            BeginGarageBlackTransition("LeaveFloorGarage");
             Log("LeaveFloorGarage: fade done, teleporting");
+
+            player.IsPositionFrozen = true;
+            if (playerVehicle != null)
+                playerVehicle.IsPositionFrozen = true;
+            UnloadFloorGarageInterior();
+            Script.Wait(250);
 
             if (playerVehicle != null)
             {
@@ -2813,14 +3606,9 @@ namespace ALLIN1
                     }
                 }
 
-                playerVehicle.IsPositionFrozen = false;
                 playerVehicle.IsPersistent = true;
-                Function.Call(Hash.SET_ENTITY_COORDS, playerVehicle,
-                    FLOOR_GARAGE_ENTRANCE_POS.X, FLOOR_GARAGE_ENTRANCE_POS.Y, FLOOR_GARAGE_ENTRANCE_POS.Z,
-                    false, false, false, true);
-                Function.Call(Hash.SET_ENTITY_HEADING, playerVehicle, 270f);
-                playerVehicle.IsEngineRunning = true;
-                Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, playerVehicle);
+                ReleaseGarageVehicleForDriving(playerVehicle,
+                    FLOOR_GARAGE_ENTRANCE_POS, 270f, "Harmony");
 
                 FloorGarageSave();
                 Log("LeaveFloorGarage: drove out in vehicle");
@@ -2842,9 +3630,11 @@ namespace ALLIN1
             _isPlayerInFloorGarage = false;
             _floorGarageExitCooldownFrames = 60;
 
-            // Fade back in
-            Log("LeaveFloorGarage: fading in");
-            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+            Log("LeaveFloorGarage: waiting for exterior readiness");
+            CompleteGarageBlackTransition(
+                "LeaveFloorGarage", player, playerVehicle,
+                () => Function.Call<int>(
+                    Hash.GET_INTERIOR_FROM_ENTITY, player) == 0);
             Log("LeaveFloorGarage: COMPLETE");
         }
 
@@ -2854,10 +3644,11 @@ namespace ALLIN1
 
         private static string FloorGarageCharacterKey()
         {
-            PedHash ch = GbayShop.GetCurrentCharacter();
+            PedHash ch = GarageCharacter();
             if (ch == PedHash.Franklin) return KEY_FRANKLIN_FG;
             if (ch == PedHash.Trevor) return KEY_TREVOR_FG;
-            return KEY_MICHAEL_FG;
+            if (ch == PedHash.Michael) return KEY_MICHAEL_FG;
+            return KEY_UNSUPPORTED;
         }
 
         private static int FindEmptyFloorGarageSlot(List<StoredVehicle> list)
@@ -2885,66 +3676,309 @@ namespace ALLIN1
         }
 
         /// <summary>
-        /// Activate entity sets for the given floor and refresh the interior.
-        /// Uses customized theme choices instead of hardcoded sets.
+        /// Activate one native garage level plus the complete finished detail
+        /// package. The desk sets are mutually exclusive between level 1 and
+        /// levels 2-5, so only the matching variant is enabled.
         /// </summary>
-        private static void ApplyFloorEntitySets(int interior, int floor)
+        private static bool ApplyFloorEntitySets(int interior, int floor)
         {
-            // Interior entity sets are additive. Clear every sibling first so
-            // stale saved/default variants cannot overlap and flicker.
-            for (int category = 0; category < CUSTOM_CATEGORY_COUNT; category++)
-                for (int option = 0;
-                    option < GetFloorCustomizationOptionCount(category); option++)
-                    if (!string.IsNullOrEmpty(CUSTOM_ENTITY_SETS[category][option]))
-                        Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior,
-                            CUSTOM_ENTITY_SETS[category][option]);
+            if (interior == 0 || floor < 0 || floor >= FLOOR_GARAGE_FLOOR_COUNT)
+                return false;
 
-            string[] sets = GetFloorEntitySets(floor);
-            foreach (string set in sets)
-                if (!string.IsNullOrEmpty(set))
-                    Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, set);
+            string floorSet = CUSTOM_ENTITY_SETS[0][floor];
+            string deskSet = floor == 0
+                ? "int02_ba_sec_desks_l1"
+                : "int02_ba_sec_desks_l2345";
+
+            // A single refresh after both deactivation and activation can keep
+            // the old MLO drawable instantiated on Enhanced. Rebuild in two
+            // phases so the previous floor is physically removed before the
+            // target floor is introduced.
+            for (int option = 0; option < FLOOR_GARAGE_FLOOR_COUNT; option++)
+                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior,
+                    CUSTOM_ENTITY_SETS[0][option]);
+            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior,
+                "int02_ba_sec_desks_l1");
+            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior,
+                "int02_ba_sec_desks_l2345");
+            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior,
+                "int02_ba_garage_blocker");
+            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior,
+                "int02_ba_storage_blocker");
+            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior,
+                "int02_ba_fanblocker01");
             Function.Call(Hash.REFRESH_INTERIOR, interior);
+            int clearStartedAt = Game.GameTime;
+            while (Game.GameTime - clearStartedAt < FLOOR_GARAGE_ENTITY_SET_CLEAR_MS)
+                Script.Wait(0);
+
+            foreach (string set in FLOOR_GARAGE_FIXED_ENTITY_SETS)
+                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, set);
+            Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, deskSet);
+            Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, floorSet);
+            Function.Call(Hash.REFRESH_INTERIOR, interior);
+            int settleStartedAt = Game.GameTime;
+            while (Game.GameTime - settleStartedAt < FLOOR_GARAGE_ENTITY_SET_SETTLE_MS)
+                Script.Wait(0);
+
+            bool valid = ValidateFloorEntitySets(interior, floor, out string detail);
+            Log($"ApplyFloorEntitySets: interior={interior} floor={floor + 1} " +
+                $"set={floorSet} valid={valid} {detail}");
+            return valid;
+        }
+
+        private static bool ValidateFloorEntitySets(
+            int interior, int floor, out string detail)
+        {
+            if (interior == 0 || floor < 0 || floor >= FLOOR_GARAGE_FLOOR_COUNT)
+            {
+                detail = "invalid interior or floor";
+                return false;
+            }
+
+            var floorStates = new bool[FLOOR_GARAGE_FLOOR_COUNT];
+            bool exclusive = true;
+            for (int option = 0; option < FLOOR_GARAGE_FLOOR_COUNT; option++)
+            {
+                floorStates[option] = Function.Call<bool>(
+                    (Hash)0x35F7DD45E8C0A16D,
+                    interior, CUSTOM_ENTITY_SETS[0][option]);
+                if (floorStates[option] != (option == floor))
+                    exclusive = false;
+            }
+
+            var missingFixed = new List<string>();
+            foreach (string set in FLOOR_GARAGE_FIXED_ENTITY_SETS)
+                if (!Function.Call<bool>((Hash)0x35F7DD45E8C0A16D,
+                    interior, set))
+                    missingFixed.Add(set);
+
+            bool desksL1 = Function.Call<bool>((Hash)0x35F7DD45E8C0A16D,
+                interior, "int02_ba_sec_desks_l1");
+            bool desksOther = Function.Call<bool>((Hash)0x35F7DD45E8C0A16D,
+                interior, "int02_ba_sec_desks_l2345");
+            bool deskValid = floor == 0
+                ? desksL1 && !desksOther
+                : !desksL1 && desksOther;
+
+            detail = $"floors=[{string.Join(",", floorStates)}] " +
+                $"exclusive={exclusive} fixedMissing=[{string.Join(",", missingFixed)}] " +
+                $"desks=[{desksL1},{desksOther}]";
+            return exclusive && missingFixed.Count == 0 && deskValid;
+        }
+
+        private static int ResolveFloorGarageInterior()
+        {
+            int interior = Function.Call<int>(
+                Hash.GET_INTERIOR_AT_COORDS_WITH_TYPE,
+                FLOOR_GARAGE_INTERIOR_CENTER.X,
+                FLOOR_GARAGE_INTERIOR_CENTER.Y,
+                FLOOR_GARAGE_INTERIOR_CENTER.Z,
+                FLOOR_GARAGE_INTERIOR_TYPE);
+            if (interior == 0 || !Function.Call<bool>(
+                Hash.IS_VALID_INTERIOR, interior))
+                return 0;
+            return interior;
+        }
+
+        private static void PrimeFloorGarageInterior(int interior)
+        {
+            // Enhanced requires the complete lifecycle. Pinning an already
+            // enabled interior can expose its shell while leaving the selected
+            // floor and detail drawables uninstantiated.
+            Function.Call(Hash.DISABLE_INTERIOR, interior, true);
+            Function.Call(Hash.PIN_INTERIOR_IN_MEMORY, interior);
+            Function.Call(Hash.DISABLE_INTERIOR, interior, false);
+            Function.Call(Hash.SET_INTERIOR_ACTIVE, interior, true);
+            if (Function.Call<bool>(Hash.IS_INTERIOR_CAPPED, interior))
+                Function.Call(Hash.CAP_INTERIOR, interior, false);
+            Function.Call(Hash.REFRESH_INTERIOR, interior);
+        }
+
+        private static void KeepFloorGarageInteriorActive(int interior)
+        {
+            Function.Call(Hash.PIN_INTERIOR_IN_MEMORY, interior);
+            Function.Call(Hash.DISABLE_INTERIOR, interior, false);
+            Function.Call(Hash.SET_INTERIOR_ACTIVE, interior, true);
+            if (Function.Call<bool>(Hash.IS_INTERIOR_CAPPED, interior))
+                Function.Call(Hash.CAP_INTERIOR, interior, false);
+        }
+
+        private static bool IsFloorGaragePlayerAttached(
+            Ped player, int expectedInterior, out string detail)
+        {
+            int playerInterior = Function.Call<int>(
+                Hash.GET_INTERIOR_FROM_ENTITY, player);
+            int roomKey = Function.Call<int>(Hash.GET_ROOM_KEY_FROM_ENTITY, player);
+            int viewportRoomKey = Function.Call<int>(
+                Hash.GET_ROOM_KEY_FOR_GAME_VIEWPORT);
+            Vector3 position = player.Position;
+            bool collisionOutside = Function.Call<bool>(
+                Hash.IS_COLLISION_MARKED_OUTSIDE,
+                position.X, position.Y, position.Z);
+            bool attached = GarageRoomAttachmentPolicy.IsAttached(
+                expectedInterior, playerInterior, roomKey, viewportRoomKey);
+            detail = $"expectedInterior={expectedInterior} " +
+                $"playerInterior={playerInterior} roomKey={roomKey} " +
+                $"viewportRoomKey={viewportRoomKey} " +
+                $"collisionOutside={collisionOutside} pos={position}";
+            return attached;
+        }
+
+        private static int WaitForFloorGaragePlayerInterior(
+            Ped player, int expectedInterior, int timeoutMs)
+        {
+            int startedAt = Game.GameTime;
+            while (Game.GameTime - startedAt < timeoutMs)
+            {
+                Vector3 position = player.Position;
+                Function.Call(Hash.REQUEST_COLLISION_AT_COORD,
+                    position.X, position.Y, position.Z);
+                if (IsFloorGaragePlayerAttached(
+                    player, expectedInterior, out string detail))
+                {
+                    Log("WaitForFloorGaragePlayerInterior: attached " + detail);
+                    return expectedInterior;
+                }
+                Script.Wait(50);
+            }
+            IsFloorGaragePlayerAttached(
+                player, expectedInterior, out string finalDetail);
+            Log("WaitForFloorGaragePlayerInterior: FAILED " + finalDetail);
+            return 0;
         }
 
         /// <summary>
         /// Load the nightclub garage IPL and configure interior entity sets.
         /// </summary>
-        private static void LoadFloorGarageInterior()
+        private static bool LoadFloorGarageInterior()
         {
-            // Load MP DLC maps — required for Online interiors in SP
-            // Native: _LOAD_MP_DLC_MAPS (0x0888C3502DBBEEF5)
-            Function.Call((Hash)0x0888C3502DBBEEF5, 1);
-            Script.Wait(500);
+            // Recheck immediately before loading the local map asset. A
+            // cutscene can begin after the proximity prompt was evaluated.
+            if (IsUnsafeGarageTransitionActive())
+            {
+                Log("LoadFloorGarageInterior: blocked during active game transition");
+                return false;
+            }
 
-            // Remove then re-request all IPLs (pattern from Enable All Interiors mod)
-            foreach (string ipl in FLOOR_GARAGE_IPLS)
-                Function.Call(Hash.REMOVE_IPL, ipl);
-            foreach (string ipl in FLOOR_GARAGE_IPLS)
-                Function.Call(Hash.REQUEST_IPL, ipl);
+            if (!StandaloneMapPack.TryActivate(FLOOR_GARAGE_REQUIRED_IPLS, 1500))
+            {
+                Log("LoadFloorGarageInterior: standalone map unavailable");
+                return false;
+            }
 
-            // Wait for IPLs to load
-            Script.Wait(1000);
+            bool focusSet = false;
+            bool priorityModeSet = false;
+            try
+            {
+                Function.Call(Hash.SET_INSTANCE_PRIORITY_MODE, true);
+                priorityModeSet = true;
+                Function.Call(Hash.SET_FOCUS_POS_AND_VEL,
+                    FLOOR_GARAGE_INTERIOR_CENTER.X,
+                    FLOOR_GARAGE_INTERIOR_CENTER.Y,
+                    FLOOR_GARAGE_INTERIOR_CENTER.Z, 0f, 0f, 0f);
+                focusSet = true;
 
-            // Get the garage interior ID (Int02_ba at garage coords, NOT main nightclub)
-            int interior = Function.Call<int>(
-                Hash.GET_INTERIOR_AT_COORDS, -1505.782f, -3012.587f, -80.0f);
+                int startedAt = Game.GameTime;
+                int interior = 0;
+                bool interiorReady = false;
+                bool primaryIplActive = false;
+                bool floorCollisionReady = false;
+                bool lifecyclePrimed = false;
+                float floorZ = 0f;
+                while (Game.GameTime - startedAt < FLOOR_GARAGE_INTERIOR_LOAD_TIMEOUT_MS)
+                {
+                    foreach (string ipl in FLOOR_GARAGE_IPLS)
+                        Function.Call(Hash.REQUEST_IPL, ipl);
+                    Function.Call(Hash.REQUEST_COLLISION_AT_COORD,
+                        FLOOR_GARAGE_INTERIOR_CENTER.X,
+                        FLOOR_GARAGE_INTERIOR_CENTER.Y,
+                        FLOOR_GARAGE_INTERIOR_CENTER.Z);
 
+                    int resolvedInterior = ResolveFloorGarageInterior();
+                    if (resolvedInterior != interior)
+                    {
+                        interior = resolvedInterior;
+                        lifecyclePrimed = false;
+                    }
+                    if (interior != 0)
+                    {
+                        if (!lifecyclePrimed)
+                        {
+                            PrimeFloorGarageInterior(interior);
+                            lifecyclePrimed = true;
+                            Log($"LoadFloorGarageInterior: primed typed interior={interior} " +
+                                $"type={FLOOR_GARAGE_INTERIOR_TYPE}");
+                        }
+                        else
+                            KeepFloorGarageInteriorActive(interior);
+                        interiorReady = Function.Call<bool>(
+                            Hash.IS_INTERIOR_READY, interior);
+                    }
+                    else interiorReady = false;
+
+                    primaryIplActive = true;
+                    foreach (string ipl in FLOOR_GARAGE_REQUIRED_IPLS)
+                        primaryIplActive &= Function.Call<bool>(
+                            Hash.IS_IPL_ACTIVE, ipl);
+                    floorCollisionReady = TryProbeInteriorFloor(
+                        FLOOR_GARAGE_INTERIOR_PED, out floorZ);
+                    if (interior != 0 && primaryIplActive &&
+                        interiorReady && floorCollisionReady)
+                    {
+                        Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET,
+                            interior, "int02_ba_garage_blocker");
+                        Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET,
+                            interior, "int02_ba_storage_blocker");
+                        Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET,
+                            interior, "int02_ba_fanblocker01");
+                        if (!ApplyFloorEntitySets(interior, _currentFloor))
+                        {
+                            Log("LoadFloorGarageInterior: entity-set validation failed; retrying");
+                            Script.Wait(100);
+                            continue;
+                        }
+                        _floorGarageInteriorId = interior;
+                        Log($"LoadFloorGarageInterior: interior={interior} ready " +
+                            $"readySignal={interiorReady} " +
+                            $"primaryIplActive={primaryIplActive} " +
+                            $"floorCollision=True floorZ={floorZ:F3} " +
+                            $"elapsed={Game.GameTime - startedAt}ms");
+                        return true;
+                    }
+                    Script.Wait(100);
+                }
+
+                Log($"LoadFloorGarageInterior: FAILED interior={interior} " +
+                    $"interiorReady={interiorReady} " +
+                    $"primaryIplActive={primaryIplActive} " +
+                    $"floorCollision={floorCollisionReady}");
+            }
+            catch (Exception ex)
+            {
+                LogException("LoadFloorGarageInterior", ex);
+            }
+            finally
+            {
+                if (focusSet) Function.Call(Hash.CLEAR_FOCUS);
+                if (priorityModeSet)
+                    Function.Call(Hash.SET_INSTANCE_PRIORITY_MODE, false);
+            }
+            UnloadFloorGarageInterior();
+            return false;
+        }
+
+        private static void UnloadFloorGarageInterior()
+        {
+            int interior = _floorGarageInteriorId;
+            _floorGarageInteriorId = 0;
             if (interior != 0)
             {
-                // Disable blockers so the full garage space is accessible
-                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_garage_blocker");
-                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_storage_blocker");
-                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_FanBlocker01");
-
-                // Activate current floor's entity set theme
-                ApplyFloorEntitySets(interior, _currentFloor);
-
-                Log($"LoadFloorGarageInterior: interior={interior}, IPL loaded, entity sets configured");
+                Function.Call(Hash.SET_INTERIOR_ACTIVE, interior, false);
+                Function.Call(Hash.UNPIN_INTERIOR, interior);
             }
-            else
-            {
-                Log("LoadFloorGarageInterior: WARNING — could not get interior ID");
-            }
+            foreach (string ipl in FLOOR_GARAGE_IPLS)
+                Function.Call(Hash.REMOVE_IPL, ipl);
         }
 
         /// <summary>
@@ -2973,7 +4007,7 @@ namespace ALLIN1
             foreach (var sv in list)
             {
                 if (sv.Slot < startSlot || sv.Slot >= endSlot) continue;
-                var m = new Model(sv.Model);
+                var m = GetStoredModel(sv);
                 m.Request();
                 modelsToLoad.Add(m);
             }
@@ -2998,7 +4032,7 @@ namespace ALLIN1
 
                 try
                 {
-                    var model = new Model(sv.Model);
+                    var model = GetStoredModel(sv);
                     Vehicle veh = World.CreateVehicle(model, slot.Position, slot.Heading);
                     model.MarkAsNoLongerNeeded();
 
@@ -3007,13 +4041,8 @@ namespace ALLIN1
                         ApplyVehicleState(veh, sv);
                         veh.IsPersistent = true;
                         veh.IsEngineRunning = false;
-                        float deltaZ = VehicleList.GetSpawnDeltaZ(sv.Model);
-                        Function.Call(Hash.SET_ENTITY_COORDS, veh,
-                            slot.Position.X, slot.Position.Y, slot.Position.Z + deltaZ,
-                            false, false, false, true);
-                        Function.Call(Hash.SET_ENTITY_HEADING, veh, slot.Heading);
-                        CenterVehicleInParkingSpace(
-                            veh, slot, deltaZ, sv.Model, "ThreeFloor", 2.0f);
+                        PlaceVehicleInParkingSpace(
+                            veh, slot, sv.Model, "ThreeFloor", 2.0f);
                         veh.IsPositionFrozen = true;
                         _floorGarageHandles[sv.Slot] = veh;
                         Log($"SpawnFloorGarageVehicles: spawned {sv.Model} at slot {sv.Slot} (physical {physicalIndex})");
@@ -3037,7 +4066,7 @@ namespace ALLIN1
         /// </summary>
         private static void SwitchFloorGarageFloor(int newFloor)
         {
-            if (newFloor < 0 || newFloor >= 3) return;
+            if (newFloor < 0 || newFloor >= FLOOR_GARAGE_FLOOR_COUNT) return;
             if (newFloor == _currentFloor) return;
 
             Ped player = Game.Player.Character;
@@ -3047,29 +4076,77 @@ namespace ALLIN1
                 return;
             }
 
-            // Save state of vehicles on the current floor
-            FloorGarageUpdateStoredFromLive();
-
-            _currentFloor = newFloor;
-
-            // Freeze player while switching
+            BeginGarageBlackTransition("SwitchFloorGarageFloor");
             player.IsPositionFrozen = true;
-
-            // Switch entity sets — different theme per floor
-            int interior = Function.Call<int>(
-                Hash.GET_INTERIOR_AT_COORDS, -1505.782f, -3012.587f, -80.0f);
-            if (interior != 0)
+            int previousFloor = _currentFloor;
+            int interior = 0;
+            try
             {
-                // Apply performs a complete sibling clear before enabling the
-                // selected floor, preventing stale sets from overlapping.
-                ApplyFloorEntitySets(interior, _currentFloor);
+                // Save state of vehicles on the current floor before changing
+                // the virtual slot window.
+                FloorGarageUpdateStoredFromLive();
+                _currentFloor = newFloor;
+
+                // Switch the native garage level while retaining all detail
+                // sets. Apply waits for the MLO render proxy to rebuild before
+                // vehicles are introduced on the target floor.
+                interior = _floorGarageInteriorId != 0
+                    ? _floorGarageInteriorId
+                    : ResolveFloorGarageInterior();
+                if (interior == 0 || !Function.Call<bool>(
+                    Hash.IS_INTERIOR_READY, interior))
+                    throw new InvalidOperationException(
+                        $"Harmony interior unavailable for floor {newFloor + 1}");
+                KeepFloorGarageInteriorActive(interior);
+                if (!ApplyFloorEntitySets(interior, _currentFloor))
+                    throw new InvalidOperationException(
+                        $"Harmony entity sets failed for floor {newFloor + 1}");
+
+                // Floor entity-set replacement can evict a ped standing on
+                // the elevator boundary. Re-enter through the safe interior
+                // anchor while the screen remains black.
+                Function.Call(Hash.SET_ENTITY_COORDS, player,
+                    FLOOR_GARAGE_INTERIOR_PED.X,
+                    FLOOR_GARAGE_INTERIOR_PED.Y,
+                    FLOOR_GARAGE_INTERIOR_PED.Z,
+                    false, false, false, true);
+                Function.Call(Hash.SET_ENTITY_HEADING,
+                    player, FLOOR_GARAGE_INTERIOR_PED_HEADING);
+                Function.Call(Hash.REQUEST_COLLISION_AT_COORD,
+                    FLOOR_GARAGE_INTERIOR_CENTER.X,
+                    FLOOR_GARAGE_INTERIOR_CENTER.Y,
+                    FLOOR_GARAGE_INTERIOR_CENTER.Z);
+                SpawnFloorGarageVehicles();
+                player.IsPositionFrozen = false;
+                Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
+                CompleteGarageBlackTransition(
+                    "SwitchFloorGarageFloor", player, null,
+                    () => Function.Call<bool>(Hash.IS_INTERIOR_READY, interior) &&
+                        IsFloorGaragePlayerAttached(
+                            player, interior, out _),
+                    _floorGarageHandles);
+
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~b~Floor {_currentFloor + 1} of {FLOOR_GARAGE_FLOOR_COUNT}", 2000);
+                Log($"SwitchFloorGarageFloor: switched to floor {_currentFloor + 1}");
             }
-
-            SpawnFloorGarageVehicles();
-
-            player.IsPositionFrozen = false;
-            GTA.UI.Screen.ShowSubtitle($"~b~Floor {_currentFloor + 1} of 3", 2000);
-            Log($"SwitchFloorGarageFloor: switched to floor {_currentFloor + 1}");
+            catch (Exception ex)
+            {
+                LogException("SwitchFloorGarageFloor", ex);
+                _currentFloor = previousFloor;
+                if (interior != 0)
+                    ApplyFloorEntitySets(interior, previousFloor);
+                RecoverTransition("SwitchFloorGarageFloor",
+                    FLOOR_GARAGE_PED_EXIT_DEST,
+                    FLOOR_GARAGE_PED_EXIT_DEST_HEADING);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~The elevator recovered safely outside the garage.", 3000);
+            }
+            finally
+            {
+                player.IsPositionFrozen = false;
+                Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
+            }
         }
 
         // ------------------------------------------------------------------ //
@@ -3085,8 +4162,6 @@ namespace ALLIN1
             try
             {
                 string json = File.ReadAllText(loadPath);
-                if (!IsCompleteJson(json))
-                    throw new InvalidDataException($"Incomplete floor garage save: {loadPath}");
                 FloorGarageParseJson(json);
                 if (loadPath.EndsWith(".bak", StringComparison.OrdinalIgnoreCase))
                 {
@@ -3103,8 +4178,6 @@ namespace ALLIN1
                     try
                     {
                         string json = File.ReadAllText(backup);
-                        if (!IsCompleteJson(json))
-                            throw new InvalidDataException("Incomplete floor garage backup");
                         FloorGarageParseJson(json);
                         Log("FloorGarageLoad: primary save failed; recovered from backup");
                     }
@@ -3118,17 +4191,9 @@ namespace ALLIN1
 
         private static bool FloorGarageSave()
         {
-            try
-            {
-                string json = FloorGarageBuildJson();
-                AtomicWriteText(FLOOR_GARAGE_SAVE_PATH, json);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                LogException("FloorGarageSave", ex);
-                return false;
-            }
+            return StageOrWriteVehicleSave(
+                FLOOR_GARAGE_SAVE_PATH, FloorGarageBuildJson,
+                "FloorGarageSave");
         }
 
         // ------------------------------------------------------------------ //
@@ -3142,7 +4207,7 @@ namespace ALLIN1
             try
             {
                 string json = File.ReadAllText(FLOOR_GARAGE_THEMES_PATH);
-                // Simple JSON: { "key": [[0,1,2,0,1],[...],[...]], ... }
+                // Legacy customization data is still accepted for migration.
                 string[] keys = { KEY_MICHAEL_FG, KEY_FRANKLIN_FG, KEY_TREVOR_FG };
                 foreach (string key in keys)
                 {
@@ -3151,17 +4216,16 @@ namespace ALLIN1
                     int arrStart = json.IndexOf('[', keyIdx);
                     if (arrStart < 0) continue;
 
-                    // Parse 3 inner arrays of 5 ints each: [[a,b,c,d,e],[...],[...]]
-                    int[][] themes = new int[3][];
+                    int[][] themes = DefaultThemes();
                     int pos = arrStart + 1; // skip outer [
-                    for (int f = 0; f < 3; f++)
+                    for (int f = 0; f < FLOOR_GARAGE_FLOOR_COUNT; f++)
                     {
                         int innerStart = json.IndexOf('[', pos);
+                        if (innerStart < 0) break;
                         int innerEnd = json.IndexOf(']', innerStart);
-                        if (innerStart < 0 || innerEnd < 0) break;
+                        if (innerEnd < 0) break;
                         string inner = json.Substring(innerStart + 1, innerEnd - innerStart - 1);
                         string[] parts = inner.Split(',');
-                        themes[f] = new int[CUSTOM_CATEGORY_COUNT];
                         for (int c = 0; c < Math.Min(parts.Length, CUSTOM_CATEGORY_COUNT); c++)
                         {
                             if (int.TryParse(parts[c].Trim(), out int val) && val >= 0 &&
@@ -3170,8 +4234,7 @@ namespace ALLIN1
                         }
                         pos = innerEnd + 1;
                     }
-                    if (themes[0] != null && themes[1] != null && themes[2] != null)
-                        _floorThemes[key] = themes;
+                    _floorThemes[key] = themes;
                 }
                 Log("FloorGarageThemesLoad: loaded custom themes");
             }
@@ -3193,10 +4256,10 @@ namespace ALLIN1
                     string key = keys[k];
                     int[][] themes = _floorThemes.ContainsKey(key) ? _floorThemes[key] : DefaultThemes();
                     sb.Append($"  \"{key}\": [");
-                    for (int f = 0; f < 3; f++)
+                    for (int f = 0; f < FLOOR_GARAGE_FLOOR_COUNT; f++)
                     {
                         sb.Append($"[{string.Join(",", themes[f])}]");
-                        if (f < 2) sb.Append(", ");
+                        if (f < FLOOR_GARAGE_FLOOR_COUNT - 1) sb.Append(", ");
                     }
                     sb.Append("]");
                     if (k < keys.Length - 1) sb.AppendLine(",");
@@ -3231,7 +4294,8 @@ namespace ALLIN1
                     {
                         var sv = list[i];
                         sb.Append("    { ");
-                        sb.Append($"\"model\": \"{sv.Model}\", ");
+                        sb.Append($"\"model\": \"{EscapeJson(sv.Model)}\", ");
+                        sb.Append($"\"modelHash\": {GetStoredModelHash(sv)}, ");
                         sb.Append($"\"slot\": {sv.Slot}, ");
                         sb.Append($"\"color1\": {sv.Color1}, ");
                         sb.Append($"\"color2\": {sv.Color2}");
@@ -3292,6 +4356,15 @@ namespace ALLIN1
 
         private static void FloorGarageParseJson(string json)
         {
+            var parsed = GarageSaveCodec.Parse(json,
+                new[] { KEY_MICHAEL_FG, KEY_FRANKLIN_FG, KEY_TREVOR_FG },
+                FLOOR_GARAGE_SLOT_COUNT);
+            foreach (var entry in parsed)
+                _floorGarageStored[entry.Key] = entry.Value;
+        }
+
+        private static void LegacyFloorGarageParseJson(string json)
+        {
             // Reuse the same JSON parsing approach as the garage
             string currentKey = null;
             int i = 0;
@@ -3349,6 +4422,7 @@ namespace ALLIN1
                 if (veh == null || !veh.Exists()) continue;
 
                 var updated = CaptureVehicleState(veh, sv.Model, sv.Slot);
+                sv.ModelHash = updated.ModelHash;
                 sv.Color1 = updated.Color1;
                 sv.Color2 = updated.Color2;
                 sv.Mods = updated.Mods;

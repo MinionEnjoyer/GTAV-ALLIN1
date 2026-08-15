@@ -17,17 +17,21 @@ Prerequisites (installed separately by the user):
 from __future__ import annotations
 
 import logging
+import json
 import os
 import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from allin1 import asi_loader
 from allin1.config import Config
 from allin1.detector import detect_gta_path, validate_gta_path
-from allin1.preview_assets import GEAR_PREVIEW_ITEMS
+from allin1.health import inspect_windows_binary
+from allin1.preview_assets import GEAR_PREVIEW_ITEMS, WORLD_ASSET_PREVIEW_ITEMS
+from allin1.processes import run_hidden
 from allin1.vehicles.database import VehicleDatabase
 from allin1.versioning import VERSION_FILE, write_installed_version
 
@@ -40,11 +44,35 @@ log = logging.getLogger("allin1.installer")
 
 DLL_FILENAME = "ALLIN1.dll"
 LEMONUI_FILENAME = "LemonUI.SHVDN3.dll"
+GROUNDING_CATALOG_FILENAME = "ALLIN1_vehicle_grounding.json"
 SCRIPTS_DIR = "scripts"
 ALLIN1_DATA_DIR = "ALLIN1"  # Legacy data folder — cleaned up on install
 
 # Files from previous ALLIN1 versions to clean up
 LEGACY_FILES = ("ALLIN1.asi", "ALLIN1.dll", "ALLIN1-Launcher.exe")
+
+# Workspace artifacts written by development-only tools retired before 0.4.2.
+# These are not user saves and are removed during every install/repair so an
+# upgraded public installation does not retain dormant test data or DLLs.
+RETIRED_DEVELOPER_ARTIFACTS = (
+    "ALLIN1_height_check.toml",
+    "ALLIN1_outfit_debug.log",
+    "ALLIN1_entity_sets.log",
+    "ALLIN1_preview_pending.toml",
+    "ALLIN1_preview_pending.toml.bak",
+    "ALLIN1_vehicle_grounding_outliers.json",
+    "ALLIN1_vehicle_grounding_outliers.json.bak",
+    "ALLIN1.dll.pre-0.3.1.bak",
+    "ALLIN1.dll.pre-capture-modes.bak",
+    "ALLIN1.dll.pre-furore-modelhash.bak",
+    "ALLIN1.dll.pre-gbay-nav.bak",
+    "ALLIN1.dll.pre-gbay-ux.bak",
+    "ALLIN1.dll.pre-pushed-0.3.1.bak",
+    "ALLIN1.dll.pre-seat-nav-fix.bak",
+)
+RETIRED_DEVELOPER_DIRECTORIES = (
+    "ALLIN1_seat_tests",
+)
 
 # Resolve directories relative to this source file (project root).
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -57,6 +85,24 @@ def _copy_atomic(source: Path, destination: Path) -> None:
     backup = destination.with_name(destination.name + ".bak")
     try:
         shutil.copy2(source, temporary)
+        if destination.exists():
+            shutil.copy2(destination, backup)
+        temporary.replace(destination)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        if backup.exists():
+            shutil.copy2(backup, destination)
+        raise
+
+
+def _write_json_atomic(payload: dict, destination: Path) -> None:
+    """Replace a JSON file while retaining the previous checkpoint."""
+    temporary = destination.with_name(destination.name + ".tmp")
+    backup = destination.with_name(destination.name + ".bak")
+    try:
+        temporary.write_text(
+            json.dumps(payload, separators=(",", ":")), encoding="utf-8"
+        )
         if destination.exists():
             shutil.copy2(destination, backup)
         temporary.replace(destination)
@@ -81,6 +127,7 @@ class InstallResult:
     shvdn_found: bool = False
     openrpf_found: bool = False
     rpf_previews_deployed: bool = False
+    standalone_maps_deployed: bool = False
     battleye_status: str = ""
     warnings: list[str] = field(default_factory=list)
 
@@ -102,10 +149,26 @@ def resolve_gta_path(config: Config) -> Path:
     return detected
 
 
-def install(config: Config, db: VehicleDatabase) -> InstallResult:
+InstallProgress = Callable[[int, str], None]
+
+
+def _report_progress(
+    callback: InstallProgress | None, percentage: int, detail: str,
+) -> None:
+    if callback is not None:
+        callback(max(0, min(100, percentage)), detail)
+
+
+def install(
+    config: Config,
+    db: VehicleDatabase,
+    progress: InstallProgress | None = None,
+) -> InstallResult:
     """Run the full installation process."""
     log.info("=== Starting installation ===")
+    _report_progress(progress, 0, "Preparing repair")
     gta_path = resolve_gta_path(config)
+    _report_progress(progress, 5, "Game folder verified")
     enhanced = _is_enhanced(gta_path)
     result = InstallResult(gta_path=gta_path, is_enhanced=enhanced)
 
@@ -113,9 +176,11 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
 
     # --- Clean up files from previous ALLIN1 versions ---
     _clean_legacy_files(gta_path, result)
+    _report_progress(progress, 15, "Previous installation checked")
 
     # --- Deploy ALLIN1.dll script ---
     result.dll_deployed = _deploy_script(gta_path)
+    _report_progress(progress, 28, "Client files repaired")
 
     # --- Check for ScriptHookV ---
     result.scripthookv_found = _check_scripthookv(gta_path)
@@ -125,11 +190,21 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
 
     # --- Detect optional RPF loader; never install third-party executable code ---
     result.openrpf_found = _check_openrpf(gta_path, enhanced)
+    _report_progress(progress, 38, "Dependencies verified")
 
-    # Remove any previous ALLIN1 preview pack before rebuilding it.  This also
-    # clears the registration when previews have been disabled.
+    # Rebuild ALLIN1-owned DLC registrations transactionally. The standalone
+    # map pack is useful even when artwork has been disabled.
     _remove_preview_pack(gta_path)
+    _remove_map_pack(gta_path)
     _unpatch_dlclist_rpf(gta_path)
+    _report_progress(progress, 43, "DLC registration refreshed")
+
+    # Standalone MP-map repacking remains an offline development experiment.
+    # Never register it from a public install/repair until an edition-specific
+    # pack has passed a real GTA startup test. Runtime map leases remain the
+    # safe compatibility path for garages and the yacht.
+    result.standalone_maps_deployed = False
+    _report_progress(progress, 49, "Map compatibility fallback enabled")
 
     if config.general.enable_rpf_previews:
         if not result.openrpf_found:
@@ -139,7 +214,9 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
             )
         else:
             try:
-                result.rpf_previews_deployed = _deploy_preview_dlc(gta_path, result)
+                result.rpf_previews_deployed = _deploy_preview_dlc(
+                    gta_path, result, progress=progress,
+                )
             except Exception as exc:
                 log.error("Preview texture injection failed: %s", exc, exc_info=True)
                 result.warnings.append(f"Preview texture injection failed: {exc}")
@@ -148,8 +225,10 @@ def install(config: Config, db: VehicleDatabase) -> InstallResult:
 
     # --- Write -nobattleye to commandline.txt (belt-and-suspenders) ---
     result.battleye_status = asi_loader.ensure_nobattleye(gta_path, enhanced)
+    _report_progress(progress, 96, "Finalizing Story Mode settings")
 
     log.info("=== Installation complete ===")
+    _report_progress(progress, 100, "Repair complete")
     return result
 
 
@@ -166,6 +245,18 @@ def uninstall(config: Config) -> list[Path]:
                    "ALLIN1_client.log", "ALLIN1_client.log.1",
                    "ALLIN1_client.log.2", "ALLIN1_client.log.3",
                    "ALLIN1_garage.json", "ALLIN1_garages.json",
+                   "ALLIN1_floor_garage.json", "ALLIN1_floor_garage.json.bak",
+                   "ALLIN1_floor_themes.json", "ALLIN1_floor_themes.json.bak",
+                   "ALLIN1_davis_garage.json", "ALLIN1_davis_garage.json.bak",
+                   "ALLIN1_davis_customization.json", "ALLIN1_davis_customization.json.bak",
+                    "ALLIN1_garment_factory_garage.json",
+                    "ALLIN1_garment_factory_garage.json.bak",
+                    "ALLIN1_rural_garage.json", "ALLIN1_rural_garage.json.bak",
+                    "ALLIN1_paleto_garage.json", "ALLIN1_paleto_garage.json.bak",
+                    "ALLIN1_yacht_helipad.json", "ALLIN1_yacht_helipad.json.bak",
+                   GROUNDING_CATALOG_FILENAME,
+                   GROUNDING_CATALOG_FILENAME + ".bak",
+                   *RETIRED_DEVELOPER_ARTIFACTS,
                    "ALLIN1_garages.json.bak", "ALLIN1_gbay_preferences.json",
                    "ALLIN1_gbay_preferences.json.bak", "ALLIN1_session.lock",
                    "ALLIN1_garage.quarantine.json", "ALLIN1_preview_pending.toml",
@@ -175,6 +266,13 @@ def uninstall(config: Config) -> list[Path]:
             fpath.unlink()
             removed.append(fpath)
             log.info("Removed %s from scripts/", fname)
+
+    for dirname in RETIRED_DEVELOPER_DIRECTORIES:
+        dpath = scripts_dir / dirname
+        if dpath.exists():
+            shutil.rmtree(dpath)
+            removed.append(dpath)
+            log.info("Removed %s from scripts/", dirname)
 
     # Remove legacy files from game root
     for fname in LEGACY_FILES:
@@ -193,7 +291,10 @@ def uninstall(config: Config) -> list[Path]:
         log.info("Removed %s/ data folder", ALLIN1_DATA_DIR)
 
     # Remove legacy loose preview images (from SHV-era installs)
-    for preview_folder in ("previews", "weapon_previews", "equipment_previews"):
+    for preview_folder in (
+        "previews", "weapon_previews", "equipment_previews",
+        "world_asset_previews",
+    ):
         scripts_dir_previews = scripts_dir / preview_folder
         if scripts_dir_previews.exists():
             shutil.rmtree(scripts_dir_previews)
@@ -207,6 +308,7 @@ def uninstall(config: Config) -> list[Path]:
 
     # Remove the ALLIN1-owned preview DLC pack.
     removed.extend(_remove_preview_pack(gta_path))
+    removed.extend(_remove_map_pack(gta_path))
 
     # Unpatch dlclist.xml in mods/update/update.rpf (legacy cleanup)
     _unpatch_dlclist_rpf(gta_path)
@@ -300,12 +402,20 @@ def _deploy_script(gta_path: Path) -> bool:
         _copy_atomic(toml_src, toml_dest)
         log.info("Deployed config %s -> %s", toml_src.name, toml_dest)
 
-    # The production runtime no longer includes the screenshot-capture tool.
-    # Remove its old deployed pending manifest during repair/install.
-    pending_dest = scripts_dir / "ALLIN1_preview_pending.toml"
-    if pending_dest.exists():
-        pending_dest.unlink()
-        log.info("Removed retired preview capture manifest")
+    _deploy_grounding_catalog(scripts_dir)
+
+    # Development-only runtime tools are retired. Their generated artifacts
+    # are not user data and must not survive install or repair.
+    for retired_name in RETIRED_DEVELOPER_ARTIFACTS:
+        retired_path = scripts_dir / retired_name
+        if retired_path.exists():
+            retired_path.unlink()
+            log.info("Removed retired developer artifact %s", retired_name)
+    for retired_name in RETIRED_DEVELOPER_DIRECTORIES:
+        retired_path = scripts_dir / retired_name
+        if retired_path.exists():
+            shutil.rmtree(retired_path)
+            log.info("Removed retired developer directory %s", retired_name)
 
     # Clean up legacy INI from previous versions
     legacy_ini = scripts_dir / "ALLIN1.ini"
@@ -316,22 +426,97 @@ def _deploy_script(gta_path: Path) -> bool:
     return True
 
 
+def _deploy_grounding_catalog(scripts_dir: Path) -> None:
+    """Seed validated outcomes without replacing newer resolved user data."""
+    source = _PROJECT_ROOT / "data" / "vehicle_grounding.json"
+    if not source.is_file():
+        log.warning("Validated vehicle grounding catalog is missing: %s", source)
+        return
+    destination = scripts_dir / GROUNDING_CATALOG_FILENAME
+    seed = json.loads(source.read_text(encoding="utf-8"))
+    seed_entries = seed.get("Entries", {})
+    if not isinstance(seed_entries, dict):
+        raise ValueError("validated grounding catalog has no Entries object")
+    if not destination.exists():
+        _copy_atomic(source, destination)
+        log.info("Deployed %d validated vehicle grounding offsets", len(seed_entries))
+        return
+
+    try:
+        current = json.loads(destination.read_text(encoding="utf-8"))
+        current_entries = current.get("Entries", {})
+        if not isinstance(current_entries, dict):
+            raise ValueError("installed grounding catalog has no Entries object")
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        log.warning("Replacing unreadable grounding checkpoint: %s", exc)
+        _copy_atomic(source, destination)
+        return
+
+    normalized = {
+        str(key).strip().lower(): value
+        for key, value in current_entries.items()
+        if str(key).strip()
+    }
+    added = 0
+    for key, entry in seed_entries.items():
+        model = str(key).strip().lower()
+        existing = normalized.get(model)
+        existing_resolved = isinstance(existing, dict) and (
+            (existing.get("Stable") is True
+             and existing.get("Status") == "measured")
+            or existing.get("Status") == "unsupported"
+        )
+        if existing_resolved:
+            continue
+        normalized[model] = entry
+        added += 1
+    if added == 0:
+        log.info("Installed grounding checkpoint already contains validated offsets")
+        return
+
+    current["SchemaVersion"] = 1
+    current["TotalModels"] = max(
+        int(current.get("TotalModels") or 0), int(seed.get("TotalModels") or 0)
+    )
+    current["Entries"] = dict(sorted(normalized.items()))
+    values = [entry for entry in normalized.values() if isinstance(entry, dict)]
+    current["MeasuredModels"] = sum(
+        entry.get("Status") == "measured" for entry in values
+    )
+    current["StableModels"] = sum(
+        entry.get("Stable") is True and entry.get("Status") == "measured"
+        for entry in values
+    )
+    current["UnsupportedModels"] = sum(
+        entry.get("Status") == "unsupported" for entry in values
+    )
+    current["OutlierModels"] = sum(
+        not (
+            (entry.get("Stable") is True and entry.get("Status") == "measured")
+            or entry.get("Status") == "unsupported"
+        )
+        for entry in values
+    )
+    _write_json_atomic(current, destination)
+    log.info("Merged %d validated vehicle grounding offsets", added)
+
+
 def _check_scripthookv(gta_path: Path) -> bool:
     """Check if ScriptHookV is installed in the game directory."""
-    return (gta_path / "ScriptHookV.dll").exists()
+    return inspect_windows_binary(gta_path / "ScriptHookV.dll").valid
 
 
 def _check_shvdn(gta_path: Path) -> bool:
     """Check if ScriptHookVDotNet is installed in the game directory."""
-    return (gta_path / "ScriptHookVDotNet.asi").exists()
+    return inspect_windows_binary(gta_path / "ScriptHookVDotNet.asi").valid
 
 
 def _check_openrpf(gta_path: Path, enhanced: bool) -> bool:
     """Detect a user-installed RPF loader without downloading executable code."""
     if not enhanced:
         asi_path = gta_path / "OpenIV.asi"
-        found = asi_path.exists() and asi_path.stat().st_size > 0
-        if found and not (gta_path / "dinput8.dll").exists():
+        found = inspect_windows_binary(asi_path).valid
+        if found and not inspect_windows_binary(gta_path / "dinput8.dll").valid:
             log.warning("OpenIV.asi exists but dinput8.dll ASI loader is missing")
             found = False
         if found:
@@ -352,18 +537,23 @@ def _check_openrpf(gta_path: Path, enhanced: bool) -> bool:
     if (gta_path / "OpenIV.asi").exists():
         log.error("Both OpenRPF.asi and OpenIV.asi are installed on Enhanced")
         return False
-    if asi_path.stat().st_size == 0:
-        log.warning("OpenRPF.asi is empty or corrupt")
+    inspection = inspect_windows_binary(asi_path)
+    if not inspection.valid:
+        log.warning("OpenRPF.asi is invalid: %s", inspection.reason)
         return False
     asi_loaders = ("dsound.dll", "xinput1_4.dll", "dinput8.dll")
-    if not any((gta_path / name).exists() for name in asi_loaders):
+    if not any(inspect_windows_binary(gta_path / name).valid for name in asi_loaders):
         log.warning("OpenRPF.asi exists but no compatible ASI loader was detected")
         return False
     log.info("User-installed OpenRPF.asi and ASI loader detected")
     return True
 
 
-def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
+def _deploy_preview_dlc(
+    gta_path: Path,
+    result: InstallResult,
+    progress: InstallProgress | None = None,
+) -> bool:
     """Build and register a DLC pack containing streamed preview dictionaries."""
     from allin1.generators import dlc_previews
     from allin1.generators import ytd_builder
@@ -374,6 +564,7 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
     brand_logo_src = _SCRIPT_DIST_DIR / "ALLIN1.png"
     weapon_previews_src = _SCRIPT_DIST_DIR / "weapon_previews"
     equipment_previews_src = _SCRIPT_DIST_DIR / "equipment_previews"
+    world_asset_previews_src = _SCRIPT_DIST_DIR / "world_asset_previews"
 
     if not previews_src.is_dir():
         log.warning("No previews/ directory found — skipping preview build")
@@ -399,6 +590,7 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
             item["name"] for item in tomllib.load(stream).get("weapons", [])
         )
     gear_ids = sorted(GEAR_PREVIEW_ITEMS)
+    world_asset_ids = sorted(WORLD_ASSET_PREVIEW_ITEMS)
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -406,6 +598,7 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
         preview_inputs = tmp_path / "preview_inputs"
         weapon_preview_inputs = tmp_path / "weapon_preview_inputs"
         equipment_preview_inputs = tmp_path / "equipment_preview_inputs"
+        world_asset_preview_inputs = tmp_path / "world_asset_preview_inputs"
 
         # Raw captures are source material, not approved catalog art. Package
         # only the reviewed repository assets so an old or incomplete capture
@@ -440,12 +633,19 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
             equipment_preview_inputs,
             gear_ids,
         )
-        if weapon_merged.rejected or equipment_merged.rejected:
+        world_asset_merged = merge_previews(
+            [world_asset_previews_src],
+            world_asset_preview_inputs,
+            world_asset_ids,
+        )
+        if (weapon_merged.rejected or equipment_merged.rejected
+                or world_asset_merged.rejected):
             rejected_count = (
                 len(weapon_merged.rejected) + len(equipment_merged.rejected)
+                + len(world_asset_merged.rejected)
             )
             result.warnings.append(
-                f"Ignored {rejected_count} invalid weapon/equipment preview capture(s)."
+                f"Ignored {rejected_count} invalid catalog preview capture(s)."
             )
         if weapon_merged.copied:
             log.info("Building preview textures for %d/%d weapons...",
@@ -453,6 +653,9 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
         if equipment_merged.copied:
             log.info("Building preview textures for %d/%d equipment items...",
                      equipment_merged.copied, len(gear_ids))
+        if world_asset_merged.copied:
+            log.info("Building preview textures for %d/%d world assets...",
+                     world_asset_merged.copied, len(world_asset_ids))
 
         preview_groups = []
         if weapon_merged.copied:
@@ -463,8 +666,13 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
             preview_groups.append(
                 ("allin1_gear", equipment_preview_inputs, gear_ids)
             )
+        if world_asset_merged.copied:
+            preview_groups.append(
+                ("allin1_asset", world_asset_preview_inputs, world_asset_ids)
+            )
 
         # Step 1: Build .ytd files from PNGs
+        _report_progress(progress, 50, "Building preview textures")
         ytd_files = ytd_builder.build_ytd_files(
             preview_inputs,
             logo_src if logo_src.exists() else None,
@@ -477,11 +685,13 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
             log.warning("No .ytd files were built")
             result.warnings.append("Failed to build preview textures.")
             return False
+        _report_progress(progress, 64, "Preview textures built")
 
         # Step 1b: Convert .ytd files to Enhanced (gen9) format if needed
         if result.is_enhanced:
             log.info("Enhanced edition detected — converting .ytd files to gen9 format...")
-            proc = subprocess.run(
+            _report_progress(progress, 68, "Converting Enhanced textures")
+            proc = run_hidden(
                 [str(rpf_patcher), "convert-gen9", str(ytd_out)],
                 capture_output=True, text=True, timeout=300,
             )
@@ -502,7 +712,8 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
             ytd_files, dlc_work,
         )
         output_rpf = dlc_work / "allin1_previews.dlc.rpf"
-        proc = subprocess.run(
+        _report_progress(progress, 74, "Packaging preview DLC")
+        proc = run_hidden(
             [
                 str(rpf_patcher), "build-dlc", str(dlc_root), str(output_rpf),
                 "--embed-rpf", str(ytd_staging), "x64/textures/textures.rpf",
@@ -518,7 +729,8 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
         if not output_rpf.is_file() or output_rpf.stat().st_size == 0:
             raise RuntimeError("RpfPatcher build-dlc produced no archive")
 
-        verify = subprocess.run(
+        _report_progress(progress, 84, "Verifying preview DLC")
+        verify = run_hidden(
             [str(rpf_patcher), "verify-dlc", str(output_rpf), str(ytd_staging)],
             capture_output=True, text=True, timeout=300,
         )
@@ -530,12 +742,162 @@ def _deploy_preview_dlc(gta_path: Path, result: InstallResult) -> bool:
             raise RuntimeError(f"RpfPatcher verify-dlc failed: {error_msg}")
 
         deployed_dir = dlc_previews.deploy_dlc_rpf(output_rpf, gta_path)
-        if not _patch_dlclist_rpf(gta_path, result):
+        _report_progress(progress, 90, "Registering preview DLC")
+        if not _patch_dlclist_rpf(gta_path, result, "allin1_previews"):
             shutil.rmtree(deployed_dir, ignore_errors=True)
             raise RuntimeError(
                 "RpfPatcher patch failed; could not register the preview DLC in dlclist.xml"
             )
         log.info("Preview texture DLC built, verified, deployed, and registered")
+        return True
+
+
+def _deploy_standalone_map_dlc(
+    gta_path: Path,
+    result: InstallResult,
+    progress: InstallProgress | None = None,
+) -> bool:
+    """Build a local compatibility pack from the installed Rockstar RPFs.
+
+    The public ALLIN1 package contains no Rockstar map assets.  Required
+    entries are extracted from this GTA installation into a temporary staging
+    tree, rearranged under the ALLIN1 device, packed, and then discarded.
+    """
+    from allin1.generators import dlc_maps
+
+    rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
+    if not rpf_patcher.exists():
+        result.warnings.append(
+            "RpfPatcher.exe missing; standalone map support was not installed."
+        )
+        return False
+
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        dlc_root = dlc_maps.create_dlc_pack(work)
+        combined_manifest = work / "extract-all.tsv"
+        combined_manifest.write_text(
+            "".join(
+                f"{asset.source_path}\t{asset.destination_path}\n"
+                for asset in dlc_maps.MAP_ASSETS
+            ),
+            encoding="utf-8",
+        )
+        grouped_assets: dict[tuple[str, str], list[dlc_maps.MapAsset]] = {}
+        for asset in dlc_maps.MAP_ASSETS:
+            key = (asset.source_pack, asset.source_archive_name)
+            grouped_assets.setdefault(key, []).append(asset)
+
+        for index, (source_key, assets) in enumerate(grouped_assets.items()):
+            source_pack, source_archive_name = source_key
+            source_archive = assets[0].source_archive(gta_path)
+            if not source_archive.is_file():
+                raise RuntimeError(
+                    "Required GTA map archive is missing: "
+                    f"{source_archive}"
+                )
+            manifest = work / f"extract-{source_pack}-{source_archive_name}.tsv"
+            manifest.write_text(
+                "".join(
+                    f"{asset.source_path}\t{asset.destination_path}\n"
+                    for asset in assets
+                ),
+                encoding="utf-8",
+            )
+            _report_progress(
+                progress,
+                20 + int((index / max(len(grouped_assets), 1)) * 20),
+                f"Importing installed map assets ({source_pack}/{source_archive_name})",
+            )
+            extract = run_hidden(
+                [
+                    str(rpf_patcher), "extract-entries", str(gta_path),
+                    str(source_archive), str(manifest), str(dlc_root),
+                ],
+                capture_output=True, text=True, timeout=300,
+            )
+            if extract.stdout:
+                for line in extract.stdout.strip().splitlines():
+                    log.info("RpfPatcher: %s", line)
+            if extract.returncode != 0:
+                error_msg = (
+                    extract.stderr.strip() if extract.stderr
+                    else f"exit code {extract.returncode}"
+                )
+                raise RuntimeError(
+                    f"Could not import {source_pack} map assets: {error_msg}"
+                )
+
+        dlc_maps.filter_staged_proxy_assets(dlc_root)
+        missing = dlc_maps.validate_staged_assets(dlc_root)
+        if missing:
+            raise RuntimeError(
+                "Standalone map staging is incomplete: "
+                + ", ".join(str(path) for path in missing[:5])
+            )
+
+        _report_progress(progress, 40, "Converting standalone map archives")
+        convert = run_hidden(
+            [
+                str(rpf_patcher), "open-rpfs", str(gta_path),
+                str(combined_manifest), str(dlc_root),
+            ],
+            capture_output=True, text=True, timeout=300,
+        )
+        if convert.stdout:
+            for line in convert.stdout.strip().splitlines():
+                log.info("RpfPatcher: %s", line)
+        if convert.returncode != 0:
+            error_msg = (
+                convert.stderr.strip() if convert.stderr
+                else f"exit code {convert.returncode}"
+            )
+            raise RuntimeError(
+                f"Could not convert standalone map archives: {error_msg}"
+            )
+
+        output_rpf = work / "allin1_maps.dlc.rpf"
+        _report_progress(progress, 42, "Packaging standalone map support")
+        proc = run_hidden(
+            [
+                str(rpf_patcher), "build-dlc", str(dlc_root), str(output_rpf),
+                "--gta-path", str(gta_path),
+            ],
+            capture_output=True, text=True, timeout=600,
+        )
+        if proc.stdout:
+            for line in proc.stdout.strip().splitlines():
+                log.info("RpfPatcher: %s", line)
+        if proc.returncode != 0:
+            error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
+            raise RuntimeError(f"RpfPatcher build-dlc failed: {error_msg}")
+        if not output_rpf.is_file() or output_rpf.stat().st_size == 0:
+            raise RuntimeError("RpfPatcher build-dlc produced no map archive")
+
+        _report_progress(progress, 55, "Verifying standalone map support")
+        verify = run_hidden(
+            [
+                str(rpf_patcher), "verify-map-dlc", str(output_rpf),
+                str(combined_manifest),
+            ],
+            capture_output=True, text=True, timeout=300,
+        )
+        if verify.returncode != 0:
+            error_msg = (
+                verify.stderr.strip() if verify.stderr
+                else f"exit code {verify.returncode}"
+            )
+            raise RuntimeError(
+                f"RpfPatcher verify-map-dlc failed: {error_msg}"
+            )
+
+        deployed_dir = dlc_maps.deploy_dlc_rpf(output_rpf, gta_path)
+        if not _patch_dlclist_rpf(gta_path, result, "allin1_maps"):
+            shutil.rmtree(deployed_dir, ignore_errors=True)
+            raise RuntimeError(
+                "RpfPatcher patch failed; could not register allin1_maps"
+            )
+        log.info("Standalone map DLC built, deployed, and registered")
         return True
 
 
@@ -608,8 +970,19 @@ def _remove_preview_pack(gta_path: Path) -> list[Path]:
     return removed
 
 
-def _patch_dlclist_rpf(gta_path: Path, result: InstallResult) -> bool:
-    """Add allin1_previews to dlclist.xml inside mods/update/update.rpf.
+def _remove_map_pack(gta_path: Path) -> list[Path]:
+    """Remove only the ALLIN1-owned standalone map DLC directories."""
+    from allin1.generators import dlc_maps
+    removed = dlc_maps.remove_dlc_pack(gta_path)
+    for path in removed:
+        log.info("Removed standalone map DLC pack at %s", path)
+    return removed
+
+
+def _patch_dlclist_rpf(
+    gta_path: Path, result: InstallResult, pack_name: str = "allin1_previews",
+) -> bool:
+    """Add an ALLIN1-owned DLC pack to the mods dlclist.xml.
 
     This tells the game to load our DLC pack at boot so the texture
     dictionaries inside it are indexed and available for streaming.
@@ -622,15 +995,15 @@ def _patch_dlclist_rpf(gta_path: Path, result: InstallResult) -> bool:
         return False
 
     try:
-        proc = subprocess.run(
-            [str(rpf_patcher), "patch", str(gta_path)],
+        proc = run_hidden(
+            [str(rpf_patcher), "patch", str(gta_path), pack_name],
             capture_output=True, text=True, timeout=120,
         )
         if proc.stdout:
             for line in proc.stdout.strip().splitlines():
                 log.info("RpfPatcher: %s", line)
         if proc.returncode == 0:
-            log.info("Patched dlclist.xml with allin1_previews entry")
+            log.info("Patched dlclist.xml with %s entry", pack_name)
             return True
         else:
             error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
@@ -651,7 +1024,7 @@ def _unpatch_dlclist_rpf(gta_path: Path) -> None:
         return
 
     try:
-        proc = subprocess.run(
+        proc = run_hidden(
             [str(rpf_patcher), "unpatch", str(gta_path)],
             capture_output=True, text=True, timeout=120,
         )
@@ -674,7 +1047,7 @@ def _remove_preview_ytds(gta_path: Path) -> None:
 
     # Remove all .ytd files whose name starts with "allin1_"
     try:
-        proc = subprocess.run(
+        proc = run_hidden(
             [str(rpf_patcher), "remove-ytd", str(gta_path), "allin1_"],
             capture_output=True, text=True, timeout=120,
         )

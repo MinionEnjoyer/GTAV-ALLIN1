@@ -11,10 +11,10 @@ if (-not (Test-Path -LiteralPath $python)) {
 if ($LASTEXITCODE -ne 0) { throw "Installing the test environment failed." }
 & $python -m pytest --cov=allin1 --cov-report=term-missing --cov-report=html
 if ($LASTEXITCODE -ne 0) { throw "Python tests or coverage qualification failed." }
-dotnet restore script/ALLIN1.csproj
+dotnet restore script/tests/ALLIN1.Tests.csproj
 if ($LASTEXITCODE -ne 0) { throw "Restoring the C# client failed." }
-dotnet build script/ALLIN1.csproj -c Release --no-restore
-if ($LASTEXITCODE -ne 0) { throw "Building the C# client failed." }
+dotnet test script/tests/ALLIN1.Tests.csproj -c Release --no-restore
+if ($LASTEXITCODE -ne 0) { throw "C# client tests failed." }
 Copy-Item -LiteralPath "script/bin/Release/ALLIN1.dll" -Destination "script/dist/ALLIN1.dll" -Force
 
 if (-not (Test-Path -LiteralPath "tools/RpfPatcher/RpfPatcher.exe")) {

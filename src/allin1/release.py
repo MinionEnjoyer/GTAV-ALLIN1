@@ -54,6 +54,10 @@ FORBIDDEN_NAMES = frozenset({
 
 TOOL_SOURCE_SUFFIXES = frozenset({".cs", ".csproj", ".pdb"})
 
+FORBIDDEN_RUNTIME_DEV_FILES = frozenset({
+    "GarageTraversalLab.cs",
+})
+
 
 @dataclass(frozen=True)
 class ReleaseReport:
@@ -158,8 +162,22 @@ def validate_version_consistency(root: Path, version: str = __version__) -> Rele
         raise ValueError(f"release notes do not identify release {version}")
 
     tool_sources = sorted(path.name for path in (root / "script" / "tools").glob("*.cs"))
-    if tool_sources != ["WorldVectorTool.cs"]:
-        raise ValueError(f"only WorldVectorTool.cs may remain in script/tools: {tool_sources}")
+    supported_tools = ["WorldVectorTool.cs"]
+    if tool_sources != supported_tools:
+        raise ValueError(
+            "only WorldVectorTool.cs may remain in "
+            f"script/tools: {tool_sources}"
+        )
+
+    runtime_dev_files = sorted(
+        path.name for path in (root / "script" / "src").glob("*.cs")
+        if path.name in FORBIDDEN_RUNTIME_DEV_FILES
+    )
+    if runtime_dev_files:
+        raise ValueError(
+            "retired runtime developer tools must not be compiled into a "
+            f"public client: {runtime_dev_files}"
+        )
 
     return ReleaseReport(version, 0, 0)
 
@@ -213,6 +231,7 @@ def verify_public_release(archive_path: Path, version: str = __version__) -> Rel
         if metadata.get("version") != version:
             raise ValueError(f"release metadata version is not {version}")
         required = set(PUBLIC_ROOT_FILES) | {
+            "data/vehicle_grounding.json",
             "script/dist/ALLIN1.dll",
             "script/dist/LemonUI.SHVDN3.dll",
             "tools/RpfPatcher/RpfPatcher.exe",

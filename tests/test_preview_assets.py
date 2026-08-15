@@ -1,4 +1,4 @@
-"""Tests for importing screenshots produced by the in-game capture tool."""
+"""Tests for validating and importing curated catalog screenshots."""
 
 import struct
 

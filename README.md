@@ -13,7 +13,7 @@ ALLIN1 supports both GTA V Legacy and GTA V Enhanced. It is designed exclusively
 Mode**; the installer configures the game to launch without BattlEye and should never be used in
 GTA Online.
 
-> **Current public release:** **0.3.0**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
+> **Current public release:** **0.4.5**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
 > highlights and hardening work included in this build.
 
 ## Support
@@ -23,19 +23,32 @@ If GTA V ALLIN1 is useful to you, project support is available through
 
 ## Features
 
+- **Galaxy Super Yacht** — purchase the persistent yacht from GBAY's Special
+  catalog and assign its GTA Online helipad aircraft (Swift Deluxe or
+  SuperVolito Carbon) to a per-character, save-backed helipad slot.
+
 - **GBAY vehicle marketplace** — browse all 461 supported DLC vehicles by category, search and
   filter the catalog, collect listings in a dedicated Favorites tab, inspect streamed preview
-  artwork, preview a vehicle in 3D, purchase it, and deliver it to a garage.
+  artwork, purchase a vehicle, and choose its destination from every compatible garage.
 - **Weapons and gear** — purchase more than 100 weapons, refill owned ammunition, browse captured
   previews for armor and equipment in GBAY, and manage exact per-character loadouts from the
-  desktop manager.
-- **Persistent garages** — maintain independent collections at Eclipse Towers, the oversized
-  three-floor garage, and a 10-car Davis Auto Shop; drive vehicles in, target delivery locations,
-  sell stored vehicles, recover interrupted transitions, customize garage floors, and configure
-  every Davis Auto Shop style, tint, lift, quarters, work-area, and storage option.
+  desktop manager. Quantity-based items show and charge their full bundle total (for example,
+  25 Sticky Bombs at $600 each cost $15,000). Unequipping gear discards it; equipping it again
+  requires another purchase.
+- **Persistent garages** — maintain independent collections at the 10-car Eclipse Garage, the
+  oversized 25-car Harmony Garage, the 10-car Davis Auto Shop, the 10-car Garment Factory,
+  the six-car Grapeseed Garage, and the 10-car Paleto Bay Garage; drive vehicles in,
+  choose purchase destinations, browse garages and
+  stored vehicles in a two-pane manager, sell stored vehicles,
+  recover interrupted transitions, use Harmony's five fully detailed floors, and configure every Davis Auto Shop
+  style, tint, lift, quarters, work-area, and storage option. Every ALLIN1
+  garage blip and world marker follows the active protagonist's blue, green, or orange color.
+  Wanted players are denied entry by default, with an optional launcher override.
 - **DLC traffic integration** — adds Online vehicles to ambient traffic with class-aware
   replacements, road and visibility checks, mission/interior/wanted-level guards, distance-based
-  cleanup, and adaptive performance throttling.
+  cleanup, and adaptive performance throttling. Player-owned and recently used vehicles, plus
+  vehicles parked in Story Mode safehouse garages, are protected without excluding ordinary
+  ambient parked traffic.
 - **Vehicle seat selector** — choose a seat with the configurable selector key (default
   **L**). Accessible seats use native entry and shuffle animations.
 - **Character control** — manage Michael, Franklin, and Trevor independently, including money,
@@ -127,6 +140,10 @@ settings. The installed `scripts/ALLIN1.toml` remains the runtime source of trut
 
 GBAY supports keyboard, mouse, and controller navigation. Page arrows and category-strip arrows
 are also clickable, and directional navigation crosses listing-page boundaries automatically.
+
+Seat names are backed by a generated Rockstar metadata audit rather than guessed from passenger
+indices. The checked-in `catalog/vehicle_seats.json` and `.md` cover base-game and installed DLC
+models, including authored access geometry and verified exceptions for inaccessible stations.
 
 ## Configuration
 

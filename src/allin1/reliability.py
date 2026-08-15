@@ -1,74 +1,12 @@
-"""Pure-Python reliability models used by CI and the in-game smoke workflow."""
+"""Artifact-backed reliability checks for the in-game smoke workflow."""
 
 from __future__ import annotations
 
+import hashlib
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-
-
-@dataclass
-class GarageState:
-    location: str = "outside"
-    transition: str | None = None
-    frozen: bool = False
-    faded_out: bool = False
-
-    def begin(self, operation: str) -> bool:
-        if self.transition is not None:
-            return False
-        self.transition = operation
-        return True
-
-    def step(self, event: str) -> None:
-        if self.transition is None:
-            raise ValueError("no transition in progress")
-        if event == "fade_out":
-            self.faded_out = True
-        elif event == "freeze":
-            self.frozen = True
-        elif event == "enter_complete":
-            self.location = "garage"
-        elif event == "leave_complete":
-            self.location = "outside"
-        else:
-            raise ValueError(f"unknown transition event: {event}")
-
-    def finish(self) -> None:
-        self.transition = None
-        self.frozen = False
-        self.faded_out = False
-
-    def recover(self) -> None:
-        self.location = "outside"
-        self.finish()
-
-
-@dataclass
-class SeatState:
-    seats: dict[int, str] = field(default_factory=dict)
-    selected: int = -1
-    executing: bool = False
-
-    def available(self) -> list[int]:
-        return sorted(index for index, occupant in self.seats.items()
-                      if occupant in ("free", "player"))
-
-    def select(self, seat: int) -> bool:
-        if seat not in self.available():
-            return False
-        self.selected = seat
-        return True
-
-    def confirm(self) -> bool:
-        if self.seats.get(self.selected) != "free":
-            self.executing = False
-            return False
-        self.executing = True
-        return True
-
-    def timeout(self) -> None:
-        self.executing = False
 
 
 @dataclass(frozen=True)
@@ -78,46 +16,135 @@ class SmokeCheck:
     detail: str = ""
 
 
-def write_smoke_report(path: Path, edition: str, checks: list[SmokeCheck]) -> bool:
+@dataclass(frozen=True)
+class SmokeAnalysis:
+    source_log: Path
+    log_sha256: str
+    session: str | None
+    session_started_utc: str | None
+    checks: tuple[SmokeCheck, ...]
+
+    @property
+    def passed(self) -> bool:
+        return all(check.passed for check in self.checks)
+
+
+def write_smoke_report(path: Path, edition: str, analysis: SmokeAnalysis) -> bool:
     """Write the machine-readable result consumed by release qualification."""
-    passed = all(check.passed for check in checks)
     payload = {
-        "schema": 1,
+        "schema": 2,
         "edition": edition,
-        "passed": passed,
-        "checks": [asdict(check) for check in checks],
+        "created_utc": datetime.now(timezone.utc).isoformat(),
+        "passed": analysis.passed,
+        "source_log": str(analysis.source_log.resolve()),
+        "source_log_sha256": analysis.log_sha256,
+        "session": analysis.session,
+        "session_started_utc": analysis.session_started_utc,
+        "checks": [asdict(check) for check in analysis.checks],
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    return passed
+    return analysis.passed
 
 
-def analyze_client_log(path: Path) -> list[SmokeCheck]:
-    """Derive release smoke checks from structured events emitted in-game."""
-    observed: set[str] = set()
-    for raw in path.read_text(encoding="utf-8-sig").splitlines():
+def _parse_utc(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def analyze_client_log(
+    path: Path, *, now: datetime | None = None, max_age: timedelta = timedelta(hours=24),
+) -> SmokeAnalysis:
+    """Derive smoke checks from one fresh, internally consistent game session."""
+    raw_bytes = path.read_bytes()
+    events: list[dict[str, object]] = []
+    for raw in raw_bytes.decode("utf-8-sig").splitlines():
         try:
             event = json.loads(raw)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError):
             continue
+        if isinstance(event, dict):
+            events.append(event)
+
+    start_index = -1
+    session: str | None = None
+    started: datetime | None = None
+    for index, event in enumerate(events):
         component = event.get("component", "")
         message = event.get("message", "")
+        candidate = event.get("session")
+        timestamp = _parse_utc(event.get("ts"))
+        if (component == "Client" and message == "session_started" and
+                isinstance(candidate, str) and candidate and timestamp is not None):
+            start_index = index
+            session = candidate
+            started = timestamp
+
+    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    fresh = started is not None and timedelta(0) <= current - started <= max_age
+    session_events = [
+        event for event in events[start_index:]
+        if start_index >= 0 and event.get("session") == session
+    ]
+    timestamps_valid = bool(session_events) and all(
+        _parse_utc(event.get("ts")) is not None for event in session_events
+    )
+    session_integrity = start_index >= 0 and fresh and timestamps_valid
+
+    observed: set[str] = set()
+    standard_enter = standard_leave = False
+    floor_enter = floor_leave = False
+    has_errors = False
+    for event in session_events:
+        component = event.get("component", "")
+        message = event.get("message", "")
+        level = event.get("level", "")
+        if level == "ERROR":
+            has_errors = True
         if component == "VehicleHelper" and message == "vehicle_created":
             observed.add("vehicle_spawn")
-        if component == "GBAY" and message.startswith("GiveWeapon:"):
+        if (component == "GBAY" and isinstance(message, str) and
+                message.startswith("GiveWeapon:") and "price=$" in message):
             observed.add("weapon_grant")
-        if component == "Garage" and message.startswith(("EnterGarage: COMPLETE", "LeaveGarage: COMPLETE")):
-            observed.add("garage_transition")
-        if component == "Garage" and message.startswith(("EnterFloorGarage: COMPLETE", "LeaveFloorGarage: COMPLETE")):
-            observed.add("floor_garage_transition")
+        if component == "Garage" and isinstance(message, str):
+            standard_enter |= message.startswith("EnterGarage: COMPLETE")
+            standard_leave |= message.startswith("LeaveGarage: COMPLETE")
+            floor_enter |= message.startswith("EnterFloorGarage: COMPLETE")
+            floor_leave |= message.startswith("LeaveFloorGarage: COMPLETE")
         if component == "SeatSelector" and message == "seat_switch_completed":
             observed.add("seat_switch")
-        if component == "Preview" and message == "texture_loaded":
+        if (component == "Preview" and message == "texture_loaded" and
+                str(event.get("dictionary", "")).startswith("allin1_")):
             observed.add("preview_stream")
-    required = (
+    if standard_enter and standard_leave:
+        observed.add("garage_transition")
+    if floor_enter and floor_leave:
+        observed.add("floor_garage_transition")
+
+    checks = [
+        SmokeCheck("session_integrity", session_integrity,
+                   "fresh single session" if session_integrity else "missing, stale, or invalid session"),
+        SmokeCheck("client_errors", not has_errors,
+                   "none observed" if not has_errors else "ERROR event observed"),
+    ]
+    required_events = (
         "vehicle_spawn", "weapon_grant", "preview_stream", "garage_transition",
         "floor_garage_transition", "seat_switch",
     )
-    return [SmokeCheck(name, name in observed,
-                       "observed" if name in observed else "not observed")
-            for name in required]
+    checks.extend(SmokeCheck(name, name in observed,
+                             "observed" if name in observed else "not observed")
+                  for name in required_events)
+    return SmokeAnalysis(
+        source_log=path,
+        log_sha256=hashlib.sha256(raw_bytes).hexdigest(),
+        session=session,
+        session_started_utc=started.isoformat() if started else None,
+        checks=tuple(checks),
+    )

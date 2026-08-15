@@ -8,6 +8,7 @@ import queue
 import threading
 import tkinter as tk
 import webbrowser
+from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -28,6 +29,67 @@ ASSET_DIR = Path(__file__).resolve().parent / "assets"
 WINDOWS_APP_ID = "MinionEnjoyer.GTAVALLIN1.Launcher"
 
 
+@dataclass(frozen=True)
+class StatusPresentation:
+    """Plain-language launcher status derived from installation facts."""
+
+    headline: str
+    detail: str
+    tone: str
+    can_launch: bool
+    can_install: bool
+    can_uninstall: bool
+
+
+def _status_presentation(status: InstallationStatus) -> StatusPresentation:
+    """Convert low-level installation checks into an actionable summary."""
+    if not status.valid_game:
+        return StatusPresentation(
+            "Select your GTA V folder",
+            "Choose the folder containing GTA5.exe or GTA5_Enhanced.exe.",
+            "warning",
+            False,
+            False,
+            False,
+        )
+
+    missing = []
+    if not status.scripthookv_installed:
+        missing.append("ScriptHookV")
+    if not status.shvdn_installed:
+        missing.append("ScriptHookVDotNet Enhanced")
+
+    if not status.mod_installed:
+        headline = "ALLIN1 is ready to install"
+        detail = "Install the Story Mode client, then run the health check before playing."
+        tone = "warning"
+    elif missing:
+        headline = "Required components are missing"
+        detail = "Install " + " and ".join(missing) + " before launching with ALLIN1."
+        tone = "error"
+    elif status.installed_version != status.manager_version:
+        installed = status.installed_version or "unknown"
+        headline = "Client update available"
+        detail = (
+            f"Installed client {installed}; launcher {status.manager_version}. "
+            "Use Install / Repair to synchronize them."
+        )
+        tone = "warning"
+    else:
+        headline = "Ready to play"
+        detail = "The ALLIN1 client and required script components are installed."
+        tone = "success"
+
+    return StatusPresentation(
+        headline,
+        detail,
+        tone,
+        True,
+        True,
+        status.mod_installed,
+    )
+
+
 def _register_windows_app() -> None:
     """Set taskbar identity before Tk creates the native window."""
     if os.name == "nt":
@@ -44,12 +106,17 @@ class QueueLogHandler(logging.Handler):
         self.messages.put(("log", self.format(record)))
 
 
+def _operation_progress_text(label: str, percentage: int) -> str:
+    return f"{label} - {max(0, min(100, int(percentage)))}%"
+
+
 class ScrollableFrame(ttk.Frame):
     """Vertically scrollable surface for settings-heavy launcher pages."""
 
     def __init__(self, parent, background: str = "#f8fafc") -> None:
         super().__init__(parent)
         self.canvas = tk.Canvas(self, background=background, highlightthickness=0)
+        self.canvas.configure(takefocus=True)
         scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.content = ttk.Frame(self.canvas, padding=(14, 12, 20, 18))
         self._window = self.canvas.create_window((0, 0), window=self.content, anchor="nw")
@@ -63,6 +130,10 @@ class ScrollableFrame(ttk.Frame):
         self.canvas.bind("<Enter>", lambda _event: self.canvas.bind_all(
             "<MouseWheel>", self._on_mousewheel))
         self.canvas.bind("<Leave>", lambda _event: self.canvas.unbind_all("<MouseWheel>"))
+        self.canvas.bind("<Prior>", lambda _event: self.canvas.yview_scroll(-1, "pages"))
+        self.canvas.bind("<Next>", lambda _event: self.canvas.yview_scroll(1, "pages"))
+        self.canvas.bind("<Home>", lambda _event: self.canvas.yview_moveto(0))
+        self.canvas.bind("<End>", lambda _event: self.canvas.yview_moveto(1))
 
     def _on_mousewheel(self, event) -> None:
         self.canvas.yview_scroll(int(-event.delta / 120), "units")
@@ -75,15 +146,18 @@ class ManagerWindow:
         self.config = manager.load_config()
         self.messages: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy = False
+        self.launch_pending = False
         self.profiles = ProfileStore(manager.project_root / "profiles")
         self.mod_catalog = ModCatalog(manager.project_root / "mods" / "catalog")
         self.mod_manifests: dict[str, ModManifest] = {}
         self.installed_mod_ids: set[str] = set()
         self.mod_action_buttons: list[ttk.Button] = []
+        self.current_status: InstallationStatus | None = None
+        self.settings_dirty = False
 
         root.title("GTA V ALLIN1 Launcher")
-        root.geometry("940x820")
-        root.minsize(780, 620)
+        root.geometry("1000x760")
+        root.minsize(760, 600)
         self._window_icon: tk.PhotoImage | None = None
         self._banner_logo: ImageTk.PhotoImage | None = None
         self._native_icon_handle: int | None = None
@@ -111,11 +185,33 @@ class ManagerWindow:
         self.ui_scale = tk.DoubleVar(value=self.config.script.ui_scale)
         self.hold_duration_ms = tk.IntVar(value=self.config.script.hold_duration_ms)
         self.gbay_free_mode = tk.BooleanVar(value=self.config.script.gbay_free_mode)
+        self.garages_always_accessible = tk.BooleanVar(
+            value=self.config.script.garages_always_accessible)
         self.status_text = tk.StringVar(value="Checking installation…")
+        self.status_headline = tk.StringVar(value="Checking installation…")
+        self.status_detail = tk.StringVar(value="Inspecting the selected GTA V folder.")
         self.version_text = tk.StringVar(value=f"Manager {__version__} · latest not checked")
+        self.notice_text = tk.StringVar(value="Ready")
+        self.operation_text = tk.StringVar(value="")
         self.profile_name = tk.StringVar(value="Full ALLIN1")
 
         self._build()
+        self._setting_variables = (
+            self.path, self.rpf_previews, self.backup_enabled, self.traffic,
+            self.rich_areas_only, self.adaptive_performance, self.enable_all_vehicles,
+            self.disabled_classes, self.disabled_vehicles, self.police,
+            self.logging_enabled, self.gbay_key, self.night_vision_key,
+            self.world_vector_key, self.seat_selector_enabled, self.seat_selector_key,
+            self.safe_mode, self.reduced_motion, self.colorblind_mode, self.ui_scale,
+            self.hold_duration_ms, self.gbay_free_mode,
+            self.garages_always_accessible,
+        )
+        for variable in self._setting_variables:
+            variable.trace_add("write", self._mark_dirty)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.root.bind("<Control-s>", lambda _event: self.save())
+        self.root.bind("<F5>", lambda _event: self.refresh())
+        self.root.bind("<Control-l>", lambda _event: self.launch_game())
         handler = QueueLogHandler(self.messages)
         handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
         logging.getLogger("allin1").addHandler(handler)
@@ -151,7 +247,7 @@ class ManagerWindow:
             self._window_icon = None
 
     def _build(self) -> None:
-        green, dark_green, body_bg = "#2d9c50", "#238746", "#f8fafc"
+        green, dark_green, body_bg = "#2d9c50", "#1f7f42", "#f4f7f5"
         self.root.configure(background=body_bg)
         style = ttk.Style(self.root)
         if "clam" in style.theme_names():
@@ -164,7 +260,17 @@ class ManagerWindow:
                         font=("Segoe UI Semibold", 10))
         style.configure("Accent.TButton", background=green, foreground="white",
                         font=("Segoe UI", 10, "bold"), padding=(12, 7))
-        style.map("Accent.TButton", background=[("active", dark_green)])
+        style.map("Accent.TButton", background=[("active", dark_green),
+                                                ("disabled", "#9bc8aa")],
+                  foreground=[("disabled", "#edf7f0")])
+        style.configure("Quiet.TButton", padding=(10, 7))
+        style.configure("Danger.TButton", foreground="#9a3412", padding=(10, 7))
+        style.configure("Success.Status.TLabel", font=("Segoe UI Semibold", 15),
+                        foreground="#18753a")
+        style.configure("Warning.Status.TLabel", font=("Segoe UI Semibold", 15),
+                        foreground="#9a6700")
+        style.configure("Error.Status.TLabel", font=("Segoe UI Semibold", 15),
+                        foreground="#b42318")
         style.configure("TNotebook", background=body_bg, borderwidth=0)
         style.configure("TNotebook.Tab", font=("Segoe UI Semibold", 10), padding=(18, 9),
                         foreground="#646e69")
@@ -195,8 +301,18 @@ class ManagerWindow:
         support.pack(anchor="w", pady=(3, 0))
         support.bind("<Button-1>", lambda _event: webbrowser.open(
             "https://buymeacoffee.com/minionenjoyer"))
+        tk.Label(
+            banner,
+            text=f"v{__version__}",
+            background="#176b36",
+            foreground="white",
+            font=("Segoe UI Semibold", 10),
+            padx=12,
+            pady=5,
+        ).pack(side="right", anchor="n")
 
         tabs = ttk.Notebook(outer)
+        self.tabs = tabs
         tabs.pack(fill="both", expand=True)
         home_view = ScrollableFrame(tabs, body_bg)
         gameplay_view = ScrollableFrame(tabs, body_bg)
@@ -208,6 +324,11 @@ class ManagerWindow:
         tabs.add(controls_view, text="CONTROLS")
         tabs.add(mods_view, text="MODS")
         tabs.add(activity, text="ACTIVITY")
+        for index in range(5):
+            self.root.bind(
+                f"<Control-Key-{index + 1}>",
+                lambda _event, selected=index: tabs.select(selected),
+            )
         home = home_view.content
         gameplay = gameplay_view.content
         controls_page = controls_view.content
@@ -234,7 +355,7 @@ class ManagerWindow:
         ttk.Checkbutton(options, text="DLC traffic", variable=self.traffic).grid(row=0, column=1, sticky="w", padx=(0, 30))
         ttk.Checkbutton(options, text="DLC police", variable=self.police).grid(row=1, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Detailed script logging", variable=self.logging_enabled).grid(row=1, column=1, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Safe mode (disables traffic and three-floor garages)", variable=self.safe_mode).grid(row=2, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(options, text="Safe mode (disables traffic and Harmony Garage)", variable=self.safe_mode).grid(row=2, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Disable GBAY page-transition fades", variable=self.reduced_motion).grid(row=2, column=1, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Colorblind-safe palette", variable=self.colorblind_mode).grid(row=3, column=0, sticky="w", pady=(8, 0))
         ttk.Label(options, text="UI text scale").grid(row=3, column=1, sticky="w", pady=(8, 0))
@@ -247,6 +368,9 @@ class ManagerWindow:
         ttk.Checkbutton(options, text="GBAY preview artwork (requires OpenRPF/OpenIV)",
                         variable=self.rpf_previews).grid(row=6, column=0,
                                                          sticky="w", pady=(8, 0))
+        ttk.Checkbutton(options, text="Allow garage entry while wanted",
+                        variable=self.garages_always_accessible).grid(
+                            row=6, column=1, sticky="w", pady=(8, 0))
 
         controls = ttk.LabelFrame(controls_page, text="KEYBINDS & VEHICLE FILTERS", padding=14)
         controls.pack(fill="x", pady=(0, 12))
@@ -346,35 +470,55 @@ class ManagerWindow:
             justify="left",
         ).pack(fill="x", anchor="w")
 
-        state = ttk.LabelFrame(home, text="INSTALLATION STATUS", padding=12)
+        state = ttk.LabelFrame(home, text="INSTALLATION STATUS", padding=14)
         state.pack(fill="x")
-        ttk.Label(state, textvariable=self.status_text, justify="left").pack(anchor="w")
-        ttk.Label(state, textvariable=self.version_text, justify="left").pack(anchor="w", pady=(4, 0))
+        self.status_headline_label = ttk.Label(
+            state,
+            textvariable=self.status_headline,
+            style="Warning.Status.TLabel",
+        )
+        self.status_headline_label.pack(anchor="w")
+        ttk.Label(
+            state,
+            textvariable=self.status_detail,
+            justify="left",
+            wraplength=830,
+        ).pack(anchor="w", pady=(3, 10))
+        ttk.Separator(state).pack(fill="x", pady=(0, 9))
+        ttk.Label(state, textvariable=self.status_text, justify="left",
+                  wraplength=830).pack(anchor="w")
+        ttk.Label(state, textvariable=self.version_text, justify="left",
+                  foreground="#3f6659").pack(anchor="w", pady=(5, 0))
 
-        actions = ttk.Frame(home)
-        actions.pack(fill="x", pady=12)
-        self.launch_button = ttk.Button(actions, text="Launch GTA V", command=self.launch_game,
-                                        style="Accent.TButton")
-        self.launch_button.pack(side="left")
-        self.install_button = ttk.Button(actions, text="Install / Repair", command=self.install)
-        self.install_button.pack(side="left", padx=(8, 0))
-        self.uninstall_button = ttk.Button(actions, text="Uninstall", command=self.uninstall)
-        self.uninstall_button.pack(side="left", padx=8)
-        self.save_button = ttk.Button(actions, text="Save settings", command=self.save)
-        self.save_button.pack(side="left")
-        self.refresh_button = ttk.Button(actions, text="Refresh", command=self.refresh)
-        self.refresh_button.pack(side="right")
-
-        utilities = ttk.LabelFrame(home, text="TOOLS", padding=12)
+        utilities = ttk.LabelFrame(home, text="MAINTENANCE", padding=12)
         utilities.pack(fill="x", pady=(0, 10))
-        for label, command in (
+        for column, (label, command) in enumerate((
             ("Characters & garages", self.customize_characters),
             ("Diagnostics", self.create_diagnostics),
             ("Health check", self.run_health_check),
             ("About", self.show_about),
-        ):
-            ttk.Button(utilities, text=label, command=command).pack(side="left", padx=(0, 8))
+        )):
+            ttk.Button(utilities, text=label, command=command,
+                       style="Quiet.TButton").grid(row=0, column=column, padx=(0, 8), sticky="w")
+        self.uninstall_button = ttk.Button(
+            utilities, text="Uninstall ALLIN1", command=self.uninstall, style="Danger.TButton"
+        )
+        self.uninstall_button.grid(row=0, column=4, sticky="e")
+        utilities.columnconfigure(4, weight=1)
 
+        activity_toolbar = ttk.Frame(activity)
+        activity_toolbar.pack(fill="x", pady=(0, 10))
+        ttk.Label(
+            activity_toolbar,
+            text="Launcher operations and diagnostics appear here.",
+            foreground="#3f6659",
+        ).pack(side="left")
+        ttk.Button(activity_toolbar, text="Open log folder", command=self.open_log_folder,
+                   style="Quiet.TButton").pack(side="right")
+        ttk.Button(activity_toolbar, text="Clear", command=self.clear_activity,
+                   style="Quiet.TButton").pack(side="right", padx=6)
+        ttk.Button(activity_toolbar, text="Copy", command=self.copy_activity,
+                   style="Quiet.TButton").pack(side="right")
         log_frame = ttk.LabelFrame(activity, text="ACTIVITY LOG", padding=10)
         log_frame.pack(fill="both", expand=True)
         self.log = tk.Text(log_frame, height=12, wrap="word", state="disabled")
@@ -383,8 +527,39 @@ class ManagerWindow:
         self.log.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
 
-        ttk.Label(home, text="Use only in Story Mode. The installer disables BattlEye for mod loading.",
-                  foreground="#9a3412").pack(anchor="w", pady=(10, 0))
+        footer = ttk.Frame(outer, padding=(0, 11, 0, 0))
+        footer.pack(side="bottom", fill="x")
+        footer_actions = ttk.Frame(footer)
+        footer_actions.pack(side="right")
+        footer_left = ttk.Frame(footer)
+        footer_left.pack(side="left", fill="x", expand=True)
+        ttk.Label(
+            footer_left,
+            text="STORY MODE ONLY",
+            foreground="#9a3412",
+            font=("Segoe UI Semibold", 9),
+        ).pack(side="left")
+        ttk.Label(footer_left, text="  ·  ").pack(side="left")
+        ttk.Label(footer_left, textvariable=self.notice_text,
+                  foreground="#3f6659").pack(side="left")
+        self.busy_progress = ttk.Progressbar(
+            footer_left, mode="determinate", maximum=100, length=170,
+        )
+        ttk.Label(footer_left, textvariable=self.operation_text,
+                  foreground="#3f6659").pack(side="left")
+
+        self.refresh_button = ttk.Button(footer_actions, text="Refresh", command=self.refresh,
+                                         style="Quiet.TButton")
+        self.refresh_button.pack(side="left")
+        self.save_button = ttk.Button(footer_actions, text="Save settings", command=self.save,
+                                      style="Quiet.TButton")
+        self.save_button.pack(side="left", padx=7)
+        self.install_button = ttk.Button(footer_actions, text="Install / Repair",
+                                         command=self.install, style="Quiet.TButton")
+        self.install_button.pack(side="left")
+        self.launch_button = ttk.Button(footer_actions, text="Launch GTA V",
+                                        command=self.launch_game, style="Accent.TButton")
+        self.launch_button.pack(side="left", padx=(7, 0))
 
     def _browse(self) -> None:
         selected = filedialog.askdirectory(title="Select the GTA V installation folder")
@@ -416,18 +591,31 @@ class ManagerWindow:
         self.config.script.ui_scale = self.ui_scale.get()
         self.config.script.hold_duration_ms = self.hold_duration_ms.get()
         self.config.script.gbay_free_mode = self.gbay_free_mode.get()
+        self.config.script.garages_always_accessible = \
+            self.garages_always_accessible.get()
         return self.config
 
     @staticmethod
     def _comma_values(value: str) -> list[str]:
         return list(dict.fromkeys(item.strip().lower() for item in value.split(",") if item.strip()))
 
-    def save(self) -> None:
+    def _mark_dirty(self, *_args) -> None:
+        self.settings_dirty = True
+        self.notice_text.set("Unsaved changes")
+
+    def _clear_dirty(self, notice: str = "Settings saved") -> None:
+        self.settings_dirty = False
+        self.notice_text.set(notice)
+
+    def save(self) -> bool:
         try:
             self.manager.save_config(self._current_config())
             self._append_log("Settings saved.")
+            self._clear_dirty()
+            return True
         except (OSError, ValueError) as exc:
             messagebox.showerror("Could not save settings", str(exc))
+            return False
 
     def save_profile(self) -> None:
         try:
@@ -462,6 +650,11 @@ class ManagerWindow:
             self.ui_scale.set(self.config.script.ui_scale)
             self.hold_duration_ms.set(self.config.script.hold_duration_ms)
             self.gbay_free_mode.set(self.config.script.gbay_free_mode)
+            self.garages_always_accessible.set(
+                self.config.script.garages_always_accessible)
+            self.notice_text.set(
+                f"Profile '{self.profile_name.get()}' loaded · save to apply"
+            )
             self.refresh()
         except (OSError, ValueError) as exc:
             messagebox.showerror("Could not load profile", str(exc))
@@ -617,19 +810,31 @@ class ManagerWindow:
         self._run(f"Uninstalling {mod_id}", lambda: service.uninstall(mod_id))
 
     def _show_status(self, status: InstallationStatus) -> None:
+        self.current_status = status
+        presentation = _status_presentation(status)
+        self.status_headline.set(presentation.headline)
+        self.status_detail.set(presentation.detail)
+        style = {
+            "success": "Success.Status.TLabel",
+            "warning": "Warning.Status.TLabel",
+            "error": "Error.Status.TLabel",
+        }[presentation.tone]
+        self.status_headline_label.configure(style=style)
         path = str(status.gta_path) if status.gta_path else "Not detected"
         mark = lambda value: "Installed" if value else "Missing"
         self.status_text.set(
-            f"Game: {path}\nEdition: {status.edition}\n"
-            f"ALLIN1: {mark(status.mod_installed)}    "
-            f"ScriptHookV: {mark(status.scripthookv_installed)}    "
-            f"ScriptHookVDotNet: {mark(status.shvdn_installed)}    "
-            f"OpenRPF/OpenIV: {status.rpf_loader_status}"
+            f"Game folder: {path}\n"
+            f"Edition: {status.edition}  ·  ALLIN1: {mark(status.mod_installed)}  ·  "
+            f"ScriptHookV: {mark(status.scripthookv_installed)}  ·  "
+            f"ScriptHookVDotNet: {mark(status.shvdn_installed)}  ·  "
+            f"Preview loader: {status.rpf_loader_status}"
         )
         installed = status.installed_version or ("unknown" if status.mod_installed else "not installed")
         self.version_text.set(
             f"Manager {status.manager_version} · Installed client {installed} · Update status not checked"
         )
+        if not self.busy:
+            self._set_actions(True)
 
     def show_about(self) -> None:
         dialog = tk.Toplevel(self.root)
@@ -674,25 +879,44 @@ class ManagerWindow:
 
     def install(self) -> None:
         config = self._current_config()
-        self._run("Installing", lambda: self.manager.install(config))
+        def report(percentage: int, detail: str) -> None:
+            self.messages.put(("progress", ("Repairing", percentage, detail)))
+        self._run(
+            "Repairing",
+            lambda: self.manager.install(config, progress=report),
+            determinate=True,
+        )
 
     def launch_game(self) -> None:
         """Save the current settings and start the selected GTA V installation."""
-        if self.busy:
+        if self.busy or self.launch_pending:
             return
+        self.launch_pending = True
+        self.launch_button.configure(state="disabled")
         config = self._current_config()
         gta_path = self.manager.resolve_path(config)
         if gta_path is None:
+            self._reset_launch_guard()
             messagebox.showerror("Game not found", "Select a GTA V installation first.")
             return
         try:
             self.manager.save_config(config)
             target = launch_gta(gta_path)
         except (FileNotFoundError, OSError, ValueError) as exc:
+            self._reset_launch_guard()
             self._append_log(f"Launch failed: {exc}")
             messagebox.showerror("Could not launch GTA V", str(exc))
             return
+        self._clear_dirty("Launching GTA V")
         self._append_log(f"Launching {target.description}.")
+        # Ignore repeated clicks or key-repeat while Steam and Rockstar hand
+        # off the request. Reopening the URI can restart the game's intro.
+        self.root.after(15000, self._reset_launch_guard)
+
+    def _reset_launch_guard(self) -> None:
+        self.launch_pending = False
+        if not self.busy:
+            self.launch_button.configure(state="normal")
 
     def uninstall(self) -> None:
         if not messagebox.askyesno("Uninstall ALLIN1", "Remove ALLIN1 files and restore its game changes?"):
@@ -733,14 +957,69 @@ class ManagerWindow:
         details = "\n".join(f"[{issue.severity.upper()}] {issue.message}"
                             for issue in report.issues) or "No issues found."
         title = "Ready to launch" if report.launch_safe else "Action required"
+        self._append_log(f"Health check: {title}.")
+        for issue in report.issues:
+            self._append_log(f"{issue.severity.upper()}: {issue.message}")
         messagebox.showinfo("Health check", f"{title}\n\n{details}")
 
-    def _run(self, label: str, operation) -> None:
+    def copy_activity(self) -> None:
+        text = self.log.get("1.0", "end-1c")
+        if not text:
+            self.notice_text.set("Activity log is empty")
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
+        self.notice_text.set("Activity copied")
+
+    def clear_activity(self) -> None:
+        self.log.configure(state="normal")
+        self.log.delete("1.0", "end")
+        self.log.configure(state="disabled")
+        self.notice_text.set("Activity cleared")
+
+    def open_log_folder(self) -> None:
+        try:
+            if os.name == "nt":
+                os.startfile(self.manager.project_root)  # type: ignore[attr-defined]
+            else:
+                webbrowser.open(self.manager.project_root.as_uri())
+        except OSError as exc:
+            messagebox.showerror("Could not open log folder", str(exc))
+
+    def _on_close(self) -> None:
+        if self.busy:
+            messagebox.showwarning(
+                "Operation in progress",
+                "Wait for the current operation to finish before closing the launcher.",
+            )
+            return
+        if self.settings_dirty:
+            choice = messagebox.askyesnocancel(
+                "Save settings?",
+                "You have unsaved launcher settings. Save them before closing?",
+            )
+            if choice is None:
+                return
+            if choice and not self.save():
+                return
+        self.root.destroy()
+
+    def _run(self, label: str, operation, *, determinate: bool = False) -> None:
         if self.busy:
             return
         self.busy = True
         self._set_actions(False)
         self._append_log(f"{label}…")
+        self.notice_text.set("Working")
+        self.operation_text.set(
+            _operation_progress_text(label, 0) if determinate else label + "…"
+        )
+        self.busy_progress.configure(
+            mode="determinate" if determinate else "indeterminate", value=0,
+        )
+        self.busy_progress.pack(side="left", padx=12)
+        if not determinate:
+            self.busy_progress.start(12)
 
         def worker() -> None:
             try:
@@ -759,9 +1038,17 @@ class ManagerWindow:
                 break
             if kind == "log":
                 self._append_log(str(payload))
+            elif kind == "progress":
+                label, percentage, detail = payload
+                percentage = max(0, min(100, int(percentage)))
+                self.busy_progress.configure(value=percentage)
+                self.operation_text.set(_operation_progress_text(label, percentage))
+                self.notice_text.set(str(detail))
             elif kind == "done":
                 label, _ = payload
                 self._finish()
+                if label == "Repairing":
+                    self._clear_dirty("Install / Repair complete")
                 self._append_log(f"{label} completed.")
                 messagebox.showinfo("GTA V ALLIN1", f"{label} completed successfully.")
             elif kind == "error":
@@ -786,19 +1073,47 @@ class ManagerWindow:
 
     def _finish(self) -> None:
         self.busy = False
+        self.busy_progress.stop()
+        self.busy_progress.configure(value=0)
+        self.busy_progress.pack_forget()
+        self.operation_text.set("")
+        if not self.settings_dirty:
+            self.notice_text.set("Ready")
         self._set_actions(True)
         self.refresh()
 
     def _set_actions(self, enabled: bool) -> None:
+        if not enabled:
+            for button in (
+                self.launch_button,
+                self.install_button,
+                self.uninstall_button,
+                self.save_button,
+                self.refresh_button,
+            ):
+                button.configure(state="disabled")
+        else:
+            presentation = (
+                _status_presentation(self.current_status)
+                if self.current_status is not None
+                else None
+            )
+            self.launch_button.configure(
+                state=(
+                    "normal"
+                    if presentation and presentation.can_launch and not self.launch_pending
+                    else "disabled"
+                )
+            )
+            self.install_button.configure(
+                state="normal" if presentation and presentation.can_install else "disabled"
+            )
+            self.uninstall_button.configure(
+                state="normal" if presentation and presentation.can_uninstall else "disabled"
+            )
+            self.save_button.configure(state="normal")
+            self.refresh_button.configure(state="normal")
         state = "normal" if enabled else "disabled"
-        for button in (
-            self.launch_button,
-            self.install_button,
-            self.uninstall_button,
-            self.save_button,
-            self.refresh_button,
-        ):
-            button.configure(state=state)
         for button in self.mod_action_buttons:
             button.configure(state=state)
 

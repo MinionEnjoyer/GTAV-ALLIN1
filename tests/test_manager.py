@@ -1,10 +1,20 @@
 """Tests for the UI-facing management service."""
 
 from pathlib import Path
+import struct
 from unittest.mock import Mock
 
 from allin1.config import Config
 from allin1.manager import ModManager
+
+
+def _write_pe(path, *, size=4096):
+    payload = bytearray(size)
+    payload[:2] = b"MZ"
+    struct.pack_into("<I", payload, 0x3C, 0x80)
+    payload[0x80:0x84] = b"PE\0\0"
+    struct.pack_into("<H", payload, 0x84, 0x8664)
+    path.write_bytes(payload)
 
 
 def _manager(tmp_path: Path, **kwargs) -> ModManager:
@@ -20,12 +30,12 @@ def _manager(tmp_path: Path, **kwargs) -> ModManager:
 
 def test_status_reports_complete_legacy_install(tmp_path):
     (tmp_path / "GTA5.exe").touch()
-    (tmp_path / "ScriptHookV.dll").touch()
-    (tmp_path / "ScriptHookVDotNet.asi").touch()
-    (tmp_path / "OpenIV.asi").write_bytes(b"asi")
+    _write_pe(tmp_path / "ScriptHookV.dll")
+    _write_pe(tmp_path / "ScriptHookVDotNet.asi")
+    _write_pe(tmp_path / "OpenIV.asi")
     scripts = tmp_path / "scripts"
     scripts.mkdir()
-    (scripts / "ALLIN1.dll").touch()
+    _write_pe(scripts / "ALLIN1.dll")
     (scripts / "ALLIN1.version").write_text("0.2.0\n")
     config = Config.default()
     config.general.gta_path = str(tmp_path)
@@ -38,9 +48,9 @@ def test_status_reports_complete_legacy_install(tmp_path):
     assert status.scripthookv_installed is True
     assert status.shvdn_installed is True
     assert status.openrpf_installed is True
-    assert status.rpf_loader_status == "Installed"
+    assert status.rpf_loader_status == "Installed (file validated)"
     assert status.installed_version == "0.2.0"
-    assert status.manager_version == "0.3.0"
+    assert status.manager_version == "0.4.5"
 
 
 def test_status_reports_invalid_manual_path(tmp_path):
@@ -82,6 +92,17 @@ def test_install_saves_config_and_delegates(tmp_path):
     assert result is install_fn.return_value
     assert Config.load(tmp_path / "config.toml").general.gta_path == config.general.gta_path
     install_fn.assert_called_once()
+
+
+def test_install_forwards_progress_callback(tmp_path):
+    install_fn = Mock(return_value=object())
+    manager = _manager(tmp_path, install_fn=install_fn)
+    config = Config.default()
+    progress = Mock()
+
+    manager.install(config, progress=progress)
+
+    assert install_fn.call_args.kwargs == {"progress": progress}
 
 
 def test_uninstall_delegates_without_loading_database(tmp_path):

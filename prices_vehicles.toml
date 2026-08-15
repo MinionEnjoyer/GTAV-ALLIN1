@@ -1,8 +1,8 @@
 # GTA V ALLIN1 - Vehicle Prices
 # Edit these to customize what vehicles cost in single player.
-# Set any price to 0 to make it free. Set free_mode = true in
-# config.toml to make ALL vehicles free regardless of this file.
-# Prices are balanced between GTA Online and SP prices.
+# Every catalog model must have a positive price. Set free_mode = true in
+# config.toml to make all purchases free without corrupting catalog pricing.
+# Prices are balanced between GTA Online and Story Mode prices.
 
 [compacts]
 asbo = 20000
@@ -455,22 +455,23 @@ youga3 = 95000
 youga5 = 112500
 
 [emergency]
-polbuffalo = 0
-polbuffalo6 = 0
-polcaracara = 0
-polcoquette4 = 0
-polfaction2 = 0
-polgauntlet = 0
-police5 = 0
-policeb2 = 0
-policet3 = 0
-polterminus = 0
-poldominator10 = 0
-poldorado = 0
-polgreenwood = 0
-polimpaler5 = 0
-polimpaler6 = 0
-riot2 = 0
+polbuffalo = 4435000
+polbuffalo6 = 5370000
+polcaracara = 5335000
+polcoquette4 = 5620000
+polfaction2 = 4150000
+polgauntlet = 5420000
+police5 = 4690000
+policeb2 = 4960000
+# Reward-only in Online; GBAY uses an explicit Story Mode appraisal.
+policet3 = 650000
+polterminus = 5125000
+poldominator10 = 4950000
+poldorado = 5005000
+polgreenwood = 3946000
+polimpaler5 = 4720000
+polimpaler6 = 4800000
+riot2 = 3125500
 
 [cycles]
 inductor = 5000
@@ -498,11 +499,14 @@ vigilante = 901500
 voltic2 = 950000
 
 [kortz_vehicles]
-veleno = 2995000
-caracara3 = 0
+velenogt = 3090000
+# Career Progress reward in Online; GBAY uses an explicit Story Mode appraisal.
+caracara3 = 2250000
 merula = 1394000
-laufer = 1250000
-lrcgt = 3200000
+laufer = 645000
+lrcgt = 2650000
 cartuccia = 2395000
 estride = 1425000
 polignus = 5835000
+horus = 2810000
+warden = 1597500

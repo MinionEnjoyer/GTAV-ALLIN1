@@ -11,6 +11,12 @@ Produces a C# static class with:
 from __future__ import annotations
 
 from pathlib import Path
+import sys
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 from allin1.config import load_prices
 from allin1.vehicles.database import VehicleDatabase
@@ -55,6 +61,7 @@ CLASS_NAMES: dict[str, str] = {
     "sedans": "Sedans",
     "service": "Service",
     "special": "Special",
+    "sports": "Sports",
     "sportsclassics": "Sportsclassics",
     "super": "Super",
     "suvs": "Suvs",
@@ -62,8 +69,28 @@ CLASS_NAMES: dict[str, str] = {
 }
 
 
-def generate(db: VehicleDatabase, prices: dict[str, int]) -> str:
+def generate(
+    db: VehicleDatabase,
+    prices: dict[str, int],
+    pending_previews: set[str] | None = None,
+) -> str:
     """Return the full VehicleList.cs source as a string."""
+    models = {vehicle.model for vehicle in db.all_vehicles}
+    missing = sorted(models - set(prices))
+    nonpositive = sorted(
+        model for model in models if model in prices and prices[model] <= 0
+    )
+    if missing or nonpositive:
+        details: list[str] = []
+        if missing:
+            details.append("missing: " + ", ".join(missing))
+        if nonpositive:
+            details.append("non-positive: " + ", ".join(nonpositive))
+        raise ValueError(
+            "Every GBAY vehicle listing requires a positive price (" +
+            "; ".join(details) + ")"
+        )
+
     lines: list[str] = []
     w = lines.append
 
@@ -130,7 +157,7 @@ def generate(db: VehicleDatabase, prices: dict[str, int]) -> str:
     w("        internal static readonly Dictionary<string, int> Prices = new Dictionary<string, int>")
     w("        {")
     for v in unique_vehicles:
-        price = prices.get(v.model, 0)
+        price = prices[v.model]
         w(f'            {{ "{v.model}", {price} }},')
     w("        };")
     w("")
@@ -146,9 +173,12 @@ def generate(db: VehicleDatabase, prices: dict[str, int]) -> str:
 
     # --- PreviewDict dictionary (model -> YTD texture dict name) ---
     preview_mapping = build_preview_dict([v.model for v in unique_vehicles])
+    pending = pending_previews or set()
     w("        internal static readonly Dictionary<string, string> PreviewDict = new Dictionary<string, string>")
     w("        {")
     for model, dict_name in sorted(preview_mapping.items()):
+        if model in pending:
+            continue
         w(f'            {{ "{model}", "{dict_name}" }},')
     w("        };")
 
@@ -170,15 +200,27 @@ def generate_file(
     """
     db = VehicleDatabase.load(vehicles_path)
     prices = load_prices(prices_path)
-    source = generate(db, prices)
+    pending_path = vehicles_path.parent / "preview_pending.toml"
+    pending_previews: set[str] = set()
+    if pending_path.is_file():
+        with pending_path.open("rb") as stream:
+            pending_previews = set(tomllib.load(stream).get("models", []))
+    source = generate(db, prices, pending_previews)
 
     # Height/size calibration is maintained from in-game measurements and is
     # intentionally not generated from vehicles.toml. Preserve that section
     # when refreshing the generated catalog instead of silently deleting it.
-    marker = "        //  Vehicle size data (generated from HeightChecker measurements)"
+    calibration_markers = (
+        "        //  Vehicle size data (generated from HeightChecker measurements)",
+        "        // Oversized vehicles",
+    )
     if output_path.exists():
         existing = output_path.read_text(encoding="utf-8")
-        marker_index = existing.find(marker)
+        marker_indexes = [
+            existing.find(marker) for marker in calibration_markers
+            if existing.find(marker) >= 0
+        ]
+        marker_index = min(marker_indexes) if marker_indexes else -1
         if marker_index >= 0:
             calibrated_suffix = existing[marker_index:]
             generated_close = "    }\n}\n"

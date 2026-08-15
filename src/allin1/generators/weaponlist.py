@@ -6,6 +6,7 @@ Produces a C# static class with:
 - DisplayNames dictionary (weapon name -> display label)
 - Prices dictionary (weapon name -> price in dollars)
 - CategoryNames dictionary (weapon name -> category display name)
+- PurchaseQuantities dictionary (weapon name -> first-purchase bundle size)
 - PreviewDict dictionary (weapon name -> YTD texture dictionary)
 """
 
@@ -132,6 +133,15 @@ def generate(weapons_path: Path, prices: dict[str, int]) -> str:
     for w in weapons:
         _, display_label = CATEGORY_NAMES.get(w["category"], (w["category"], w["category"]))
         a(f'            {{ "{w["name"]}", "{display_label}" }},')
+    a("        };")
+    a("")
+
+    # --- PurchaseQuantities dictionary (weapon name -> purchase bundle size) ---
+    a("        internal static readonly Dictionary<string, int> PurchaseQuantities = new Dictionary<string, int>")
+    a("        {")
+    for w in weapons:
+        quantity = int(w.get("purchase_quantity", 1))
+        a(f'            {{ "{w["name"]}", {quantity} }},')
     a("        };")
     a("")
 

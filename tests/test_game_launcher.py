@@ -93,7 +93,7 @@ def test_default_steam_launcher_uses_windows_shell(tmp_path, monkeypatch):
     game = _game(tmp_path, steam=True)
     (game.parent.parent / "appmanifest_3240220.acf").touch()
     startfile = Mock()
-    monkeypatch.setattr("allin1.game_launcher.os.startfile", startfile)
+    monkeypatch.setattr("allin1.game_launcher.os.startfile", startfile, raising=False)
 
     launch_gta(game)
 

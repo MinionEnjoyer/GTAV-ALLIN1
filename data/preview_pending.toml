@@ -2,5 +2,7 @@
 # in-game preview capture is available. Keep this list synchronized with the
 # repository contract test.
 models = [
-  "veleno",
+  "velenogt",
+  "horus",
+  "warden",
 ]

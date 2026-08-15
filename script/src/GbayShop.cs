@@ -29,6 +29,7 @@ namespace ALLIN1
         private bool _enableLogging = true;
         private bool _initialized;
         private bool _safeMode;
+        private bool _garagesAlwaysAccessible;
         private bool _reducedMotion;
         private bool _colorblindMode;
         private float _uiScale = 1f;
@@ -49,12 +50,21 @@ namespace ALLIN1
 
         // --- Public accessors for GbayBrowser ---
         internal bool FreeMode => _freeMode;
+        internal const int AmmoNotApplicable = -1;
+        internal const int AmmoCapacityUnavailable = -3;
 
         public GbayShop()
         {
             Tick += OnTick;
             KeyDown += OnKeyDown;
+            Aborted += OnAborted;
             Interval = 0;
+        }
+
+        private void OnAborted(object sender, EventArgs args)
+        {
+            GarageManager.OnScriptAborted();
+            YachtManager.Shutdown();
         }
 
         // ------------------------------------------------------------------ //
@@ -83,6 +93,7 @@ namespace ALLIN1
             _freeMode = false;
             _enableLogging = true;
             _safeMode = false;
+            _garagesAlwaysAccessible = false;
 
             if (!File.Exists(CONFIG_PATH))
                 return;
@@ -137,6 +148,10 @@ namespace ALLIN1
                     else if (key == "safe_mode")
                     {
                         _safeMode = valLower == "true";
+                    }
+                    else if (key == "garages_always_accessible")
+                    {
+                        _garagesAlwaysAccessible = valLower == "true";
                     }
                     else if (key == "reduced_motion")
                     {
@@ -209,11 +224,18 @@ namespace ALLIN1
             LoadGearPrices();
             Log($"=== GBAY Initialized: key={_openKey} freeMode={_freeMode} ===");
 
+            YachtManager.Initialize();
+
             try
             {
-                GarageManager.Configure(_enableLogging);
+                GarageManager.Configure(
+                    _enableLogging, _garagesAlwaysAccessible);
                 GarageManager.Initialize();
                 GarageManager.InitializeDavisGarage();
+                GarageManager.InitializeGarmentGarage();
+                GarageManager.InitializeRuralGarage();
+                GarageManager.InitializePaletoGarage();
+                GarageManager.InitializeYachtHelipad();
                 if (!ClientWatchdog.SafeMode)
                     GarageManager.InitializeFloorGarage();
                 else
@@ -273,10 +295,12 @@ namespace ALLIN1
 
         internal void ExecuteDeliverToGarage(string model, int price)
         {
-            // Oversized vehicles route to floor garage instead
+            // The buyer explicitly selected Eclipse in the destination modal.
+            // Never silently reroute the purchase to a different garage.
             if (VehicleList.GetSizeTier(model) == 2)
             {
-                ExecuteDeliverToFloorGarage(model, price);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~That vehicle is too large for the Eclipse Garage.", 3000);
                 return;
             }
 
@@ -333,7 +357,7 @@ namespace ALLIN1
             {
                 Log($"DeliverToFloorGarage: full ({used}/{cap})");
                 GTA.UI.Screen.ShowSubtitle(
-                    $"~r~The three-floor garage is full.~w~ ({used}/{cap} spaces used)", 3000);
+                    $"~r~The Harmony Garage is full.~w~ ({used}/{cap} spaces used)", 3000);
                 return;
             }
 
@@ -347,7 +371,7 @@ namespace ALLIN1
                 if (!success)
                 {
                     Log($"DeliverToFloorGarage: failed for {model}");
-                    GTA.UI.Screen.ShowSubtitle("~r~Delivery to the three-floor garage failed.", 3000);
+                    GTA.UI.Screen.ShowSubtitle("~r~Delivery to the Harmony Garage failed.", 3000);
                     return;
                 }
 
@@ -357,8 +381,8 @@ namespace ALLIN1
                 string name = VehicleList.DisplayNames.ContainsKey(model)
                     ? VehicleList.DisplayNames[model] : model;
                 string msg = _freeMode || price <= 0
-                    ? $"~g~{name}~w~ delivered to the three-floor garage."
-                    : $"~g~{name}~w~ delivered to the three-floor garage for ~g~${price:N0}~w~.";
+                    ? $"~g~{name}~w~ delivered to the Harmony Garage."
+                    : $"~g~{name}~w~ delivered to the Harmony Garage for ~g~${price:N0}~w~.";
                 GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
                 Log($"DeliverToFloorGarage: {model}, price=${price}");
@@ -366,7 +390,7 @@ namespace ALLIN1
             catch (Exception ex)
             {
                 LogException("DeliverToFloorGarage", ex);
-                GTA.UI.Screen.ShowSubtitle("~r~Delivery to the three-floor garage failed.", 3000);
+                GTA.UI.Screen.ShowSubtitle("~r~Delivery to the Harmony Garage failed.", 3000);
             }
         }
 
@@ -422,7 +446,21 @@ namespace ALLIN1
         //  Weapon Purchase (called by GbayBrowser)                            //
         // ------------------------------------------------------------------ //
 
-        internal void ExecuteGiveWeapon(string weaponName, int price)
+        internal WeaponPurchaseQuote GetWeaponPurchaseQuote(
+            string weaponName, int unitPrice)
+        {
+            Ped player = Game.Player.Character;
+            Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
+            string category = WeaponList.CategoryNames.ContainsKey(weaponName)
+                ? WeaponList.CategoryNames[weaponName] : "";
+            int configuredQuantity = WeaponList.PurchaseQuantities.ContainsKey(
+                    weaponName)
+                ? WeaponList.PurchaseQuantities[weaponName] : 1;
+            return WeaponPurchasePolicy.Quote(
+                unitPrice, category, configuredQuantity, _freeMode);
+        }
+
+        internal void ExecuteGiveWeapon(string weaponName, int unitPrice)
         {
             Ped player = Game.Player.Character;
             Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
@@ -447,15 +485,26 @@ namespace ALLIN1
                 return;
             }
 
-            // Check funds
-            if (!_freeMode && price > 0 && Game.Player.Money < price)
+            WeaponPurchaseQuote quote = GetWeaponPurchaseQuote(
+                weaponName, unitPrice);
+            if (quote.Status != WeaponPurchaseStatus.Available)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Purchase quantity is unavailable for this item.", 3000);
+                ClientLog.Warn("GBAY", "weapon_purchase_quantity_unavailable",
+                    new Dictionary<string, object> { { "weapon", weaponName } });
+                return;
+            }
+
+            if (!_freeMode && quote.TotalPrice > 0
+                && Game.Player.Money < quote.TotalPrice)
             {
                 GTA.UI.Screen.ShowSubtitle("~r~Insufficient funds.", 3000);
                 return;
             }
 
-            // Give weapon with ammo
-            player.Weapons.Give((WeaponHash)(uint)weaponHash, 9999, false, true);
+            player.Weapons.Give((WeaponHash)(uint)weaponHash,
+                quote.GrantAmmo, false, true);
 
             // Some Online-only weapons are edition/build gated. Never charge
             // the player unless the native confirms the weapon was granted.
@@ -468,17 +517,38 @@ namespace ALLIN1
                 return;
             }
 
-            if (!_freeMode && price > 0)
-                Game.Player.Money -= price;
+            int actualAmmo = Function.Call<int>(
+                Hash.GET_AMMO_IN_PED_WEAPON, player, weaponHash);
+            if (quote.QuantityPriced && actualAmmo <= 0)
+            {
+                Function.Call(Hash.REMOVE_WEAPON_FROM_PED,
+                    player.Handle, weaponHash);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~The purchased item quantity could not be verified.", 3500);
+                ClientLog.Warn("GBAY", "weapon_purchase_empty_grant",
+                    new Dictionary<string, object> { { "weapon", weaponName } });
+                return;
+            }
+            int chargedQuantity = quote.QuantityPriced
+                ? Math.Min(quote.Quantity, actualAmmo) : 1;
+            int totalPrice = WeaponPurchasePolicy.PriceActualQuantity(
+                quote, chargedQuantity, _freeMode);
+
+            if (!_freeMode && totalPrice > 0)
+                Game.Player.Money -= totalPrice;
 
             string displayName = WeaponList.DisplayNames.ContainsKey(weaponName)
                 ? WeaponList.DisplayNames[weaponName] : weaponName;
-            string msg = _freeMode || price <= 0
+            string quantityText = quote.QuantityPriced
+                ? $" ({chargedQuantity} x ${quote.UnitPrice:N0})" : "";
+            string msg = _freeMode || totalPrice <= 0
                 ? $"~g~{displayName}~w~ added."
-                : $"~g~{displayName}~w~ purchased for ~g~${price:N0}~w~.";
+                : $"~g~{displayName}~w~ purchased{quantityText} for "
+                    + $"~g~${totalPrice:N0}~w~.";
             GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
-            Log($"GiveWeapon: {weaponName}, price=${price}");
+            Log($"GiveWeapon: {weaponName}, unit=${quote.UnitPrice}, "
+                + $"quantity={chargedQuantity}, total=${totalPrice}");
             CharacterInventory.RecordOwned(weaponName, false);
             GbayPreferences.RecordWeapon(weaponName);
         }
@@ -497,25 +567,32 @@ namespace ALLIN1
                 Hash.GET_AMMO_IN_PED_WEAPON, player, weaponHash);
 
             OutputArgument maxAmmoOut = new OutputArgument();
-            Function.Call<bool>(
+            bool capacityResolved = Function.Call<bool>(
                 Hash.GET_MAX_AMMO, player, weaponHash, maxAmmoOut);
             int maxAmmo = maxAmmoOut.GetResult<int>();
+            AmmoCapacityResult capacity = AmmoRefillPolicy.Evaluate(
+                capacityResolved, currentAmmo, maxAmmo);
 
-            if (maxAmmo <= 0)
+            if (capacity.Status == AmmoCapacityStatus.Unavailable)
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~Ammo capacity is unavailable for this weapon.", 3000);
+                ClientLog.Warn("GBAY", "ammo_capacity_unavailable",
+                    new Dictionary<string, object> { { "weapon", weaponName } });
+                return AmmoCapacityUnavailable;
+            }
+            if (capacity.Status == AmmoCapacityStatus.NotApplicable)
             {
                 GTA.UI.Screen.ShowSubtitle("~y~Already owned.", 3000);
-                return -1;
+                return AmmoNotApplicable;
             }
-
-            int needed = maxAmmo - currentAmmo;
-            if (needed <= 0)
+            if (capacity.Status == AmmoCapacityStatus.FullyStocked)
             {
                 GTA.UI.Screen.ShowSubtitle("~g~Already fully stocked.", 3000);
-                return -1;
+                return AmmoNotApplicable;
             }
+            int needed = capacity.RoundsNeeded;
 
-            int costPerRound = WeaponList.AmmoCostPerRound.ContainsKey(weaponName)
-                ? WeaponList.AmmoCostPerRound[weaponName] : 2;
+            int costPerRound = GetAmmoUnitPrice(weaponName);
             int totalCost = needed * costPerRound;
 
             if (_freeMode)
@@ -528,6 +605,7 @@ namespace ALLIN1
             }
 
             Function.Call(Hash.SET_PED_AMMO, player, weaponHash, maxAmmo);
+            CharacterInventory.RecordWeaponAmmo(weaponName, maxAmmo);
 
             if (!_freeMode && totalCost > 0)
                 Game.Player.Money -= totalCost;
@@ -559,6 +637,247 @@ namespace ALLIN1
             Hash itemHash = (Hash)Game.GenerateHash(gearId);
             return Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON,
                 player.Handle, itemHash, false);
+        }
+
+        internal bool IsWorldAssetOwned(string assetId)
+        {
+            return WorldAssetList.IsWorldAsset(assetId) &&
+                CharacterInventory.IsPropertyOwned(assetId);
+        }
+
+        internal bool ExecutePurchaseWorldAsset(string assetId, int price)
+        {
+            if (!WorldAssetList.IsWorldAsset(assetId))
+            {
+                Log($"PurchaseWorldAsset: rejected unknown asset {assetId}");
+                return false;
+            }
+            if (IsWorldAssetOwned(assetId))
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~y~Already owned.~w~ Yacht features are unlocked.", 3000);
+                return false;
+            }
+            if (!_freeMode && price > 0 && Game.Player.Money < price)
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~Insufficient funds.", 3000);
+                return false;
+            }
+            if (!CharacterInventory.RecordPropertyOwned(assetId))
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~The yacht purchase could not be saved.", 3000);
+                return false;
+            }
+
+            if (!_freeMode && price > 0)
+                Game.Player.Money -= price;
+            string name = WorldAssetList.DisplayName(assetId);
+            GTA.UI.Screen.ShowSubtitle(
+                _freeMode
+                    ? $"~g~{name} acquired.~w~ Yacht features are unlocked."
+                    : $"~g~{name} purchased for ${price:N0}.~w~ Yacht features are unlocked.",
+                4500);
+            Log($"PurchaseWorldAsset: {assetId}, price=${price}");
+            return true;
+        }
+
+        internal void ExecuteDeliverToGarmentGarage(string model, int price)
+        {
+            if (VehicleList.GetSizeTier(model) == 2)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~That vehicle is too large for the Garment Factory garage.", 3000);
+                return;
+            }
+            int used = GarageManager.GetGarmentGarageUsedSlots();
+            int cap = GarageManager.GetGarmentGarageCapacity();
+            if (used >= cap)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~r~The Garment Factory garage is full.~w~ ({used}/{cap} spaces used)",
+                    3000);
+                return;
+            }
+            var rng = new Random();
+            try
+            {
+                bool success = GarageManager.DeliverToGarmentGarage(
+                    model, rng.Next(0, 160), rng.Next(0, 160));
+                if (!success)
+                {
+                    GTA.UI.Screen.ShowSubtitle(
+                        "~r~Delivery to the Garment Factory failed.", 3000);
+                    return;
+                }
+                if (!_freeMode && price > 0) Game.Player.Money -= price;
+                string name = VehicleList.DisplayNames.TryGetValue(
+                    model, out string displayName) ? displayName : model;
+                GTA.UI.Screen.ShowSubtitle(
+                    _freeMode || price <= 0
+                        ? $"~g~{name}~w~ delivered to the Garment Factory."
+                        : $"~g~{name}~w~ delivered to the Garment Factory for ~g~${price:N0}~w~.",
+                    3000);
+                Log($"DeliverToGarmentGarage: {model}, price=${price}");
+            }
+            catch (Exception ex)
+            {
+                LogException("DeliverToGarmentGarage", ex);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Delivery to the Garment Factory failed.", 3000);
+            }
+        }
+
+        internal void ExecuteDeliverToRuralGarage(string model, int price)
+        {
+            if (VehicleList.GetSizeTier(model) == 2)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~That vehicle is too large for the Grapeseed Garage.", 3000);
+                return;
+            }
+            int used = GarageManager.GetRuralGarageUsedSlots();
+            int cap = GarageManager.GetRuralGarageCapacity();
+            if (used >= cap)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~r~The Grapeseed Garage is full.~w~ ({used}/{cap} spaces used)",
+                    3000);
+                return;
+            }
+            var rng = new Random();
+            try
+            {
+                bool success = GarageManager.DeliverToRuralGarage(
+                    model, rng.Next(0, 160), rng.Next(0, 160));
+                if (!success)
+                {
+                    GTA.UI.Screen.ShowSubtitle(
+                        "~r~Delivery to the Grapeseed Garage failed.", 3000);
+                    return;
+                }
+                if (!_freeMode && price > 0) Game.Player.Money -= price;
+                string name = VehicleList.DisplayNames.TryGetValue(
+                    model, out string displayName) ? displayName : model;
+                GTA.UI.Screen.ShowSubtitle(
+                    _freeMode || price <= 0
+                        ? $"~g~{name}~w~ delivered to the Grapeseed Garage."
+                        : $"~g~{name}~w~ delivered to the Grapeseed Garage for ~g~${price:N0}~w~.",
+                    3000);
+                Log($"DeliverToRuralGarage: {model}, price=${price}");
+            }
+            catch (Exception ex)
+            {
+                LogException("DeliverToRuralGarage", ex);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Delivery to the Grapeseed Garage failed.", 3000);
+            }
+        }
+
+        internal void ExecuteDeliverToPaletoGarage(string model, int price)
+        {
+            if (VehicleList.GetSizeTier(model) == 2)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~That vehicle is too large for the Paleto Bay Garage.", 3000);
+                return;
+            }
+            int used = GarageManager.GetPaletoGarageUsedSlots();
+            int cap = GarageManager.GetPaletoGarageCapacity();
+            if (used >= cap)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~r~The Paleto Bay Garage is full.~w~ ({used}/{cap} spaces used)",
+                    3000);
+                return;
+            }
+            var rng = new Random();
+            try
+            {
+                bool success = GarageManager.DeliverToPaletoGarage(
+                    model, rng.Next(0, 160), rng.Next(0, 160));
+                if (!success)
+                {
+                    GTA.UI.Screen.ShowSubtitle(
+                        "~r~Delivery to the Paleto Bay Garage failed.", 3000);
+                    return;
+                }
+                if (!_freeMode && price > 0) Game.Player.Money -= price;
+                string name = VehicleList.DisplayNames.TryGetValue(
+                    model, out string displayName) ? displayName : model;
+                GTA.UI.Screen.ShowSubtitle(
+                    _freeMode || price <= 0
+                        ? $"~g~{name}~w~ delivered to the Paleto Bay Garage."
+                        : $"~g~{name}~w~ delivered to the Paleto Bay Garage for ~g~${price:N0}~w~.",
+                    3000);
+                Log($"DeliverToPaletoGarage: {model}, price=${price}");
+            }
+            catch (Exception ex)
+            {
+                LogException("DeliverToPaletoGarage", ex);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Delivery to the Paleto Bay Garage failed.", 3000);
+            }
+        }
+
+        internal void ExecuteDeliverToYachtHelipad(string model, int price)
+        {
+            if (!YachtManager.FeaturesUnlocked)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Purchase the Galaxy Super Yacht before using its helipad.",
+                    3500);
+                return;
+            }
+            if (!GarageManager.IsYachtHelipadVehicleEligible(model))
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~The yacht helipad accepts only the Swift Deluxe and SuperVolito Carbon.",
+                    4000);
+                return;
+            }
+            int used = GarageManager.GetYachtHelipadUsedSlots();
+            int cap = GarageManager.GetYachtHelipadCapacity();
+            if (used >= cap)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~The Yacht Helipad is occupied.~w~ Sell or remove its aircraft first.",
+                    3500);
+                return;
+            }
+            var rng = new Random();
+            try
+            {
+                bool success = GarageManager.DeliverToYachtHelipad(
+                    model, rng.Next(0, 160), rng.Next(0, 160));
+                if (!success)
+                {
+                    GTA.UI.Screen.ShowSubtitle(
+                        "~r~Delivery to the Yacht Helipad failed.", 3000);
+                    return;
+                }
+                if (!_freeMode && price > 0) Game.Player.Money -= price;
+                string name = VehicleList.DisplayNames.TryGetValue(
+                    model, out string displayName) ? displayName : model;
+                GTA.UI.Screen.ShowSubtitle(
+                    _freeMode || price <= 0
+                        ? $"~g~{name}~w~ assigned to the Yacht Helipad."
+                        : $"~g~{name}~w~ assigned to the Yacht Helipad for ~g~${price:N0}~w~.",
+                    3500);
+                Log($"DeliverToYachtHelipad: {model}, price=${price}");
+            }
+            catch (Exception ex)
+            {
+                LogException("DeliverToYachtHelipad", ex);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Delivery to the Yacht Helipad failed.", 3000);
+            }
+        }
+
+        internal bool IsGearEquipped(string gearId)
+        {
+            return !string.IsNullOrWhiteSpace(gearId) &&
+                CharacterInventory.IsGearEquipped(gearId);
         }
 
         internal void ExecuteGiveGear(string gearId, int price)
@@ -636,16 +955,80 @@ namespace ALLIN1
             CharacterInventory.RecordOwned(gearId, true);
         }
 
+        internal void ExecuteEquipGear(string gearId)
+        {
+            if (!IsGearOwned(gearId))
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~Purchase this item before equipping it.", 3000);
+                return;
+            }
+            if (IsGearEquipped(gearId))
+            {
+                GTA.UI.Screen.ShowSubtitle("~g~Already equipped.", 2500);
+                return;
+            }
+
+            Ped player = Game.Player.Character;
+            if (gearId == GearList.ARMOR_JUGGERNAUT)
+                ApplyJuggernaut(player);
+            else if (GearList.IsArmor(gearId))
+            {
+                if (JuggernautActive) RemoveJuggernaut(player);
+                player.Armor = GearList.ArmorValues[gearId];
+            }
+            else if (gearId == "WEAPON_NIGHTVISION")
+                NightVisionOwned = true;
+            else
+                player.Weapons.Give(
+                    (WeaponHash)Game.GenerateHash(gearId), 1, false, true);
+
+            CharacterInventory.SetGearEquipped(gearId, true);
+            string displayName = GearList.DisplayNames.TryGetValue(
+                gearId, out string name) ? name : gearId;
+            GTA.UI.Screen.ShowSubtitle($"~g~{displayName}~w~ equipped.", 3000);
+            Log($"EquipGear: {gearId}");
+        }
+
+        internal void ExecuteUnequipGear(string gearId)
+        {
+            if (!CharacterInventory.IsGearEquipped(gearId))
+            {
+                GTA.UI.Screen.ShowSubtitle("~y~That item is not equipped.", 2500);
+                return;
+            }
+
+            Ped player = Game.Player.Character;
+            if (GearList.IsArmor(gearId))
+                ExecuteRemoveArmor(gearId);
+            else if (gearId == "WEAPON_NIGHTVISION")
+                ExecuteRemoveNightVision();
+            else
+            {
+                Function.Call(Hash.REMOVE_WEAPON_FROM_PED,
+                    player.Handle, Game.GenerateHash(gearId));
+                Log($"UnequipGear: {gearId}");
+            }
+            CharacterInventory.RemoveOwnedGear(gearId);
+            string removedName = GearList.DisplayNames.TryGetValue(
+                gearId, out string removedDisplay) ? removedDisplay : gearId;
+            GTA.UI.Screen.ShowSubtitle(
+                $"~y~{removedName}~w~ removed. Repurchase it to equip it again.",
+                3500);
+            Log($"UnequipGear: ownership removed for {gearId}");
+        }
+
         // ------------------------------------------------------------------ //
         //  Vehicle Sell (called by GbayBrowser garage tab)                     //
         // ------------------------------------------------------------------ //
 
-        internal bool CanSellVehicle(string model, string plateText = null)
+        internal bool CanSellVehicle(
+            string model, string plateText = null, int modelHash = 0)
         {
             if (string.IsNullOrWhiteSpace(model)) return false;
-            if (GarageManager.IsProtectedStoryVehicle(model, plateText)) return false;
-            int modelHash = Game.GenerateHash(model);
-            return Function.Call<bool>(Hash.IS_MODEL_A_VEHICLE, modelHash);
+            if (GarageManager.IsProtectedStoryVehicle(
+                    model, plateText, modelHash)) return false;
+            int resolvedHash = modelHash != 0 ? modelHash : Game.GenerateHash(model);
+            return Function.Call<bool>(Hash.IS_MODEL_A_VEHICLE, resolvedHash);
         }
 
         private static int GetFallbackVehicleValue(int vehicleClass)
@@ -665,20 +1048,21 @@ namespace ALLIN1
         /// Get the sell price for a vehicle (60% of catalog/native value).
         /// Stored base-game vehicles are sellable even when GBAY does not list them.
         /// </summary>
-        internal int GetSellPrice(string model, string plateText = null)
+        internal int GetSellPrice(
+            string model, string plateText = null, int modelHash = 0)
         {
             if (_freeMode) return 0;
-            if (!CanSellVehicle(model, plateText)) return 0;
+            if (!CanSellVehicle(model, plateText, modelHash)) return 0;
 
             int buyPrice;
             if (!VehicleList.Prices.TryGetValue(model, out buyPrice))
             {
-                int modelHash = Game.GenerateHash(model);
-                buyPrice = Function.Call<int>(Hash.GET_VEHICLE_MODEL_VALUE, modelHash);
+                int resolvedHash = modelHash != 0 ? modelHash : Game.GenerateHash(model);
+                buyPrice = Function.Call<int>(Hash.GET_VEHICLE_MODEL_VALUE, resolvedHash);
                 if (buyPrice <= 0)
                 {
                     int vehicleClass = Function.Call<int>(
-                        Hash.GET_VEHICLE_CLASS_FROM_NAME, modelHash);
+                        Hash.GET_VEHICLE_CLASS_FROM_NAME, resolvedHash);
                     buyPrice = GetFallbackVehicleValue(vehicleClass);
                 }
             }
@@ -686,9 +1070,10 @@ namespace ALLIN1
         }
 
         internal void ExecuteSellVehicle(string model, int listIndex,
-            int garageLocation = 0, string plateText = null)
+            int garageLocation = 0, string plateText = null, int modelHash = 0)
         {
-            if (GarageManager.IsProtectedStoryVehicle(model, plateText))
+            if (GarageManager.IsProtectedStoryVehicle(
+                    model, plateText, modelHash))
             {
                 GTA.UI.Screen.ShowSubtitle(
                     "~r~Story-owned personal vehicles cannot be sold.", 3500);
@@ -699,15 +1084,27 @@ namespace ALLIN1
                 return;
             }
 
-            int sellPrice = GetSellPrice(model, plateText);
+            int sellPrice = GetSellPrice(model, plateText, modelHash);
 
             bool removed = garageLocation == 1
                 ? GarageManager.RemoveFloorGarageVehicle(listIndex)
                 : garageLocation == 2
                     ? GarageManager.RemoveDavisGarageVehicle(listIndex)
+                    : garageLocation == 3
+                        ? GarageManager.RemoveGarmentGarageVehicle(listIndex)
+                    : garageLocation == 4
+                        ? GarageManager.RemoveRuralGarageVehicle(listIndex)
+                    : garageLocation == 5
+                        ? GarageManager.RemovePaletoGarageVehicle(listIndex)
+                    : garageLocation == 6
+                        ? GarageManager.RemoveYachtHelipadVehicle(listIndex)
                     : GarageManager.RemoveVehicle(listIndex);
             string garageName = garageLocation == 1 ? "three_floor"
-                : garageLocation == 2 ? "davis" : "eclipse";
+                : garageLocation == 2 ? "davis"
+                : garageLocation == 3 ? "garment_factory"
+                : garageLocation == 4 ? "rural"
+                : garageLocation == 5 ? "paleto"
+                : garageLocation == 6 ? "yacht_helipad" : "eclipse";
             if (!removed)
             {
                 GTA.UI.Screen.ShowSubtitle("~r~Sale failed; your garage and money were not changed.", 3500);
@@ -782,21 +1179,34 @@ namespace ALLIN1
                 Hash.GET_AMMO_IN_PED_WEAPON, player, weaponHash);
 
             OutputArgument maxAmmoOut = new OutputArgument();
-            Function.Call<bool>(
+            bool capacityResolved = Function.Call<bool>(
                 Hash.GET_MAX_AMMO, player, weaponHash, maxAmmoOut);
             int maxAmmo = maxAmmoOut.GetResult<int>();
+            AmmoCapacityResult capacity = AmmoRefillPolicy.Evaluate(
+                capacityResolved, currentAmmo, maxAmmo);
+            if (capacity.Status == AmmoCapacityStatus.Unavailable)
+                return AmmoCapacityUnavailable;
+            if (capacity.Status == AmmoCapacityStatus.NotApplicable)
+                return AmmoNotApplicable;
+            if (capacity.Status == AmmoCapacityStatus.FullyStocked)
+                return 0;
+            roundsNeeded = capacity.RoundsNeeded;
 
-            if (maxAmmo <= 0)
-                return -1;  // melee/no-ammo
-
-            roundsNeeded = maxAmmo - currentAmmo;
-            if (roundsNeeded <= 0)
-                return 0;  // fully stocked
-
-            int costPerRound = WeaponList.AmmoCostPerRound.ContainsKey(weaponName)
-                ? WeaponList.AmmoCostPerRound[weaponName] : 2;
+            int costPerRound = GetAmmoUnitPrice(weaponName);
 
             return _freeMode ? 0 : roundsNeeded * costPerRound;
+        }
+
+        private static int GetAmmoUnitPrice(string weaponName)
+        {
+            int fallback = WeaponList.AmmoCostPerRound.ContainsKey(weaponName)
+                ? WeaponList.AmmoCostPerRound[weaponName] : 2;
+            int catalogPrice = WeaponList.Prices.ContainsKey(weaponName)
+                ? WeaponList.Prices[weaponName] : fallback;
+            string category = WeaponList.CategoryNames.ContainsKey(weaponName)
+                ? WeaponList.CategoryNames[weaponName] : "";
+            return WeaponPurchasePolicy.RefillUnitPrice(
+                category, catalogPrice, fallback);
         }
 
         // ------------------------------------------------------------------ //
@@ -810,15 +1220,11 @@ namespace ALLIN1
             if (gearId == GearList.ARMOR_JUGGERNAUT)
             {
                 RemoveJuggernaut(player);
-                GTA.UI.Screen.ShowSubtitle("~y~Juggernaut Armor~w~ removed.", 3000);
                 Log("RemoveArmor: juggernaut removed");
             }
             else
             {
                 player.Armor = 0;
-                string displayName = GearList.DisplayNames.ContainsKey(gearId)
-                    ? GearList.DisplayNames[gearId] : gearId;
-                GTA.UI.Screen.ShowSubtitle($"~y~{displayName}~w~ removed.", 3000);
                 Log($"RemoveArmor: {gearId} removed (armor set to 0)");
             }
         }
@@ -831,7 +1237,6 @@ namespace ALLIN1
                 _nightVisionActive = false;
                 Function.Call(Hash.SET_NIGHTVISION, false);
             }
-            GTA.UI.Screen.ShowSubtitle("~y~Night Vision~w~ removed.", 3000);
             Log("RemoveNightVision: removed");
         }
 
@@ -847,8 +1252,14 @@ namespace ALLIN1
         private static int _savedEarPropDrawable;
         private static int _savedEarPropTexture;
 
-        private void ApplyJuggernaut(Ped player)
+        internal static void ApplyJuggernaut(Ped player)
         {
+            if (!TryGetCurrentCharacter(out PedHash ch))
+            {
+                ClientLog.Warn("GBAY", "juggernaut_rejected_for_unsupported_player_model");
+                return;
+            }
+
             // Save current outfit so we can restore later
             _savedComponents = new int[12];
             _savedTextures = new int[12];
@@ -871,7 +1282,6 @@ namespace ALLIN1
                 Hash.GET_PED_PROP_TEXTURE_INDEX, player, 2);
 
             // Apply Paleto Score ballistic outfit
-            PedHash ch = GetCurrentCharacter();
             ApplyBallisticOutfit(player, ch);
 
             // Health boost to 1000 (matches Paleto Score mission values)
@@ -897,7 +1307,7 @@ namespace ALLIN1
                 BALLISTIC_CLIPSET, 0.25f);
 
             JuggernautActive = true;
-            Log("Juggernaut armor applied");
+            ClientLog.Info("GBAY", "Juggernaut armor applied");
         }
 
         internal static void RemoveJuggernaut(Ped player)
@@ -977,7 +1387,7 @@ namespace ALLIN1
                 SafeSetComponent(player, 11, 0, 0); // aux/torso2
                 SafeSetProp(player, 0, 24, 1);      // helmet
             }
-            else
+            else if (ch == PedHash.Franklin)
             {
                 // Franklin — no juggernaut torso or helmet in his model.
                 // Slots 3 (torso) and prop 0 (helmet) left unchanged.
@@ -1086,16 +1496,35 @@ namespace ALLIN1
 
         internal static PedHash GetCurrentCharacter()
         {
-            Model playerModel = Game.Player.Character.Model;
+            Ped player = Game.Player.Character;
+            if (player != null && TryResolveProtagonist(player.Model.Hash, out PedHash character))
+                return character;
+            return (PedHash)0;
+        }
 
-            if (playerModel == new Model(PedHash.Michael))
-                return PedHash.Michael;
-            if (playerModel == new Model(PedHash.Franklin))
-                return PedHash.Franklin;
-            if (playerModel == new Model(PedHash.Trevor))
-                return PedHash.Trevor;
+        internal static bool TryGetCurrentCharacter(out PedHash character)
+        {
+            Ped player = Game.Player.Character;
+            if (player != null)
+                return TryResolveProtagonist(player.Model.Hash, out character);
+            character = (PedHash)0;
+            return false;
+        }
 
-            return PedHash.Michael;
+        internal static bool TryResolveProtagonist(int modelHash, out PedHash character)
+        {
+            if (modelHash == unchecked((int)PedHash.Michael))
+                character = PedHash.Michael;
+            else if (modelHash == unchecked((int)PedHash.Franklin))
+                character = PedHash.Franklin;
+            else if (modelHash == unchecked((int)PedHash.Trevor))
+                character = PedHash.Trevor;
+            else
+            {
+                character = (PedHash)0;
+                return false;
+            }
+            return true;
         }
 
         // ------------------------------------------------------------------ //
@@ -1111,8 +1540,16 @@ namespace ALLIN1
                 if (!_initialized && !Game.IsLoading)
                     Initialize();
 
+                bool supportedCharacter = TryGetCurrentCharacter(out _);
+                if (!supportedCharacter && _browser != null && _browser.IsOpen)
+                {
+                    _browser.Close();
+                    ClientLog.Warn("GBAY", "browser_closed_for_unsupported_player_model");
+                }
+
                 if (_initialized)
                 {
+                    YachtManager.OnTick();
                     // A crash-recovery session suppresses the multi-floor
                     // garage for its first 30 seconds. Initialize it as soon
                     // as that temporary window closes; otherwise its map
@@ -1123,12 +1560,24 @@ namespace ALLIN1
                         GarageManager.InitializeFloorGarage();
                         Log("Floor garage initialized after safe-mode recovery");
                     }
-                    GarageManager.OnTick();
-                    GarageManager.OnFloorGarageTick();
-                    GarageManager.OnDavisGarageTick();
+                    if (supportedCharacter || GarageManager.IsPlayerInGarage ||
+                        GarageManager.IsPlayerInFloorGarage ||
+                        GarageManager.IsPlayerInDavisGarage ||
+                        GarageManager.IsPlayerInGarmentGarage ||
+                        GarageManager.IsPlayerInRuralGarage ||
+                        GarageManager.IsPlayerInPaletoGarage)
+                    {
+                        GarageManager.OnTick();
+                        GarageManager.OnFloorGarageTick();
+                        GarageManager.OnDavisGarageTick();
+                        GarageManager.OnGarmentGarageTick();
+                        GarageManager.OnRuralGarageTick();
+                        GarageManager.OnPaletoGarageTick();
+                        GarageManager.OnYachtHelipadTick();
+                    }
                 }
 
-                if (_browser != null)
+                if (supportedCharacter && _browser != null)
                     _browser.Draw();
 
                 JuggernautTick();
@@ -1148,6 +1597,13 @@ namespace ALLIN1
             {
                 try
                 {
+                    if (!TryGetCurrentCharacter(out _))
+                    {
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~y~GBAY is available to Michael, Franklin, and Trevor.", 2500);
+                        ClientLog.Warn("GBAY", "unsupported_player_model");
+                        return;
+                    }
                     if (GarageManager.IsTransitionInProgress)
                     {
                         GTA.UI.Screen.ShowSubtitle("~y~A garage transition is already in progress.", 1500);

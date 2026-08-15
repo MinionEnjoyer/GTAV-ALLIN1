@@ -27,11 +27,22 @@ def test_vehicle_generator_escapes_names_and_deduplicates():
         Vehicle("alpha", "Duplicate", "super", "Maker"),
         Vehicle("beta", "Beta", "unknown", "Maker"),
     ]
-    source = vehiclelist.generate(VehicleDatabase(vehicles), {"alpha": 123})
+    source = vehiclelist.generate(
+        VehicleDatabase(vehicles), {"alpha": 123, "beta": 456}
+    )
     assert 'Maker \\"Alpha\\"' in source
     assert source.count('{ "alpha", "Maker') == 1
     assert '{ "alpha", 123 }' in source
     assert 'internal static readonly string[] Weaponized' in source
+
+
+@pytest.mark.parametrize("prices", [{}, {"testcar": 0}, {"testcar": -1}])
+def test_vehicle_generator_rejects_missing_or_nonpositive_prices(prices):
+    db = VehicleDatabase([
+        Vehicle("testcar", "Test Car", "sports", "Test")
+    ])
+    with pytest.raises(ValueError, match="requires a positive price"):
+        vehiclelist.generate(db, prices)
 
 
 def test_vehicle_generate_file(tmp_path):
@@ -60,6 +71,25 @@ def test_vehicle_generate_file_preserves_calibration_suffix(tmp_path):
     assert source.count(marker) == 1
 
 
+def test_vehicle_generator_omits_pending_previews_without_shifting_chunks(tmp_path):
+    vehicles = tmp_path / "vehicles.toml"
+    vehicles.write_text(
+        '[[vehicles]]\nmodel="a"\nname="A"\nclass="super"\nmanufacturer="M"\n'
+        '[[vehicles]]\nmodel="b"\nname="B"\nclass="super"\nmanufacturer="M"\n'
+    )
+    (tmp_path / "preview_pending.toml").write_text('models=["a"]\n')
+    prices = tmp_path / "prices.toml"
+    prices.write_text('[super]\na=1\nb=2\n')
+    output = tmp_path / "VehicleList.cs"
+
+    vehiclelist.generate_file(vehicles, prices, output)
+
+    source = output.read_text()
+    preview_source = source[source.index("PreviewDict"):]
+    assert '{ "a", "allin1_prev_01" }' not in preview_source
+    assert '{ "b", "allin1_prev_01" }' in preview_source
+
+
 def test_weapon_generator_and_file(tmp_path):
     weapons = tmp_path / "weapons.toml"
     weapons.write_text('[[weapons]]\nname="WEAPON_TEST"\nlabel="Test \\\"Gun\\\""\ncategory="pistols"\nprice=10\n')
@@ -68,6 +98,8 @@ def test_weapon_generator_and_file(tmp_path):
     source = weaponlist.generate(weapons, {"WEAPON_TEST": 99})
     assert 'Test \\"Gun\\"' in source
     assert '{ "WEAPON_TEST", 99 }' in source
+    assert 'PurchaseQuantities' in source
+    assert '{ "WEAPON_TEST", 1 }' in source
     assert '{ "WEAPON_TEST", 2 }' in source
     output = tmp_path / "WeaponList.cs"
     assert weaponlist.generate_file(weapons, prices, output) == 1

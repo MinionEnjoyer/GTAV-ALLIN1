@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import struct
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -33,6 +34,39 @@ class HealthReport:
                 "issues": [asdict(issue) for issue in self.issues]}
 
 
+@dataclass(frozen=True)
+class BinaryInspection:
+    valid: bool
+    reason: str
+
+
+def inspect_windows_binary(path: Path, *, minimum_size: int = 4096) -> BinaryInspection:
+    """Perform a cheap structural PE check without loading third-party code."""
+    if not path.is_file():
+        return BinaryInspection(False, "missing")
+    try:
+        size = path.stat().st_size
+        if size < minimum_size:
+            return BinaryInspection(False, f"too small ({size} bytes)")
+        with path.open("rb") as stream:
+            header = stream.read(64)
+            if len(header) < 64 or header[:2] != b"MZ":
+                return BinaryInspection(False, "missing DOS/PE signature")
+            pe_offset = struct.unpack_from("<I", header, 0x3C)[0]
+            if pe_offset < 64 or pe_offset + 6 > size:
+                return BinaryInspection(False, "invalid PE header offset")
+            stream.seek(pe_offset)
+            pe_header = stream.read(6)
+            if len(pe_header) != 6 or pe_header[:4] != b"PE\0\0":
+                return BinaryInspection(False, "missing PE signature")
+            machine = struct.unpack_from("<H", pe_header, 4)[0]
+            if machine != 0x8664:
+                return BinaryInspection(False, f"wrong architecture (0x{machine:04X})")
+    except OSError as exc:
+        return BinaryInspection(False, f"unreadable ({exc})")
+    return BinaryInspection(True, "validated x64 PE file")
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -52,21 +86,46 @@ def scan_installation(gta_path: Path, *, expected_hashes: dict[str, str] | None 
         path = gta_path / name
         if not path.is_file():
             issues.append(HealthIssue("dependency_missing", "error", f"Required dependency is missing: {name}", str(path)))
+        else:
+            inspection = inspect_windows_binary(path)
+            if not inspection.valid:
+                issues.append(HealthIssue(
+                    "dependency_corrupt", "error",
+                    f"Required dependency is invalid: {name} ({inspection.reason}).", str(path),
+                ))
     loader = "OpenRPF.asi" if edition == "enhanced" else "OpenIV.asi"
     if edition != "unknown" and not (gta_path / loader).is_file():
         issues.append(HealthIssue("rpf_loader_missing", "warning", f"{loader} is missing; previews may not load.", str(gta_path / loader)))
-    elif edition != "unknown" and (gta_path / loader).stat().st_size == 0:
-        issues.append(HealthIssue("rpf_loader_corrupt", "error", f"{loader} is empty or corrupt.", str(gta_path / loader)))
+    elif edition != "unknown":
+        inspection = inspect_windows_binary(gta_path / loader)
+        if not inspection.valid:
+            issues.append(HealthIssue(
+                "rpf_loader_corrupt", "error", f"{loader} is invalid ({inspection.reason}).",
+                str(gta_path / loader),
+            ))
     if edition == "enhanced" and (gta_path / "OpenRPF.asi").exists():
         if (gta_path / "OpenIV.asi").exists():
             issues.append(HealthIssue("rpf_loader_conflict", "error",
                                       "OpenIV.asi cannot be loaded alongside OpenRPF on Enhanced.",
                                       str(gta_path / "OpenIV.asi")))
-        if not any((gta_path / name).exists() for name in
-                   ("dsound.dll", "xinput1_4.dll", "dinput8.dll")):
+        loader_paths = [gta_path / name for name in
+                        ("dsound.dll", "xinput1_4.dll", "dinput8.dll")]
+        present_loaders = [path for path in loader_paths if path.is_file()]
+        valid_loaders = [path for path in present_loaders
+                         if inspect_windows_binary(path).valid]
+        if not present_loaders:
             issues.append(HealthIssue("asi_loader_missing", "error",
                                       "OpenRPF is installed but no ASI loader was detected.",
                                       str(gta_path)))
+        elif not valid_loaders:
+            details = ", ".join(
+                f"{path.name}: {inspect_windows_binary(path).reason}"
+                for path in present_loaders
+            )
+            issues.append(HealthIssue(
+                "asi_loader_corrupt", "error",
+                f"ASI loader files are present but invalid ({details}).", str(gta_path),
+            ))
     preview_dir = gta_path / "mods/update/x64/dlcpacks/allin1_previews"
     if preview_dir.exists():
         preview_rpf = preview_dir / "dlc.rpf"
@@ -75,6 +134,15 @@ def scan_installation(gta_path: Path, *, expected_hashes: dict[str, str] | None 
                 "preview_dlc_invalid", "error",
                 "The ALLIN1 preview DLC is incomplete; run Install / Repair.",
                 str(preview_dir),
+            ))
+    maps_dir = gta_path / "mods/update/x64/dlcpacks/allin1_maps"
+    if maps_dir.exists():
+        maps_rpf = maps_dir / "dlc.rpf"
+        if not maps_rpf.is_file() or maps_rpf.stat().st_size == 0:
+            issues.append(HealthIssue(
+                "standalone_map_dlc_invalid", "error",
+                "The ALLIN1 standalone map DLC is incomplete; run Install / Repair.",
+                str(maps_dir),
             ))
     archive_names = ("update.rpf", "update2.rpf") if edition == "enhanced" else ("update.rpf",)
     for archive_name in archive_names:
@@ -93,6 +161,12 @@ def scan_installation(gta_path: Path, *, expected_hashes: dict[str, str] | None 
     dll = scripts / "ALLIN1.dll"
     if not dll.is_file():
         issues.append(HealthIssue("mod_missing", "error", "ALLIN1.dll is not installed.", str(dll)))
+    else:
+        inspection = inspect_windows_binary(dll)
+        if not inspection.valid:
+            issues.append(HealthIssue(
+                "mod_corrupt", "error", f"ALLIN1.dll is invalid ({inspection.reason}).", str(dll),
+            ))
     duplicates = sorted(
         path for path in gta_path.rglob("ALLIN1.dll")
         if path != dll and "allin1_backups" not in {

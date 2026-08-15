@@ -14,6 +14,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 using GTA;
 using GTA.Math;
@@ -31,21 +32,67 @@ namespace ALLIN1
         private Keys _selectorKey = Keys.L;
         private const float NEARBY_RADIUS = 3.5f;
         private const float MAX_DIST_WHILE_SELECTING = 5f;
-        private const int EXECUTE_TIMEOUT_MS = 25000;
+        private const int EXECUTE_TIMEOUT_MS = 32000;
         private const int ENTER_TIMEOUT_MS = 14000;
         private const int EXIT_TIMEOUT_MS = 7000;
+        private const int EXIT_SETTLE_MS = 1200;
+        private const int EXTERNAL_APPROACH_TIMEOUT_MS = 7000;
+        private const int EXTERNAL_ROUTE_DISCOVERY_GRACE_MS = 1500;
+        private const int EXTERNAL_ROUTE_STALL_TIMEOUT_MS = 2500;
         private const int SHUFFLE_TIMEOUT_MS = 4500;
+        private const int NATIVE_CONTEXT_ENTRY_HOLD_MS = 2500;
+        private const float EXTERNAL_APPROACH_DISTANCE = 0.85f;
+        private const float EXTERNAL_ROUTE_PROGRESS_EPSILON = 0.12f;
+        private const float EXTERNAL_ROUTE_CLEARANCE = 0.8f;
+        private const float EXTERNAL_ROUTE_TRACE_HEIGHT = 0.65f;
+        private const float EXTERNAL_ROUTE_TRACE_RADIUS = 0.3f;
         private const float MAX_EXTERNAL_SWITCH_SPEED = 1.25f;
-        private const int NORMAL_ENTER_FLAG = 1;
+        private const int NATIVE_ENTER_TIMEOUT = -1;
+        // A fresh exact-seat request must use None (0). ResumeIfInterrupted (1)
+        // lets GTA continue an earlier driver/front-passenger entry task on
+        // custom layouts such as LAYOUT_RANGER_CARACARA.
+        private const int NORMAL_ENTER_FLAG = 0;
         private const int NORMAL_EXIT_FLAG = 0;
+
+        // GET_NAVMESH_ROUTE_RESULT mirrors GTA's NavMeshRouteResult enum.
+        private const int NAV_ROUTE_TASK_NOT_FOUND = 0;
+        private const int NAV_ROUTE_NOT_YET_TRIED = 1;
+        private const int NAV_ROUTE_NOT_FOUND = 2;
+        private const int NAV_ROUTE_FOUND = 3;
 
         // F key is Control.Enter on foot (23) and Control.VehicleExit in vehicle (75).
         // We read both via IS_DISABLED_CONTROL_PRESSED and suppress both when selecting.
         private const int CONTROL_ENTER = 23;
         private const int CONTROL_VEHICLE_EXIT = 75;
 
-        private static readonly string LOG_PATH =
-            Path.Combine("scripts", "ALLIN1_SeatSelector.log");
+        // These hashes also have model-specific pathing policy below. Seat
+        // names for them and every other game/DLC model come from the generated
+        // Rockstar metadata catalog.
+        private const int LIMO2_HASH = -114627507;
+        private const int CARACARA_HASH = 1254014755;
+
+        // The Caracara layout defines three vehicle-relative climb points for
+        // its bed turret. GTA's generic seat task can time out when issued at
+        // the front door, so walk to the nearest authored point before asking
+        // the normal entry task to play the climb animation.
+        private static readonly Vector3[] CARACARA_TURRET_APPROACH_OFFSETS =
+        {
+            new Vector3(-1.650f, -2.543f, 0.382f),
+            new Vector3(1.680f, -2.543f, 0.382f),
+            new Vector3(0.050f, -4.118f, 0.382f),
+        };
+
+        // The six-wheeler's rear doors sit much farther forward than a generic
+        // pickup bounding box suggests. These are the authored EntryTranslation
+        // values from mpassault's LAYOUT_RANGER_CARACARA metadata.
+        private static readonly Vector3[] CARACARA_REAR_LEFT_APPROACH_OFFSETS =
+        {
+            new Vector3(-1.2486f, -0.1472f, 0.2500f),
+        };
+        private static readonly Vector3[] CARACARA_REAR_RIGHT_APPROACH_OFFSETS =
+        {
+            new Vector3(1.2244f, -0.2042f, 0.2000f),
+        };
 
         // HUD layout (normalized screen coords, bottom-right area)
         private const float HUD_RIGHT = 0.97f;
@@ -75,10 +122,15 @@ namespace ALLIN1
         private enum ExecutionPhase
         {
             None,
+            PlanningExternalRoute,
             Entering,
             Shuffling,
             Exiting,
+            WaitingAfterExit,
             Reentering,
+            ApproachingExternalSeat,
+            RecoveringWrongSeat,
+            ReturningToSourceSeat,
         }
 
         private struct SeatInfo
@@ -111,9 +163,26 @@ namespace ALLIN1
         private int _phaseStart;
         private int _targetSeatIdx;
         private int _sourceSeatIdx;
+        private Vector3 _externalApproachPoint;
+        private bool _approachIsReentry;
+        private bool _nativeContextEntryActive;
+        private bool _usesExternalRoute;
+        private bool _externalRouteValidated;
+        private float _externalRouteBestDistance;
+        private int _externalRouteLastProgress;
+        private int _externalRouteResult;
+        private string _pendingFailureReason;
+        private readonly List<Vector3> _plannedExternalWaypoints =
+            new List<Vector3>();
+        private int _externalRouteWaypointIndex;
+        private bool _hasPreplannedExternalRoute;
+        private readonly List<List<Vector3>> _routePlanCandidates =
+            new List<List<Vector3>>();
+        private int _routePlanCandidateIndex;
+        private int _routePlanSegmentIndex;
+        private ShapeTestHandle _routeShapeTest;
         private ExecutionPhase _executionPhase;
         private bool _enabled = true;
-
         // ------------------------------------------------------------------ //
         //  Constructor                                                        //
         // ------------------------------------------------------------------ //
@@ -304,40 +373,91 @@ namespace ALLIN1
             if (dX == 0 && dY == 0)
                 return;
 
-            SeatInfo cur = _seats[_selectedIdx];
-            int targetRow = cur.GridRow + dY;
-            int targetCol = cur.GridCol + dX;
-
-            // Find the seat at the target grid position
-            int bestIdx = -1;
-            for (int i = 0; i < _seats.Count; i++)
-            {
-                if (_seats[i].GridRow == targetRow && _seats[i].GridCol == targetCol
-                    && (_seats[i].Free || _seats[i].IsPlayer))
-                {
-                    bestIdx = i;
-                    break;
-                }
-            }
-
-            // If exact match not found but we're moving vertically, try same column
-            if (bestIdx < 0 && dY != 0)
-            {
-                for (int i = 0; i < _seats.Count; i++)
-                {
-                    if (_seats[i].GridRow == targetRow
-                        && (_seats[i].Free || _seats[i].IsPlayer))
-                    {
-                        bestIdx = i;
-                        break;
-                    }
-                }
-            }
+            int[] seatIndices = _seats.Select(seat => seat.Index).ToArray();
+            bool[] available = _seats.Select(
+                seat => seat.Free || seat.IsPlayer).ToArray();
+            int targetSeat = FindNavigationTarget(
+                _seats[_selectedIdx].Index, dX, dY, seatIndices, available);
+            int bestIdx = _seats.FindIndex(seat => seat.Index == targetSeat);
 
             if (bestIdx >= 0 && bestIdx != _selectedIdx)
             {
                 _selectedIdx = bestIdx;
                 GbayRenderer.PlayNav();
+            }
+        }
+
+        internal static int FindNavigationTarget(
+            int currentSeat,
+            int dX,
+            int dY,
+            int[] seatIndices,
+            bool[] available)
+        {
+            if (seatIndices == null || available == null
+                || seatIndices.Length == 0
+                || seatIndices.Length != available.Length)
+                return currentSeat;
+
+            GetSeatGridPosition(currentSeat, out int currentRow, out int currentCol);
+            if (dX != 0)
+            {
+                int targetCol = currentCol + Math.Sign(dX);
+                for (int i = 0; i < seatIndices.Length; i++)
+                {
+                    GetSeatGridPosition(seatIndices[i], out int row, out int col);
+                    if (available[i] && row == currentRow && col == targetCol)
+                        return seatIndices[i];
+                }
+                return currentSeat;
+            }
+
+            if (dY == 0)
+                return currentSeat;
+
+            int direction = Math.Sign(dY);
+            int maxRow = currentRow;
+            for (int i = 0; i < seatIndices.Length; i++)
+            {
+                GetSeatGridPosition(seatIndices[i], out int row, out int ignoredCol);
+                if (row > maxRow) maxRow = row;
+            }
+
+            // Sparse authored layouts can omit an entire row. For example,
+            // Caracara hides indices 1/2 but keeps its turret at index 3.
+            // Continue in the requested direction until an available row is
+            // found instead of trapping navigation at the empty row.
+            for (int targetRow = currentRow + direction;
+                targetRow >= 0 && targetRow <= maxRow;
+                targetRow += direction)
+            {
+                int rowFallback = int.MinValue;
+                for (int i = 0; i < seatIndices.Length; i++)
+                {
+                    if (!available[i]) continue;
+                    GetSeatGridPosition(seatIndices[i], out int row, out int col);
+                    if (row != targetRow) continue;
+                    if (col == currentCol) return seatIndices[i];
+                    if (rowFallback == int.MinValue)
+                        rowFallback = seatIndices[i];
+                }
+                if (rowFallback != int.MinValue)
+                    return rowFallback;
+            }
+            return currentSeat;
+        }
+
+        private static void GetSeatGridPosition(
+            int seatIndex, out int row, out int col)
+        {
+            if (seatIndex == -1) { row = 0; col = 0; }
+            else if (seatIndex == 0) { row = 0; col = 1; }
+            else if (seatIndex == 1) { row = 1; col = 0; }
+            else if (seatIndex == 2) { row = 1; col = 1; }
+            else
+            {
+                row = (seatIndex - 1) / 2 + 1;
+                col = seatIndex % 2 == 1 ? 0 : 1;
             }
         }
 
@@ -393,7 +513,8 @@ namespace ALLIN1
                     return;
                 }
 
-                BeginEnter(player, false);
+                if (!BeginExternalApproach(player, false))
+                    BeginEnter(player, false);
             }
             else
             {
@@ -418,7 +539,25 @@ namespace ALLIN1
                         return;
                     }
 
-                    BeginExit(player, "different_row_or_external_seat");
+                    if (!BeginSimulatedExternalRoutePlan(player))
+                    {
+                        GbayRenderer.PlayError();
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~y~No clear walking route between those seats.",
+                            3000);
+                        ClientLog.Info("SeatSelector", "seat_switch_cancelled",
+                            new Dictionary<string, object>
+                            {
+                                { "reason", "preexit_route_blocked" },
+                                { "from_seat", _sourceSeatIdx },
+                                { "target_seat", _targetSeatIdx },
+                                { "model_hash", _targetVeh.Model.Hash },
+                            });
+                        Reset();
+                        return;
+                    }
+                    _state = State.Executing;
+                    return;
                 }
             }
 
@@ -469,7 +608,9 @@ namespace ALLIN1
             }
 
             Ped occupant = _targetVeh.GetPedOnSeat((VehicleSeat)_targetSeatIdx);
-            if (occupant != null && occupant.Exists() && occupant != player)
+            if (_executionPhase != ExecutionPhase.RecoveringWrongSeat
+                && _executionPhase != ExecutionPhase.ReturningToSourceSeat
+                && occupant != null && occupant.Exists() && occupant != player)
             {
                 GTA.UI.Screen.ShowSubtitle("~y~That seat is no longer available.", 2000);
                 CancelExecution(player, "seat_claimed", true);
@@ -479,23 +620,87 @@ namespace ALLIN1
             int phaseElapsed = Game.GameTime - _phaseStart;
             switch (_executionPhase)
             {
+                case ExecutionPhase.PlanningExternalRoute:
+                    TickSimulatedExternalRoutePlan(player, phaseElapsed);
+                    break;
+
                 case ExecutionPhase.Shuffling:
                     TickShuffle(player, phaseElapsed);
                     break;
 
                 case ExecutionPhase.Exiting:
                     if (!player.IsInVehicle())
-                        BeginEnter(player, true);
+                        SetExecutionPhase(
+                            ExecutionPhase.WaitingAfterExit,
+                            "exit_animation_settle");
                     else if (phaseElapsed > EXIT_TIMEOUT_MS)
                         CancelExecution(player, "exit_timeout", true);
                     break;
 
+                case ExecutionPhase.WaitingAfterExit:
+                    // IsInVehicle becomes false before GTA has finished the
+                    // leave-vehicle animation. Starting another task during
+                    // that tail cancels entry to external seats such as limo2's
+                    // roof turret. Let the ped finish planting both feet first.
+                    if (player.IsInVehicle())
+                        CancelExecution(player, "returned_to_vehicle_during_exit", true);
+                    else if (phaseElapsed >= EXIT_SETTLE_MS)
+                    {
+                        if (!BeginExternalApproach(player, true))
+                            BeginEnter(player, true);
+                    }
+                    break;
+
+                case ExecutionPhase.ApproachingExternalSeat:
+                    if (player.IsInVehicle())
+                        CancelExecution(player, "entered_vehicle_during_approach", true);
+                    else
+                        TickExternalApproach(player, phaseElapsed);
+                    break;
+
                 case ExecutionPhase.Entering:
                 case ExecutionPhase.Reentering:
+                    if (_nativeContextEntryActive && !player.IsInVehicle()
+                        && phaseElapsed <= NATIVE_CONTEXT_ENTRY_HOLD_MS)
+                    {
+                        // The Caracara turret has three authored climb points,
+                        // but TASK_ENTER_VEHICLE redirects seat 3 into the cab.
+                        // At the validated climb point, mirror the manual F hold
+                        // that GTA's own context system resolves correctly.
+                        Function.Call(Hash.ENABLE_CONTROL_ACTION,
+                            0, CONTROL_ENTER, true);
+                        Function.Call(Hash.SET_CONTROL_VALUE_NEXT_FRAME,
+                            0, CONTROL_ENTER, 1f);
+                    }
                     if (player.IsInVehicle() && player.CurrentVehicle != _targetVeh)
                         CancelExecution(player, "entered_different_vehicle", true);
+                    else if (player.IsInVehicle()
+                             && GetPlayerSeatIndex(player) != _targetSeatIdx)
+                        HandleWrongSeatEntry(player);
                     else if (phaseElapsed > ENTER_TIMEOUT_MS)
-                        CancelExecution(player, "entry_timeout", true);
+                    {
+                        if (_usesExternalRoute)
+                            FailExternalRoute(player, "entry_timeout");
+                        else
+                            CancelExecution(player, "entry_timeout", true);
+                    }
+                    break;
+
+                case ExecutionPhase.RecoveringWrongSeat:
+                    if (!player.IsInVehicle())
+                        FailExternalRoute(player, _pendingFailureReason);
+                    else if (phaseElapsed > EXIT_TIMEOUT_MS)
+                        CancelExecution(player, "wrong_seat_exit_timeout", true);
+                    break;
+
+                case ExecutionPhase.ReturningToSourceSeat:
+                    if (player.IsInVehicle() && player.CurrentVehicle != _targetVeh)
+                        CancelExecution(player, "rollback_entered_different_vehicle", true);
+                    else if (player.IsInVehicle()
+                             && GetPlayerSeatIndex(player) == _sourceSeatIdx)
+                        CompleteSourceSeatRollback();
+                    else if (phaseElapsed > ENTER_TIMEOUT_MS)
+                        CancelExecution(player, "source_seat_rollback_timeout", true);
                     break;
 
                 default:
@@ -585,15 +790,520 @@ namespace ALLIN1
 
         private void BeginEnter(Ped player, bool reentry)
         {
+            _nativeContextEntryActive =
+                ShouldUseNativeContextEntry(
+                    _targetVeh.Model.Hash, _targetSeatIdx);
             SetExecutionPhase(
                 reentry ? ExecutionPhase.Reentering : ExecutionPhase.Entering,
-                reentry ? "external_reentry" : "outside_entry");
+                _nativeContextEntryActive
+                    ? (reentry
+                        ? "native_context_turret_reentry"
+                        : "native_context_turret_entry")
+                    : (reentry ? "external_reentry" : "outside_entry"));
 
-            // Flag 1 is GTA's normal animated approach/entry. Do not use flags
-            // 3 or 16: both are documented warp modes.
+            if (_nativeContextEntryActive)
+            {
+                Function.Call(Hash.CLEAR_PED_TASKS, player.Handle);
+                return;
+            }
+
+            // A positive native timeout silently enables WarpAfterTime inside
+            // GTA's task implementation. Use -1 and enforce our own bounded
+            // timeout in TickExecuting so this route can never teleport.
+            int nativeSeat = GetNativeEntryRequestSeat(
+                _targetVeh.Model.Hash, _targetSeatIdx, _usesExternalRoute);
             Function.Call(Hash.TASK_ENTER_VEHICLE,
-                player.Handle, _targetVeh.Handle, ENTER_TIMEOUT_MS,
-                _targetSeatIdx, 2f, NORMAL_ENTER_FLAG, 0);
+                player.Handle, _targetVeh.Handle, NATIVE_ENTER_TIMEOUT,
+                nativeSeat, 2f, NORMAL_ENTER_FLAG, 0);
+        }
+
+        private void TickExternalApproach(Ped player, int phaseElapsed)
+        {
+            float distance = player.Position.DistanceTo(_externalApproachPoint);
+            int now = Game.GameTime;
+            int routeResult = Function.Call<int>(
+                Hash.GET_NAVMESH_ROUTE_RESULT, player.Handle);
+            _externalRouteResult = routeResult;
+
+            if (routeResult == NAV_ROUTE_FOUND)
+                _externalRouteValidated = true;
+
+            if (distance + EXTERNAL_ROUTE_PROGRESS_EPSILON
+                < _externalRouteBestDistance)
+            {
+                _externalRouteBestDistance = distance;
+                _externalRouteLastProgress = now;
+            }
+
+            if (distance <= EXTERNAL_APPROACH_DISTANCE
+                && _externalRouteValidated)
+            {
+                if (_externalRouteWaypointIndex + 1
+                    < _plannedExternalWaypoints.Count)
+                {
+                    _externalRouteWaypointIndex++;
+                    StartExternalRouteStage(
+                        player,
+                        _plannedExternalWaypoints[
+                            _externalRouteWaypointIndex],
+                        _approachIsReentry);
+                }
+                else
+                    BeginEnter(player, _approachIsReentry);
+                return;
+            }
+
+            string abortReason = GetExternalRouteAbortReason(
+                routeResult,
+                phaseElapsed,
+                now - _externalRouteLastProgress,
+                distance);
+            if (abortReason != null)
+            {
+                FailExternalRoute(player, abortReason);
+                return;
+            }
+
+            if (phaseElapsed > EXTERNAL_APPROACH_TIMEOUT_MS)
+                FailExternalRoute(player, "external_approach_timeout");
+        }
+
+        private void HandleWrongSeatEntry(Ped player)
+        {
+            _pendingFailureReason = "entered_wrong_external_seat";
+            if (GetPlayerSeatIndex(player) == _sourceSeatIdx)
+                CompleteSourceSeatRollback();
+            else
+                BeginWrongSeatRecovery(player, _pendingFailureReason);
+        }
+
+        private void BeginWrongSeatRecovery(Ped player, string reason)
+        {
+            _pendingFailureReason = reason;
+            SetExecutionPhase(
+                ExecutionPhase.RecoveringWrongSeat,
+                "wrong_external_seat_exit");
+            Function.Call(Hash.TASK_LEAVE_VEHICLE,
+                player.Handle, _targetVeh.Handle, NORMAL_EXIT_FLAG);
+        }
+
+        private void FailExternalRoute(Ped player, string reason)
+        {
+            if (BeginSourceSeatRollback(player, reason))
+                return;
+
+            CancelExecution(player, reason, true);
+            GTA.UI.Screen.ShowSubtitle(
+                "~y~No valid path to that external seat.", 2500);
+        }
+
+        private bool BeginSourceSeatRollback(Ped player, string reason)
+        {
+            if (_sourceSeatIdx == -2 || player == null || !player.Exists()
+                || player.IsInVehicle() || _targetVeh == null
+                || !_targetVeh.Exists())
+                return false;
+
+            Ped occupant = _targetVeh.GetPedOnSeat((VehicleSeat)_sourceSeatIdx);
+            if (occupant != null && occupant.Exists() && occupant != player)
+                return false;
+
+            Function.Call(Hash.CLEAR_PED_TASKS, player.Handle);
+            _pendingFailureReason = reason ?? "external_route_failed";
+            _executeStart = Game.GameTime;
+            SetExecutionPhase(
+                ExecutionPhase.ReturningToSourceSeat,
+                "restore_source_seat");
+            Function.Call(Hash.TASK_ENTER_VEHICLE,
+                player.Handle, _targetVeh.Handle, NATIVE_ENTER_TIMEOUT,
+                _sourceSeatIdx, 2f, NORMAL_ENTER_FLAG, 0);
+            GTA.UI.Screen.ShowSubtitle(
+                "~y~External route failed; returning to the previous seat.",
+                2500);
+            return true;
+        }
+
+        private void CompleteSourceSeatRollback()
+        {
+            ClientLog.Info("SeatSelector", "seat_switch_rolled_back",
+                new Dictionary<string, object>
+                {
+                    { "reason", _pendingFailureReason
+                        ?? "external_route_failed" },
+                    { "source_seat", _sourceSeatIdx },
+                    { "target_seat", _targetSeatIdx },
+                });
+            GTA.UI.Screen.ShowSubtitle(
+                "~y~External route failed; previous seat restored.", 2500);
+            Reset();
+        }
+
+        private bool BeginSimulatedExternalRoutePlan(Ped player)
+        {
+            _plannedExternalWaypoints.Clear();
+            _hasPreplannedExternalRoute = false;
+            _routePlanCandidates.Clear();
+
+            var dimensions = _targetVeh.Model.Dimensions;
+            Vector3 minimum = dimensions.Item1;
+            Vector3 maximum = dimensions.Item2;
+            Vector3[] sourceOffsets = GetSeatAccessOffsets(
+                _targetVeh.Model.Hash, _sourceSeatIdx, minimum, maximum);
+            Vector3[] targetOffsets = GetSeatAccessOffsets(
+                _targetVeh.Model.Hash, _targetSeatIdx, minimum, maximum);
+            if (sourceOffsets.Length == 0 || targetOffsets.Length == 0)
+                return false;
+
+            Vector3 playerOffset = _targetVeh.GetPositionOffset(player.Position);
+            var candidates = new List<Tuple<float, List<Vector3>>>();
+
+            foreach (Vector3 source in sourceOffsets)
+            {
+                // Prefer the exit point nearest the occupied seat, while still
+                // considering every authored option if obstacles block it.
+                float sourceBias = playerOffset.DistanceTo(source) * 0.05f;
+                foreach (Vector3 target in targetOffsets)
+                {
+                    foreach (Vector3[] localRoute
+                             in BuildLocalExternalRouteCandidates(
+                                 source, target, minimum, maximum))
+                    {
+                        var worldRoute = new List<Vector3>(localRoute.Length);
+                        foreach (Vector3 point in localRoute)
+                            worldRoute.Add(_targetVeh.GetOffsetPosition(point));
+                        if (worldRoute.Count < 2)
+                            continue;
+
+                        float length = sourceBias;
+                        for (int i = 1; i < worldRoute.Count; i++)
+                            length += worldRoute[i - 1].DistanceTo(worldRoute[i]);
+                        candidates.Add(Tuple.Create(length, worldRoute));
+                    }
+                }
+            }
+
+            if (candidates.Count == 0)
+                return false;
+
+            candidates.Sort((left, right) => left.Item1.CompareTo(right.Item1));
+            foreach (var candidate in candidates)
+                _routePlanCandidates.Add(candidate.Item2);
+
+            _routePlanCandidateIndex = 0;
+            _routePlanSegmentIndex = 1;
+            SetExecutionPhase(
+                ExecutionPhase.PlanningExternalRoute,
+                "simulate_external_route");
+            StartRoutePlanShapeTest();
+            return true;
+        }
+
+        private void TickSimulatedExternalRoutePlan(
+            Ped player, int phaseElapsed)
+        {
+            if (!player.IsInVehicle() || player.CurrentVehicle != _targetVeh
+                || GetPlayerSeatIndex(player) != _sourceSeatIdx)
+            {
+                CancelExecution(player, "left_source_seat_during_plan", false);
+                return;
+            }
+
+            if (phaseElapsed > EXTERNAL_APPROACH_TIMEOUT_MS)
+            {
+                CancelExecution(player, "preexit_route_plan_timeout", false);
+                return;
+            }
+
+            var result = _routeShapeTest.GetResult();
+            if (result.Item1 == ShapeTestStatus.NotReady)
+                return;
+
+            bool clear = result.Item1 == ShapeTestStatus.Ready
+                && !result.Item2.DidHit;
+            if (!clear)
+            {
+                AdvanceToNextRoutePlanCandidate(player);
+                return;
+            }
+
+            List<Vector3> candidate =
+                _routePlanCandidates[_routePlanCandidateIndex];
+            _routePlanSegmentIndex++;
+            if (_routePlanSegmentIndex < candidate.Count)
+            {
+                StartRoutePlanShapeTest();
+                return;
+            }
+
+            _plannedExternalWaypoints.AddRange(candidate);
+            _hasPreplannedExternalRoute = true;
+            ClientLog.Info("SeatSelector", "preexit_route_planned",
+                new Dictionary<string, object>
+                {
+                    { "from_seat", _sourceSeatIdx },
+                    { "target_seat", _targetSeatIdx },
+                    { "waypoints", candidate.Count },
+                    { "candidate", _routePlanCandidateIndex },
+                });
+            BeginExit(player, "different_row_or_external_seat");
+        }
+
+        private void AdvanceToNextRoutePlanCandidate(Ped player)
+        {
+            _routePlanCandidateIndex++;
+            _routePlanSegmentIndex = 1;
+            if (_routePlanCandidateIndex >= _routePlanCandidates.Count)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~y~No clear walking route between those seats.", 3000);
+                CancelExecution(player, "preexit_route_blocked", false);
+                return;
+            }
+            StartRoutePlanShapeTest();
+        }
+
+        private void StartRoutePlanShapeTest()
+        {
+            List<Vector3> candidate =
+                _routePlanCandidates[_routePlanCandidateIndex];
+            Vector3 lift = new Vector3(
+                0f, 0f, EXTERNAL_ROUTE_TRACE_HEIGHT);
+            Vector3 start = candidate[_routePlanSegmentIndex - 1] + lift;
+            Vector3 end = candidate[_routePlanSegmentIndex] + lift;
+            const IntersectFlags traceFlags = IntersectFlags.Map
+                | IntersectFlags.Vehicles | IntersectFlags.Objects;
+            _routeShapeTest = ShapeTest.StartTestCapsule(
+                start,
+                end,
+                EXTERNAL_ROUTE_TRACE_RADIUS,
+                traceFlags,
+                _targetVeh,
+                ShapeTestOptions.Default);
+        }
+
+        internal static Vector3[] GetSeatAccessOffsets(
+            int modelHash,
+            int seatIndex,
+            Vector3 minimum,
+            Vector3 maximum)
+        {
+            Vector3[] authored = GetExternalApproachOffsets(
+                modelHash, seatIndex);
+            if (authored != null)
+                return authored;
+
+            float side = Math.Max(Math.Abs(minimum.X), Math.Abs(maximum.X))
+                + EXTERNAL_ROUTE_CLEARANCE;
+            bool left = seatIndex == -1
+                || (seatIndex >= 1 && seatIndex % 2 == 1);
+            bool front = seatIndex <= 0;
+            float y = front ? maximum.Y * 0.35f : minimum.Y * 0.35f;
+            return new[] { new Vector3(left ? -side : side, y, 0f) };
+        }
+
+        internal static Vector3[] BuildLocalExternalRoute(
+            Vector3 source,
+            Vector3 target,
+            Vector3 minimum,
+            Vector3 maximum)
+        {
+            Vector3[][] candidates = BuildLocalExternalRouteCandidates(
+                source, target, minimum, maximum);
+            return candidates[0];
+        }
+
+        internal static Vector3[][] BuildLocalExternalRouteCandidates(
+            Vector3 source,
+            Vector3 target,
+            Vector3 minimum,
+            Vector3 maximum)
+        {
+            float side = Math.Max(Math.Abs(minimum.X), Math.Abs(maximum.X))
+                + EXTERNAL_ROUTE_CLEARANCE;
+            float sourceSide = ResolveRouteSide(source.X, target.X);
+            float targetSide = ResolveRouteSide(target.X, source.X);
+            float z = Math.Max(source.Z, target.Z);
+
+            if (sourceSide == targetSide)
+            {
+                return new[] { CompactRoute(new[]
+                {
+                    source,
+                    new Vector3(sourceSide * side, source.Y, z),
+                    new Vector3(targetSide * side, target.Y, z),
+                    target,
+                }) };
+            }
+
+            float frontY = maximum.Y + EXTERNAL_ROUTE_CLEARANCE;
+            float rearY = minimum.Y - EXTERNAL_ROUTE_CLEARANCE;
+            Vector3[] frontRoute = CompactRoute(new[]
+            {
+                source,
+                new Vector3(sourceSide * side, frontY, z),
+                new Vector3(targetSide * side, frontY, z),
+                target,
+            });
+            Vector3[] rearRoute = CompactRoute(new[]
+            {
+                source,
+                new Vector3(sourceSide * side, rearY, z),
+                new Vector3(targetSide * side, rearY, z),
+                target,
+            });
+            return RouteLength(frontRoute) <= RouteLength(rearRoute)
+                ? new[] { frontRoute, rearRoute }
+                : new[] { rearRoute, frontRoute };
+        }
+
+        private static float ResolveRouteSide(float primary, float fallback)
+        {
+            if (Math.Abs(primary) > 0.1f)
+                return primary < 0f ? -1f : 1f;
+            return fallback < 0f ? -1f : 1f;
+        }
+
+        private static Vector3[] CompactRoute(Vector3[] points)
+        {
+            var result = new List<Vector3>();
+            foreach (Vector3 point in points)
+            {
+                if (result.Count == 0
+                    || result[result.Count - 1].DistanceTo(point) >= 0.1f)
+                    result.Add(point);
+            }
+            return result.ToArray();
+        }
+
+        private static float RouteLength(Vector3[] points)
+        {
+            float length = 0f;
+            for (int i = 1; i < points.Length; i++)
+                length += points[i - 1].DistanceTo(points[i]);
+            return length;
+        }
+
+        private bool BeginExternalApproach(Ped player, bool reentry)
+        {
+            if (_hasPreplannedExternalRoute
+                && _plannedExternalWaypoints.Count > 0)
+            {
+                _externalRouteWaypointIndex = 0;
+                while (_externalRouteWaypointIndex + 1
+                        < _plannedExternalWaypoints.Count
+                       && player.Position.DistanceTo(
+                           _plannedExternalWaypoints[
+                               _externalRouteWaypointIndex])
+                          <= EXTERNAL_APPROACH_DISTANCE)
+                    _externalRouteWaypointIndex++;
+
+                StartExternalRouteStage(
+                    player,
+                    _plannedExternalWaypoints[_externalRouteWaypointIndex],
+                    reentry);
+                return true;
+            }
+
+            Vector3[] offsets = GetExternalApproachOffsets(
+                _targetVeh.Model.Hash, _targetSeatIdx);
+            if (offsets == null || offsets.Length == 0)
+                return false;
+
+            Vector3 nearest = _targetVeh.GetOffsetPosition(offsets[0]);
+            float nearestDistance = player.Position.DistanceTo(nearest);
+            for (int i = 1; i < offsets.Length; i++)
+            {
+                Vector3 candidate = _targetVeh.GetOffsetPosition(offsets[i]);
+                float distance = player.Position.DistanceTo(candidate);
+                if (distance < nearestDistance)
+                {
+                    nearest = candidate;
+                    nearestDistance = distance;
+                }
+            }
+
+            _plannedExternalWaypoints.Clear();
+            _plannedExternalWaypoints.Add(nearest);
+            _externalRouteWaypointIndex = 0;
+            StartExternalRouteStage(player, nearest, reentry);
+            return true;
+        }
+
+        private void StartExternalRouteStage(
+            Ped player, Vector3 target, bool reentry)
+        {
+            float distance = player.Position.DistanceTo(target);
+            _externalApproachPoint = target;
+            _approachIsReentry = reentry;
+            _usesExternalRoute = true;
+            _externalRouteValidated = distance <= EXTERNAL_APPROACH_DISTANCE;
+            _externalRouteBestDistance = distance;
+            _externalRouteLastProgress = Game.GameTime;
+            _externalRouteResult = NAV_ROUTE_NOT_YET_TRIED;
+            SetExecutionPhase(
+                ExecutionPhase.ApproachingExternalSeat,
+                reentry ? "external_reentry_approach" : "outside_entry_approach");
+            Function.Call(Hash.TASK_FOLLOW_NAV_MESH_TO_COORD,
+                player.Handle,
+                target.X, target.Y, target.Z,
+                1.25f, -1, 0.35f, false, 0f);
+        }
+
+        internal static Vector3[] GetExternalApproachOffsets(
+            int modelHash, int seatIndex)
+        {
+            if (modelHash != CARACARA_HASH)
+                return null;
+            switch (seatIndex)
+            {
+                case 1: return CARACARA_REAR_LEFT_APPROACH_OFFSETS;
+                case 2: return CARACARA_REAR_RIGHT_APPROACH_OFFSETS;
+                case 3: return CARACARA_TURRET_APPROACH_OFFSETS;
+                default: return null;
+            }
+        }
+
+        internal static int GetNativeEntryRequestSeat(
+            int modelHash, int seatIndex, bool usesExternalRoute)
+        {
+            // The predictor has already selected and validated the authored
+            // access point. Preserve the requested station; asking for the
+            // nearest passenger lets GTA redirect bed and turret stations to
+            // the front cabin on custom layouts.
+            return seatIndex;
+        }
+
+        internal static bool ShouldUseNativeContextEntry(
+            int modelHash, int seatIndex)
+        {
+            return modelHash == CARACARA_HASH && seatIndex == 3;
+        }
+
+        internal static bool IsSeatSelectable(int modelHash, int seatIndex)
+        {
+            // LAYOUT_RANGER_CARACARA advertises two rear cabin indices, but
+            // GTA exposes no usable outside entry for either station. Do not
+            // offer transitions that can only be reached by a setup warp.
+            return modelHash != CARACARA_HASH
+                || (seatIndex != 1 && seatIndex != 2);
+        }
+
+        internal static string GetExternalRouteAbortReason(
+            int routeResult,
+            int routeElapsedMs,
+            int noProgressMs,
+            float distance)
+        {
+            if (distance <= EXTERNAL_APPROACH_DISTANCE)
+                return null;
+            if (routeResult == NAV_ROUTE_NOT_FOUND)
+                return "external_route_not_found";
+            if (routeElapsedMs > EXTERNAL_ROUTE_DISCOVERY_GRACE_MS
+                && routeResult == NAV_ROUTE_TASK_NOT_FOUND)
+                return "external_route_task_missing";
+            if (noProgressMs > EXTERNAL_ROUTE_STALL_TIMEOUT_MS)
+                return "external_route_stalled";
+            return null;
         }
 
         private void SetExecutionPhase(ExecutionPhase phase, string route)
@@ -607,6 +1317,9 @@ namespace ALLIN1
                     { "route", route },
                     { "from_seat", _sourceSeatIdx },
                     { "target_seat", _targetSeatIdx },
+                    { "model_hash", _targetVeh != null && _targetVeh.Exists()
+                        ? _targetVeh.Model.Hash : 0 },
+                    { "external_route", _usesExternalRoute },
                 });
         }
 
@@ -622,6 +1335,8 @@ namespace ALLIN1
                     { "phase", _executionPhase.ToString() },
                     { "from_seat", _sourceSeatIdx },
                     { "target_seat", _targetSeatIdx },
+                    { "route_result", _externalRouteResult },
+                    { "route_validated", _externalRouteValidated },
                 });
             if (reason.EndsWith("timeout", StringComparison.OrdinalIgnoreCase))
                 GTA.UI.Screen.ShowSubtitle("~y~Seat switch timed out safely.", 2000);
@@ -661,26 +1376,22 @@ namespace ALLIN1
             if (_targetVeh == null || !_targetVeh.Exists())
                 return;
 
-            int maxPass = Function.Call<int>(
+            int nativeMaxPass = Function.Call<int>(
                 Hash.GET_VEHICLE_MAX_NUMBER_OF_PASSENGERS, _targetVeh.Handle);
+            int maxPass = GetSeatEnumerationPassengerLimit(
+                _targetVeh.Model.Hash, nativeMaxPass);
 
             for (int idx = -1; idx < maxPass; idx++)
             {
+                if (!IsSeatSelectable(_targetVeh.Model.Hash, idx))
+                    continue;
                 var seat = (VehicleSeat)idx;
                 Ped occupant = _targetVeh.GetPedOnSeat(seat);
                 bool free = _targetVeh.IsSeatFree(seat);
                 bool isPlayer = (occupant != null && occupant.Exists()
                                  && occupant == player);
 
-                string label;
-                switch (idx)
-                {
-                    case -1: label = "Driver"; break;
-                    case 0:  label = "Passenger"; break;
-                    case 1:  label = "Left Rear"; break;
-                    case 2:  label = "Right Rear"; break;
-                    default: label = $"Extra {idx - 2}"; break;
-                }
+                string label = GetSeatLabel(_targetVeh.Model.Hash, idx);
 
                 // Grid layout: 2 columns matching vehicle sides
                 // Col 0 = left (driver side), Col 1 = right (passenger side)
@@ -711,13 +1422,42 @@ namespace ALLIN1
             }
         }
 
+        internal static string GetSeatLabel(int modelHash, int seatIndex)
+        {
+            string catalogLabel = VehicleSeatLayoutCatalog.GetLabel(
+                modelHash, seatIndex);
+            if (!string.IsNullOrWhiteSpace(catalogLabel))
+                return catalogLabel;
+
+            switch (seatIndex)
+            {
+                case -1: return "Driver";
+                case 0:  return "Passenger";
+                case 1:  return "Left Rear";
+                case 2:  return "Right Rear";
+                default: return $"Extra {seatIndex - 2}";
+            }
+        }
+
+        internal static int GetSeatEnumerationPassengerLimit(
+            int modelHash, int nativeMaxPassengers)
+        {
+            VehicleSeatLayoutRecord metadata =
+                VehicleSeatLayoutCatalog.Get(modelHash);
+            int metadataPassengers = metadata == null
+                ? 0 : Math.Max(0, metadata.SeatCount - 1);
+            return Math.Max(nativeMaxPassengers, metadataPassengers);
+        }
+
         private int GetPlayerSeatIndex(Ped player)
         {
             if (_targetVeh == null || !player.IsInVehicle())
                 return -2; // not in vehicle
 
-            int maxPass = Function.Call<int>(
+            int nativeMaxPass = Function.Call<int>(
                 Hash.GET_VEHICLE_MAX_NUMBER_OF_PASSENGERS, _targetVeh.Handle);
+            int maxPass = GetSeatEnumerationPassengerLimit(
+                _targetVeh.Model.Hash, nativeMaxPass);
 
             for (int idx = -1; idx < maxPass; idx++)
             {
@@ -862,6 +1602,19 @@ namespace ALLIN1
 
         private void Reset()
         {
+            _usesExternalRoute = false;
+            _externalRouteValidated = false;
+            _externalRouteBestDistance = 0f;
+            _externalRouteLastProgress = 0;
+            _externalRouteResult = NAV_ROUTE_TASK_NOT_FOUND;
+            _pendingFailureReason = null;
+            _plannedExternalWaypoints.Clear();
+            _externalRouteWaypointIndex = 0;
+            _hasPreplannedExternalRoute = false;
+            _routePlanCandidates.Clear();
+            _routePlanCandidateIndex = 0;
+            _routePlanSegmentIndex = 0;
+            _routeShapeTest = default(ShapeTestHandle);
             _state = State.Idle;
             _holdStart = 0;
             _targetVeh = null;
@@ -871,6 +1624,9 @@ namespace ALLIN1
             _phaseStart = 0;
             _targetSeatIdx = 0;
             _sourceSeatIdx = -2;
+            _externalApproachPoint = Vector3.Zero;
+            _approachIsReentry = false;
+            _nativeContextEntryActive = false;
             _playerInVehicle = false;
             _executionPhase = ExecutionPhase.None;
         }
