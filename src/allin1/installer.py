@@ -199,12 +199,19 @@ def install(
     _unpatch_dlclist_rpf(gta_path)
     _report_progress(progress, 43, "DLC registration refreshed")
 
-    # Standalone MP-map repacking remains an offline development experiment.
-    # Never register it from a public install/repair until an edition-specific
-    # pack has passed a real GTA startup test. Runtime map leases remain the
-    # safe compatibility path for garages and the yacht.
-    result.standalone_maps_deployed = False
-    _report_progress(progress, 49, "Map compatibility fallback enabled")
+    # Build the standalone compatibility pack from this GTA installation.
+    # Garment Factory, Davis, Harmony, Grapeseed, Paleto Bay, and the yacht
+    # deliberately do not enable the global multiplayer map as a fallback, so
+    # a successful repair must leave this pack installed and registered.
+    result.standalone_maps_deployed = _deploy_standalone_map_dlc(
+        gta_path, result, progress=progress,
+    )
+    if not result.standalone_maps_deployed:
+        raise RuntimeError(
+            "Standalone map support could not be installed; ALLIN1 garage "
+            "interiors would be unavailable."
+        )
+    _report_progress(progress, 49, "Standalone map support installed")
 
     if config.general.enable_rpf_previews:
         if not result.openrpf_found:
@@ -806,7 +813,7 @@ def _deploy_standalone_map_dlc(
             )
             _report_progress(
                 progress,
-                20 + int((index / max(len(grouped_assets), 1)) * 20),
+                44 + int((index / max(len(grouped_assets), 1)) * 3),
                 f"Importing installed map assets ({source_pack}/{source_archive_name})",
             )
             extract = run_hidden(
@@ -836,7 +843,7 @@ def _deploy_standalone_map_dlc(
                 + ", ".join(str(path) for path in missing[:5])
             )
 
-        _report_progress(progress, 40, "Converting standalone map archives")
+        _report_progress(progress, 47, "Converting standalone map archives")
         convert = run_hidden(
             [
                 str(rpf_patcher), "open-rpfs", str(gta_path),
@@ -857,7 +864,7 @@ def _deploy_standalone_map_dlc(
             )
 
         output_rpf = work / "allin1_maps.dlc.rpf"
-        _report_progress(progress, 42, "Packaging standalone map support")
+        _report_progress(progress, 48, "Packaging standalone map support")
         proc = run_hidden(
             [
                 str(rpf_patcher), "build-dlc", str(dlc_root), str(output_rpf),
@@ -874,7 +881,7 @@ def _deploy_standalone_map_dlc(
         if not output_rpf.is_file() or output_rpf.stat().st_size == 0:
             raise RuntimeError("RpfPatcher build-dlc produced no map archive")
 
-        _report_progress(progress, 55, "Verifying standalone map support")
+        _report_progress(progress, 49, "Verifying standalone map support")
         verify = run_hidden(
             [
                 str(rpf_patcher), "verify-map-dlc", str(output_rpf),

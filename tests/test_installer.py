@@ -73,7 +73,7 @@ def test_deploy_script_copies_binaries_and_config(tmp_path, monkeypatch):
     assert (scripts / "LemonUI.SHVDN3.dll").read_bytes() == b"ui"
     assert (scripts / "ALLIN1.toml").exists()
     assert (scripts / "ALLIN1_vehicle_grounding.json").exists()
-    assert (scripts / "ALLIN1.version").read_text().strip() == "0.4.5"
+    assert (scripts / "ALLIN1.version").read_text().strip() == "0.4.6"
     assert not (scripts / "ALLIN1.ini").exists()
 
 
@@ -346,7 +346,8 @@ def test_install_orchestrates_steps_and_collects_preview_warning(tmp_path, monke
     monkeypatch.setattr(installer, "_remove_preview_pack", Mock(return_value=[]))
     monkeypatch.setattr(installer, "_remove_map_pack", Mock(return_value=[]))
     monkeypatch.setattr(installer, "_unpatch_dlclist_rpf", Mock())
-    monkeypatch.setattr(installer, "_deploy_standalone_map_dlc", Mock(return_value=True))
+    map_deploy = Mock(return_value=True)
+    monkeypatch.setattr(installer, "_deploy_standalone_map_dlc", map_deploy)
     monkeypatch.setattr(installer, "_deploy_preview_dlc", Mock(side_effect=RuntimeError("preview failed")))
     patch = Mock()
     monkeypatch.setattr(installer, "_patch_dlclist_rpf", patch)
@@ -357,9 +358,30 @@ def test_install_orchestrates_steps_and_collects_preview_warning(tmp_path, monke
     assert result.is_enhanced is True
     assert result.dll_deployed is True
     assert result.shvdn_found is False
+    assert result.standalone_maps_deployed is True
     assert result.battleye_status == "set"
     assert result.warnings == ["Preview texture injection failed: preview failed"]
+    map_deploy.assert_called_once_with(game, result, progress=None)
     patch.assert_not_called()
+
+
+def test_install_rejects_missing_required_standalone_map_pack(tmp_path, monkeypatch):
+    game = _game(tmp_path, enhanced=True)
+    config = Config.default()
+    config.general.gta_path = str(game)
+    for name, value in (
+        ("_clean_legacy_files", None), ("_deploy_script", True),
+        ("_check_scripthookv", True), ("_check_shvdn", True),
+        ("_check_openrpf", True), ("_remove_preview_pack", []),
+        ("_remove_map_pack", []), ("_unpatch_dlclist_rpf", None),
+    ):
+        monkeypatch.setattr(installer, name, Mock(return_value=value))
+    monkeypatch.setattr(
+        installer, "_deploy_standalone_map_dlc", Mock(return_value=False),
+    )
+
+    with pytest.raises(RuntimeError, match="garage interiors would be unavailable"):
+        installer.install(config, Mock())
 
 
 def test_install_deploys_default_enabled_rpf_previews(tmp_path, monkeypatch):

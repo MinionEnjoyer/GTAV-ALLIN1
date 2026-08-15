@@ -1,3 +1,36 @@
+# GTA V ALLIN1 0.4.6
+
+Version 0.4.6 is a focused GBAY and garage-packaging hotfix. It corrects the
+five Ammu-Nation armor previews, prevents repeat gear purchases, and ensures
+every install or repair restores the standalone map data required by the DLC
+garage interiors.
+
+## GBAY inventory and artwork
+
+- Realigned Super Light, Light, Standard, Heavy, and Super Heavy Armor with
+  their correct in-game Ammu-Nation vest artwork.
+- Fixed gear ownership normalization so a newly purchased item is recorded
+  before it is equipped. Already-owned gear can no longer deduct money again.
+- Added regression coverage for case-insensitive duplicate gear purchases.
+
+## Standalone garage maps
+
+- Restored verified `allin1_maps` generation and registration during every
+  install and repair. This fixes the Garment Factory and other DLC-backed
+  garages becoming unavailable after the previous pack was cleaned up.
+- Made a missing map pack a visible repair failure instead of silently
+  completing with unusable garage interiors.
+- Kept repair progress monotonic while locally extracting, converting,
+  packaging, and verifying the required assets from the player's GTA install.
+
+## Release
+
+- Bumped the desktop launcher and in-game client together to 0.4.6.
+- Rebuilt and verified the public release archive with the corrected client,
+  artwork, installer, and automated coverage.
+
+---
+
 # GTA V ALLIN1 0.4.5
 
 Version 0.4.5 is a garage-transition reliability release. It converts the

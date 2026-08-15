@@ -327,29 +327,20 @@ namespace ALLIN1
             {
                 if (!_state.TryGetValue(character, out Inventory inventory))
                     _state[character] = inventory = new Inventory();
-                List<string> list = gear ? inventory.gear : inventory.weapons;
-                if (list == null)
-                {
-                    list = new List<string>();
-                    if (gear) inventory.gear = list;
-                    else inventory.weapons = list;
-                }
-                bool alreadyOwned = false;
-                foreach (string owned in list)
-                    if (string.Equals(owned, item, StringComparison.OrdinalIgnoreCase))
-                    {
-                        alreadyOwned = true;
-                        break;
-                    }
-                if (!alreadyOwned) list.Add(item);
+                NormalizeInventory(inventory);
                 if (gear)
                 {
-                    NormalizeInventory(inventory);
-                    SetEquippedInMemory(inventory, item, true);
+                    // Normalize before adding ownership. Schema 7 intentionally
+                    // discards unequipped gear, so adding first would make the
+                    // normalizer erase a new purchase before it could be marked
+                    // equipped. That made every subsequent click look like a
+                    // first purchase and allowed repeated deductions.
+                    RecordOwnedGearInMemory(inventory, item);
                 }
                 else
                 {
-                    NormalizeInventory(inventory);
+                    if (!ContainsIgnoreCase(inventory.weapons, item))
+                        inventory.weapons.Add(item);
                     int ammo = Function.Call<int>(Hash.GET_AMMO_IN_PED_WEAPON,
                         Game.Player.Character.Handle, GetWeaponHash(item));
                     inventory.weapon_ammo[item] = Math.Max(0, ammo);
@@ -363,6 +354,18 @@ namespace ALLIN1
                 }
                 catch (Exception ex) { ClientLog.Error("Character", "inventory_save_failed", ex); }
             }
+        }
+
+        internal static bool RecordOwnedGearInMemory(
+            Inventory inventory, string item)
+        {
+            if (inventory == null || string.IsNullOrWhiteSpace(item))
+                return false;
+            NormalizeInventory(inventory);
+            bool added = !ContainsIgnoreCase(inventory.gear, item);
+            if (added) inventory.gear.Add(item);
+            SetEquippedInMemory(inventory, item, true);
+            return added;
         }
 
         internal static bool RecordPropertyOwned(string propertyId)

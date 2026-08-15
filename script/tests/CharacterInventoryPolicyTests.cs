@@ -40,6 +40,22 @@ namespace ALLIN1.Tests
         }
 
         [Fact]
+        public void Purchasing_gear_records_ownership_before_equipped_normalization()
+        {
+            var inventory = new CharacterInventory.Inventory();
+
+            Assert.True(CharacterInventory.RecordOwnedGearInMemory(
+                inventory, "ARMOR_SUPER_HEAVY"));
+            Assert.Contains("ARMOR_SUPER_HEAVY", inventory.gear);
+            Assert.Contains("ARMOR_SUPER_HEAVY", inventory.equipped_gear);
+
+            Assert.False(CharacterInventory.RecordOwnedGearInMemory(
+                inventory, "armor_super_heavy"));
+            Assert.Single(inventory.gear);
+            Assert.Single(inventory.equipped_gear);
+        }
+
+        [Fact]
         public void World_asset_catalog_keeps_yacht_out_of_vehicle_delivery()
         {
             Assert.True(WorldAssetList.IsWorldAsset(WorldAssetList.SuperYacht));
