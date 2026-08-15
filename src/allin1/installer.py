@@ -127,6 +127,7 @@ class InstallResult:
     shvdn_found: bool = False
     openrpf_found: bool = False
     rpf_previews_deployed: bool = False
+    standalone_maps_deployed: bool = False
     battleye_status: str = ""
     warnings: list[str] = field(default_factory=list)
 
@@ -191,11 +192,19 @@ def install(
     result.openrpf_found = _check_openrpf(gta_path, enhanced)
     _report_progress(progress, 38, "Dependencies verified")
 
-    # Remove any previous ALLIN1 preview pack before rebuilding it.  This also
-    # clears the registration when previews have been disabled.
+    # Rebuild ALLIN1-owned DLC registrations transactionally. The standalone
+    # map pack is useful even when artwork has been disabled.
     _remove_preview_pack(gta_path)
+    _remove_map_pack(gta_path)
     _unpatch_dlclist_rpf(gta_path)
-    _report_progress(progress, 45, "Preview registration refreshed")
+    _report_progress(progress, 43, "DLC registration refreshed")
+
+    # Standalone MP-map repacking remains an offline development experiment.
+    # Never register it from a public install/repair until an edition-specific
+    # pack has passed a real GTA startup test. Runtime map leases remain the
+    # safe compatibility path for garages and the yacht.
+    result.standalone_maps_deployed = False
+    _report_progress(progress, 49, "Map compatibility fallback enabled")
 
     if config.general.enable_rpf_previews:
         if not result.openrpf_found:
@@ -299,6 +308,7 @@ def uninstall(config: Config) -> list[Path]:
 
     # Remove the ALLIN1-owned preview DLC pack.
     removed.extend(_remove_preview_pack(gta_path))
+    removed.extend(_remove_map_pack(gta_path))
 
     # Unpatch dlclist.xml in mods/update/update.rpf (legacy cleanup)
     _unpatch_dlclist_rpf(gta_path)
@@ -733,12 +743,161 @@ def _deploy_preview_dlc(
 
         deployed_dir = dlc_previews.deploy_dlc_rpf(output_rpf, gta_path)
         _report_progress(progress, 90, "Registering preview DLC")
-        if not _patch_dlclist_rpf(gta_path, result):
+        if not _patch_dlclist_rpf(gta_path, result, "allin1_previews"):
             shutil.rmtree(deployed_dir, ignore_errors=True)
             raise RuntimeError(
                 "RpfPatcher patch failed; could not register the preview DLC in dlclist.xml"
             )
         log.info("Preview texture DLC built, verified, deployed, and registered")
+        return True
+
+
+def _deploy_standalone_map_dlc(
+    gta_path: Path,
+    result: InstallResult,
+    progress: InstallProgress | None = None,
+) -> bool:
+    """Build a local compatibility pack from the installed Rockstar RPFs.
+
+    The public ALLIN1 package contains no Rockstar map assets.  Required
+    entries are extracted from this GTA installation into a temporary staging
+    tree, rearranged under the ALLIN1 device, packed, and then discarded.
+    """
+    from allin1.generators import dlc_maps
+
+    rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
+    if not rpf_patcher.exists():
+        result.warnings.append(
+            "RpfPatcher.exe missing; standalone map support was not installed."
+        )
+        return False
+
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        dlc_root = dlc_maps.create_dlc_pack(work)
+        combined_manifest = work / "extract-all.tsv"
+        combined_manifest.write_text(
+            "".join(
+                f"{asset.source_path}\t{asset.destination_path}\n"
+                for asset in dlc_maps.MAP_ASSETS
+            ),
+            encoding="utf-8",
+        )
+        grouped_assets: dict[tuple[str, str], list[dlc_maps.MapAsset]] = {}
+        for asset in dlc_maps.MAP_ASSETS:
+            key = (asset.source_pack, asset.source_archive_name)
+            grouped_assets.setdefault(key, []).append(asset)
+
+        for index, (source_key, assets) in enumerate(grouped_assets.items()):
+            source_pack, source_archive_name = source_key
+            source_archive = assets[0].source_archive(gta_path)
+            if not source_archive.is_file():
+                raise RuntimeError(
+                    "Required GTA map archive is missing: "
+                    f"{source_archive}"
+                )
+            manifest = work / f"extract-{source_pack}-{source_archive_name}.tsv"
+            manifest.write_text(
+                "".join(
+                    f"{asset.source_path}\t{asset.destination_path}\n"
+                    for asset in assets
+                ),
+                encoding="utf-8",
+            )
+            _report_progress(
+                progress,
+                20 + int((index / max(len(grouped_assets), 1)) * 20),
+                f"Importing installed map assets ({source_pack}/{source_archive_name})",
+            )
+            extract = run_hidden(
+                [
+                    str(rpf_patcher), "extract-entries", str(gta_path),
+                    str(source_archive), str(manifest), str(dlc_root),
+                ],
+                capture_output=True, text=True, timeout=300,
+            )
+            if extract.stdout:
+                for line in extract.stdout.strip().splitlines():
+                    log.info("RpfPatcher: %s", line)
+            if extract.returncode != 0:
+                error_msg = (
+                    extract.stderr.strip() if extract.stderr
+                    else f"exit code {extract.returncode}"
+                )
+                raise RuntimeError(
+                    f"Could not import {source_pack} map assets: {error_msg}"
+                )
+
+        dlc_maps.filter_staged_proxy_assets(dlc_root)
+        missing = dlc_maps.validate_staged_assets(dlc_root)
+        if missing:
+            raise RuntimeError(
+                "Standalone map staging is incomplete: "
+                + ", ".join(str(path) for path in missing[:5])
+            )
+
+        _report_progress(progress, 40, "Converting standalone map archives")
+        convert = run_hidden(
+            [
+                str(rpf_patcher), "open-rpfs", str(gta_path),
+                str(combined_manifest), str(dlc_root),
+            ],
+            capture_output=True, text=True, timeout=300,
+        )
+        if convert.stdout:
+            for line in convert.stdout.strip().splitlines():
+                log.info("RpfPatcher: %s", line)
+        if convert.returncode != 0:
+            error_msg = (
+                convert.stderr.strip() if convert.stderr
+                else f"exit code {convert.returncode}"
+            )
+            raise RuntimeError(
+                f"Could not convert standalone map archives: {error_msg}"
+            )
+
+        output_rpf = work / "allin1_maps.dlc.rpf"
+        _report_progress(progress, 42, "Packaging standalone map support")
+        proc = run_hidden(
+            [
+                str(rpf_patcher), "build-dlc", str(dlc_root), str(output_rpf),
+                "--gta-path", str(gta_path),
+            ],
+            capture_output=True, text=True, timeout=600,
+        )
+        if proc.stdout:
+            for line in proc.stdout.strip().splitlines():
+                log.info("RpfPatcher: %s", line)
+        if proc.returncode != 0:
+            error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
+            raise RuntimeError(f"RpfPatcher build-dlc failed: {error_msg}")
+        if not output_rpf.is_file() or output_rpf.stat().st_size == 0:
+            raise RuntimeError("RpfPatcher build-dlc produced no map archive")
+
+        _report_progress(progress, 55, "Verifying standalone map support")
+        verify = run_hidden(
+            [
+                str(rpf_patcher), "verify-map-dlc", str(output_rpf),
+                str(combined_manifest),
+            ],
+            capture_output=True, text=True, timeout=300,
+        )
+        if verify.returncode != 0:
+            error_msg = (
+                verify.stderr.strip() if verify.stderr
+                else f"exit code {verify.returncode}"
+            )
+            raise RuntimeError(
+                f"RpfPatcher verify-map-dlc failed: {error_msg}"
+            )
+
+        deployed_dir = dlc_maps.deploy_dlc_rpf(output_rpf, gta_path)
+        if not _patch_dlclist_rpf(gta_path, result, "allin1_maps"):
+            shutil.rmtree(deployed_dir, ignore_errors=True)
+            raise RuntimeError(
+                "RpfPatcher patch failed; could not register allin1_maps"
+            )
+        log.info("Standalone map DLC built, deployed, and registered")
         return True
 
 
@@ -811,8 +970,19 @@ def _remove_preview_pack(gta_path: Path) -> list[Path]:
     return removed
 
 
-def _patch_dlclist_rpf(gta_path: Path, result: InstallResult) -> bool:
-    """Add allin1_previews to dlclist.xml inside mods/update/update.rpf.
+def _remove_map_pack(gta_path: Path) -> list[Path]:
+    """Remove only the ALLIN1-owned standalone map DLC directories."""
+    from allin1.generators import dlc_maps
+    removed = dlc_maps.remove_dlc_pack(gta_path)
+    for path in removed:
+        log.info("Removed standalone map DLC pack at %s", path)
+    return removed
+
+
+def _patch_dlclist_rpf(
+    gta_path: Path, result: InstallResult, pack_name: str = "allin1_previews",
+) -> bool:
+    """Add an ALLIN1-owned DLC pack to the mods dlclist.xml.
 
     This tells the game to load our DLC pack at boot so the texture
     dictionaries inside it are indexed and available for streaming.
@@ -826,14 +996,14 @@ def _patch_dlclist_rpf(gta_path: Path, result: InstallResult) -> bool:
 
     try:
         proc = run_hidden(
-            [str(rpf_patcher), "patch", str(gta_path)],
+            [str(rpf_patcher), "patch", str(gta_path), pack_name],
             capture_output=True, text=True, timeout=120,
         )
         if proc.stdout:
             for line in proc.stdout.strip().splitlines():
                 log.info("RpfPatcher: %s", line)
         if proc.returncode == 0:
-            log.info("Patched dlclist.xml with allin1_previews entry")
+            log.info("Patched dlclist.xml with %s entry", pack_name)
             return True
         else:
             error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"

@@ -60,6 +60,7 @@ REQUIRED_DLC_PACKS = [
 # Custom DLC packs shipped by ALLIN1.
 CUSTOM_DLC_PACKS = [
     "allin1_previews",  # Vehicle preview texture dictionaries for GBAY browser
+    "allin1_maps",      # Standalone registrations for ALLIN1-used MP interiors
 ]
 
 

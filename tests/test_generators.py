@@ -140,9 +140,11 @@ class TestDlclist:
         empty = "<SMandatoryPacksData/>"
         patched, added = patch_dlclist(empty)
         assert "allin1_previews" in added
+        assert "allin1_maps" in added
         unpatched, removed = unpatch_dlclist(patched)
-        assert removed == ["allin1_previews"]
+        assert removed == ["allin1_previews", "allin1_maps"]
         assert "allin1_previews" not in unpatched
+        assert "allin1_maps" not in unpatched
 
     def test_unpatch_without_paths_or_text_is_safe(self):
         source = "<SMandatoryPacksData/>"

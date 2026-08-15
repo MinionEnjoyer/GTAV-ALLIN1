@@ -116,8 +116,8 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   remain intact; the yacht IPL must stream without ON_ENTER_MP/ON_ENTER_SP.
 - On a clean install, confirm `scripts/ALLIN1_vehicle_grounding.json` contains
   the completed 827-model catalog and garages place a low sports car, an SUV,
-  and a motorcycle on their tires without hovering or clipping. Confirm F11 no
-  longer opens a developer tool and F10 remains the World Vector toggle.
+  and a motorcycle on their tires without hovering or clipping. Confirm F10
+  remains the World Vector toggle and F11 has no ALLIN1 runtime binding.
 - In My Garage, switch among Eclipse Garage, Harmony Garage, Davis Auto Shop,
   Garment Factory, Grapeseed Garage, and Paleto Bay Garage. Deliver a standard vehicle to the Garment Factory,
   sell it, restart, and confirm its save remains independent. Then switch among

@@ -133,6 +133,8 @@ def test_production_project_includes_only_supported_developer_tools():
     assert '<Compile Include="tools\\VehicleGroundingTool.cs" />' not in project
     assert '<Compile Include="tools\\SeatTestTool.cs" />' not in project
     assert project.count('<Compile Include="tools\\') == 1
+    assert not (ROOT / "script/src/GarageTraversalLab.cs").exists()
+    assert not (ROOT / "script/tests/GarageTraversalLabPolicyTests.cs").exists()
 
 
 def test_prebuilt_runtime_artifacts_are_present_and_nonempty():
@@ -600,7 +602,7 @@ def test_all_garage_entrances_fail_closed_during_story_missions():
     assert '"entry_blocked"' in garage
 
 
-def test_all_garages_block_unsafe_game_transitions_before_mp_map_switch():
+def test_all_garages_block_unsafe_game_transitions_before_local_map_load():
     garage = (ROOT / "script/src/GarageManager.cs").read_text()
     definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
     assert "GameTransitionActive" in definitions
@@ -614,8 +616,26 @@ def test_all_garages_block_unsafe_game_transitions_before_mp_map_switch():
     loader = garage[garage.index("private static bool LoadFloorGarageInterior"):
                     garage.index("private static void UnloadFloorGarageInterior")]
     assert loader.index("IsUnsafeGarageTransitionActive()") < loader.index(
-        "DlcMapState.Acquire(THREE_FLOOR_GARAGE)")
+        "StandaloneMapPack.TryActivate(FLOOR_GARAGE_REQUIRED_IPLS, 1500)")
+    assert "DlcMapState" not in loader
     assert "UnloadFloorGarageInterior();" in loader
+    assert "Hash.SET_FOCUS_POS_AND_VEL" in loader
+    assert 'FLOOR_GARAGE_INTERIOR_TYPE = "ba_dlc_int_02_ba"' in garage
+    assert "Hash.GET_INTERIOR_AT_COORDS_WITH_TYPE" in garage
+    assert "Hash.IS_VALID_INTERIOR" in garage
+    assert "Hash.DISABLE_INTERIOR, interior, true" in garage
+    assert "Hash.PIN_INTERIOR_IN_MEMORY" in garage
+    assert "Hash.DISABLE_INTERIOR, interior, false" in garage
+    assert "Hash.SET_INTERIOR_ACTIVE, interior, true" in garage
+    assert "Hash.CAP_INTERIOR, interior, false" in garage
+    assert "Hash.SET_INSTANCE_PRIORITY_MODE, true" in loader
+    assert "Hash.SET_INSTANCE_PRIORITY_MODE, false" in loader
+    assert "Hash.REQUEST_COLLISION_AT_COORD" in loader
+    assert "Hash.IS_INTERIOR_READY" in loader
+    assert "TryProbeInteriorFloor" in loader
+    assert "interiorReady && floorCollisionReady" in loader
+    assert "GarageInteriorReadinessPolicy.IsUsable" not in loader
+    assert "Hash.REMOVE_IPL" not in loader
 
     entry = garage[garage.index("private static void EnterFloorGarageCore"):
                    garage.index("private static void LeaveFloorGarage()")]
@@ -659,7 +679,8 @@ def test_grapeseed_entry_streams_the_explicit_six_car_milo():
 
     assert '"hw1_blimp_interior_v_garagem_milo_"' in rural
     assert '"v_garagem",' not in rural
-    assert "new Vector3(199.9716f, -999.6678f, -99.0000f)" in rural
+    assert "new Vector3(206.3603f, -999.0687f, -99.0000f)" in rural
+    assert "RURAL_INTERIOR_PED_HEADING = 90f" in rural
     assert "Hash.REQUEST_IPL" in loader
     assert "Hash.SET_FOCUS_POS_AND_VEL" in loader
     assert "Hash.REQUEST_COLLISION_AT_COORD" in loader
@@ -719,10 +740,8 @@ def test_paleto_bay_garage_uses_native_casino_layout_and_full_integration():
     assert "ALLIN1_paleto_garage.json" in installer
     assert "ALLIN1_paleto_garage.json" in diagnostics
 
-    paleto_definition = definitions[definitions.index("GarageDefinition Paleto"):]
-    assert "requiresMultiplayerMap: true" in paleto_definition
-    assert "DlcMapState.Acquire(PALETO_GARAGE)" in paleto
-    assert "DlcMapState.Release(PALETO_GARAGE)" in paleto
+    assert "RequiresMultiplayerMap" not in definitions
+    assert "DlcMapState" not in paleto
     assert "GarageInteriorReadinessPolicy.IsUsable" in paleto
     assert "PALETO_INTERIOR_FALLBACK_SETTLE_MS" in paleto
     assert "ON_ENTER_MP" not in paleto
@@ -736,33 +755,36 @@ def test_traffic_protects_safehouse_storage_without_excluding_all_parked_cars():
     assert "PLAYER_INTERACTION_PROTECTION_MS" in traffic
     assert "hadDriver" not in traffic[traffic.index("IsEligibleForReplacement"):
                                       traffic.index("ReplaceVehicle")]
-def test_dlc_garages_restore_story_map_and_interior_furniture_on_exit():
+def test_dlc_garages_use_only_local_story_map_assets():
     definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
-    state = (ROOT / "script/src/DlcMapState.cs").read_text()
     garage = (ROOT / "script/src/GarageManager.cs").read_text()
     davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
     paleto = (ROOT / "script/src/GarageManager.Paleto.cs").read_text()
     garment = (ROOT / "script/src/GarageManager.GarmentFactory.cs").read_text()
     rural = (ROOT / "script/src/GarageManager.Rural.cs").read_text()
-    assert definitions.count("requiresMultiplayerMap: true") == 4
-    assert "0x0888C3502DBBEEF5" in state  # ON_ENTER_MP
-    assert "0xD7C10C4A637992C9" in state  # ON_ENTER_SP
-    assert '"multiplayer_map_acquired"' in state
-    assert '"story_map_restored"' in state
-    assert "DlcMapState.Acquire(THREE_FLOOR_GARAGE)" in garage
-    assert "DlcMapState.Release(THREE_FLOOR_GARAGE)" in garage
-    assert "DlcMapState.Acquire(DAVIS_GARAGE)" in davis
-    assert "DlcMapState.Release(DAVIS_GARAGE)" in davis
-    assert "DlcMapState.Acquire(GARMENT_GARAGE)" in garment
-    assert "DlcMapState.Release(GARMENT_GARAGE)" in garment
-    assert "DlcMapState.Acquire(PALETO_GARAGE)" in paleto
-    assert "DlcMapState.Release(PALETO_GARAGE)" in paleto
-    assert "DlcMapState.Acquire(RURAL_GARAGE)" not in rural
-    assert "DlcMapState.Release(RURAL_GARAGE)" not in rural
+    standalone = (ROOT / "script/src/StandaloneMapPack.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    assert "RequiresMultiplayerMap" not in definitions
+    assert not (ROOT / "script/src/DlcMapState.cs").exists()
+    for source in (garage, davis, garment, paleto, rural, shop):
+        assert "DlcMapState" not in source
+        assert "0x0888C3502DBBEEF5" not in source  # ON_ENTER_MP
+        assert "0xD7C10C4A637992C9" not in source  # ON_ENTER_SP
+    assert "allin1_maps" in standalone
+    assert "allin1_maps.active" in standalone
+    assert "Hash.IS_IPL_ACTIVE" in standalone
+    assert "Hash.REQUEST_IPL" in standalone
+    assert "StandaloneMapPack.TryActivate(FLOOR_GARAGE_REQUIRED_IPLS, 1500)" in garage
+    assert "StandaloneMapPack.TryActivate(DAVIS_AUTO_SHOP_IPLS, 1500)" in davis
+    assert "StandaloneMapPack.TryActivate(GARMENT_IPLS)" in garment
+    assert "StandaloneMapPack.TryActivate(PALETO_IPLS)" in paleto
+    assert "StandaloneMapPack.TryActivate(RURAL_IPLS)" in rural
     assert "UnloadFloorGarageInterior();" in garage
     assert "UnloadDavisAutoShopInterior();" in davis
-    assert "0x0888C3502DBBEEF5" not in garage
-    assert "0x0888C3502DBBEEF5" not in davis
+    assert "standalone map unavailable" in garage
+    assert "standalone map unavailable" in davis
+    assert "standalone map unavailable" in garment
+    assert "standalone map unavailable" in paleto
 
 
 def test_issue_five_playtest_regressions_are_guarded():
@@ -894,10 +916,11 @@ def test_gbay_world_property_purchase_bypasses_vehicle_delivery():
     assert "RequestWorld();" in yacht
     assert "_nextStreamCheck = Game.GameTime + 1000" in yacht
     assert "YachtStreamingPolicy.ShouldAcquire" in yacht
-    # Distance streaming must not toggle the global MP/SP map state. Those
-    # transitions cause visible loading screens and can hide Story interiors.
-    assert "DlcMapState.Acquire" not in yacht
-    assert "DlcMapState.Release" not in yacht
+    assert "StandaloneMapPack.TryActivate(RequiredIpls, 1500)" in yacht
+    assert 'private static readonly string[] RequiredIpls' in yacht
+    assert "DlcMapState" not in yacht
+    assert "_activationBlockedUntilExit" in yacht
+    assert '"standalone_map_unavailable"' in yacht
     assert "Hash.SET_INSTANCE_PRIORITY_MODE" not in yacht
     assert "IS_IPL_ACTIVE" in yacht
 
@@ -1016,9 +1039,11 @@ def test_floor_garage_drive_in_is_visible_and_markers_match_character():
     assert "_pendingSellGarageLocation" in browser
     assert "RemoveFloorGarageVehicle(listIndex)" in shop
     assert "private static bool FloorGarageSave()" in garage
-    fade = garage.index('Log("EnterFloorGarage: fading in")')
-    confirmation = garage.index("ShowSubtitle(storedConfirmation", fade)
-    assert confirmation > fade
+    entry = garage[garage.index("private static void EnterFloorGarageCore"):
+                   garage.index("private static void LeaveFloorGarage()")]
+    ready = entry.index("CompleteGarageBlackTransition(")
+    confirmation = entry.index("ShowSubtitle(storedConfirmation", ready)
+    assert confirmation > ready
 
 
 def test_gbay_gear_store_is_reachable_and_uses_captured_previews():
@@ -1138,7 +1163,11 @@ def test_davis_auto_shop_is_a_separate_persistent_ten_car_garage():
     assert "new Vector3(215.0502f, -1461.0250f, 29.1847f)" in garage
     assert "new Vector3(-1357.6240f, 153.2929f, -99.1942f)" in garage
     assert "DAVIS_INTERIOR_PED_HEADING = 0f" in garage
-    assert '"tr_tuner_shop_rancho"' in garage
+    assert '"tr_int_placement_tr_interior_0_tuner_mod_garage_milo_"' in garage
+    assert "DAVIS_INTERIOR_LOAD_TIMEOUT_MS" in garage
+    assert "Hash.SET_FOCUS_POS_AND_VEL" in garage
+    assert "Hash.IS_INTERIOR_READY" in garage
+    assert "GarageInteriorReadinessPolicy.IsUsable" in garage
     assert '"entity_set_style_9"' in garage
     assert garage.count('"entity_set_style_9"') >= 2
     assert "private const int DAVIS_SLOT_COUNT = 10" in garage
@@ -1176,24 +1205,41 @@ def test_legacy_garages_use_finished_harmony_sets_and_model_aware_placement():
     assert "GetGarageSizeTier" in manager
     assert "width > 3.4f || length > 8.5f" in manager
     assert "GET_MODEL_DIMENSIONS" in manager
-    assert 'new[] { "Int02_ba_floor01", "Int02_ba_floor02", "Int02_ba_floor03",' in manager
-    assert '"Int02_ba_floor04", "Int02_ba_floor05"' in manager
-    assert '"Int02_ba_sec_upgrade_grg"' in manager
-    assert '"Int02_ba_equipment_upgrade"' in manager
-    assert '"Int02_ba_sec_desks_L1", "Int02_ba_sec_desks_L2345"' in manager
-    assert '"Int02_ba_clutterstuff"' in manager
+    assert 'new[] { "int02_ba_floor01", "int02_ba_floor02", "int02_ba_floor03",' in manager
+    assert '"int02_ba_floor04", "int02_ba_floor05"' in manager
+    assert '"int02_ba_sec_upgrade_grg"' in manager
+    assert '"int02_ba_equipment_upgrade"' in manager
+    assert '"int02_ba_sec_desks_l1", "int02_ba_sec_desks_l2345"' in manager
+    assert '"int02_ba_clutterstuff"' in manager
     for invalid_set in (
         "Int02_ba_Style01", "Int02_ba_walls_01",
         "Int02_ba_decor_01", "Int02_ba_trad_lights",
     ):
         assert invalid_set not in manager
-    apply_sets = manager[manager.index("private static void ApplyFloorEntitySets"):]
+    apply_sets = manager[manager.index("private static bool ApplyFloorEntitySets"):]
     assert apply_sets.index("DEACTIVATE_INTERIOR_ENTITY_SET") < apply_sets.index(
         "ACTIVATE_INTERIOR_ENTITY_SET")
-    assert '"Int02_ba_sec_upgrade_grg"' in apply_sets
-    assert '"Int02_ba_equipment_upgrade"' in apply_sets
-    assert '"Int02_ba_clutterstuff"' in apply_sets
-    assert 'floor == 0 ? "Int02_ba_sec_desks_L1"' in apply_sets
+    assert "FLOOR_GARAGE_FIXED_ENTITY_SETS" in apply_sets
+    assert '"int02_ba_sec_upgrade_grg"' in manager
+    assert '"int02_ba_equipment_upgrade"' in manager
+    assert '"int02_ba_clutterstuff"' in manager
+    assert '? "int02_ba_sec_desks_l1"' in apply_sets
+    assert '"int02_ba_deskpc"' in manager
+    assert '"int02_ba_sec_upgrade_strg"' in manager
+    assert '"int02_ba_sec_upgrade_desk"' in manager
+    assert '"int02_ba_sec_upgrade_desk02"' in manager
+    assert "0x35F7DD45E8C0A16D" in apply_sets
+    assert "FLOOR_GARAGE_ENTITY_SET_SETTLE_MS" in apply_sets
+    assert "ValidateFloorEntitySets" in apply_sets
+    assert "WaitForFloorGaragePlayerInterior" in manager
+    assert "Hash.GET_ROOM_KEY_FROM_ENTITY" in manager
+    assert "Hash.GET_ROOM_KEY_FOR_GAME_VIEWPORT" in manager
+    assert "Hash.IS_COLLISION_MARKED_OUTSIDE" in manager
+    assert "GarageRoomAttachmentPolicy.IsAttached" in manager
+    assert "new Vector3(-1507.721f, -3011.700f, -80.2419f)" in manager
+    assert "post-teleport interior=" in manager
+    assert 'BeginGarageBlackTransition("SwitchFloorGarageFloor")' in manager[
+        manager.index("private static void SwitchFloorGarageFloor"):]
     assert "private const int FLOOR_GARAGE_FLOOR_COUNT = 5" in manager
     assert "FLOOR_GARAGE_FLOOR_COUNT * FLOOR_GARAGE_SLOTS_PER_FLOOR" in manager
     assert "BuildFloorGarageSlots()" in manager
@@ -1204,6 +1250,35 @@ def test_legacy_garages_use_finished_harmony_sets_and_model_aware_placement():
     assert "if (!davisGarage)" in customize
     assert manager.count("new ParkingSlot(-1517.0f") == 5
     assert manager.count("-80.2422f)") == 5
+
+
+def test_all_garage_transitions_hold_black_until_destination_is_ready():
+    manager = (ROOT / "script/src/GarageManager.cs").read_text()
+    davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
+    garment = (ROOT / "script/src/GarageManager.GarmentFactory.cs").read_text()
+    rural = (ROOT / "script/src/GarageManager.Rural.cs").read_text()
+    paleto = (ROOT / "script/src/GarageManager.Paleto.cs").read_text()
+
+    assert "private static void BeginGarageBlackTransition" in manager
+    assert "private static void CompleteGarageBlackTransition" in manager
+    assert "Hash.IS_SCREEN_FADED_OUT" in manager
+    assert "GARAGE_DESTINATION_STABLE_MS" in manager
+    assert "Hash.HAS_COLLISION_LOADED_AROUND_ENTITY" in manager
+    assert "AreGarageVehiclesReady" in manager
+
+    expected = {
+        manager: ("EnterGarage", "LeaveGarage",
+                  "EnterFloorGarage", "LeaveFloorGarage",
+                  "SwitchFloorGarageFloor"),
+        davis: ("EnterDavisGarage", "LeaveDavisGarage"),
+        garment: ("EnterGarmentGarage", "LeaveGarmentGarage"),
+        rural: ("EnterRuralGarage", "LeaveRuralGarage"),
+        paleto: ("EnterPaletoGarage", "LeavePaletoGarage"),
+    }
+    for source, transitions in expected.items():
+        for transition in transitions:
+            assert f'BeginGarageBlackTransition("{transition}")' in source
+            assert f'"{transition}", player' in source
 
 
 def test_garment_factory_uses_native_ten_car_layout_and_shared_grounding():
@@ -1257,6 +1332,9 @@ def test_every_garage_vehicle_exit_restores_full_drivability():
     helper = manager[start:manager.index("private static bool TryProbeParkingFloor", start)]
 
     for operation in (
+        "SET_FOCUS_POS_AND_VEL",
+        "REQUEST_COLLISION_AT_COORD",
+        "HAS_COLLISION_LOADED_AROUND_ENTITY",
         "SET_VEHICLE_HANDBRAKE",
         "SET_VEHICLE_UNDRIVEABLE",
         "FREEZE_ENTITY_POSITION",
@@ -1264,14 +1342,44 @@ def test_every_garage_vehicle_exit_restores_full_drivability():
         "ACTIVATE_PHYSICS",
         "SET_VEHICLE_ON_GROUND_PROPERLY",
         "SET_VEHICLE_ENGINE_ON",
+        "CLEAR_FOCUS",
     ):
         assert operation in helper
     assert helper.index("SET_VEHICLE_HANDBRAKE") < helper.index("ACTIVATE_PHYSICS")
+    assert helper.index("HAS_COLLISION_LOADED_AROUND_ENTITY") < helper.index(
+        "FREEZE_ENTITY_POSITION"
+    )
     assert manager.count("ReleaseGarageVehicleForDriving(") == 3  # helper + Eclipse + Harmony
     assert "ReleaseGarageVehicleForDriving(playerVehicle" in davis
     assert "ReleaseGarageVehicleForDriving(playerVehicle" in garment
     assert "ReleaseGarageVehicleForDriving(playerVehicle" in rural
     assert "ReleaseGarageVehicleForDriving(playerVehicle" in paleto
+
+    davis_leave = davis[
+        davis.index("private static void LeaveDavisGarageCore"):
+        davis.index("private static bool LoadDavisAutoShopInterior")
+    ]
+    garment_leave = garment[
+        garment.index("private static void LeaveGarmentGarageCore"):
+        garment.index("private static bool LoadGarmentInterior")
+    ]
+    paleto_leave = paleto[
+        paleto.index("private static void LeavePaletoGarageCore"):
+        paleto.index("private static bool LoadPaletoInterior")
+    ]
+    harmony_leave = manager[
+        manager.index("private static void LeaveFloorGarageCore"):
+        manager.index("//  Floor Garage Helpers")
+    ]
+    for leave, unload in (
+        (davis_leave, "UnloadDavisAutoShopInterior"),
+        (garment_leave, "UnloadGarmentInterior"),
+        (paleto_leave, "UnloadPaletoInterior"),
+        (harmony_leave, "UnloadFloorGarageInterior"),
+    ):
+        assert leave.index(unload) < leave.index(
+            "ReleaseGarageVehicleForDriving(playerVehicle"
+        )
 
 
 def test_rpf_diagnostics_distinguish_plugin_from_asi_host_and_disabled_state():

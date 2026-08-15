@@ -65,7 +65,6 @@ namespace ALLIN1
         {
             GarageManager.OnScriptAborted();
             YachtManager.Shutdown();
-            DlcMapState.ReleaseAll("script_aborted");
         }
 
         // ------------------------------------------------------------------ //

@@ -30,14 +30,17 @@ namespace ALLIN1
             new Vector3(-1357.6240f, 153.2929f, -99.1942f);
         private const float DAVIS_INTERIOR_PED_HEADING = 0f;
 
+        // This is the actual Auto Shop MILO placement name in mptuner's
+        // int_placement_tr.rpf. The five tr_tuner_shop_* names are exterior
+        // location aliases and never become active for this shared interior.
         private static readonly string[] DAVIS_AUTO_SHOP_IPLS =
         {
-            "tr_tuner_shop_burton",
-            "tr_tuner_shop_mesa",
-            "tr_tuner_shop_mission",
-            "tr_tuner_shop_rancho",
-            "tr_tuner_shop_strawberry",
+            "tr_int_placement_tr_interior_0_tuner_mod_garage_milo_",
         };
+        private static readonly Vector3 DAVIS_INTERIOR_CENTER =
+            new Vector3(-1350f, 160f, -100f);
+        private const int DAVIS_INTERIOR_LOAD_TIMEOUT_MS = 5000;
+        private const int DAVIS_INTERIOR_FALLBACK_SETTLE_MS = 1000;
 
         // Mission boards and the permanent shop fixtures are kept active for
         // every layout.  The purchasable/decorative variants below are applied
@@ -454,6 +457,7 @@ namespace ALLIN1
             Ped player = Game.Player.Character;
             Vehicle rideInToDelete = null;
             string confirmation = null;
+            bool interiorLoaded = false;
 
             if (player.IsInVehicle())
             {
@@ -474,12 +478,20 @@ namespace ALLIN1
                     }
                     int slotIndex = FindEmptyDavisSlot(list);
                     if (slotIndex < 0) return;
+                    if (!LoadDavisAutoShopInterior())
+                    {
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~r~The Davis Auto Shop map pack could not be loaded.", 4000);
+                        return;
+                    }
+                    interiorLoaded = true;
                     StoredVehicle stored = CaptureVehicleState(
                         rideIn, modelName, slotIndex);
                     list.Add(stored);
                     if (!DavisSave())
                     {
                         list.Remove(stored);
+                        UnloadDavisAutoShopInterior();
                         GTA.UI.Screen.ShowSubtitle(
                             "~r~The vehicle could not be saved.", 3000);
                         return;
@@ -492,11 +504,16 @@ namespace ALLIN1
                 }
             }
 
-            LoadDavisAutoShopInterior();
+            if (!interiorLoaded && !LoadDavisAutoShopInterior())
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~The Davis Auto Shop map pack could not be loaded.", 4000);
+                return;
+            }
+
             ClearDavisHandles();
             _isPlayerInDavisGarage = true;
-            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            Script.Wait(600);
+            BeginGarageBlackTransition("EnterDavisGarage");
 
             player.IsPositionFrozen = true;
             Function.Call(Hash.SET_ENTITY_COORDS, player,
@@ -509,7 +526,9 @@ namespace ALLIN1
             SpawnDavisGarageVehicles();
             player.IsPositionFrozen = false;
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
-            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+            CompleteGarageBlackTransition(
+                "EnterDavisGarage", player, null,
+                () => IsPlayerInReadyInterior(player), _davisHandles);
             if (!string.IsNullOrEmpty(confirmation))
                 GTA.UI.Screen.ShowSubtitle(confirmation, 4000);
             Log("EnterDavisGarage: COMPLETE");
@@ -558,8 +577,16 @@ namespace ALLIN1
             }
 
             ClearDavisHandles();
-            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            Script.Wait(600);
+            BeginGarageBlackTransition("LeaveDavisGarage");
+
+            // Keep the player and ride inert while restoring the exterior
+            // world. Releasing the MP map after the teleport creates a gap
+            // where the vehicle has physics but the street has no collision.
+            player.IsPositionFrozen = true;
+            if (playerVehicle != null)
+                playerVehicle.IsPositionFrozen = true;
+            UnloadDavisAutoShopInterior();
+            Script.Wait(250);
 
             if (playerVehicle != null)
             {
@@ -586,37 +613,94 @@ namespace ALLIN1
             DavisSave();
             _isPlayerInDavisGarage = false;
             _davisExitCooldownFrames = 60;
-            UnloadDavisAutoShopInterior();
-            Script.Wait(500);
-            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+            CompleteGarageBlackTransition(
+                "LeaveDavisGarage", player, playerVehicle,
+                () => Function.Call<int>(
+                    Hash.GET_INTERIOR_FROM_ENTITY, player) == 0);
             Log("LeaveDavisGarage: COMPLETE");
         }
 
-        private static void LoadDavisAutoShopInterior()
+        private static bool LoadDavisAutoShopInterior()
         {
-            DlcMapState.Acquire(DAVIS_GARAGE);
-            Script.Wait(500);
-            foreach (string ipl in DAVIS_AUTO_SHOP_IPLS)
-                Function.Call(Hash.REQUEST_IPL, ipl);
-            Script.Wait(1000);
-
-            int interior = Function.Call<int>(
-                Hash.GET_INTERIOR_AT_COORDS, -1350f, 160f, -100f);
-            if (interior == 0)
+            bool focusSet = false;
+            try
             {
-                Log("LoadDavisAutoShopInterior: WARNING - interior not found");
-                return;
+                if (!StandaloneMapPack.TryActivate(DAVIS_AUTO_SHOP_IPLS, 1500))
+                {
+                    Log("LoadDavisAutoShopInterior: standalone map unavailable");
+                    return false;
+                }
+
+                Function.Call(Hash.SET_FOCUS_POS_AND_VEL,
+                    DAVIS_INTERIOR_CENTER.X, DAVIS_INTERIOR_CENTER.Y,
+                    DAVIS_INTERIOR_CENTER.Z, 0f, 0f, 0f);
+                focusSet = true;
+
+                int startedAt = Game.GameTime;
+                int interior = 0;
+                bool interiorReady = false;
+                bool iplActive = false;
+                int firstResolvedAt = -1;
+                while (Game.GameTime - startedAt < DAVIS_INTERIOR_LOAD_TIMEOUT_MS)
+                {
+                    foreach (string ipl in DAVIS_AUTO_SHOP_IPLS)
+                        Function.Call(Hash.REQUEST_IPL, ipl);
+                    Function.Call(Hash.REQUEST_COLLISION_AT_COORD,
+                        DAVIS_INTERIOR_CENTER.X, DAVIS_INTERIOR_CENTER.Y,
+                        DAVIS_INTERIOR_CENTER.Z);
+
+                    interior = Function.Call<int>(Hash.GET_INTERIOR_AT_COORDS,
+                        DAVIS_INTERIOR_CENTER.X, DAVIS_INTERIOR_CENTER.Y,
+                        DAVIS_INTERIOR_CENTER.Z);
+                    if (interior != 0)
+                    {
+                        Function.Call(Hash.DISABLE_INTERIOR, interior, false);
+                        Function.Call(Hash.PIN_INTERIOR_IN_MEMORY, interior);
+                        Function.Call(Hash.REFRESH_INTERIOR, interior);
+                        interiorReady = Function.Call<bool>(
+                            Hash.IS_INTERIOR_READY, interior);
+                        if (firstResolvedAt < 0)
+                            firstResolvedAt = Game.GameTime;
+                    }
+                    else firstResolvedAt = -1;
+
+                    iplActive = true;
+                    foreach (string ipl in DAVIS_AUTO_SHOP_IPLS)
+                        iplActive &= Function.Call<bool>(Hash.IS_IPL_ACTIVE, ipl);
+                    int resolvedForMs = firstResolvedAt < 0 ? 0
+                        : Game.GameTime - firstResolvedAt;
+                    if (GarageInteriorReadinessPolicy.IsUsable(
+                        interior, true, iplActive, interiorReady,
+                        resolvedForMs, DAVIS_INTERIOR_FALLBACK_SETTLE_MS))
+                    {
+                        ApplyDavisAutoShopCustomization(interior);
+                        Log($"LoadDavisAutoShopInterior: interior={interior} ready " +
+                            $"readySignal={interiorReady} iplActive={iplActive} " +
+                            $"elapsed={Game.GameTime - startedAt}ms");
+                        return true;
+                    }
+                    Script.Wait(100);
+                }
+
+                Log($"LoadDavisAutoShopInterior: FAILED interior={interior} " +
+                    $"interiorReady={interiorReady} iplActive={iplActive}");
             }
-            ApplyDavisAutoShopCustomization(interior);
-            Log($"LoadDavisAutoShopInterior: interior={interior} configured");
+            catch (Exception ex)
+            {
+                LogException("LoadDavisAutoShopInterior", ex);
+            }
+            finally
+            {
+                if (focusSet) Function.Call(Hash.CLEAR_FOCUS);
+            }
+            UnloadDavisAutoShopInterior();
+            return false;
         }
 
         private static void UnloadDavisAutoShopInterior()
         {
-            if (!DlcMapState.IsAcquired(DAVIS_GARAGE)) return;
             foreach (string ipl in DAVIS_AUTO_SHOP_IPLS)
                 Function.Call(Hash.REMOVE_IPL, ipl);
-            DlcMapState.Release(DAVIS_GARAGE);
         }
 
         private static void ApplyDavisAutoShopCustomization(int interior)

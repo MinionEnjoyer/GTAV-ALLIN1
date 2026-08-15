@@ -279,6 +279,8 @@ namespace ALLIN1
             Ped player = Game.Player.Character;
             Vehicle rideInToDelete = null;
             string confirmation = null;
+            bool interiorLoaded = false;
+
             if (player.IsInVehicle())
             {
                 Vehicle rideIn = player.CurrentVehicle;
@@ -297,12 +299,20 @@ namespace ALLIN1
                     }
                     int slotIndex = FindEmptyGarmentSlot(list);
                     if (slotIndex < 0) return;
+                    if (!LoadGarmentInterior())
+                    {
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~r~The Garment Factory map pack could not be loaded.", 4000);
+                        return;
+                    }
+                    interiorLoaded = true;
                     StoredVehicle stored = CaptureVehicleState(
                         rideIn, modelName, slotIndex);
                     list.Add(stored);
                     if (!GarmentSave())
                     {
                         list.Remove(stored);
+                        UnloadGarmentInterior();
                         GTA.UI.Screen.ShowSubtitle(
                             "~r~The vehicle could not be saved.", 3000);
                         return;
@@ -315,11 +325,16 @@ namespace ALLIN1
                 }
             }
 
-            LoadGarmentInterior();
+            if (!interiorLoaded && !LoadGarmentInterior())
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~The Garment Factory map pack could not be loaded.", 4000);
+                return;
+            }
+
             ClearGarmentHandles();
             _isPlayerInGarmentGarage = true;
-            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            Script.Wait(600);
+            BeginGarageBlackTransition("EnterGarmentGarage");
             player.IsPositionFrozen = true;
             Function.Call(Hash.SET_ENTITY_COORDS, player,
                 GARMENT_INTERIOR_PED.X, GARMENT_INTERIOR_PED.Y,
@@ -332,7 +347,9 @@ namespace ALLIN1
             SpawnGarmentGarageVehicles();
             player.IsPositionFrozen = false;
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
-            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+            CompleteGarageBlackTransition(
+                "EnterGarmentGarage", player, null,
+                () => IsPlayerInReadyInterior(player), _garmentHandles);
             if (!string.IsNullOrEmpty(confirmation))
                 GTA.UI.Screen.ShowSubtitle(confirmation, 4000);
         }
@@ -372,8 +389,14 @@ namespace ALLIN1
             }
 
             ClearGarmentHandles();
-            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            Script.Wait(600);
+            BeginGarageBlackTransition("LeaveGarmentGarage");
+
+            player.IsPositionFrozen = true;
+            if (playerVehicle != null)
+                playerVehicle.IsPositionFrozen = true;
+            UnloadGarmentInterior();
+            Script.Wait(250);
+
             if (playerVehicle != null)
             {
                 List<StoredVehicle> list = GetGarmentGarageStoredVehicles();
@@ -397,15 +420,19 @@ namespace ALLIN1
             GarmentSave();
             _isPlayerInGarmentGarage = false;
             _garmentExitCooldownFrames = 60;
-            UnloadGarmentInterior();
-            Script.Wait(500);
-            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+            CompleteGarageBlackTransition(
+                "LeaveGarmentGarage", player, playerVehicle,
+                () => Function.Call<int>(
+                    Hash.GET_INTERIOR_FROM_ENTITY, player) == 0);
         }
 
-        private static void LoadGarmentInterior()
+        private static bool LoadGarmentInterior()
         {
-            DlcMapState.Acquire(GARMENT_GARAGE);
-            Script.Wait(500);
+            if (!StandaloneMapPack.TryActivate(GARMENT_IPLS))
+            {
+                Log("LoadGarmentInterior: standalone map unavailable");
+                return false;
+            }
             foreach (string ipl in GARMENT_IPLS)
                 Function.Call(Hash.REQUEST_IPL, ipl);
             Script.Wait(1000);
@@ -415,16 +442,17 @@ namespace ALLIN1
             {
                 Function.Call(Hash.REFRESH_INTERIOR, interior);
                 Function.Call(Hash.PIN_INTERIOR_IN_MEMORY, interior);
+                return true;
             }
-            else Log("LoadGarmentInterior: WARNING - interior not found");
+            Log("LoadGarmentInterior: WARNING - interior not found");
+            UnloadGarmentInterior();
+            return false;
         }
 
         private static void UnloadGarmentInterior()
         {
-            if (!DlcMapState.IsAcquired(GARMENT_GARAGE)) return;
             foreach (string ipl in GARMENT_IPLS)
                 Function.Call(Hash.REMOVE_IPL, ipl);
-            DlcMapState.Release(GARMENT_GARAGE);
         }
 
         private static ParkingSlot ResolveGarmentSlot(StoredVehicle stored)

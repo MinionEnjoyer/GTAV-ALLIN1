@@ -54,6 +54,10 @@ FORBIDDEN_NAMES = frozenset({
 
 TOOL_SOURCE_SUFFIXES = frozenset({".cs", ".csproj", ".pdb"})
 
+FORBIDDEN_RUNTIME_DEV_FILES = frozenset({
+    "GarageTraversalLab.cs",
+})
+
 
 @dataclass(frozen=True)
 class ReleaseReport:
@@ -163,6 +167,16 @@ def validate_version_consistency(root: Path, version: str = __version__) -> Rele
         raise ValueError(
             "only WorldVectorTool.cs may remain in "
             f"script/tools: {tool_sources}"
+        )
+
+    runtime_dev_files = sorted(
+        path.name for path in (root / "script" / "src").glob("*.cs")
+        if path.name in FORBIDDEN_RUNTIME_DEV_FILES
+    )
+    if runtime_dev_files:
+        raise ValueError(
+            "retired runtime developer tools must not be compiled into a "
+            f"public client: {runtime_dev_files}"
         )
 
     return ReleaseReport(version, 0, 0)

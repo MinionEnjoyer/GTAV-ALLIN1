@@ -50,7 +50,7 @@ def test_status_reports_complete_legacy_install(tmp_path):
     assert status.openrpf_installed is True
     assert status.rpf_loader_status == "Installed (file validated)"
     assert status.installed_version == "0.2.0"
-    assert status.manager_version == "0.4.4"
+    assert status.manager_version == "0.4.5"
 
 
 def test_status_reports_invalid_manual_path(tmp_path):

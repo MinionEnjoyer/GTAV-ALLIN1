@@ -24,12 +24,10 @@ namespace ALLIN1
             new Vector3(2553.4590f, 4650.6360f, 34.0768f);
         private const float RURAL_PED_ENTRANCE_HEADING = 90f;
 
-        // Verified safe point inside the native six-car shell. The interior
-        // door marker can be moved to its final doorway vector after the
-        // visible shell has been playtested.
+        // Native pedestrian exit at the six-car garage's internal door.
         private static readonly Vector3 RURAL_INTERIOR_PED =
-            new Vector3(199.9716f, -999.6678f, -99.0000f);
-        private const float RURAL_INTERIOR_PED_HEADING = 0f;
+            new Vector3(206.3603f, -999.0687f, -99.0000f);
+        private const float RURAL_INTERIOR_PED_HEADING = 90f;
         private const float RURAL_FLOOR_Z = -100.0000f;
         private static readonly Vector3 RURAL_INTERIOR_CENTER =
             new Vector3(199.9716f, -999.6678f, -99.0000f);
@@ -333,8 +331,7 @@ namespace ALLIN1
             }
             ClearRuralHandles();
             _isPlayerInRuralGarage = true;
-            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            Script.Wait(600);
+            BeginGarageBlackTransition("EnterRuralGarage");
             player.IsPositionFrozen = true;
             Function.Call(Hash.SET_ENTITY_COORDS, player,
                 RURAL_INTERIOR_PED.X, RURAL_INTERIOR_PED.Y,
@@ -347,7 +344,9 @@ namespace ALLIN1
             SpawnRuralGarageVehicles();
             player.IsPositionFrozen = false;
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
-            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+            CompleteGarageBlackTransition(
+                "EnterRuralGarage", player, null,
+                () => IsPlayerInReadyInterior(player), _ruralHandles);
             if (!string.IsNullOrEmpty(confirmation))
                 GTA.UI.Screen.ShowSubtitle(confirmation, 4000);
         }
@@ -387,8 +386,7 @@ namespace ALLIN1
             }
 
             ClearRuralHandles();
-            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            Script.Wait(600);
+            BeginGarageBlackTransition("LeaveRuralGarage");
             if (playerVehicle != null)
             {
                 List<StoredVehicle> list = GetRuralGarageStoredVehicles();
@@ -414,7 +412,10 @@ namespace ALLIN1
             _ruralExitCooldownFrames = 60;
             UnloadRuralInterior();
             Script.Wait(500);
-            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+            CompleteGarageBlackTransition(
+                "LeaveRuralGarage", player, playerVehicle,
+                () => Function.Call<int>(
+                    Hash.GET_INTERIOR_FROM_ENTITY, player) == 0);
         }
 
         private static bool LoadRuralInterior()
@@ -427,6 +428,7 @@ namespace ALLIN1
                 // accept a merely resolved interior ID unless the actual MILO
                 // IPL is active; the old behavior admitted the player into an
                 // unloaded void below the map.
+                StandaloneMapPack.TryActivate(RURAL_IPLS);
                 foreach (string ipl in RURAL_IPLS)
                     Function.Call(Hash.REQUEST_IPL, ipl);
 

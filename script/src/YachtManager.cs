@@ -19,6 +19,11 @@ namespace ALLIN1
         internal static readonly Vector3 WorldPosition =
             new Vector3(-2027.946f, -1036.695f, 6.707587f);
 
+        private static readonly string[] RequiredIpls =
+        {
+            "hei_yacht_heist",
+        };
+
         private static readonly string[] Ipls =
         {
             "hei_yacht_heist",
@@ -33,6 +38,7 @@ namespace ALLIN1
 
         private static int _nextStreamCheck;
         private static bool _worldRequested;
+        private static bool _activationBlockedUntilExit;
 
         // The base shell supplies the helipad collision. Supplemental room and
         // lighting IPLs can settle later and must not block aircraft delivery.
@@ -61,6 +67,7 @@ namespace ALLIN1
         {
             RemoveWorld();
             _worldRequested = false;
+            _activationBlockedUntilExit = false;
             GarageManager.OnYachtWorldUnloaded();
         }
 
@@ -71,6 +78,16 @@ namespace ALLIN1
 
             float distance = player.Position.DistanceTo(WorldPosition);
             bool acquired = _worldRequested;
+
+            // A missing or incomplete local map pack must fail closed. Never
+            // switch the whole session to the Online map as a fallback: that
+            // creates global loading zones and can strand Story Mode.
+            if (_activationBlockedUntilExit)
+            {
+                if (distance <= ReleaseDistance) return;
+                _activationBlockedUntilExit = false;
+            }
+
             bool shouldAcquire = YachtStreamingPolicy.ShouldAcquire(
                 acquired, distance, AcquireDistance, ReleaseDistance);
 
@@ -78,11 +95,12 @@ namespace ALLIN1
             {
                 if (!acquired)
                 {
-                    // The yacht is an Online IPL, but REQUEST_IPL can stream
-                    // it directly in Story Mode. Do not call ON_ENTER_MP here:
-                    // changing the global map context while the player crosses
-                    // this radius causes a loading screen and can suppress
-                    // Story-only furniture and interiors elsewhere.
+                    if (!StandaloneMapPack.TryActivate(RequiredIpls, 1500))
+                    {
+                        _activationBlockedUntilExit = true;
+                        ClientLog.Warn("Yacht", "standalone_map_unavailable");
+                        return;
+                    }
                     _worldRequested = true;
                     ClientLog.Info("Yacht", "streaming_entered", new Dictionary<string, object>
                     {

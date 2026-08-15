@@ -1,3 +1,36 @@
+# GTA V ALLIN1 0.4.5
+
+Version 0.4.5 is a garage-transition reliability release. It converts the
+remaining multiplayer-dependent garage map data into standalone ALLIN1 packs,
+stabilizes Harmony's five-floor interior, and keeps transitions hidden until
+the destination is genuinely ready.
+
+## Garage transition reliability
+
+- Added standalone map-pack generation, installation, health checks, and
+  repair support for DLC-backed Story Mode garages without enabling the global
+  multiplayer map state.
+- Standardized every garage entry, exit, and Harmony floor switch on a shared
+  black-screen transition that waits for the destination interior, room,
+  collision, and stored vehicles to remain ready before fading in.
+- Moved Harmony's player arrival away from the elevator room boundary, restored
+  all five floor shells and fixed detail sets, and made failed floor switches
+  recover safely outside instead of exposing unloaded geometry.
+- Hardened vehicle grounding and exterior release so stored vehicles regain
+  collision, physics, controls, and a valid floor before the transition ends.
+- Corrected the Davis, Garment Factory, Grapeseed, Paleto Bay, and yacht map
+  leases and transition anchors uncovered by the full garage traversal pass.
+
+## Release cleanup
+
+- Bumped the desktop launcher and in-game client together to 0.4.5.
+- Removed the temporary F11 garage traversal laboratory and its test-only
+  runtime surface. F10 World Vector remains the sole production developer tool.
+- Kept logs, caches, test files, source-only tools, debug symbols, local
+  configuration, and build workspaces out of the checksum-verified public ZIP.
+
+---
+
 # GTA V ALLIN1 0.4.4
 
 Version 0.4.4 expands the persistent garage network, adds the purchasable Galaxy

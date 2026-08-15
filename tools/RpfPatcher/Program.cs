@@ -11,6 +11,7 @@
 //   RpfPatcher.exe verify-dlc   <dlc_rpf> <ytd_folder>      — verify a preview DLC and its dictionaries
 //   RpfPatcher.exe convert-gen9 <ytd_folder>              — convert .ytd files from Legacy to Enhanced format
 //   RpfPatcher.exe inspect      <gta_path> <rpf_path>    — dump RPF structure + XML contents
+//   RpfPatcher.exe extract-entries <gta_path> <rpf_path> <manifest_tsv> <output_root>
 //   RpfPatcher.exe audit-seats  <gta_path> <output_json> [output_cs]
 
 using System;
@@ -27,7 +28,12 @@ namespace RpfPatcher
 {
     class Program
     {
-        private const string DLC_ENTRY = "dlcpacks:/allin1_previews/";
+        private static readonly Dictionary<string, string> OwnedDlcEntries =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "allin1_previews", "dlcpacks:/allin1_previews/" },
+                { "allin1_maps", "dlcpacks:/allin1_maps/" },
+            };
 
         static int Main(string[] args)
         {
@@ -42,12 +48,15 @@ namespace RpfPatcher
                     "  RpfPatcher.exe unpatch      <gta_path>\n" +
                     "  RpfPatcher.exe build-dlc    <loose_folder> <output_rpf> [--embed-rpf <src> <dest>]\n" +
                     "  RpfPatcher.exe verify-dlc   <dlc_rpf> <ytd_folder>\n" +
+                    "  RpfPatcher.exe verify-map-dlc <dlc_rpf> <manifest_tsv>\n" +
                     "  RpfPatcher.exe convert-gen9 <ytd_folder>\n" +
                     "  RpfPatcher.exe inspect      <gta_path> <rpf_path>\n" +
                     "  RpfPatcher.exe audit-seats  <gta_path> <output_json> [output_cs]\n" +
                     "  RpfPatcher.exe build-ytd    <dds_folder> <output_ytd> [legacy|gen9]\n" +
                     "  RpfPatcher.exe unpack-ytd   <ytd_path> <output_folder> [legacy|gen9]\n" +
                     "  RpfPatcher.exe extract-entry <gta_path> <rpf_path> <name> <output>\n" +
+                    "  RpfPatcher.exe extract-entries <gta_path> <rpf_path> <manifest_tsv> <output_root>\n" +
+                    "  RpfPatcher.exe open-rpfs <gta_path> <manifest_tsv> <output_root>\n" +
                     "  RpfPatcher.exe dump-ytd      <ytd_path> [legacy|gen9]");
                 return 1;
             }
@@ -64,6 +73,8 @@ namespace RpfPatcher
                 return BuildDlc(args);
             if (command == "verify-dlc")
                 return VerifyDlc(args);
+            if (command == "verify-map-dlc")
+                return VerifyMapDlc(args);
             if (command == "convert-gen9")
                 return ConvertGen9(args);
             if (command == "inspect")
@@ -76,6 +87,10 @@ namespace RpfPatcher
                 return UnpackYtd(args);
             if (command == "extract-entry")
                 return ExtractEntry(args);
+            if (command == "extract-entries")
+                return ExtractEntries(args);
+            if (command == "open-rpfs")
+                return OpenRpfs(args);
             if (command == "dump-ytd")
                 return DumpYtd(args);
             if (command == "patch" || command == "unpatch")
@@ -478,7 +493,7 @@ namespace RpfPatcher
             {
                 Console.Error.WriteLine(
                     "Usage: RpfPatcher.exe build-dlc <loose_folder> <output_rpf> " +
-                    "[--embed-rpf <src_folder> <dest_path>]");
+                    "[--embed-rpf <src_folder> <dest_path>] [--gta-path <path>]");
                 return 1;
             }
 
@@ -488,6 +503,7 @@ namespace RpfPatcher
             // Parse optional --embed-rpf flag
             string embedSrcFolder = null;
             string embedDestPath = null;
+            string gtaKeysPath = null;
 
             for (int i = 3; i < args.Length; i++)
             {
@@ -496,6 +512,11 @@ namespace RpfPatcher
                     embedSrcFolder = args[i + 1];
                     embedDestPath = args[i + 2];
                     i += 2;
+                }
+                else if (args[i] == "--gta-path" && i + 1 < args.Length)
+                {
+                    gtaKeysPath = args[i + 1];
+                    i += 1;
                 }
             }
 
@@ -513,6 +534,14 @@ namespace RpfPatcher
 
             try
             {
+                if (gtaKeysPath != null)
+                {
+                    bool isGen9 = File.Exists(
+                                      Path.Combine(gtaKeysPath, "GTA5_Enhanced.exe"))
+                               || File.Exists(Path.Combine(gtaKeysPath, "eboot.bin"));
+                    GTA5Keys.LoadFromPath(gtaKeysPath, isGen9, null);
+                    Console.WriteLine("Loaded GTA encryption keys for nested RPFs.");
+                }
                 byte[] innerRpfBytes = null;
 
                 // Phase 1: Build inner RPF as standalone file if requested
@@ -848,9 +877,20 @@ namespace RpfPatcher
                 PrintTree(rpf, "", rpf.Root);
                 Console.WriteLine();
 
-                // Extract and print XML files
+                // Extract and print XML files, plus MLO entity-set names from
+                // YTYP resources. The latter is useful when auditing native
+                // interiors: ACTIVATE_INTERIOR_ENTITY_SET requires the exact
+                // name stored in the archetype rather than the drawable name.
                 if (rpf.AllEntries != null)
                 {
+                    var assetNamesByHash = rpf.AllEntries
+                        .OfType<RpfFileEntry>()
+                        .Where(file => !string.IsNullOrEmpty(file.Name))
+                        .Select(file => Path.GetFileNameWithoutExtension(file.Name)
+                            .ToLowerInvariant())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .GroupBy(name => JenkHash.GenHash(name))
+                        .ToDictionary(group => group.Key, group => group.First());
                     foreach (var entry in rpf.AllEntries.OfType<RpfFileEntry>())
                     {
                         if (entry.Name == null) continue;
@@ -874,6 +914,75 @@ namespace RpfPatcher
                             catch (Exception ex)
                             {
                                 Console.WriteLine($"(extract failed: {ex.Message})");
+                            }
+                            Console.WriteLine();
+                        }
+                        else if (lower.EndsWith(".ytyp"))
+                        {
+                            Console.WriteLine($"--- MLO entity sets: {entry.Path} ---");
+                            try
+                            {
+                                byte[] data = entry.File.ExtractFile(entry);
+                                var ytyp = new YtypFile(entry);
+                                ytyp.Load(data, entry);
+                                bool foundMlo = false;
+                                foreach (var mlo in (ytyp.AllArchetypes ?? Array.Empty<Archetype>())
+                                    .OfType<MloArchetype>())
+                                {
+                                    foundMlo = true;
+                                    Console.WriteLine($"MLO {mlo.Name}");
+                                    foreach (var set in mlo.entitySets ?? Array.Empty<MCMloEntitySet>())
+                                    {
+                                        Console.WriteLine($"  {set.Name} ({set.Entities?.Length ?? 0} entities)");
+                                        foreach (var entity in set.Entities ?? Array.Empty<MCEntityDef>())
+                                        {
+                                            var position = entity.Data.position;
+                                            uint archetypeHash = entity.Data.archetypeName.Hash;
+                                            string archetypeName = assetNamesByHash.TryGetValue(
+                                                archetypeHash, out string resolvedName)
+                                                ? resolvedName
+                                                : archetypeHash.ToString();
+                                            Console.WriteLine(
+                                                $"    {archetypeName} " +
+                                                $"at ({position.X:F3}, {position.Y:F3}, {position.Z:F3})");
+                                        }
+                                    }
+                                }
+                                if (!foundMlo)
+                                    Console.WriteLine("(no MLO archetypes)");
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"(YTYP parse failed: {ex.Message})");
+                            }
+                            Console.WriteLine();
+                        }
+                        else if (lower.EndsWith(".ymap"))
+                        {
+                            Console.WriteLine($"--- MLO instances: {entry.Path} ---");
+                            try
+                            {
+                                byte[] data = entry.File.ExtractFile(entry);
+                                var ymap = new YmapFile(entry);
+                                ymap.Load(data, entry);
+                                bool foundMlo = false;
+                                foreach (var entity in ymap.AllEntities ?? Array.Empty<YmapEntityDef>())
+                                {
+                                    if (!entity.IsMlo || entity.MloInstance == null) continue;
+                                    foundMlo = true;
+                                    Console.WriteLine(
+                                        $"MLO {entity.CEntityDef.archetypeName} at " +
+                                        $"({entity.Position.X:F3}, {entity.Position.Y:F3}, {entity.Position.Z:F3})");
+                                    foreach (var set in entity.MloInstance.defaultEntitySets
+                                        ?? Array.Empty<MetaHash>())
+                                        Console.WriteLine($"  default {set.Hash}");
+                                }
+                                if (!foundMlo)
+                                    Console.WriteLine("(no MLO instances)");
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"(YMAP parse failed: {ex.Message})");
                             }
                             Console.WriteLine();
                         }
@@ -1175,6 +1284,201 @@ namespace RpfPatcher
             }
         }
 
+        // Extract a manifest of entries while scanning the large source RPF
+        // only once. Each non-empty TSV line is: source/path<TAB>dest/path.
+        static int ExtractEntries(string[] args)
+        {
+            if (args.Length < 5)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe extract-entries <gta_path> <rpf_path> <manifest_tsv> <output_root>");
+                return 1;
+            }
+
+            string gtaPath = args[1];
+            string rpfPath = args[2];
+            string manifestPath = args[3];
+            string outputRoot = Path.GetFullPath(args[4]);
+            if (!File.Exists(rpfPath) || !File.Exists(manifestPath))
+            {
+                Console.Error.WriteLine("ERROR: Source RPF or extraction manifest not found.");
+                return 4;
+            }
+
+            try
+            {
+                var requests = File.ReadAllLines(manifestPath)
+                    .Where(line => !string.IsNullOrWhiteSpace(line)
+                        && !line.TrimStart().StartsWith("#"))
+                    .Select(line => line.Split(new[] { '\t' }, 2))
+                    .ToArray();
+                if (requests.Length == 0 || requests.Any(parts => parts.Length != 2))
+                {
+                    Console.Error.WriteLine(
+                        "ERROR: Extraction manifest is empty or malformed.");
+                    return 4;
+                }
+
+                bool isGen9 = File.Exists(Path.Combine(gtaPath, "GTA5_Enhanced.exe"))
+                           || File.Exists(Path.Combine(gtaPath, "eboot.bin"));
+                GTA5Keys.LoadFromPath(gtaPath, isGen9, null);
+                var rpf = new RpfFile(rpfPath, rpfPath);
+                rpf.ScanStructure(null,
+                    err => Console.Error.WriteLine($"RPF scan warning: {err}"));
+
+                string archivePrefix = Path.GetFullPath(rpfPath)
+                    .Replace('\\', '/').TrimEnd('/') + "/";
+                string outputPrefix = outputRoot.TrimEnd(
+                    Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    + Path.DirectorySeparatorChar;
+                var destinations = new HashSet<string>(
+                    StringComparer.OrdinalIgnoreCase);
+                int extracted = 0;
+
+                foreach (string[] request in requests)
+                {
+                    string source = request[0].Replace('\\', '/').TrimStart('/');
+                    string relativeDestination = request[1]
+                        .Replace('/', Path.DirectorySeparatorChar)
+                        .TrimStart(Path.DirectorySeparatorChar);
+                    string destination = Path.GetFullPath(
+                        Path.Combine(outputRoot, relativeDestination));
+                    if (!destination.StartsWith(
+                            outputPrefix, StringComparison.OrdinalIgnoreCase)
+                        || !destinations.Add(destination))
+                    {
+                        Console.Error.WriteLine(
+                            $"ERROR: Unsafe or duplicate destination: {request[1]}");
+                        return 4;
+                    }
+
+                    var matches = rpf.AllEntries?
+                        .OfType<RpfFileEntry>()
+                        .Where(entry => string.Equals(
+                            entry.Path.Replace('\\', '/').StartsWith(
+                                archivePrefix, StringComparison.OrdinalIgnoreCase)
+                                ? entry.Path.Replace('\\', '/').Substring(
+                                    archivePrefix.Length)
+                                : entry.Path.Replace('\\', '/'),
+                            source, StringComparison.OrdinalIgnoreCase))
+                        .ToArray() ?? Array.Empty<RpfFileEntry>();
+                    if (matches.Length != 1)
+                    {
+                        Console.Error.WriteLine(
+                            $"ERROR: Expected one match for {source}; found {matches.Length}.");
+                        return 5;
+                    }
+
+                    byte[] data = matches[0].File.ExtractFile(matches[0]);
+                    if (data == null || data.Length == 0)
+                    {
+                        Console.Error.WriteLine($"ERROR: Extracted entry was empty: {source}");
+                        return 5;
+                    }
+                    if (matches[0] is RpfResourceFileEntry resourceEntry)
+                    {
+                        data = ResourceBuilder.AddResourceHeader(
+                            resourceEntry, ResourceBuilder.Compress(data));
+                    }
+                    string parent = Path.GetDirectoryName(destination);
+                    if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
+                    File.WriteAllBytes(destination, data);
+                    extracted++;
+                    Console.WriteLine(
+                        $"Extracted {source} -> {request[1]} ({data.Length:N0} bytes)");
+                }
+
+                Console.WriteLine($"Extracted {extracted} entries from {rpfPath}.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 99;
+            }
+        }
+
+        // Rewrite staged game-owned nested RPFs to Open encryption. This is
+        // required when moving them under a different DLC device/mount path.
+        static int OpenRpfs(string[] args)
+        {
+            if (args.Length < 4)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe open-rpfs <gta_path> <manifest_tsv> <output_root>");
+                return 1;
+            }
+
+            string gtaPath = args[1];
+            string manifestPath = args[2];
+            string outputRoot = Path.GetFullPath(args[3]);
+            if (!File.Exists(manifestPath) || !Directory.Exists(outputRoot))
+            {
+                Console.Error.WriteLine("ERROR: Manifest or staging root not found.");
+                return 4;
+            }
+
+            try
+            {
+                bool isGen9 = File.Exists(Path.Combine(gtaPath, "GTA5_Enhanced.exe"))
+                           || File.Exists(Path.Combine(gtaPath, "eboot.bin"));
+                GTA5Keys.LoadFromPath(gtaPath, isGen9, null);
+                string outputPrefix = outputRoot.TrimEnd(
+                    Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    + Path.DirectorySeparatorChar;
+                string[] destinations = File.ReadAllLines(manifestPath)
+                    .Where(line => !string.IsNullOrWhiteSpace(line)
+                        && !line.TrimStart().StartsWith("#"))
+                    .Select(line => line.Split(new[] { '\t' }, 2))
+                    .Where(parts => parts.Length == 2
+                        && parts[1].EndsWith(".rpf", StringComparison.OrdinalIgnoreCase))
+                    .Select(parts => parts[1])
+                    .ToArray();
+                if (destinations.Length == 0)
+                {
+                    Console.Error.WriteLine("ERROR: Manifest contains no nested RPFs.");
+                    return 4;
+                }
+
+                int converted = 0;
+                foreach (string relative in destinations)
+                {
+                    string path = Path.GetFullPath(Path.Combine(
+                        outputRoot,
+                        relative.Replace('/', Path.DirectorySeparatorChar)
+                            .TrimStart(Path.DirectorySeparatorChar)));
+                    if (!path.StartsWith(outputPrefix, StringComparison.OrdinalIgnoreCase)
+                        || !File.Exists(path))
+                    {
+                        Console.Error.WriteLine(
+                            $"ERROR: Unsafe or missing staged RPF: {relative}");
+                        return 4;
+                    }
+
+                    var rpf = new RpfFile(path, path);
+                    rpf.ScanStructure(null,
+                        err => Console.Error.WriteLine($"RPF scan warning: {err}"));
+                    RpfFile.EnsureValidEncryption(rpf, null, false);
+                    if (!RpfFile.IsValidEncryption(rpf, false))
+                    {
+                        Console.Error.WriteLine(
+                            $"ERROR: Could not convert staged RPF to Open: {relative}");
+                        return 5;
+                    }
+                    converted++;
+                    Console.WriteLine($"Converted staged RPF to Open: {relative}");
+                }
+
+                Console.WriteLine($"Converted {converted} staged RPFs to Open encryption.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: Open RPF conversion failed: {ex.Message}");
+                return 99;
+            }
+        }
+
         static int DumpYtd(string[] args)
         {
             if (args.Length < 2)
@@ -1223,6 +1527,111 @@ namespace RpfPatcher
             finally
             {
                 RpfManager.IsGen9 = previous;
+            }
+        }
+
+        static int VerifyMapDlc(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe verify-map-dlc <dlc_rpf> <manifest_tsv>");
+                return 1;
+            }
+
+            string dlcPath = args[1];
+            string manifestPath = args[2];
+            if (!File.Exists(dlcPath) || !File.Exists(manifestPath))
+            {
+                Console.Error.WriteLine("ERROR: Map DLC or manifest not found.");
+                return 4;
+            }
+
+            try
+            {
+                var expected = File.ReadAllLines(manifestPath)
+                    .Where(line => !string.IsNullOrWhiteSpace(line)
+                        && !line.TrimStart().StartsWith("#"))
+                    .Select(line => line.Split(new[] { '\t' }, 2))
+                    .ToArray();
+                if (expected.Length == 0 || expected.Any(parts => parts.Length != 2))
+                {
+                    Console.Error.WriteLine("ERROR: Map manifest is empty or malformed.");
+                    return 4;
+                }
+
+                var rpf = new RpfFile(dlcPath, dlcPath);
+                rpf.ScanStructure(null,
+                    err => Console.Error.WriteLine($"RPF scan warning: {err}"));
+                if (FindFileRecursive(rpf, "content.xml") == null
+                    || FindFileRecursive(rpf, "setup2.xml") == null)
+                {
+                    Console.Error.WriteLine(
+                        "ERROR: Map DLC is missing content.xml or setup2.xml.");
+                    return 5;
+                }
+
+                string archivePrefix = Path.GetFullPath(dlcPath)
+                    .Replace('\\', '/').TrimEnd('/') + "/";
+                foreach (string[] request in expected)
+                {
+                    string destination = request[1].Replace('\\', '/').TrimStart('/');
+                    var matches = rpf.AllEntries?
+                        .OfType<RpfFileEntry>()
+                        .Where(entry => string.Equals(
+                            entry.Path.Replace('\\', '/').StartsWith(
+                                archivePrefix, StringComparison.OrdinalIgnoreCase)
+                                ? entry.Path.Replace('\\', '/').Substring(
+                                    archivePrefix.Length)
+                                : entry.Path.Replace('\\', '/'),
+                            destination, StringComparison.OrdinalIgnoreCase))
+                        .ToArray() ?? Array.Empty<RpfFileEntry>();
+                    if (matches.Length != 1)
+                    {
+                        Console.Error.WriteLine(
+                            $"ERROR: Expected one packed entry for {destination}; found {matches.Length}.");
+                        return 5;
+                    }
+
+                    byte[] data = matches[0].File.ExtractFile(matches[0]);
+                    if (data == null || data.Length == 0)
+                    {
+                        Console.Error.WriteLine($"ERROR: Packed entry is empty: {destination}");
+                        return 5;
+                    }
+                    if (destination.EndsWith(".rpf", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string temporary = Path.Combine(
+                            Path.GetTempPath(), $"allin1-map-verify-{Guid.NewGuid():N}.rpf");
+                        try
+                        {
+                            File.WriteAllBytes(temporary, data);
+                            var nested = new RpfFile(temporary, temporary);
+                            nested.ScanStructure(null,
+                                err => Console.Error.WriteLine(
+                                    $"Nested RPF scan warning: {err}"));
+                            if (nested.Encryption != RpfEncryption.OPEN)
+                            {
+                                Console.Error.WriteLine(
+                                    $"ERROR: Packed nested archive is not Open: {destination}");
+                                return 5;
+                            }
+                        }
+                        finally
+                        {
+                            if (File.Exists(temporary)) File.Delete(temporary);
+                        }
+                    }
+                }
+
+                Console.WriteLine(
+                    $"Verified standalone map DLC: {expected.Length} local assets present.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: Map DLC verification failed: {ex.Message}");
+                return 7;
             }
         }
 
@@ -1282,7 +1691,7 @@ namespace RpfPatcher
                 // --- Patch or unpatch ---
                 bool modified;
                 if (command == "patch")
-                    modified = PatchDlcList(paths);
+                    modified = PatchDlcList(paths, args.Skip(2).ToArray());
                 else
                     modified = UnpatchDlcList(paths);
 
@@ -1318,21 +1727,40 @@ namespace RpfPatcher
             }
         }
 
-        private static bool PatchDlcList(XElement paths)
+        private static bool PatchDlcList(XElement paths, string[] requested)
         {
-            foreach (var item in paths.Elements("Item"))
+            string[] packs = requested != null && requested.Length > 0
+                ? requested
+                : new[] { "allin1_previews" };
+            foreach (string pack in packs)
             {
-                string text = item.Value?.Trim().TrimEnd('/').ToLower() ?? "";
-                if (text.Contains("allin1_previews"))
+                if (!OwnedDlcEntries.ContainsKey(pack))
                 {
-                    Console.WriteLine("Entry 'allin1_previews' already present in dlclist.xml.");
-                    return false;
+                    Console.Error.WriteLine(
+                        $"ERROR: Refusing to register unowned DLC pack '{pack}'.");
+                    throw new ArgumentException($"Unknown ALLIN1 DLC pack: {pack}");
                 }
             }
 
-            paths.Add(new XElement("Item", DLC_ENTRY));
-            Console.WriteLine($"Added '{DLC_ENTRY}' to dlclist.xml.");
-            return true;
+            bool modified = false;
+            foreach (string pack in packs.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                string entry = OwnedDlcEntries[pack];
+                bool exists = paths.Elements("Item").Any(item =>
+                    string.Equals(
+                        item.Value?.Trim().TrimEnd('/'),
+                        entry.TrimEnd('/'),
+                        StringComparison.OrdinalIgnoreCase));
+                if (exists)
+                {
+                    Console.WriteLine($"Entry '{pack}' already present in dlclist.xml.");
+                    continue;
+                }
+                paths.Add(new XElement("Item", entry));
+                Console.WriteLine($"Added '{entry}' to dlclist.xml.");
+                modified = true;
+            }
+            return modified;
         }
 
         private static RpfFileEntry FindFileRecursive(RpfFile rpf, string fileName)
@@ -1364,7 +1792,7 @@ namespace RpfPatcher
                 .Where(item =>
                 {
                     string text = item.Value?.Trim().TrimEnd('/').ToLower() ?? "";
-                    return text.Contains("allin1_previews");
+                    return OwnedDlcEntries.Keys.Any(name => text.Contains(name));
                 })
                 .ToList();
 
@@ -1375,9 +1803,9 @@ namespace RpfPatcher
             }
 
             if (removed)
-                Console.WriteLine("Removed 'allin1_previews' entry from dlclist.xml.");
+                Console.WriteLine("Removed ALLIN1-owned DLC entries from dlclist.xml.");
             else
-                Console.WriteLine("Entry 'allin1_previews' not found in dlclist.xml.");
+                Console.WriteLine("No ALLIN1-owned DLC entries found in dlclist.xml.");
 
             return removed;
         }

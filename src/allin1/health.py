@@ -135,6 +135,15 @@ def scan_installation(gta_path: Path, *, expected_hashes: dict[str, str] | None 
                 "The ALLIN1 preview DLC is incomplete; run Install / Repair.",
                 str(preview_dir),
             ))
+    maps_dir = gta_path / "mods/update/x64/dlcpacks/allin1_maps"
+    if maps_dir.exists():
+        maps_rpf = maps_dir / "dlc.rpf"
+        if not maps_rpf.is_file() or maps_rpf.stat().st_size == 0:
+            issues.append(HealthIssue(
+                "standalone_map_dlc_invalid", "error",
+                "The ALLIN1 standalone map DLC is incomplete; run Install / Repair.",
+                str(maps_dir),
+            ))
     archive_names = ("update.rpf", "update2.rpf") if edition == "enhanced" else ("update.rpf",)
     for archive_name in archive_names:
         mods_update = gta_path / "mods/update" / archive_name

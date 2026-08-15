@@ -73,7 +73,7 @@ def test_deploy_script_copies_binaries_and_config(tmp_path, monkeypatch):
     assert (scripts / "LemonUI.SHVDN3.dll").read_bytes() == b"ui"
     assert (scripts / "ALLIN1.toml").exists()
     assert (scripts / "ALLIN1_vehicle_grounding.json").exists()
-    assert (scripts / "ALLIN1.version").read_text().strip() == "0.4.4"
+    assert (scripts / "ALLIN1.version").read_text().strip() == "0.4.5"
     assert not (scripts / "ALLIN1.ini").exists()
 
 
@@ -344,7 +344,9 @@ def test_install_orchestrates_steps_and_collects_preview_warning(tmp_path, monke
     monkeypatch.setattr(installer, "_check_shvdn", Mock(return_value=False))
     monkeypatch.setattr(installer, "_check_openrpf", Mock(return_value=True))
     monkeypatch.setattr(installer, "_remove_preview_pack", Mock(return_value=[]))
+    monkeypatch.setattr(installer, "_remove_map_pack", Mock(return_value=[]))
     monkeypatch.setattr(installer, "_unpatch_dlclist_rpf", Mock())
+    monkeypatch.setattr(installer, "_deploy_standalone_map_dlc", Mock(return_value=True))
     monkeypatch.setattr(installer, "_deploy_preview_dlc", Mock(side_effect=RuntimeError("preview failed")))
     patch = Mock()
     monkeypatch.setattr(installer, "_patch_dlclist_rpf", patch)
@@ -368,6 +370,7 @@ def test_install_deploys_default_enabled_rpf_previews(tmp_path, monkeypatch):
         ("_clean_legacy_files", None), ("_deploy_script", True),
         ("_check_scripthookv", True), ("_check_shvdn", True),
         ("_check_openrpf", True), ("_remove_preview_pack", []),
+        ("_remove_map_pack", []), ("_deploy_standalone_map_dlc", True),
         ("_unpatch_dlclist_rpf", None),
     ):
         monkeypatch.setattr(installer, name, Mock(return_value=value))

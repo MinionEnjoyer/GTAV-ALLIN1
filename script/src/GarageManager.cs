@@ -749,7 +749,6 @@ namespace ALLIN1
                     Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
                     player.IsPositionFrozen = false;
                 }
-                Function.Call(Hash.DO_SCREEN_FADE_IN, 250);
             }
             catch (Exception ex)
             {
@@ -757,6 +756,99 @@ namespace ALLIN1
             }
             _transitionInProgress = false;
             Log($"{name}: transition lock released");
+        }
+
+        private const int GARAGE_FADE_TIMEOUT_MS = 1500;
+        private const int GARAGE_DESTINATION_TIMEOUT_MS = 8000;
+        private const int GARAGE_DESTINATION_STABLE_MS = 250;
+
+        private static void BeginGarageBlackTransition(string name)
+        {
+            if (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT))
+                Function.Call(Hash.DO_SCREEN_FADE_OUT, 350);
+
+            int startedAt = Game.GameTime;
+            while (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT) &&
+                Game.GameTime - startedAt < GARAGE_FADE_TIMEOUT_MS)
+                Script.Wait(0);
+
+            if (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT))
+            {
+                Function.Call(Hash.DO_SCREEN_FADE_OUT, 0);
+                Script.Wait(0);
+            }
+            Log($"{name}: black transition acquired in " +
+                $"{Game.GameTime - startedAt}ms");
+        }
+
+        private static bool IsPlayerInReadyInterior(Ped player)
+        {
+            if (player == null || !player.Exists()) return false;
+            int interior = Function.Call<int>(Hash.GET_INTERIOR_FROM_ENTITY, player);
+            return interior != 0 &&
+                Function.Call<bool>(Hash.IS_INTERIOR_READY, interior);
+        }
+
+        private static bool AreGarageVehiclesReady(Vehicle[] handles)
+        {
+            if (handles == null) return true;
+            foreach (Vehicle vehicle in handles)
+            {
+                if (vehicle == null || !vehicle.Exists()) continue;
+                if (!Function.Call<bool>(
+                    Hash.HAS_COLLISION_LOADED_AROUND_ENTITY, vehicle.Handle))
+                    return false;
+            }
+            return true;
+        }
+
+        private static void CompleteGarageBlackTransition(
+            string name,
+            Ped player,
+            Vehicle focusVehicle,
+            Func<bool> destinationReady,
+            Vehicle[] garageVehicles = null)
+        {
+            if (player == null || !player.Exists())
+                throw new InvalidOperationException(
+                    $"{name} lost the player during transition");
+
+            int startedAt = Game.GameTime;
+            int stableAt = -1;
+            bool locationReady = false;
+            bool collisionReady = false;
+            bool vehiclesReady = false;
+            while (Game.GameTime - startedAt < GARAGE_DESTINATION_TIMEOUT_MS)
+            {
+                Entity focus = focusVehicle != null && focusVehicle.Exists()
+                    ? (Entity)focusVehicle : player;
+                Vector3 position = focus.Position;
+                Function.Call(Hash.REQUEST_COLLISION_AT_COORD,
+                    position.X, position.Y, position.Z);
+                collisionReady = Function.Call<bool>(
+                    Hash.HAS_COLLISION_LOADED_AROUND_ENTITY, focus.Handle);
+                locationReady = destinationReady == null || destinationReady();
+                vehiclesReady = AreGarageVehiclesReady(garageVehicles);
+
+                if (locationReady && collisionReady && vehiclesReady)
+                {
+                    if (stableAt < 0) stableAt = Game.GameTime;
+                    if (Game.GameTime - stableAt >= GARAGE_DESTINATION_STABLE_MS)
+                    {
+                        Log($"{name}: destination ready after " +
+                            $"{Game.GameTime - startedAt}ms");
+                        Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+                        return;
+                    }
+                }
+                else stableAt = -1;
+                Script.Wait(50);
+            }
+
+            throw new InvalidOperationException(
+                $"{name} destination timed out while black " +
+                $"(locationReady={locationReady}, " +
+                $"collisionReady={collisionReady}, vehiclesReady={vehiclesReady})");
         }
 
         private static void EnterGarage()
@@ -874,9 +966,9 @@ namespace ALLIN1
             _isPlayerInGarage = true; // set early to block re-entry during fade
             Log("EnterGarage: flag set, starting fade out");
 
-            // Fade to black before teleporting
-            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            Script.Wait(600);
+            // Hold black until the destination room, collision, and stored
+            // vehicles have all remained ready for a stable interval.
+            BeginGarageBlackTransition("EnterGarage");
             Log("EnterGarage: fade out done, teleporting");
 
             // Freeze player and teleport to safe interior position
@@ -967,9 +1059,10 @@ namespace ALLIN1
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
             player.IsPositionFrozen = false;
 
-            // Fade back in
-            Log("EnterGarage: fading in");
-            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+            Log("EnterGarage: waiting for destination readiness");
+            CompleteGarageBlackTransition(
+                "EnterGarage", player, null,
+                () => IsPlayerInReadyInterior(player), _handles);
 
             if (!string.IsNullOrEmpty(storedConfirmation))
                 GTA.UI.Screen.ShowSubtitle(storedConfirmation, 4000);
@@ -1038,9 +1131,7 @@ namespace ALLIN1
             }
 
             Log("LeaveGarage: vehicles cleaned, starting fade out");
-            // Fade to black before teleporting outside
-            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            Script.Wait(600);
+            BeginGarageBlackTransition("LeaveGarage");
             Log("LeaveGarage: fade done, teleporting");
 
             if (playerVehicle != null)
@@ -1089,9 +1180,11 @@ namespace ALLIN1
             _isPlayerInGarage = false;
             _exitCooldownFrames = 60; // ~1 second cooldown
 
-            // Fade back in
-            Log("LeaveGarage: fading in");
-            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+            Log("LeaveGarage: waiting for exterior readiness");
+            CompleteGarageBlackTransition(
+                "LeaveGarage", player, playerVehicle,
+                () => Function.Call<int>(
+                    Hash.GET_INTERIOR_FROM_ENTITY, player) == 0);
             Log("LeaveGarage: COMPLETE");
         }
 
@@ -1672,24 +1765,49 @@ namespace ALLIN1
             if (vehicle == null || !vehicle.Exists()) return;
 
             vehicle.IsPositionFrozen = true;
+            Function.Call(Hash.SET_FOCUS_POS_AND_VEL,
+                destination.X, destination.Y, destination.Z,
+                0f, 0f, 0f);
+            Function.Call(Hash.REQUEST_COLLISION_AT_COORD,
+                destination.X, destination.Y, destination.Z);
             Function.Call(Hash.SET_ENTITY_COORDS, vehicle,
                 destination.X, destination.Y, destination.Z,
                 false, false, false, true);
             Function.Call(Hash.SET_ENTITY_HEADING, vehicle, heading);
             vehicle.IsCollisionEnabled = true;
+
+            int collisionStartedAt = Game.GameTime;
+            bool collisionLoaded = Function.Call<bool>(
+                Hash.HAS_COLLISION_LOADED_AROUND_ENTITY, vehicle.Handle);
+            while (!collisionLoaded &&
+                   Game.GameTime - collisionStartedAt < 2500)
+            {
+                Function.Call(Hash.REQUEST_COLLISION_AT_COORD,
+                    destination.X, destination.Y, destination.Z);
+                Script.Wait(50);
+                collisionLoaded = Function.Call<bool>(
+                    Hash.HAS_COLLISION_LOADED_AROUND_ENTITY,
+                    vehicle.Handle);
+            }
+
             Function.Call(Hash.SET_VEHICLE_HANDBRAKE, vehicle.Handle, false);
             Function.Call(Hash.SET_VEHICLE_UNDRIVEABLE, vehicle.Handle, false);
+            Function.Call(Hash.SET_ENTITY_DYNAMIC, vehicle.Handle, true);
+            Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, vehicle.Handle);
             Function.Call(Hash.FREEZE_ENTITY_POSITION, vehicle.Handle, false);
             vehicle.IsPositionFrozen = false;
-            Function.Call(Hash.SET_ENTITY_DYNAMIC, vehicle.Handle, true);
             Function.Call(Hash.ACTIVATE_PHYSICS, vehicle.Handle);
-            Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, vehicle.Handle);
             Function.Call(Hash.SET_VEHICLE_ENGINE_ON,
                 vehicle.Handle, true, true, false);
             vehicle.IsEngineRunning = true;
+            Function.Call(Hash.CLEAR_FOCUS);
 
             Log($"ReleaseGarageVehicleForDriving: {garageName} " +
-                $"handle={vehicle.Handle} frozen={vehicle.IsPositionFrozen}");
+                $"handle={vehicle.Handle} frozen={vehicle.IsPositionFrozen} " +
+                $"collisionLoaded={collisionLoaded} " +
+                $"collisionWaitMs={Game.GameTime - collisionStartedAt} " +
+                $"position=({vehicle.Position.X:F3},{vehicle.Position.Y:F3}," +
+                $"{vehicle.Position.Z:F3})");
         }
 
         private static bool TryProbeParkingFloor(
@@ -1715,6 +1833,31 @@ namespace ALLIN1
             catch (Exception ex)
             {
                 LogException("TryProbeParkingFloor", ex);
+                return false;
+            }
+        }
+
+        private static bool TryProbeInteriorFloor(
+            Vector3 position, out float floorZ)
+        {
+            floorZ = 0f;
+            try
+            {
+                Vector3 start = new Vector3(
+                    position.X, position.Y, position.Z + 2.5f);
+                Vector3 end = new Vector3(
+                    position.X, position.Y, position.Z - 4.0f);
+                RaycastResult result = World.Raycast(
+                    start, end, IntersectFlags.Map | IntersectFlags.Objects,
+                    null);
+                if (!result.DidHit || result.SurfaceNormal.Z < 0.55f)
+                    return false;
+                floorZ = result.HitPosition.Z;
+                return VehiclePlacementMath.IsFinite(floorZ);
+            }
+            catch (Exception ex)
+            {
+                LogException("TryProbeInteriorFloor", ex);
                 return false;
             }
         }
@@ -2527,13 +2670,23 @@ namespace ALLIN1
         private static readonly string[] FLOOR_GARAGE_IPLS =
         {
             "ba_int_placement_ba_interior_1_dlc_int_02_ba_milo_", // garage & storage
-            "ba_int_placement_ba_interior_0_dlc_int_01_ba_milo_", // main nightclub
-            "ba_int_placement_ba_interior_2_dlc_int_03_ba_milo_", // terrorbyte bay
         };
+        private static readonly string[] FLOOR_GARAGE_REQUIRED_IPLS =
+        {
+            "ba_int_placement_ba_interior_1_dlc_int_02_ba_milo_",
+        };
+        private static readonly Vector3 FLOOR_GARAGE_INTERIOR_CENTER =
+            new Vector3(-1505.782f, -3012.587f, -80.0f);
+        private const string FLOOR_GARAGE_INTERIOR_TYPE = "ba_dlc_int_02_ba";
+        private const int FLOOR_GARAGE_INTERIOR_LOAD_TIMEOUT_MS = 8000;
+        private const int FLOOR_GARAGE_ENTITY_SET_CLEAR_MS = 150;
+        private const int FLOOR_GARAGE_ENTITY_SET_SETTLE_MS = 350;
 
         // Interior ped spawn — at elevator 1 position
+        // Interior-side floor anchor. The elevator interaction marker is a
+        // room-volume boundary and is not safe after physics resumes.
         private static readonly Vector3 FLOOR_GARAGE_INTERIOR_PED =
-            new Vector3(-1507.55f, -3014.50f, -79.24f);
+            new Vector3(-1507.721f, -3011.700f, -80.2419f);
         private const float FLOOR_GARAGE_INTERIOR_PED_HEADING = 0f;
 
         // Elevator positions inside the garage (for floor switching + exit)
@@ -2549,6 +2702,7 @@ namespace ALLIN1
         // within the nightclub garage interior. Only the current floor's vehicles
         // are spawned at a time; switching floors despawns/respawns.
         private static int _currentFloor; // 0 through 4
+        private static int _floorGarageInteriorId;
         private static bool _elevatorMenuActive;
         private static int _elevatorMenuSelection; // floors 0-4, exit=5
 
@@ -2569,12 +2723,30 @@ namespace ALLIN1
         // Entity set name per [category][option]
         private static readonly string[][] CUSTOM_ENTITY_SETS =
         {
-            new[] { "Int02_ba_floor01", "Int02_ba_floor02", "Int02_ba_floor03",
-                "Int02_ba_floor04", "Int02_ba_floor05" },
-            new[] { "", "Int02_ba_sec_upgrade_grg" },
-            new[] { "", "Int02_ba_equipment_upgrade" },
-            new[] { "", "Int02_ba_sec_desks_L1", "Int02_ba_sec_desks_L2345" },
-            new[] { "", "Int02_ba_clutterstuff" },
+            // Keep the exact lowercase names stored in Rockstar's
+            // ba_int_02_ba.ytyp rather than relying on name normalization that
+            // is not consistent across the Legacy and Enhanced native paths.
+            new[] { "int02_ba_floor01", "int02_ba_floor02", "int02_ba_floor03",
+                "int02_ba_floor04", "int02_ba_floor05" },
+            new[] { "", "int02_ba_sec_upgrade_grg" },
+            new[] { "", "int02_ba_equipment_upgrade" },
+            new[] { "", "int02_ba_sec_desks_l1", "int02_ba_sec_desks_l2345" },
+            new[] { "", "int02_ba_clutterstuff" },
+        };
+
+        // Harmony is presented as a finished garage rather than an Online
+        // business upgrade screen. These native detail packages are therefore
+        // always enabled on every virtual floor.
+        private static readonly string[] FLOOR_GARAGE_FIXED_ENTITY_SETS =
+        {
+            "int02_ba_sec_upgrade_grg",
+            "int02_ba_equipment_upgrade",
+            "int02_ba_truckmod",
+            "int02_ba_deskpc",
+            "int02_ba_sec_upgrade_strg",
+            "int02_ba_sec_upgrade_desk",
+            "int02_ba_sec_upgrade_desk02",
+            "int02_ba_clutterstuff",
         };
 
         internal const int CUSTOM_CATEGORY_COUNT = 5;
@@ -3290,9 +3462,7 @@ namespace ALLIN1
             _isPlayerInFloorGarage = true; // set early to block re-entry during fade
             Log("EnterFloorGarage: flag set, starting fade out");
 
-            // Fade to black before teleporting
-            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            Script.Wait(600);
+            BeginGarageBlackTransition("EnterFloorGarage");
             Log("EnterFloorGarage: fade done, teleporting");
 
             // Freeze and teleport player
@@ -3308,6 +3478,25 @@ namespace ALLIN1
                 rideInToDelete.Delete();
                 Log("EnterFloorGarage: deleted drive-in vehicle after player extraction");
             }
+
+            // The standalone MLO can resolve before the player is attached to
+            // one of its rooms. Reapply only after attachment so Enhanced
+            // instantiates the selected floor and detail drawables rather
+            // than merely remembering their active flags on a bare shell.
+            int attachedInterior = WaitForFloorGaragePlayerInterior(
+                player, _floorGarageInteriorId, 3500);
+            if (attachedInterior == 0)
+                throw new InvalidOperationException(
+                    "Player did not attach to the loaded Harmony interior room");
+
+            bool setsReady = ApplyFloorEntitySets(
+                attachedInterior, _currentFloor);
+            Log($"EnterFloorGarage: post-teleport interior={attachedInterior} " +
+                $"setsReady={setsReady}");
+            if (!setsReady)
+                throw new InvalidOperationException(
+                    "Harmony interior entity sets did not finish loading");
+
             Log("EnterFloorGarage: teleported, spawning vehicles");
 
             // Spawn vehicles for the current floor only
@@ -3317,9 +3506,14 @@ namespace ALLIN1
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
             player.IsPositionFrozen = false;
 
-            // Fade back in
-            Log("EnterFloorGarage: fading in");
-            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+            Log("EnterFloorGarage: waiting for destination readiness");
+            CompleteGarageBlackTransition(
+                "EnterFloorGarage", player, null,
+                () => Function.Call<bool>(Hash.IS_INTERIOR_READY,
+                        _floorGarageInteriorId) &&
+                    IsFloorGaragePlayerAttached(
+                        player, _floorGarageInteriorId, out _),
+                _floorGarageHandles);
 
             if (!string.IsNullOrEmpty(storedConfirmation))
                 GTA.UI.Screen.ShowSubtitle(storedConfirmation, 4000);
@@ -3387,10 +3581,14 @@ namespace ALLIN1
             }
 
             Log("LeaveFloorGarage: vehicles cleaned, starting fade out");
-            // Fade to black before teleporting outside
-            Function.Call(Hash.DO_SCREEN_FADE_OUT, 500);
-            Script.Wait(600);
+            BeginGarageBlackTransition("LeaveFloorGarage");
             Log("LeaveFloorGarage: fade done, teleporting");
+
+            player.IsPositionFrozen = true;
+            if (playerVehicle != null)
+                playerVehicle.IsPositionFrozen = true;
+            UnloadFloorGarageInterior();
+            Script.Wait(250);
 
             if (playerVehicle != null)
             {
@@ -3431,12 +3629,12 @@ namespace ALLIN1
 
             _isPlayerInFloorGarage = false;
             _floorGarageExitCooldownFrames = 60;
-            UnloadFloorGarageInterior();
-            Script.Wait(500);
 
-            // Fade back in
-            Log("LeaveFloorGarage: fading in");
-            Function.Call(Hash.DO_SCREEN_FADE_IN, 500);
+            Log("LeaveFloorGarage: waiting for exterior readiness");
+            CompleteGarageBlackTransition(
+                "LeaveFloorGarage", player, playerVehicle,
+                () => Function.Call<int>(
+                    Hash.GET_INTERIOR_FROM_ENTITY, player) == 0);
             Log("LeaveFloorGarage: COMPLETE");
         }
 
@@ -3482,28 +3680,172 @@ namespace ALLIN1
         /// package. The desk sets are mutually exclusive between level 1 and
         /// levels 2-5, so only the matching variant is enabled.
         /// </summary>
-        private static void ApplyFloorEntitySets(int interior, int floor)
+        private static bool ApplyFloorEntitySets(int interior, int floor)
         {
-            // Interior entity sets are additive. Clear every sibling first so
-            // stale saved/default variants cannot overlap and flicker.
-            for (int category = 0; category < CUSTOM_CATEGORY_COUNT; category++)
-                for (int option = 0;
-                    option < GetFloorCustomizationOptionCount(category); option++)
-                    if (!string.IsNullOrEmpty(CUSTOM_ENTITY_SETS[category][option]))
-                        Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior,
-                            CUSTOM_ENTITY_SETS[category][option]);
+            if (interior == 0 || floor < 0 || floor >= FLOOR_GARAGE_FLOOR_COUNT)
+                return false;
 
-            string[] sets =
-            {
-                CUSTOM_ENTITY_SETS[0][floor],
-                "Int02_ba_sec_upgrade_grg",
-                "Int02_ba_equipment_upgrade",
-                floor == 0 ? "Int02_ba_sec_desks_L1" : "Int02_ba_sec_desks_L2345",
-                "Int02_ba_clutterstuff",
-            };
-            foreach (string set in sets)
-                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, set);
+            string floorSet = CUSTOM_ENTITY_SETS[0][floor];
+            string deskSet = floor == 0
+                ? "int02_ba_sec_desks_l1"
+                : "int02_ba_sec_desks_l2345";
+
+            // A single refresh after both deactivation and activation can keep
+            // the old MLO drawable instantiated on Enhanced. Rebuild in two
+            // phases so the previous floor is physically removed before the
+            // target floor is introduced.
+            for (int option = 0; option < FLOOR_GARAGE_FLOOR_COUNT; option++)
+                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior,
+                    CUSTOM_ENTITY_SETS[0][option]);
+            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior,
+                "int02_ba_sec_desks_l1");
+            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior,
+                "int02_ba_sec_desks_l2345");
+            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior,
+                "int02_ba_garage_blocker");
+            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior,
+                "int02_ba_storage_blocker");
+            Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior,
+                "int02_ba_fanblocker01");
             Function.Call(Hash.REFRESH_INTERIOR, interior);
+            int clearStartedAt = Game.GameTime;
+            while (Game.GameTime - clearStartedAt < FLOOR_GARAGE_ENTITY_SET_CLEAR_MS)
+                Script.Wait(0);
+
+            foreach (string set in FLOOR_GARAGE_FIXED_ENTITY_SETS)
+                Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, set);
+            Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, deskSet);
+            Function.Call(Hash.ACTIVATE_INTERIOR_ENTITY_SET, interior, floorSet);
+            Function.Call(Hash.REFRESH_INTERIOR, interior);
+            int settleStartedAt = Game.GameTime;
+            while (Game.GameTime - settleStartedAt < FLOOR_GARAGE_ENTITY_SET_SETTLE_MS)
+                Script.Wait(0);
+
+            bool valid = ValidateFloorEntitySets(interior, floor, out string detail);
+            Log($"ApplyFloorEntitySets: interior={interior} floor={floor + 1} " +
+                $"set={floorSet} valid={valid} {detail}");
+            return valid;
+        }
+
+        private static bool ValidateFloorEntitySets(
+            int interior, int floor, out string detail)
+        {
+            if (interior == 0 || floor < 0 || floor >= FLOOR_GARAGE_FLOOR_COUNT)
+            {
+                detail = "invalid interior or floor";
+                return false;
+            }
+
+            var floorStates = new bool[FLOOR_GARAGE_FLOOR_COUNT];
+            bool exclusive = true;
+            for (int option = 0; option < FLOOR_GARAGE_FLOOR_COUNT; option++)
+            {
+                floorStates[option] = Function.Call<bool>(
+                    (Hash)0x35F7DD45E8C0A16D,
+                    interior, CUSTOM_ENTITY_SETS[0][option]);
+                if (floorStates[option] != (option == floor))
+                    exclusive = false;
+            }
+
+            var missingFixed = new List<string>();
+            foreach (string set in FLOOR_GARAGE_FIXED_ENTITY_SETS)
+                if (!Function.Call<bool>((Hash)0x35F7DD45E8C0A16D,
+                    interior, set))
+                    missingFixed.Add(set);
+
+            bool desksL1 = Function.Call<bool>((Hash)0x35F7DD45E8C0A16D,
+                interior, "int02_ba_sec_desks_l1");
+            bool desksOther = Function.Call<bool>((Hash)0x35F7DD45E8C0A16D,
+                interior, "int02_ba_sec_desks_l2345");
+            bool deskValid = floor == 0
+                ? desksL1 && !desksOther
+                : !desksL1 && desksOther;
+
+            detail = $"floors=[{string.Join(",", floorStates)}] " +
+                $"exclusive={exclusive} fixedMissing=[{string.Join(",", missingFixed)}] " +
+                $"desks=[{desksL1},{desksOther}]";
+            return exclusive && missingFixed.Count == 0 && deskValid;
+        }
+
+        private static int ResolveFloorGarageInterior()
+        {
+            int interior = Function.Call<int>(
+                Hash.GET_INTERIOR_AT_COORDS_WITH_TYPE,
+                FLOOR_GARAGE_INTERIOR_CENTER.X,
+                FLOOR_GARAGE_INTERIOR_CENTER.Y,
+                FLOOR_GARAGE_INTERIOR_CENTER.Z,
+                FLOOR_GARAGE_INTERIOR_TYPE);
+            if (interior == 0 || !Function.Call<bool>(
+                Hash.IS_VALID_INTERIOR, interior))
+                return 0;
+            return interior;
+        }
+
+        private static void PrimeFloorGarageInterior(int interior)
+        {
+            // Enhanced requires the complete lifecycle. Pinning an already
+            // enabled interior can expose its shell while leaving the selected
+            // floor and detail drawables uninstantiated.
+            Function.Call(Hash.DISABLE_INTERIOR, interior, true);
+            Function.Call(Hash.PIN_INTERIOR_IN_MEMORY, interior);
+            Function.Call(Hash.DISABLE_INTERIOR, interior, false);
+            Function.Call(Hash.SET_INTERIOR_ACTIVE, interior, true);
+            if (Function.Call<bool>(Hash.IS_INTERIOR_CAPPED, interior))
+                Function.Call(Hash.CAP_INTERIOR, interior, false);
+            Function.Call(Hash.REFRESH_INTERIOR, interior);
+        }
+
+        private static void KeepFloorGarageInteriorActive(int interior)
+        {
+            Function.Call(Hash.PIN_INTERIOR_IN_MEMORY, interior);
+            Function.Call(Hash.DISABLE_INTERIOR, interior, false);
+            Function.Call(Hash.SET_INTERIOR_ACTIVE, interior, true);
+            if (Function.Call<bool>(Hash.IS_INTERIOR_CAPPED, interior))
+                Function.Call(Hash.CAP_INTERIOR, interior, false);
+        }
+
+        private static bool IsFloorGaragePlayerAttached(
+            Ped player, int expectedInterior, out string detail)
+        {
+            int playerInterior = Function.Call<int>(
+                Hash.GET_INTERIOR_FROM_ENTITY, player);
+            int roomKey = Function.Call<int>(Hash.GET_ROOM_KEY_FROM_ENTITY, player);
+            int viewportRoomKey = Function.Call<int>(
+                Hash.GET_ROOM_KEY_FOR_GAME_VIEWPORT);
+            Vector3 position = player.Position;
+            bool collisionOutside = Function.Call<bool>(
+                Hash.IS_COLLISION_MARKED_OUTSIDE,
+                position.X, position.Y, position.Z);
+            bool attached = GarageRoomAttachmentPolicy.IsAttached(
+                expectedInterior, playerInterior, roomKey, viewportRoomKey);
+            detail = $"expectedInterior={expectedInterior} " +
+                $"playerInterior={playerInterior} roomKey={roomKey} " +
+                $"viewportRoomKey={viewportRoomKey} " +
+                $"collisionOutside={collisionOutside} pos={position}";
+            return attached;
+        }
+
+        private static int WaitForFloorGaragePlayerInterior(
+            Ped player, int expectedInterior, int timeoutMs)
+        {
+            int startedAt = Game.GameTime;
+            while (Game.GameTime - startedAt < timeoutMs)
+            {
+                Vector3 position = player.Position;
+                Function.Call(Hash.REQUEST_COLLISION_AT_COORD,
+                    position.X, position.Y, position.Z);
+                if (IsFloorGaragePlayerAttached(
+                    player, expectedInterior, out string detail))
+                {
+                    Log("WaitForFloorGaragePlayerInterior: attached " + detail);
+                    return expectedInterior;
+                }
+                Script.Wait(50);
+            }
+            IsFloorGaragePlayerAttached(
+                player, expectedInterior, out string finalDetail);
+            Log("WaitForFloorGaragePlayerInterior: FAILED " + finalDetail);
+            return 0;
         }
 
         /// <summary>
@@ -3511,58 +3853,132 @@ namespace ALLIN1
         /// </summary>
         private static bool LoadFloorGarageInterior()
         {
-            // Recheck immediately before ON_ENTER_MP. A cutscene can begin
-            // after the proximity prompt was evaluated, and Enhanced asserts
-            // inside the engine if its map state is changed during that window.
+            // Recheck immediately before loading the local map asset. A
+            // cutscene can begin after the proximity prompt was evaluated.
             if (IsUnsafeGarageTransitionActive())
             {
                 Log("LoadFloorGarageInterior: blocked during active game transition");
                 return false;
             }
 
-            DlcMapState.Acquire(THREE_FLOOR_GARAGE);
-            Script.Wait(500);
-
-            // Remove then re-request all IPLs (pattern from Enable All Interiors mod)
-            foreach (string ipl in FLOOR_GARAGE_IPLS)
-                Function.Call(Hash.REMOVE_IPL, ipl);
-            foreach (string ipl in FLOOR_GARAGE_IPLS)
-                Function.Call(Hash.REQUEST_IPL, ipl);
-
-            // Wait for IPLs to load
-            Script.Wait(1000);
-
-            // Get the garage interior ID (Int02_ba at garage coords, NOT main nightclub)
-            int interior = Function.Call<int>(
-                Hash.GET_INTERIOR_AT_COORDS, -1505.782f, -3012.587f, -80.0f);
-
-            if (interior != 0)
+            if (!StandaloneMapPack.TryActivate(FLOOR_GARAGE_REQUIRED_IPLS, 1500))
             {
-                // Disable blockers so the full garage space is accessible
-                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_garage_blocker");
-                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_storage_blocker");
-                Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET, interior, "Int02_ba_FanBlocker01");
-
-                // Activate current floor's entity set theme
-                ApplyFloorEntitySets(interior, _currentFloor);
-
-                Log($"LoadFloorGarageInterior: interior={interior}, IPL loaded, entity sets configured");
-                return true;
-            }
-            else
-            {
-                Log("LoadFloorGarageInterior: WARNING — could not get interior ID");
-                UnloadFloorGarageInterior();
+                Log("LoadFloorGarageInterior: standalone map unavailable");
                 return false;
             }
+
+            bool focusSet = false;
+            bool priorityModeSet = false;
+            try
+            {
+                Function.Call(Hash.SET_INSTANCE_PRIORITY_MODE, true);
+                priorityModeSet = true;
+                Function.Call(Hash.SET_FOCUS_POS_AND_VEL,
+                    FLOOR_GARAGE_INTERIOR_CENTER.X,
+                    FLOOR_GARAGE_INTERIOR_CENTER.Y,
+                    FLOOR_GARAGE_INTERIOR_CENTER.Z, 0f, 0f, 0f);
+                focusSet = true;
+
+                int startedAt = Game.GameTime;
+                int interior = 0;
+                bool interiorReady = false;
+                bool primaryIplActive = false;
+                bool floorCollisionReady = false;
+                bool lifecyclePrimed = false;
+                float floorZ = 0f;
+                while (Game.GameTime - startedAt < FLOOR_GARAGE_INTERIOR_LOAD_TIMEOUT_MS)
+                {
+                    foreach (string ipl in FLOOR_GARAGE_IPLS)
+                        Function.Call(Hash.REQUEST_IPL, ipl);
+                    Function.Call(Hash.REQUEST_COLLISION_AT_COORD,
+                        FLOOR_GARAGE_INTERIOR_CENTER.X,
+                        FLOOR_GARAGE_INTERIOR_CENTER.Y,
+                        FLOOR_GARAGE_INTERIOR_CENTER.Z);
+
+                    int resolvedInterior = ResolveFloorGarageInterior();
+                    if (resolvedInterior != interior)
+                    {
+                        interior = resolvedInterior;
+                        lifecyclePrimed = false;
+                    }
+                    if (interior != 0)
+                    {
+                        if (!lifecyclePrimed)
+                        {
+                            PrimeFloorGarageInterior(interior);
+                            lifecyclePrimed = true;
+                            Log($"LoadFloorGarageInterior: primed typed interior={interior} " +
+                                $"type={FLOOR_GARAGE_INTERIOR_TYPE}");
+                        }
+                        else
+                            KeepFloorGarageInteriorActive(interior);
+                        interiorReady = Function.Call<bool>(
+                            Hash.IS_INTERIOR_READY, interior);
+                    }
+                    else interiorReady = false;
+
+                    primaryIplActive = true;
+                    foreach (string ipl in FLOOR_GARAGE_REQUIRED_IPLS)
+                        primaryIplActive &= Function.Call<bool>(
+                            Hash.IS_IPL_ACTIVE, ipl);
+                    floorCollisionReady = TryProbeInteriorFloor(
+                        FLOOR_GARAGE_INTERIOR_PED, out floorZ);
+                    if (interior != 0 && primaryIplActive &&
+                        interiorReady && floorCollisionReady)
+                    {
+                        Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET,
+                            interior, "int02_ba_garage_blocker");
+                        Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET,
+                            interior, "int02_ba_storage_blocker");
+                        Function.Call(Hash.DEACTIVATE_INTERIOR_ENTITY_SET,
+                            interior, "int02_ba_fanblocker01");
+                        if (!ApplyFloorEntitySets(interior, _currentFloor))
+                        {
+                            Log("LoadFloorGarageInterior: entity-set validation failed; retrying");
+                            Script.Wait(100);
+                            continue;
+                        }
+                        _floorGarageInteriorId = interior;
+                        Log($"LoadFloorGarageInterior: interior={interior} ready " +
+                            $"readySignal={interiorReady} " +
+                            $"primaryIplActive={primaryIplActive} " +
+                            $"floorCollision=True floorZ={floorZ:F3} " +
+                            $"elapsed={Game.GameTime - startedAt}ms");
+                        return true;
+                    }
+                    Script.Wait(100);
+                }
+
+                Log($"LoadFloorGarageInterior: FAILED interior={interior} " +
+                    $"interiorReady={interiorReady} " +
+                    $"primaryIplActive={primaryIplActive} " +
+                    $"floorCollision={floorCollisionReady}");
+            }
+            catch (Exception ex)
+            {
+                LogException("LoadFloorGarageInterior", ex);
+            }
+            finally
+            {
+                if (focusSet) Function.Call(Hash.CLEAR_FOCUS);
+                if (priorityModeSet)
+                    Function.Call(Hash.SET_INSTANCE_PRIORITY_MODE, false);
+            }
+            UnloadFloorGarageInterior();
+            return false;
         }
 
         private static void UnloadFloorGarageInterior()
         {
-            if (!DlcMapState.IsAcquired(THREE_FLOOR_GARAGE)) return;
+            int interior = _floorGarageInteriorId;
+            _floorGarageInteriorId = 0;
+            if (interior != 0)
+            {
+                Function.Call(Hash.SET_INTERIOR_ACTIVE, interior, false);
+                Function.Call(Hash.UNPIN_INTERIOR, interior);
+            }
             foreach (string ipl in FLOOR_GARAGE_IPLS)
                 Function.Call(Hash.REMOVE_IPL, ipl);
-            DlcMapState.Release(THREE_FLOOR_GARAGE);
         }
 
         /// <summary>
@@ -3660,30 +4076,77 @@ namespace ALLIN1
                 return;
             }
 
-            // Save state of vehicles on the current floor
-            FloorGarageUpdateStoredFromLive();
-
-            _currentFloor = newFloor;
-
-            // Freeze player while switching
+            BeginGarageBlackTransition("SwitchFloorGarageFloor");
             player.IsPositionFrozen = true;
-
-            // Switch the native garage level while retaining all detail sets.
-            int interior = Function.Call<int>(
-                Hash.GET_INTERIOR_AT_COORDS, -1505.782f, -3012.587f, -80.0f);
-            if (interior != 0)
+            int previousFloor = _currentFloor;
+            int interior = 0;
+            try
             {
-                // Apply performs a complete sibling clear before enabling the
-                // selected floor, preventing stale sets from overlapping.
-                ApplyFloorEntitySets(interior, _currentFloor);
+                // Save state of vehicles on the current floor before changing
+                // the virtual slot window.
+                FloorGarageUpdateStoredFromLive();
+                _currentFloor = newFloor;
+
+                // Switch the native garage level while retaining all detail
+                // sets. Apply waits for the MLO render proxy to rebuild before
+                // vehicles are introduced on the target floor.
+                interior = _floorGarageInteriorId != 0
+                    ? _floorGarageInteriorId
+                    : ResolveFloorGarageInterior();
+                if (interior == 0 || !Function.Call<bool>(
+                    Hash.IS_INTERIOR_READY, interior))
+                    throw new InvalidOperationException(
+                        $"Harmony interior unavailable for floor {newFloor + 1}");
+                KeepFloorGarageInteriorActive(interior);
+                if (!ApplyFloorEntitySets(interior, _currentFloor))
+                    throw new InvalidOperationException(
+                        $"Harmony entity sets failed for floor {newFloor + 1}");
+
+                // Floor entity-set replacement can evict a ped standing on
+                // the elevator boundary. Re-enter through the safe interior
+                // anchor while the screen remains black.
+                Function.Call(Hash.SET_ENTITY_COORDS, player,
+                    FLOOR_GARAGE_INTERIOR_PED.X,
+                    FLOOR_GARAGE_INTERIOR_PED.Y,
+                    FLOOR_GARAGE_INTERIOR_PED.Z,
+                    false, false, false, true);
+                Function.Call(Hash.SET_ENTITY_HEADING,
+                    player, FLOOR_GARAGE_INTERIOR_PED_HEADING);
+                Function.Call(Hash.REQUEST_COLLISION_AT_COORD,
+                    FLOOR_GARAGE_INTERIOR_CENTER.X,
+                    FLOOR_GARAGE_INTERIOR_CENTER.Y,
+                    FLOOR_GARAGE_INTERIOR_CENTER.Z);
+                SpawnFloorGarageVehicles();
+                player.IsPositionFrozen = false;
+                Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
+                CompleteGarageBlackTransition(
+                    "SwitchFloorGarageFloor", player, null,
+                    () => Function.Call<bool>(Hash.IS_INTERIOR_READY, interior) &&
+                        IsFloorGaragePlayerAttached(
+                            player, interior, out _),
+                    _floorGarageHandles);
+
+                GTA.UI.Screen.ShowSubtitle(
+                    $"~b~Floor {_currentFloor + 1} of {FLOOR_GARAGE_FLOOR_COUNT}", 2000);
+                Log($"SwitchFloorGarageFloor: switched to floor {_currentFloor + 1}");
             }
-
-            SpawnFloorGarageVehicles();
-
-            player.IsPositionFrozen = false;
-            GTA.UI.Screen.ShowSubtitle(
-                $"~b~Floor {_currentFloor + 1} of {FLOOR_GARAGE_FLOOR_COUNT}", 2000);
-            Log($"SwitchFloorGarageFloor: switched to floor {_currentFloor + 1}");
+            catch (Exception ex)
+            {
+                LogException("SwitchFloorGarageFloor", ex);
+                _currentFloor = previousFloor;
+                if (interior != 0)
+                    ApplyFloorEntitySets(interior, previousFloor);
+                RecoverTransition("SwitchFloorGarageFloor",
+                    FLOOR_GARAGE_PED_EXIT_DEST,
+                    FLOOR_GARAGE_PED_EXIT_DEST_HEADING);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~The elevator recovered safely outside the garage.", 3000);
+            }
+            finally
+            {
+                player.IsPositionFrozen = false;
+                Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
+            }
         }
 
         // ------------------------------------------------------------------ //
@@ -3758,8 +4221,9 @@ namespace ALLIN1
                     for (int f = 0; f < FLOOR_GARAGE_FLOOR_COUNT; f++)
                     {
                         int innerStart = json.IndexOf('[', pos);
+                        if (innerStart < 0) break;
                         int innerEnd = json.IndexOf(']', innerStart);
-                        if (innerStart < 0 || innerEnd < 0) break;
+                        if (innerEnd < 0) break;
                         string inner = json.Substring(innerStart + 1, innerEnd - innerStart - 1);
                         string[] parts = inner.Split(',');
                         for (int c = 0; c < Math.Min(parts.Length, CUSTOM_CATEGORY_COUNT); c++)

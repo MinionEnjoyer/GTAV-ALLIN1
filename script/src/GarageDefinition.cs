@@ -44,16 +44,13 @@ namespace ALLIN1
         internal string Id { get; }
         internal string DisplayName { get; }
         internal GarageEntryRules EntryRules { get; }
-        internal bool RequiresMultiplayerMap { get; }
 
         internal GarageDefinition(
-            string id, string displayName, GarageEntryRules entryRules,
-            bool requiresMultiplayerMap = false)
+            string id, string displayName, GarageEntryRules entryRules)
         {
             Id = id;
             DisplayName = displayName;
             EntryRules = entryRules;
-            RequiresMultiplayerMap = requiresMultiplayerMap;
         }
     }
 
@@ -122,6 +119,28 @@ namespace ALLIN1
         }
     }
 
+    internal static class GarageRoomAttachmentPolicy
+    {
+        /// <summary>
+        /// Standalone MLO collision can be marked outside even while GTA has
+        /// attached both the player and viewport to the correct interior room.
+        /// Interior identity and matching nonzero room keys are the reliable
+        /// attachment signals; collision classification remains diagnostic.
+        /// </summary>
+        internal static bool IsAttached(
+            int expectedInterior,
+            int playerInterior,
+            int playerRoomKey,
+            int viewportRoomKey)
+        {
+            return expectedInterior != 0 &&
+                playerInterior == expectedInterior &&
+                playerRoomKey != 0 &&
+                viewportRoomKey != 0 &&
+                playerRoomKey == viewportRoomKey;
+        }
+    }
+
     internal static class GarageDefinitions
     {
         internal static readonly GarageDefinition Eclipse = new GarageDefinition(
@@ -139,8 +158,7 @@ namespace ALLIN1
                 disableDuringMissions: true,
                 blockWantedLevel: true,
                 blockStoryOwnedVehicles: true,
-                maximumVehicleSizeTier: 2),
-            requiresMultiplayerMap: true);
+                maximumVehicleSizeTier: 2));
 
         internal static readonly GarageDefinition Davis = new GarageDefinition(
             "davis", "Davis Auto Shop",
@@ -148,8 +166,7 @@ namespace ALLIN1
                 disableDuringMissions: true,
                 blockWantedLevel: true,
                 blockStoryOwnedVehicles: true,
-                maximumVehicleSizeTier: 1),
-            requiresMultiplayerMap: true);
+                maximumVehicleSizeTier: 1));
 
         internal static readonly GarageDefinition GarmentFactory = new GarageDefinition(
             "garment_factory", "Garment Factory garage",
@@ -157,8 +174,7 @@ namespace ALLIN1
                 disableDuringMissions: true,
                 blockWantedLevel: true,
                 blockStoryOwnedVehicles: true,
-                maximumVehicleSizeTier: 1),
-            requiresMultiplayerMap: true);
+                maximumVehicleSizeTier: 1));
 
         internal static readonly GarageDefinition Rural = new GarageDefinition(
             "rural", "Grapeseed Garage",
@@ -174,7 +190,6 @@ namespace ALLIN1
                 disableDuringMissions: true,
                 blockWantedLevel: true,
                 blockStoryOwnedVehicles: true,
-                maximumVehicleSizeTier: 1),
-            requiresMultiplayerMap: true);
+                maximumVehicleSizeTier: 1));
     }
 }
