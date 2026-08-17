@@ -22,6 +22,7 @@ namespace ALLIN1
         GarageSellConfirm,
         GarageCustomize,
         WeaponBrowser,
+        WeaponCustomize,
         GearBrowser,
         Diagnostics,
         About,
@@ -276,13 +277,6 @@ namespace ALLIN1
         private string _weaponSearch = "";
         private bool _weaponKeyboardActive;
 
-        // Weapon ammo confirm
-        private bool _ammoConfirmPending;
-        private string _ammoConfirmWeapon;
-        private int _ammoConfirmCost;
-        private int _ammoConfirmRounds;
-        private int _ammoConfirmCardIdx;
-
         // ------------------------------------------------------------------ //
         //  Constructor                                                        //
         // ------------------------------------------------------------------ //
@@ -312,6 +306,7 @@ namespace ALLIN1
             }
             else
             {
+                EndWeaponCustomization();
                 ReleaseAllDicts();
                 _state = BrowserState.Closed;
             }
@@ -319,6 +314,7 @@ namespace ALLIN1
 
         internal void Close()
         {
+            EndWeaponCustomization();
             ReleaseAllDicts();
             _helipadListAccessMode = false;
             _harbourListAccessMode = false;
@@ -366,6 +362,7 @@ namespace ALLIN1
 
             if (Game.Player.Character.IsDead || Game.IsLoading)
             {
+                EndWeaponCustomization();
                 ReleaseAllDicts();
                 _state = BrowserState.Closed;
                 return;
@@ -410,6 +407,9 @@ namespace ALLIN1
                     break;
                 case BrowserState.WeaponBrowser:
                     DrawWeaponBrowser(input);
+                    break;
+                case BrowserState.WeaponCustomize:
+                    DrawWeaponCustomization(input);
                     break;
                 case BrowserState.GearBrowser:
                     DrawGearBrowser(input);
@@ -2296,56 +2296,25 @@ namespace ALLIN1
             // Price, OWNED status, or ammo info
             if (card.Owned)
             {
-                // Check if this card has a pending ammo confirm
-                bool isPendingConfirm = _ammoConfirmPending &&
-                    card.WeaponName == _ammoConfirmWeapon;
+                int rounds;
+                int cost = _shop.GetAmmoRefillInfo(card.WeaponName, out rounds);
 
-                if (isPendingConfirm)
-                {
-                    // Highlight border for pending confirm
-                    GbayRenderer.DrawBorderedRect(cx, cy, cardW, CARD_H,
-                        bgColor, Color.FromArgb(255, 255, 200, 50), 0.003f);
-
-                    string confirmText = _ammoConfirmCost > 0
-                        ? $"REFILL {_ammoConfirmRounds} rnds - ${_ammoConfirmCost:N0}"
-                        : $"REFILL {_ammoConfirmRounds} rnds - FREE";
-                    GbayRenderer.DrawTextFit(confirmText, textLeft, textTop + 0.038f,
-                        0.24f, 0.17f, cardW - 0.016f,
-                        Color.FromArgb(255, 168, 104, 0), GbayRenderer.FONT_CONDENSED);
-                }
+                if (cost == GbayShop.AmmoCapacityUnavailable)
+                    GbayRenderer.DrawTextFit("OWNED - CUSTOMIZE", textLeft,
+                        textTop + 0.038f, 0.24f, 0.17f, cardW - 0.016f,
+                        GbayRenderer.TextPriceFree, GbayRenderer.FONT_CONDENSED);
+                else if (cost == 0 && rounds == 0)
+                    GbayRenderer.DrawTextFit("OWNED - FULL - CUSTOMIZE", textLeft,
+                        textTop + 0.038f, 0.23f, 0.16f, cardW - 0.016f,
+                        GbayRenderer.TextPriceFree, GbayRenderer.FONT_CONDENSED);
                 else
                 {
-                    // Show ammo status
-                    int rounds;
-                    int cost = _shop.GetAmmoRefillInfo(card.WeaponName, out rounds);
-
-                    if (cost == GbayShop.AmmoCapacityUnavailable)
-                    {
-                        GbayRenderer.DrawTextFit("AMMO DATA UNAVAILABLE", textLeft,
-                            textTop + 0.038f, 0.24f, 0.17f, cardW - 0.016f,
-                            Color.FromArgb(255, 180, 70, 45), GbayRenderer.FONT_CONDENSED);
-                    }
-                    else if (cost == GbayShop.AmmoNotApplicable)
-                    {
-                        // Melee / no-ammo
-                        GbayRenderer.DrawText("OWNED", textLeft, textTop + 0.038f,
-                            0.30f, GbayRenderer.TextPriceFree, GbayRenderer.FONT_CHALET);
-                    }
-                    else if (cost == 0 && rounds == 0)
-                    {
-                        GbayRenderer.DrawTextFit("FULLY STOCKED", textLeft, textTop + 0.038f,
-                            0.26f, 0.20f, cardW - 0.016f,
-                            GbayRenderer.TextPriceFree, GbayRenderer.FONT_CONDENSED);
-                    }
-                    else
-                    {
-                        string ammoText = cost > 0
-                            ? $"OWNED - Refill ${cost:N0}"
-                            : $"OWNED - Refill {rounds} rnds";
-                        GbayRenderer.DrawTextFit(ammoText, textLeft, textTop + 0.038f,
-                            0.24f, 0.17f, cardW - 0.016f,
-                            Color.FromArgb(255, 150, 100, 0), GbayRenderer.FONT_CONDENSED);
-                    }
+                    string ammoText = cost == GbayShop.AmmoNotApplicable
+                        ? "OWNED - CUSTOMIZE"
+                        : $"OWNED - WORKBENCH {(_shop.FreeMode ? "" : $"${cost:N0}")}";
+                    GbayRenderer.DrawTextFit(ammoText, textLeft, textTop + 0.038f,
+                        0.24f, 0.17f, cardW - 0.016f,
+                        Color.FromArgb(255, 150, 100, 0), GbayRenderer.FONT_CONDENSED);
                 }
             }
             else
@@ -2375,66 +2344,24 @@ namespace ALLIN1
             previousPageClicked = false;
             nextPageClicked = false;
             GbayRenderer.DrawRect(BROWSER_CX, FOOTER_CY, BROWSER_W, FOOTER_H,
-                _ammoConfirmPending
-                    ? Color.FromArgb(230, 60, 50, 20)
-                    : GbayRenderer.FooterBg);
+                GbayRenderer.FooterBg);
+            DrawPager(input, _weaponPage, _weaponTotalPages, _weaponFiltered.Count,
+                out previousPageClicked, out nextPageClicked);
 
-            if (_ammoConfirmPending)
-            {
-                string displayName = WeaponList.DisplayNames.ContainsKey(_ammoConfirmWeapon)
-                    ? WeaponList.DisplayNames[_ammoConfirmWeapon] : _ammoConfirmWeapon;
-                string costText = _ammoConfirmCost > 0
-                    ? $"${_ammoConfirmCost:N0}" : "FREE";
-                string prompt = $"ENTER CONFIRM {displayName} " +
-                    $"({_ammoConfirmRounds}) {costText}   ESC CANCEL";
-                DrawControlHint(prompt, BROWSER_RIGHT - 0.01f,
-                    FOOTER_CY, 0.52f, 0.038f);
-                return false;
-            }
-            else
-            {
-                DrawPager(input, _weaponPage, _weaponTotalPages, _weaponFiltered.Count,
-                    out previousPageClicked, out nextPageClicked);
+            bool backClicked = DrawCenteredBackButton(input);
 
-                bool backClicked = DrawCenteredBackButton(input);
-
-                string filter = _weaponOwnershipFilter == 1 ? "OWNED"
-                    : _weaponOwnershipFilter == 2 ? "AVAILABLE" : "ALL";
-                string search = _weaponSearch.Length > 0 ? "SEARCH ON" : "SEARCH";
-                string hints = $"Y {filter}   X {search}   R3 FAVORITE   LB/RB PAGES";
-                DrawControlHint(hints);
-                return backClicked;
-            }
+            string filter = _weaponOwnershipFilter == 1 ? "OWNED"
+                : _weaponOwnershipFilter == 2 ? "AVAILABLE" : "ALL";
+            string search = _weaponSearch.Length > 0 ? "SEARCH ON" : "SEARCH";
+            string hints = $"A BUY/WORKBENCH   Y {filter}   X {search}   R3 FAVORITE";
+            DrawControlHint(hints);
+            return backClicked;
         }
 
         private void HandleWeaponBrowserInput(
             FrameInput input, bool backClicked,
             bool previousPageClicked, bool nextPageClicked)
         {
-            // Handle pending ammo confirm first
-            if (_ammoConfirmPending)
-            {
-                if (input.Accept || (input.MouseClick && _weaponHoverCard >= 0
-                    && _weaponPage * PAGE_SIZE + _weaponHoverCard == _ammoConfirmCardIdx))
-                {
-                    GbayRenderer.PlaySelect();
-                    _shop.ExecuteRefillAmmo(_ammoConfirmWeapon);
-                    _ammoConfirmPending = false;
-                    RebuildWeaponFilteredList();
-                    return;
-                }
-
-                if (input.Back || input.MouseRightClick)
-                {
-                    GbayRenderer.PlayBack();
-                    _ammoConfirmPending = false;
-                    return;
-                }
-
-                // While confirm is pending, block other inputs
-                return;
-            }
-
             if (input.Back || input.MouseRightClick || backClicked)
             {
                 GbayRenderer.PlayBack();
@@ -2586,38 +2513,8 @@ namespace ALLIN1
 
                     if (card.Owned)
                     {
-                        // Owned weapon — prompt for ammo refill
-                        int rounds;
-                        int cost = _shop.GetAmmoRefillInfo(card.WeaponName, out rounds);
-
-                        if (cost == GbayShop.AmmoCapacityUnavailable)
-                        {
-                            GbayRenderer.PlayError();
-                            GTA.UI.Screen.ShowSubtitle(
-                                "~r~Ammo data is unavailable for this weapon.", 3000);
-                        }
-                        else if (cost == GbayShop.AmmoNotApplicable)
-                        {
-                            // Melee / no-ammo weapon
-                            GbayRenderer.PlayError();
-                            GTA.UI.Screen.ShowSubtitle("~y~Already owned.", 3000);
-                        }
-                        else if (cost == 0 && rounds == 0)
-                        {
-                            // Fully stocked
-                            GbayRenderer.PlayError();
-                            GTA.UI.Screen.ShowSubtitle("~g~Already fully stocked.", 3000);
-                        }
-                        else
-                        {
-                            // Show ammo confirm
-                            GbayRenderer.PlaySelect();
-                            _ammoConfirmPending = true;
-                            _ammoConfirmWeapon = card.WeaponName;
-                            _ammoConfirmCost = cost;
-                            _ammoConfirmRounds = rounds;
-                            _ammoConfirmCardIdx = idx;
-                        }
+                        GbayRenderer.PlaySelect();
+                        BeginWeaponCustomization(card.WeaponName, card.DisplayName);
                     }
                     else
                     {

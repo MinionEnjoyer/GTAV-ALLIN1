@@ -161,6 +161,11 @@ Available classes: `compacts`, `coupes`, `sedans`, `suvs`, `muscle`, `sports`, `
 | `gbay_free_mode` | `false` | All GBAY purchases are free; vehicle sales have no payout. |
 | `garages_always_accessible` | `false` | Allow garage entry with a wanted level. Mission, vehicle-ownership, and size safety rules still apply. |
 | `gta_iv_npc_physics` | `false` | Experimental runtime-only GTA IV-style Euphoria reactions for nearby ambient human NPCs. Excludes the player, mission/persistent peds, animals, and vehicle occupants. |
+| `controller_enabled` | `true` | Enable the shared ALLIN1 controller input layer. |
+| `controller_open_gbay` / `controller_open_gbay_modifier` | `FrontendRdown` / `FrontendLb` | Open GBAY with the configured action chord (LB+R3 by default). |
+| `controller_night_vision` / `controller_night_vision_modifier` | `FrontendLeft` / `FrontendLb` | Toggle purchased night vision (LB+D-pad left by default). |
+| `controller_seat_selector` / `controller_seat_selector_modifier` | `FrontendRight` / `FrontendLb` | Hold the seat selector chord (LB+D-pad right by default). |
+| `controller_accept`, `controller_back`, navigation/filter bindings | GTA frontend defaults | Controller actions used throughout GBAY, including the weapon workbench. Configure these on the launcher's Controls page. |
 | `enable_logging` | `false` | Write debug info to `scripts/ALLIN1.log`. |
 | `enable_dlc_police` | `false` | Replace vanilla police cars with DLC police vehicles. |
 
@@ -193,8 +198,8 @@ also exposes **Y — Recover**, which stages live vehicle state, clears spawned
 garage entities and transition locks, and safely returns the player outside.
 
 All changes initiated through GBAY are transactional with the native Story Mode
-save. Purchases, sales, ammunition, gear state, favorites, recently viewed
-items, vehicle storage, and garage customization remain in memory until Michael,
+save. Purchases, sales, ammunition, weapon components and tints, gear state,
+favorites, recently viewed items, vehicle storage, and garage customization remain in memory until Michael,
 Franklin, or Trevor saves the game. Loading or quitting without a completed GTA
 save discards those staged changes; a completed GTA save commits them to the
 ALLIN1 JSON recovery files.
@@ -270,8 +275,9 @@ change, and the former per-frame GBAY texture-debug overlay has been removed.
 
 **Weapon Browser:**
 - 11 category tabs (All, Pistols, SMGs, Shotguns, Assault Rifles, Machine Guns, Sniper Rifles, Heavy Weapons, Melee, Throwables, Miscellaneous)
-- Shows owned status and ammo refill option for owned weapons
-- Ammo refill confirmation prompt with cost breakdown (rounds x per-round cost)
+- Selecting an owned weapon opens its workbench and a camera view of the character holding it
+- The workbench includes ammunition plus every compatible component and tint reported by the installed GTA build, including DLC weapon upgrades
+- Purchased components and finishes can be re-equipped without paying twice; LT/RT rotates the workbench camera and Back returns to the weapon catalog
 - Purchase gives weapon with starter ammo
 
 **Gear Browser:**

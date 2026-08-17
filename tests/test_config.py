@@ -123,6 +123,8 @@ def test_default_config():
     assert config.script.seat_selector_key == "L"
     assert config.script.garages_always_accessible is False
     assert config.script.gta_iv_npc_physics is False
+    assert config.script.controller_enabled is True
+    assert config.script.controller_open_gbay == "FrontendRdown"
 
 
 def test_save_round_trip_preserves_all_fields(tmp_path):
@@ -174,6 +176,21 @@ def test_keybind_validation_rejects_conflicts_and_normalizes_case():
         config.validate()
     config.script.world_vector_key = "NumPad9"
     config.validate()
+
+
+def test_controller_bindings_round_trip_and_validate(tmp_path):
+    config = Config.default()
+    config.script.controller_open_gbay = "FrontendX"
+    config.script.controller_open_gbay_modifier = "FrontendRt"
+    path = tmp_path / "controller.toml"
+    config.save(path)
+    loaded = Config.load(path)
+    assert loaded.script.controller_open_gbay == "FrontendX"
+    assert loaded.script.controller_open_gbay_modifier == "FrontendRt"
+
+    loaded.script.controller_accept = "Attack"
+    with pytest.raises(ValueError, match="controller_accept"):
+        loaded.validate()
 
 
 @pytest.mark.parametrize("field,value", [

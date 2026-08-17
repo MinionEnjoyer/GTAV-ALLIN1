@@ -31,16 +31,27 @@ namespace ALLIN1
 
         public sealed class Inventory
         {
-            public int schema_version { get; set; } = 7;
+            public int schema_version { get; set; } = 8;
             public List<string> weapons { get; set; } = new List<string>();
             public Dictionary<string, int> weapon_ammo { get; set; } =
                 new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public Dictionary<string, WeaponCustomization> weapon_customizations { get; set; } =
+                new Dictionary<string, WeaponCustomization>(StringComparer.OrdinalIgnoreCase);
             public List<string> gear { get; set; } = new List<string>();
             public List<string> equipped_gear { get; set; } = new List<string>();
             public List<string> properties { get; set; } = new List<string>();
             public bool managed { get; set; }
             public Outfit outfit { get; set; } = new Outfit();
             public Progress progress { get; set; } = new Progress();
+        }
+
+        public sealed class WeaponCustomization
+        {
+            public List<int> owned_components { get; set; } = new List<int>();
+            public Dictionary<string, int> active_components { get; set; } =
+                new Dictionary<string, int>();
+            public List<int> owned_tints { get; set; } = new List<int> { 0 };
+            public int active_tint { get; set; }
         }
 
         public sealed class Variation
@@ -261,6 +272,7 @@ namespace ALLIN1
                     // GIVE_WEAPON_TO_PED may add to an already-present weapon. Set
                     // the total explicitly so a save restore cannot duplicate ammo.
                     Function.Call(Hash.SET_PED_AMMO, ped.Handle, hash, ammo);
+                    ApplyWeaponCustomization(ped, entry.Key, hash, inventory);
                 }
                 else if (inventory.managed)
                     Function.Call(Hash.REMOVE_WEAPON_FROM_PED, ped.Handle, hash);
@@ -449,6 +461,128 @@ namespace ALLIN1
             }
         }
 
+        internal static bool IsWeaponComponentOwned(string weapon, int componentHash)
+        {
+            string character = CurrentCharacter();
+            if (character.Length == 0) return false;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory)) return false;
+                NormalizeInventory(inventory);
+                return inventory.weapon_customizations.TryGetValue(
+                    weapon, out WeaponCustomization customization) &&
+                    customization.owned_components.Contains(componentHash);
+            }
+        }
+
+        internal static int GetActiveWeaponComponent(string weapon, int attachmentPoint)
+        {
+            string character = CurrentCharacter();
+            if (character.Length == 0) return 0;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory)) return 0;
+                NormalizeInventory(inventory);
+                if (!inventory.weapon_customizations.TryGetValue(
+                        weapon, out WeaponCustomization customization)) return 0;
+                return customization.active_components.TryGetValue(
+                    attachmentPoint.ToString(), out int hash) ? hash : 0;
+            }
+        }
+
+        internal static void RecordWeaponComponent(
+            string weapon, int componentHash, int attachmentPoint)
+        {
+            string character = CurrentCharacter();
+            if (character.Length == 0 || string.IsNullOrWhiteSpace(weapon)) return;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory)) return;
+                NormalizeInventory(inventory);
+                WeaponCustomization customization = GetOrCreateCustomization(
+                    inventory, weapon);
+                if (!customization.owned_components.Contains(componentHash))
+                    customization.owned_components.Add(componentHash);
+                customization.active_components[attachmentPoint.ToString()] = componentHash;
+                StageStateLocked(character, "weapon_component", weapon);
+            }
+        }
+
+        internal static bool IsWeaponTintOwned(string weapon, int tint)
+        {
+            string character = CurrentCharacter();
+            if (character.Length == 0) return tint == 0;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory)) return tint == 0;
+                NormalizeInventory(inventory);
+                return inventory.weapon_customizations.TryGetValue(
+                    weapon, out WeaponCustomization customization)
+                    ? customization.owned_tints.Contains(tint) : tint == 0;
+            }
+        }
+
+        internal static int GetActiveWeaponTint(string weapon)
+        {
+            string character = CurrentCharacter();
+            if (character.Length == 0) return 0;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory)) return 0;
+                NormalizeInventory(inventory);
+                return inventory.weapon_customizations.TryGetValue(
+                    weapon, out WeaponCustomization customization)
+                    ? customization.active_tint : 0;
+            }
+        }
+
+        internal static void RecordWeaponTint(string weapon, int tint)
+        {
+            string character = CurrentCharacter();
+            if (character.Length == 0 || string.IsNullOrWhiteSpace(weapon)) return;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory)) return;
+                NormalizeInventory(inventory);
+                WeaponCustomization customization = GetOrCreateCustomization(
+                    inventory, weapon);
+                if (!customization.owned_tints.Contains(tint))
+                    customization.owned_tints.Add(tint);
+                customization.active_tint = tint;
+                StageStateLocked(character, "weapon_tint", weapon);
+            }
+        }
+
+        private static WeaponCustomization GetOrCreateCustomization(
+            Inventory inventory, string weapon)
+        {
+            if (!inventory.weapon_customizations.TryGetValue(
+                    weapon, out WeaponCustomization customization))
+            {
+                customization = new WeaponCustomization();
+                inventory.weapon_customizations[weapon] = customization;
+            }
+            return customization;
+        }
+
+        private static void ApplyWeaponCustomization(
+            Ped ped, string weapon, Hash weaponHash, Inventory inventory)
+        {
+            if (!inventory.weapon_customizations.TryGetValue(
+                    weapon, out WeaponCustomization customization)) return;
+            foreach (int component in customization.active_components.Values)
+            {
+                if (Function.Call<bool>(Hash.DOES_WEAPON_TAKE_WEAPON_COMPONENT,
+                        weaponHash, component))
+                    Function.Call(Hash.GIVE_WEAPON_COMPONENT_TO_PED,
+                        ped.Handle, weaponHash, component);
+            }
+            int tintCount = Function.Call<int>(Hash.GET_WEAPON_TINT_COUNT, weaponHash);
+            if (customization.active_tint >= 0 && customization.active_tint < tintCount)
+                Function.Call(Hash.SET_PED_WEAPON_TINT_INDEX,
+                    ped.Handle, weaponHash, customization.active_tint);
+        }
+
         private void BackupWhenStorySaveWritten(string character, Ped player)
         {
             DateTime now = DateTime.UtcNow;
@@ -618,6 +752,47 @@ namespace ALLIN1
                     changed = true;
                 inventory.weapon_ammo = normalizedAmmo;
             }
+            var normalizedCustomizations = new Dictionary<string, WeaponCustomization>(
+                StringComparer.OrdinalIgnoreCase);
+            if (inventory.weapon_customizations == null)
+            {
+                inventory.weapon_customizations = normalizedCustomizations;
+                changed = true;
+            }
+            else
+            {
+                foreach (var entry in inventory.weapon_customizations)
+                {
+                    if (!ContainsIgnoreCase(inventory.weapons, entry.Key) || entry.Value == null)
+                    {
+                        changed = true;
+                        continue;
+                    }
+                    WeaponCustomization value = entry.Value;
+                    if (value.owned_components == null)
+                    {
+                        value.owned_components = new List<int>(); changed = true;
+                    }
+                    if (value.active_components == null)
+                    {
+                        value.active_components = new Dictionary<string, int>(); changed = true;
+                    }
+                    if (value.owned_tints == null)
+                    {
+                        value.owned_tints = new List<int>(); changed = true;
+                    }
+                    if (!value.owned_tints.Contains(0))
+                    {
+                        value.owned_tints.Add(0); changed = true;
+                    }
+                    if (!value.owned_tints.Contains(value.active_tint))
+                    {
+                        value.owned_tints.Add(value.active_tint); changed = true;
+                    }
+                    normalizedCustomizations[entry.Key] = value;
+                }
+                inventory.weapon_customizations = normalizedCustomizations;
+            }
             var normalized = new List<string>();
             string activeArmor = null;
             foreach (string item in inventory.equipped_gear)
@@ -642,9 +817,9 @@ namespace ALLIN1
             inventory.gear.RemoveAll(item =>
                 !ContainsIgnoreCase(inventory.equipped_gear, item));
             if (inventory.gear.Count != ownedBefore) changed = true;
-            if (inventory.schema_version != 7)
+            if (inventory.schema_version != 8)
             {
-                inventory.schema_version = 7;
+                inventory.schema_version = 8;
                 changed = true;
             }
             return changed;

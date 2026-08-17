@@ -189,6 +189,18 @@ class ManagerWindow:
             value=self.config.script.garages_always_accessible)
         self.gta_iv_npc_physics = tk.BooleanVar(
             value=self.config.script.gta_iv_npc_physics)
+        self.controller_enabled = tk.BooleanVar(value=self.config.script.controller_enabled)
+        for name in (
+            "controller_open_gbay", "controller_open_gbay_modifier",
+            "controller_night_vision", "controller_night_vision_modifier",
+            "controller_seat_selector", "controller_seat_selector_modifier",
+            "controller_accept", "controller_back", "controller_up", "controller_down",
+            "controller_left", "controller_right", "controller_page_left",
+            "controller_page_right", "controller_category_prev",
+            "controller_category_next", "controller_filter", "controller_search",
+            "controller_favorite",
+        ):
+            setattr(self, name, tk.StringVar(value=getattr(self.config.script, name)))
         self.status_text = tk.StringVar(value="Checking installation…")
         self.status_headline = tk.StringVar(value="Checking installation…")
         self.status_detail = tk.StringVar(value="Inspecting the selected GTA V folder.")
@@ -208,6 +220,15 @@ class ManagerWindow:
             self.hold_duration_ms, self.gbay_free_mode,
             self.garages_always_accessible,
             self.gta_iv_npc_physics,
+            self.controller_enabled,
+            self.controller_open_gbay, self.controller_open_gbay_modifier,
+            self.controller_night_vision, self.controller_night_vision_modifier,
+            self.controller_seat_selector, self.controller_seat_selector_modifier,
+            self.controller_accept, self.controller_back, self.controller_up,
+            self.controller_down, self.controller_left, self.controller_right,
+            self.controller_page_left, self.controller_page_right,
+            self.controller_category_prev, self.controller_category_next,
+            self.controller_filter, self.controller_search, self.controller_favorite,
         )
         for variable in self._setting_variables:
             variable.trace_add("write", self._mark_dirty)
@@ -410,6 +431,55 @@ class ManagerWindow:
                   wraplength=760, foreground="#3f6659").grid(
                       row=6, column=0, columnspan=4, sticky="w", pady=(8, 0))
 
+        controller = ttk.LabelFrame(
+            controls_page, text="CONTROLLER CONFIGURATION", padding=14)
+        controller.pack(fill="x", pady=(0, 12))
+        controller.columnconfigure(1, weight=1)
+        controller.columnconfigure(3, weight=1)
+        ttk.Checkbutton(controller, text="Enable controller support",
+                        variable=self.controller_enabled).grid(
+                            row=0, column=0, columnspan=4, sticky="w", pady=(0, 8))
+        controller_choices = (
+            "FrontendAccept", "FrontendCancel", "FrontendUp", "FrontendDown",
+            "FrontendLeft", "FrontendRight", "FrontendLb", "FrontendRb",
+            "FrontendLt", "FrontendRt", "FrontendY", "FrontendX", "FrontendRdown",
+        )
+        controller_rows = (
+            ("Open GBAY", self.controller_open_gbay,
+             "Open modifier", self.controller_open_gbay_modifier),
+            ("Night vision", self.controller_night_vision,
+             "Night vision modifier", self.controller_night_vision_modifier),
+            ("Seat selector", self.controller_seat_selector,
+             "Seat modifier", self.controller_seat_selector_modifier),
+            ("Accept", self.controller_accept, "Back", self.controller_back),
+            ("Navigate up", self.controller_up, "Navigate down", self.controller_down),
+            ("Navigate left", self.controller_left, "Navigate right", self.controller_right),
+            ("Previous page", self.controller_page_left,
+             "Next page", self.controller_page_right),
+            ("Previous category", self.controller_category_prev,
+             "Next category", self.controller_category_next),
+            ("Filter", self.controller_filter, "Search", self.controller_search),
+            ("Favorite", self.controller_favorite, "", None),
+        )
+        for row, (left_label, left_var, right_label, right_var) in enumerate(
+                controller_rows, start=1):
+            ttk.Label(controller, text=left_label).grid(
+                row=row, column=0, sticky="w", pady=3)
+            ttk.Combobox(controller, textvariable=left_var,
+                         values=controller_choices, state="readonly", width=18).grid(
+                             row=row, column=1, sticky="w", padx=(10, 24), pady=3)
+            if right_var is not None:
+                ttk.Label(controller, text=right_label).grid(
+                    row=row, column=2, sticky="w", pady=3)
+                ttk.Combobox(controller, textvariable=right_var,
+                             values=controller_choices, state="readonly", width=18).grid(
+                                 row=row, column=3, sticky="w", padx=(10, 0), pady=3)
+        ttk.Label(controller,
+                  text="Shortcut actions use the configured modifier plus action. GBAY navigation bindings apply while its menus are open.",
+                  wraplength=760, foreground="#3f6659").grid(
+                      row=len(controller_rows) + 1, column=0, columnspan=4,
+                      sticky="w", pady=(8, 0))
+
         mod_library = ttk.LabelFrame(mods_page, text="OPTIONAL MOD LIBRARY", padding=14)
         mod_library.pack(fill="both", expand=True, pady=(0, 12))
         ttk.Label(
@@ -602,6 +672,21 @@ class ManagerWindow:
             self.garages_always_accessible.get()
         self.config.script.gta_iv_npc_physics = \
             self.gta_iv_npc_physics.get()
+        if hasattr(self, "controller_enabled"):
+            self.config.script.controller_enabled = self.controller_enabled.get()
+        for name in (
+            "controller_open_gbay", "controller_open_gbay_modifier",
+            "controller_night_vision", "controller_night_vision_modifier",
+            "controller_seat_selector", "controller_seat_selector_modifier",
+            "controller_accept", "controller_back", "controller_up", "controller_down",
+            "controller_left", "controller_right", "controller_page_left",
+            "controller_page_right", "controller_category_prev",
+            "controller_category_next", "controller_filter", "controller_search",
+            "controller_favorite",
+        ):
+            variable = getattr(self, name, None)
+            if variable is not None:
+                setattr(self.config.script, name, variable.get())
         return self.config
 
     @staticmethod
@@ -663,6 +748,18 @@ class ManagerWindow:
                 self.config.script.garages_always_accessible)
             self.gta_iv_npc_physics.set(
                 self.config.script.gta_iv_npc_physics)
+            self.controller_enabled.set(self.config.script.controller_enabled)
+            for name in (
+                "controller_open_gbay", "controller_open_gbay_modifier",
+                "controller_night_vision", "controller_night_vision_modifier",
+                "controller_seat_selector", "controller_seat_selector_modifier",
+                "controller_accept", "controller_back", "controller_up", "controller_down",
+                "controller_left", "controller_right", "controller_page_left",
+                "controller_page_right", "controller_category_prev",
+                "controller_category_next", "controller_filter", "controller_search",
+                "controller_favorite",
+            ):
+                getattr(self, name).set(getattr(self.config.script, name))
             self.notice_text.set(
                 f"Profile '{self.profile_name.get()}' loaded · save to apply"
             )

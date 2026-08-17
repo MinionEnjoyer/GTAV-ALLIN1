@@ -190,6 +190,8 @@ namespace ALLIN1
         public SeatSelector()
         {
             LoadConfig();
+            ControllerBindings.Load(Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory, "ALLIN1.toml"));
             Tick += OnTick;
             Interval = 0;
         }
@@ -1539,8 +1541,8 @@ namespace ALLIN1
             // Footer
             float footerY = HUD_TOP + TITLE_H + gridH + FOOTER_H / 2;
             string footerText = _playerInVehicle
-                ? $"Release {_selectorKey}: switch  |  ESC: cancel"
-                : $"Release {_selectorKey}: enter  |  ESC: cancel";
+                ? $"Release {_selectorKey}/controller: switch  |  B/ESC: cancel"
+                : $"Release {_selectorKey}/controller: enter  |  B/ESC: cancel";
             GbayRenderer.DrawText(footerText, panelX, footerY - 0.009f,
                 0.2f, COL_TEXT_DIM, GbayRenderer.FONT_CONDENSED, true);
         }
@@ -1551,6 +1553,8 @@ namespace ALLIN1
 
         private void SuppressEnterExit()
         {
+            Game.DisableControlThisFrame(ControllerBindings.SeatSelector);
+            Game.DisableControlThisFrame(ControllerBindings.SeatSelectorModifier);
             if (_selectorKey != Keys.F)
                 return;
             Game.DisableControlThisFrame(GTA.Control.Enter);
@@ -1559,6 +1563,10 @@ namespace ALLIN1
 
         private bool IsSelectorHeld()
         {
+            if (ControllerBindings.ChordPressed(
+                    ControllerBindings.SeatSelectorModifier,
+                    ControllerBindings.SeatSelector))
+                return true;
             if (_selectorKey != Keys.F)
                 return Game.IsKeyPressed(_selectorKey);
             return Function.Call<bool>(Hash.IS_CONTROL_PRESSED, 0, CONTROL_ENTER)

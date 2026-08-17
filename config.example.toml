@@ -83,3 +83,26 @@ garages_always_accessible = false
 # Experimental runtime-only NaturalMotion preset for ambient human NPCs.
 # Mission characters, persistent peds, occupants, and the player are excluded.
 gta_iv_npc_physics = false
+
+# Controller shortcuts use modifier + action. Defaults are LB+R3 for GBAY,
+# LB+D-pad left for night vision, and LB+D-pad right for the seat selector.
+controller_enabled = true
+controller_open_gbay = "FrontendRdown"
+controller_open_gbay_modifier = "FrontendLb"
+controller_night_vision = "FrontendLeft"
+controller_night_vision_modifier = "FrontendLb"
+controller_seat_selector = "FrontendRight"
+controller_seat_selector_modifier = "FrontendLb"
+controller_accept = "FrontendAccept"
+controller_back = "FrontendCancel"
+controller_up = "FrontendUp"
+controller_down = "FrontendDown"
+controller_left = "FrontendLeft"
+controller_right = "FrontendRight"
+controller_page_left = "FrontendLb"
+controller_page_right = "FrontendRb"
+controller_category_prev = "FrontendLt"
+controller_category_next = "FrontendRt"
+controller_filter = "FrontendY"
+controller_search = "FrontendX"
+controller_favorite = "FrontendRdown"

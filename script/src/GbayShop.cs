@@ -63,6 +63,7 @@ namespace ALLIN1
 
         private void OnAborted(object sender, EventArgs args)
         {
+            _browser?.Close();
             GarageManager.OnScriptAborted();
             YachtManager.Shutdown();
         }
@@ -216,6 +217,7 @@ namespace ALLIN1
         private void Initialize()
         {
             LoadConfig();
+            ControllerBindings.Load(CONFIG_PATH);
             ClientLog.Configure(_enableLogging);
             ClientWatchdog.Configure(_safeMode);
             GbayBrowser.ReducedMotion = _reducedMotion;
@@ -639,6 +641,94 @@ namespace ALLIN1
 
             Log($"RefillAmmo: {weaponName}, {needed} rounds, cost=${totalCost}");
             return totalCost;
+        }
+
+        internal bool ExecuteWeaponComponentPurchase(
+            string weaponName, int componentHash, int attachmentPoint, int price)
+        {
+            Ped player = Game.Player.Character;
+            int weaponHash = CharacterInventory.GetWeaponHash(weaponName);
+            if (!Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON,
+                    player.Handle, weaponHash, false) ||
+                !Function.Call<bool>(Hash.DOES_WEAPON_TAKE_WEAPON_COMPONENT,
+                    weaponHash, componentHash))
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~That upgrade is unavailable for this weapon.", 2500);
+                return false;
+            }
+
+            bool owned = CharacterInventory.IsWeaponComponentOwned(
+                weaponName, componentHash) || Function.Call<bool>(
+                    Hash.HAS_PED_GOT_WEAPON_COMPONENT,
+                    player.Handle, weaponHash, componentHash);
+            int charge = _freeMode || owned ? 0 : Math.Max(0, price);
+            if (charge > 0 && Game.Player.Money < charge)
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~Insufficient funds.", 2500);
+                return false;
+            }
+
+            int active = CharacterInventory.GetActiveWeaponComponent(
+                weaponName, attachmentPoint);
+            if (active != 0 && active != componentHash)
+                Function.Call(Hash.REMOVE_WEAPON_COMPONENT_FROM_PED,
+                    player.Handle, weaponHash, active);
+            Function.Call(Hash.GIVE_WEAPON_COMPONENT_TO_PED,
+                player.Handle, weaponHash, componentHash);
+            if (!Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON_COMPONENT,
+                    player.Handle, weaponHash, componentHash))
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~The upgrade could not be applied.", 2500);
+                return false;
+            }
+            if (charge > 0) Game.Player.Money -= charge;
+            CharacterInventory.RecordWeaponComponent(
+                weaponName, componentHash, attachmentPoint);
+            GTA.UI.Screen.ShowSubtitle(charge > 0
+                ? $"~g~Weapon upgrade~w~ purchased for ~g~${charge:N0}~w~."
+                : "~g~Weapon upgrade equipped.~w~", 2500);
+            ClientLog.Info("GBAY", "weapon_component_staged",
+                new Dictionary<string, object> {
+                    { "weapon", weaponName }, { "component", componentHash },
+                    { "attachment", attachmentPoint }, { "charged", charge }
+                });
+            return true;
+        }
+
+        internal bool ExecuteWeaponTintPurchase(
+            string weaponName, int tint, int price)
+        {
+            Ped player = Game.Player.Character;
+            int weaponHash = CharacterInventory.GetWeaponHash(weaponName);
+            int tintCount = Function.Call<int>(Hash.GET_WEAPON_TINT_COUNT, weaponHash);
+            if (tint < 0 || tint >= tintCount) return false;
+            bool owned = CharacterInventory.IsWeaponTintOwned(weaponName, tint);
+            int charge = _freeMode || owned ? 0 : Math.Max(0, price);
+            if (charge > 0 && Game.Player.Money < charge)
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~Insufficient funds.", 2500);
+                return false;
+            }
+            Function.Call(Hash.SET_PED_WEAPON_TINT_INDEX,
+                player.Handle, weaponHash, tint);
+            int applied = Function.Call<int>(Hash.GET_PED_WEAPON_TINT_INDEX,
+                player.Handle, weaponHash);
+            if (applied != tint)
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~The tint could not be applied.", 2500);
+                return false;
+            }
+            if (charge > 0) Game.Player.Money -= charge;
+            CharacterInventory.RecordWeaponTint(weaponName, tint);
+            GTA.UI.Screen.ShowSubtitle(charge > 0
+                ? $"~g~Weapon finish~w~ purchased for ~g~${charge:N0}~w~."
+                : "~g~Weapon finish equipped.~w~", 2500);
+            ClientLog.Info("GBAY", "weapon_tint_staged",
+                new Dictionary<string, object> {
+                    { "weapon", weaponName }, { "tint", tint },
+                    { "charged", charge }
+                });
+            return true;
         }
 
         // ------------------------------------------------------------------ //
@@ -1770,6 +1860,17 @@ namespace ALLIN1
                 if (supportedCharacter && _browser != null)
                     _browser.Draw();
 
+                if (supportedCharacter && _browser != null && !_browser.IsOpen &&
+                    ControllerBindings.ChordJustPressed(
+                        ControllerBindings.OpenGbayModifier,
+                        ControllerBindings.OpenGbay))
+                    TryToggleBrowser();
+
+                if (NightVisionOwned && ControllerBindings.ChordJustPressed(
+                        ControllerBindings.NightVisionModifier,
+                        ControllerBindings.NightVision))
+                    ToggleNightVision();
+
                 JuggernautTick();
             }
             catch (Exception ex)
@@ -1787,23 +1888,7 @@ namespace ALLIN1
             {
                 try
                 {
-                    if (!TryGetCurrentCharacter(out _))
-                    {
-                        GTA.UI.Screen.ShowSubtitle(
-                            "~y~GBAY is available to Michael, Franklin, and Trevor.", 2500);
-                        ClientLog.Warn("GBAY", "unsupported_player_model");
-                        return;
-                    }
-                    if (GarageManager.IsTransitionInProgress)
-                    {
-                        GTA.UI.Screen.ShowSubtitle("~y~A garage transition is already in progress.", 1500);
-                        return;
-                    }
-
-                    if (!_initialized)
-                        Initialize();
-
-                    _browser.Toggle();
+                    TryToggleBrowser();
                 }
                 catch (Exception ex)
                 {
@@ -1811,10 +1896,32 @@ namespace ALLIN1
                 }
             }
             else if (e.KeyCode == _nightVisionKey && NightVisionOwned)
+                ToggleNightVision();
+        }
+
+        private void TryToggleBrowser()
+        {
+            if (!TryGetCurrentCharacter(out _))
             {
-                _nightVisionActive = !_nightVisionActive;
-                Function.Call(Hash.SET_NIGHTVISION, _nightVisionActive);
+                GTA.UI.Screen.ShowSubtitle(
+                    "~y~GBAY is available to Michael, Franklin, and Trevor.", 2500);
+                ClientLog.Warn("GBAY", "unsupported_player_model");
+                return;
             }
+            if (GarageManager.IsTransitionInProgress)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~y~A garage transition is already in progress.", 1500);
+                return;
+            }
+            if (!_initialized) Initialize();
+            _browser.Toggle();
+        }
+
+        private static void ToggleNightVision()
+        {
+            _nightVisionActive = !_nightVisionActive;
+            Function.Call(Hash.SET_NIGHTVISION, _nightVisionActive);
         }
     }
 }

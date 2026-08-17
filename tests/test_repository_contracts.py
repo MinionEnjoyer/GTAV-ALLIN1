@@ -522,7 +522,7 @@ def test_gbay_weapons_restore_without_clobbering_story_loadouts():
     assert "RecordWeaponAmmo(weaponName, maxAmmo)" in (
         ROOT / "script/src/GbayShop.cs").read_text()
     customization = (ROOT / "src/allin1/customization.py").read_text()
-    assert "LOADOUT_SCHEMA_VERSION = 6" in customization
+    assert "LOADOUT_SCHEMA_VERSION = 8" in customization
     assert '"weapon_ammo"' in customization
 
 
@@ -909,7 +909,7 @@ def test_gbay_vehicle_purchase_chooses_a_destination_without_a_3d_showroom():
     assert "OpenPreview" not in browser
     assert "World.RenderingCamera" not in browser
     assert "OpenDeliveryConfirm(card.Model, card.Price)" in browser
-    assert "CHOOSE DESTINATION GARAGE" in browser
+    assert "CHOOSE DELIVERY LOCATION" in browser
     assert "GARAGE_LOCATION_NAMES" in browser
     assert "GarageAcceptsVehicle" in browser
     assert "GetGarageUsedSlots" in browser
@@ -1014,7 +1014,7 @@ def test_gbay_my_garage_is_a_scalable_two_pane_browser():
         browser.index("private void BeginSell")
     ]
 
-    assert 'DrawText("GARAGES"' in garage_view
+    assert 'DrawText("STORAGE"' in garage_view
     assert "_garageLocationScrollOffset" in garage_view
     assert "visibleGarageRows" in garage_view
     assert "visibleVehicleRows" in garage_view
@@ -1033,10 +1033,11 @@ def test_every_gbay_screen_uses_the_shared_green_title_badge():
     assert "BtnGreen" in title_badge
     assert "TextWhite" in title_badge
     for title in (
-        '"LOADING GBAY"', '"VEHICLES"', '"MY GARAGE"',
+        '"LOADING GBAY"', '"VEHICLES"',
         '"CONFIRM VEHICLE SALE"', '"WEAPONS"',
     ):
         assert f"DrawTitleBadge(\n                {title}" in browser
+    assert '_harbourListAccessMode ? "BOAT LIST" : "MY GARAGE"' in browser
     assert "DrawTitleBadge(displayName" in browser
     assert "DrawTitleBadge(displayName" in browser
     assert 'DrawTitleBadge(\n                "GEAR"' in gear
@@ -1124,7 +1125,8 @@ def test_gbay_control_legends_are_high_contrast_and_shared_across_pages():
     assert "GbayRenderer.TextWhite" in browser
     assert "0.31f, 0.235f" in browser
     # The retired 3D showroom supplied one former control legend.
-    assert browser.count("DrawControlHint(") >= 5
+    workbench = (ROOT / "script/src/GbayWeaponCustomization.cs").read_text()
+    assert browser.count("DrawControlHint(") + workbench.count("DrawControlHint(") >= 5
     assert "DrawControlHint(" in gear_browser
     assert "DrawControlHint(" in customize
     assert "BROWSER_LEFT + 0.10f" in browser
@@ -1279,7 +1281,8 @@ def test_legacy_garages_use_finished_harmony_sets_and_model_aware_placement():
     assert '"Floor 4", "Floor 5", "Exit Garage"' in manager
     assert 'F{sv.Slot / 5 + 1}-{sv.Slot % 5 + 1}' in browser
     assert '"Fixed Interior"' in browser
-    assert "bool customizationAvailable = _garageLocationIndex == 2" in browser
+    assert "bool customizationAvailable = !SpecializedListAccessMode &&" in browser
+    assert "_garageLocationIndex == 2" in browser
     assert "if (!davisGarage)" in customize
     assert manager.count("new ParkingSlot(-1517.0f") == 5
     assert manager.count("-80.2422f)") == 5
@@ -1448,7 +1451,8 @@ def test_gbay_search_ownership_and_emergency_recovery_contracts():
     assert "IsVehicleOwned(model)" in browser
     assert "EmergencyRecover" in garage
     assert "emergency_recovery_completed" in garage
-    assert "FrontendY" in input_source and "FrontendX" in input_source
+    controller_source = (ROOT / "script/src/ControllerBindings.cs").read_text()
+    assert "FrontendY" in controller_source and "FrontendX" in controller_source
 
 
 def test_windows_toolchain_ci_is_cached_bounded_and_non_mutating():

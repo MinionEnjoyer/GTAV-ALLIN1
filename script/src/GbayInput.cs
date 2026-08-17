@@ -54,35 +54,35 @@ namespace ALLIN1
                     0, (int)Control.CursorScrollDown))
                 input.ScrollDelta = 1;
 
-            if (Game.IsControlJustPressed(Control.FrontendUp))
+            if (ControllerBindings.JustPressed(ControllerBindings.Up))
                 input.DirY = -1;
-            else if (Game.IsControlJustPressed(Control.FrontendDown))
+            else if (ControllerBindings.JustPressed(ControllerBindings.Down))
                 input.DirY = 1;
 
-            if (Game.IsControlJustPressed(Control.FrontendLeft))
+            if (ControllerBindings.JustPressed(ControllerBindings.Left))
                 input.DirX = -1;
-            else if (Game.IsControlJustPressed(Control.FrontendRight))
+            else if (ControllerBindings.JustPressed(ControllerBindings.Right))
                 input.DirX = 1;
 
-            if (Game.IsControlJustPressed(Control.FrontendAccept))
+            if (ControllerBindings.JustPressed(ControllerBindings.Accept))
                 input.Accept = true;
-            if (Game.IsControlJustPressed(Control.FrontendCancel))
+            if (ControllerBindings.JustPressed(ControllerBindings.Back))
                 input.Back = true;
 
-            if (Game.IsControlJustPressed(Control.FrontendLb))
+            if (ControllerBindings.JustPressed(ControllerBindings.PageLeft))
                 input.PageLeft = true;
-            if (Game.IsControlJustPressed(Control.FrontendRb))
+            if (ControllerBindings.JustPressed(ControllerBindings.PageRight))
                 input.PageRight = true;
 
-            if (Game.IsControlJustPressed(Control.FrontendLt))
+            if (ControllerBindings.JustPressed(ControllerBindings.CategoryPrev))
                 input.CategoryPrev = true;
-            if (Game.IsControlJustPressed(Control.FrontendRt))
+            if (ControllerBindings.JustPressed(ControllerBindings.CategoryNext))
                 input.CategoryNext = true;
-            if (Game.IsControlJustPressed(Control.FrontendY))
+            if (ControllerBindings.JustPressed(ControllerBindings.Filter))
                 input.FilterNext = true;
-            if (Game.IsControlJustPressed(Control.FrontendX))
+            if (ControllerBindings.JustPressed(ControllerBindings.Search))
                 input.Search = true;
-            if (Game.IsControlJustPressed(Control.FrontendRdown))
+            if (ControllerBindings.JustPressed(ControllerBindings.Favorite))
                 input.Favorite = true;
 
             return input;
@@ -105,19 +105,8 @@ namespace ALLIN1
             Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, (int)Control.MeleeAttack2, true);
 
             // Re-enable frontend navigation (keyboard arrows, enter, esc)
-            Game.EnableControlThisFrame(Control.FrontendAccept);
-            Game.EnableControlThisFrame(Control.FrontendCancel);
-            Game.EnableControlThisFrame(Control.FrontendUp);
-            Game.EnableControlThisFrame(Control.FrontendDown);
-            Game.EnableControlThisFrame(Control.FrontendLeft);
-            Game.EnableControlThisFrame(Control.FrontendRight);
-            Game.EnableControlThisFrame(Control.FrontendLb);
-            Game.EnableControlThisFrame(Control.FrontendRb);
-            Game.EnableControlThisFrame(Control.FrontendLt);
-            Game.EnableControlThisFrame(Control.FrontendRt);
-            Game.EnableControlThisFrame(Control.FrontendY);
-            Game.EnableControlThisFrame(Control.FrontendX);
-            Game.EnableControlThisFrame(Control.FrontendRdown);
+            foreach (Control control in ControllerBindings.MenuControls)
+                Game.EnableControlThisFrame(control);
 
             // Re-enable cursor controls
             Game.EnableControlThisFrame(Control.CursorX);

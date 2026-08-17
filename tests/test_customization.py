@@ -46,7 +46,7 @@ def test_loadout_round_trip_normalizes_all_characters(tmp_path):
         ["WEAPON_A"], ["GEAR_A"], False, equipped_gear=["GEAR_A"],
         weapon_ammo={"WEAPON_A": 9999})
     assert loaded["franklin"] == CharacterLoadout()
-    assert json.loads((tmp_path / "loadouts.json").read_text())["michael"]["schema_version"] == 6
+    assert json.loads((tmp_path / "loadouts.json").read_text())["michael"]["schema_version"] == 8
 
 
 @pytest.mark.parametrize("loadouts", [
@@ -81,6 +81,22 @@ def test_weapon_ammo_round_trip_and_validation(tmp_path):
     loadout.weapon_ammo["WEAPON_A"] = -1
     with pytest.raises(ValueError, match="ammunition"):
         store.save({"franklin": loadout})
+
+
+def test_weapon_customization_round_trip_is_preserved_by_launcher(tmp_path):
+    path = tmp_path / "characters.json"
+    store = LoadoutStore(path, {"WEAPON_A"}, set())
+    customization = {
+        "owned_components": [123, 456],
+        "active_components": {"2": 456},
+        "owned_tints": [0, 3],
+        "active_tint": 3,
+    }
+    store.save({"michael": CharacterLoadout(
+        weapons=["WEAPON_A"], weapon_ammo={"WEAPON_A": 99},
+        weapon_customizations={"WEAPON_A": customization})})
+    assert store.load()["michael"].weapon_customizations == {
+        "WEAPON_A": customization}
 
 
 def test_loadout_rejects_unequipped_owned_gear(tmp_path):

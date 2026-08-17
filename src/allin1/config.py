@@ -64,6 +64,26 @@ class ScriptConfig:
     gbay_free_mode: bool = False
     garages_always_accessible: bool = False
     gta_iv_npc_physics: bool = False
+    controller_enabled: bool = True
+    controller_open_gbay: str = "FrontendRdown"
+    controller_open_gbay_modifier: str = "FrontendLb"
+    controller_night_vision: str = "FrontendLeft"
+    controller_night_vision_modifier: str = "FrontendLb"
+    controller_seat_selector: str = "FrontendRight"
+    controller_seat_selector_modifier: str = "FrontendLb"
+    controller_accept: str = "FrontendAccept"
+    controller_back: str = "FrontendCancel"
+    controller_up: str = "FrontendUp"
+    controller_down: str = "FrontendDown"
+    controller_left: str = "FrontendLeft"
+    controller_right: str = "FrontendRight"
+    controller_page_left: str = "FrontendLb"
+    controller_page_right: str = "FrontendRb"
+    controller_category_prev: str = "FrontendLt"
+    controller_category_next: str = "FrontendRt"
+    controller_filter: str = "FrontendY"
+    controller_search: str = "FrontendX"
+    controller_favorite: str = "FrontendRdown"
 
 
 @dataclass
@@ -160,6 +180,26 @@ class Config:
             "garages_always_accessible = "
             f"{boolean(self.script.garages_always_accessible)}\n"
             f"gta_iv_npc_physics = {boolean(self.script.gta_iv_npc_physics)}\n"
+            f"controller_enabled = {boolean(self.script.controller_enabled)}\n"
+            f"controller_open_gbay = {quote(self.script.controller_open_gbay)}\n"
+            f"controller_open_gbay_modifier = {quote(self.script.controller_open_gbay_modifier)}\n"
+            f"controller_night_vision = {quote(self.script.controller_night_vision)}\n"
+            f"controller_night_vision_modifier = {quote(self.script.controller_night_vision_modifier)}\n"
+            f"controller_seat_selector = {quote(self.script.controller_seat_selector)}\n"
+            f"controller_seat_selector_modifier = {quote(self.script.controller_seat_selector_modifier)}\n"
+            f"controller_accept = {quote(self.script.controller_accept)}\n"
+            f"controller_back = {quote(self.script.controller_back)}\n"
+            f"controller_up = {quote(self.script.controller_up)}\n"
+            f"controller_down = {quote(self.script.controller_down)}\n"
+            f"controller_left = {quote(self.script.controller_left)}\n"
+            f"controller_right = {quote(self.script.controller_right)}\n"
+            f"controller_page_left = {quote(self.script.controller_page_left)}\n"
+            f"controller_page_right = {quote(self.script.controller_page_right)}\n"
+            f"controller_category_prev = {quote(self.script.controller_category_prev)}\n"
+            f"controller_category_next = {quote(self.script.controller_category_next)}\n"
+            f"controller_filter = {quote(self.script.controller_filter)}\n"
+            f"controller_search = {quote(self.script.controller_search)}\n"
+            f"controller_favorite = {quote(self.script.controller_favorite)}\n"
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
@@ -204,6 +244,24 @@ class Config:
             raise ValueError("script.ui_scale must be between 0.75 and 1.5")
         if not 100 <= self.script.hold_duration_ms <= 2000:
             raise ValueError("script.hold_duration_ms must be between 100 and 2000")
+        controller_allowed = {
+            "FrontendAccept", "FrontendCancel", "FrontendUp", "FrontendDown",
+            "FrontendLeft", "FrontendRight", "FrontendLb", "FrontendRb",
+            "FrontendLt", "FrontendRt", "FrontendY", "FrontendX", "FrontendRdown",
+        }
+        for setting in (
+            "controller_open_gbay", "controller_open_gbay_modifier",
+            "controller_night_vision", "controller_night_vision_modifier",
+            "controller_seat_selector", "controller_seat_selector_modifier",
+            "controller_accept", "controller_back", "controller_up", "controller_down",
+            "controller_left", "controller_right", "controller_page_left",
+            "controller_page_right", "controller_category_prev",
+            "controller_category_next", "controller_filter", "controller_search",
+            "controller_favorite",
+        ):
+            value = getattr(self.script, setting)
+            if value not in controller_allowed:
+                raise ValueError(f"Unsupported {setting}: {value!r}")
 
 
 def load_prices(path: Path) -> dict[str, int]:
