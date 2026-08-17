@@ -1520,6 +1520,19 @@ namespace ALLIN1
             JuggernautActive = false;
         }
 
+        internal static void DiscardStagedRuntimeGear(Ped player)
+        {
+            if (player != null && player.Exists() && JuggernautActive)
+                RemoveJuggernaut(player);
+            else
+                JuggernautActive = false;
+
+            NightVisionOwned = false;
+            if (_nightVisionActive)
+                Function.Call(Hash.SET_NIGHTVISION, false);
+            _nightVisionActive = false;
+        }
+
         internal static void ApplyBallisticOutfit(Ped player, PedHash ch)
         {
             // Paleto Score juggernaut suit — confirmed in-game on Enhanced Edition

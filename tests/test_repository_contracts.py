@@ -515,7 +515,7 @@ def test_gbay_weapons_restore_without_clobbering_story_loadouts():
     assert 'Directory.EnumerateFiles(' in inventory
     assert 'profiles, "SGTA5*", SearchOption.AllDirectories' in inventory
     assert 'CaptureWeaponAmmo(character, player, "story_save_written")' in inventory
-    assert "weapon_state_backed_up" in inventory
+    assert "gbay_state_backed_up" in inventory
     assert "GET_AMMO_IN_PED_WEAPON" in inventory
     assert "Hash.SET_PED_AMMO" in inventory
     assert "inventory.weapon_ammo.TryGetValue" in inventory
@@ -524,6 +524,39 @@ def test_gbay_weapons_restore_without_clobbering_story_loadouts():
     customization = (ROOT / "src/allin1/customization.py").read_text()
     assert "LOADOUT_SCHEMA_VERSION = 6" in customization
     assert '"weapon_ammo"' in customization
+
+
+def test_all_gbay_mutations_commit_only_at_story_save_boundary():
+    inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()
+    preferences = (ROOT / "script/src/GbayPreferences.cs").read_text()
+    garage = (ROOT / "script/src/GarageManager.cs").read_text()
+    davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
+
+    purchase_section = inventory[
+        inventory.index("internal static void RecordOwned"):
+        inventory.index("private void OnAborted")
+    ]
+    assert "StageStateLocked(" in purchase_section
+    assert "SaveStateLocked();" in purchase_section
+    assert purchase_section.count("SaveStateLocked();") == 1
+    assert "GbayPreferences.CommitForStorySave(reason);" in purchase_section
+    assert "GbayPreferences.DiscardStaged();" in inventory
+    assert "GbayShop.DiscardStagedRuntimeGear" in inventory
+
+    mutation_section = preferences[
+        preferences.index("internal static void ToggleVehicle"):
+        preferences.index("private static GbayPreferenceData Load()")
+    ]
+    assert "Save();" not in mutation_section
+    assert "Stage();" in mutation_section
+    assert "internal static void CommitForStorySave" in preferences
+    assert "internal static void DiscardStaged" in preferences
+
+    assert "_garageCustomizationSavesDirty = true;" in garage
+    assert "FloorGarageThemesWrite();" in garage
+    assert "DavisCustomizationWrite();" in garage
+    assert "private static bool DavisCustomizationWrite()" in davis
+    assert "ReloadCommittedGarageState();" in garage
 
 
 def test_runtime_hot_paths_are_throttled_and_cached():

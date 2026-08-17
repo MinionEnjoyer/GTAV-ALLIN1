@@ -189,8 +189,15 @@ screens.
 Vehicle and weapon catalogs support **Y** ownership filters (all, owned, or
 available), a dedicated **Favorites** category, **R3** favorite toggling, and
 **X** text search using GTA's on-screen keyboard. The garage view
-also exposes **Y — Recover**, which saves live vehicle state, clears spawned
+also exposes **Y — Recover**, which stages live vehicle state, clears spawned
 garage entities and transition locks, and safely returns the player outside.
+
+All changes initiated through GBAY are transactional with the native Story Mode
+save. Purchases, sales, ammunition, gear state, favorites, recently viewed
+items, vehicle storage, and garage customization remain in memory until Michael,
+Franklin, or Trevor saves the game. Loading or quitting without a completed GTA
+save discards those staged changes; a completed GTA save commits them to the
+ALLIN1 JSON recovery files.
 
 ### Character Customization
 
@@ -204,7 +211,8 @@ The desktop manager's **Character customization** window provides three tabs:
 Managed loadouts are stored in `scripts/ALLIN1_characters.json`. They are opt-in
 per character: an untouched character retains the inventory from the native
 Story Mode save. Once managed, launcher additions and removals are applied by
-the client, while purchases made in GBAY are written back to the same file.
+the client, while purchases made in GBAY are written back to the same file only
+when the native Story Mode save completes.
 Outfits are also opt-in. Drawable and texture IDs are validated against the
 active Michael, Franklin, or Trevor model before native calls are made. A prop
 drawable of `-1` removes that prop. The unlock option exposes native component
