@@ -1,0 +1,82 @@
+# GTA V ALLIN1 Configuration
+# Copy this file to config.toml and adjust to your liking.
+
+[general]
+# Path to your GTA V installation. Set to "auto" to detect automatically.
+gta_path = "auto"
+
+# Deprecated compatibility alias for script.gbay_free_mode.
+# The launcher keeps both values synchronized.
+free_mode = false
+
+# Create backups of original game files before modifying.
+backup = true
+
+# Install GBAY thumbnails through OpenRPF/OpenIV. Disable this only when
+# troubleshooting an artwork-loader conflict; placeholders remain available.
+enable_rpf_previews = true
+
+[traffic]
+# Add GTA Online vehicles to ambient traffic so they appear naturally.
+enabled = true
+
+# Only spawn super/sports cars in wealthy neighborhoods (Vinewood, etc.)
+rich_areas_only_supers = true
+
+# Advanced ambient traffic tuning.
+max_driven = 20
+spawn_distance_min = 80.0
+spawn_distance_max = 200.0
+cleanup_distance = 350.0
+driven_cooldown_ms = 5000
+scan_cooldown_ms = 3000
+scan_radius = 200.0
+minimum_replace_distance = 50.0
+replacement_chance = 0.30
+adaptive_performance = true
+minimum_fps = 40
+
+[vehicles]
+# Enable all GTA Online vehicles. Set to false to use the catalog
+# to pick specific vehicles.
+enable_all = true
+
+# Vehicle classes to exclude entirely.
+# Options: compacts, coupes, sedans, suvs, muscle, sports, sportsclassics,
+#          super, offroad, motorcycles, military, industrial, vans, boats,
+#          helicopters, planes, openwheel, emergency, service
+disabled_classes = []
+
+# Specific vehicle model names to exclude.
+disabled_vehicles = []
+
+[script]
+# Write debug info to scripts/ALLIN1.log (useful for troubleshooting).
+enable_logging = true
+
+# Replace vanilla police cars with DLC police vehicles.
+enable_dlc_police = false
+
+# Key to open the GBAY vehicle shop menu (default: F9).
+# Uses .NET Keys enum names: F1-F12, NumPad0-9, etc.
+gbay_key = "F9"
+
+# Keys for purchased night vision and the developer world-vector overlay.
+night_vision_key = "N"
+world_vector_key = "F10"
+
+# Hold the game's enter/exit control to choose a specific vehicle seat.
+seat_selector_enabled = true
+seat_selector_key = "L"
+# Recovery mode: disables DLC traffic and the multi-floor garage initializer.
+safe_mode = false
+ui_scale = 1.0
+# Disable GBAY's brief page-transition fade overlay.
+reduced_motion = false
+colorblind_mode = false
+hold_duration_ms = 350
+
+# When true, all GBAY purchases are free and vehicle sales have no payout.
+gbay_free_mode = false
+# Default false: wanted players cannot enter, while garage exits stay usable.
+garages_always_accessible = false

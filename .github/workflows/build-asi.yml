@@ -1,0 +1,59 @@
+name: Build ALLIN1
+
+on:
+  push:
+    paths:
+      - 'script/**'
+      - '.github/workflows/build-asi.yml'
+      - '.gitignore'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-allin1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-script:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore NuGet packages
+        run: dotnet restore script/ALLIN1.csproj -v normal
+
+      - name: Build Release
+        run: dotnet build script/ALLIN1.csproj -c Release -o script/out --no-restore -v normal
+
+      - name: List output
+        run: Get-ChildItem -Path script/out -Recurse | ForEach-Object { Write-Host $_.FullName }
+
+      - name: Copy binaries to dist
+        run: |
+          New-Item -ItemType Directory -Path "script/dist" -Force | Out-Null
+          Copy-Item -Path "script/out/ALLIN1.dll" -Destination "script/dist/ALLIN1.dll" -Force
+          Copy-Item -Path "script/out/LemonUI.SHVDN3.dll" -Destination "script/dist/LemonUI.SHVDN3.dll" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ALLIN1-dll
+          path: |
+            script/dist/ALLIN1.dll
+            script/dist/LemonUI.SHVDN3.dll
+
+      - name: Commit pre-built binaries
+        # Feature branches receive the artifact above. Committing generated
+        # binaries there caused another complete Tests workflow, including the
+        # expensive real Windows toolchain job.
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
+          git add script/dist/ALLIN1.dll script/dist/LemonUI.SHVDN3.dll
+          git diff --cached --quiet || git commit -m "Auto-build: update ALLIN1.dll + LemonUI.SHVDN3.dll"
+          git push

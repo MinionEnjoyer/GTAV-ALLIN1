@@ -1,0 +1,194 @@
+import logging
+import queue
+from unittest.mock import Mock
+
+import pytest
+
+from allin1.config import Config
+from allin1.gui import (
+    ManagerWindow, QueueLogHandler, _operation_progress_text, _status_presentation,
+)
+from allin1.manager import InstallationStatus
+
+
+class Variable:
+    def __init__(self, value):
+        self.value = value
+    def get(self):
+        return self.value
+
+
+def _window():
+    window = ManagerWindow.__new__(ManagerWindow)
+    window.config = Config.default()
+    window.path = Variable(" /game ")
+    window.rpf_previews = Variable(True)
+    window.backup_enabled = Variable(False)
+    window.traffic = Variable(False)
+    window.rich_areas_only = Variable(False)
+    window.adaptive_performance = Variable(False)
+    window.enable_all_vehicles = Variable(False)
+    window.disabled_classes = Variable("military, emergency")
+    window.disabled_vehicles = Variable("oppressor2, deluxo")
+    window.police = Variable(True)
+    window.logging_enabled = Variable(True)
+    window.gbay_key = Variable("F8")
+    window.night_vision_key = Variable("V")
+    window.world_vector_key = Variable("F11")
+    window.seat_selector_enabled = Variable(False)
+    window.seat_selector_key = Variable("G")
+    window.safe_mode = Variable(True)
+    window.reduced_motion = Variable(True)
+    window.colorblind_mode = Variable(True)
+    window.ui_scale = Variable(1.2)
+    window.hold_duration_ms = Variable(600)
+    window.gbay_free_mode = Variable(True)
+    window.garages_always_accessible = Variable(True)
+    return window
+
+
+def test_current_config_collects_all_launcher_fields():
+    config = _window()._current_config()
+    assert config.general.gta_path == "/game"
+    assert config.general.free_mode is True
+    assert config.general.enable_rpf_previews is True
+    assert config.general.backup is False
+    assert config.traffic.enabled is False
+    assert config.traffic.rich_areas_only_supers is False
+    assert config.traffic.adaptive_performance is False
+    assert config.vehicles.disabled_classes == ["military", "emergency"]
+    assert config.vehicles.disabled_vehicles == ["oppressor2", "deluxo"]
+    assert config.script.gbay_key == "F8"
+    assert config.script.night_vision_key == "V"
+    assert config.script.world_vector_key == "F11"
+    assert config.script.seat_selector_enabled is False
+    assert config.script.seat_selector_key == "G"
+    assert config.script.safe_mode is True
+    assert config.script.reduced_motion is True
+    assert config.script.colorblind_mode is True
+    assert config.script.ui_scale == 1.2
+    assert config.script.hold_duration_ms == 600
+    assert config.script.gbay_free_mode is True
+    assert config.script.garages_always_accessible is True
+
+
+def test_queue_log_handler_sends_formatted_record():
+    messages = queue.Queue()
+    handler = QueueLogHandler(messages)
+    handler.setFormatter(logging.Formatter("%(levelname)s:%(message)s"))
+    handler.emit(logging.LogRecord("test", logging.WARNING, "", 0, "hello", (), None))
+    assert messages.get_nowait() == ("log", "WARNING:hello")
+
+
+def test_repair_progress_text_clamps_percentages():
+    assert _operation_progress_text("Repairing", -5) == "Repairing - 0%"
+    assert _operation_progress_text("Repairing", 47) == "Repairing - 47%"
+    assert _operation_progress_text("Repairing", 150) == "Repairing - 100%"
+
+
+def test_launch_guard_submits_only_one_storefront_request(tmp_path, monkeypatch):
+    window = _window()
+    window.busy = False
+    window.launch_pending = False
+    window.manager = Mock()
+    window.manager.resolve_path.return_value = tmp_path
+    window.launch_button = Mock()
+    window.root = Mock()
+    window._clear_dirty = Mock()
+    window._append_log = Mock()
+    target = Mock(description="GTA V Enhanced through Steam")
+    launcher = Mock(return_value=target)
+    monkeypatch.setattr("allin1.gui.launch_gta", launcher)
+
+    window.launch_game()
+    window.launch_game()
+
+    launcher.assert_called_once_with(tmp_path)
+    window.root.after.assert_called_once_with(15000, window._reset_launch_guard)
+
+
+def test_save_displays_validation_errors(monkeypatch):
+    window = _window()
+    window.gbay_key = Variable("F8")
+    window.world_vector_key = Variable("F8")
+    window.manager = Mock()
+    window._append_log = Mock()
+    shown = Mock()
+    monkeypatch.setattr("allin1.gui.messagebox.showerror", shown)
+    window.manager.save_config.side_effect = ValueError("conflict")
+    window.save()
+    shown.assert_called_once()
+
+
+def _status(**overrides):
+    values = {
+        "gta_path": None,
+        "valid_game": False,
+        "edition": "Unknown",
+        "mod_installed": False,
+        "scripthookv_installed": False,
+        "shvdn_installed": False,
+        "openrpf_installed": False,
+    }
+    values.update(overrides)
+    return InstallationStatus(**values)
+
+
+def test_status_presentation_guides_invalid_and_uninstalled_states(tmp_path):
+    invalid = _status_presentation(_status())
+    assert invalid.headline == "Select your GTA V folder"
+    assert invalid.can_launch is False
+    assert invalid.can_install is False
+
+    uninstalled = _status_presentation(_status(
+        gta_path=tmp_path,
+        valid_game=True,
+        edition="Enhanced",
+        scripthookv_installed=True,
+        shvdn_installed=True,
+    ))
+    assert uninstalled.headline == "ALLIN1 is ready to install"
+    assert uninstalled.can_install is True
+    assert uninstalled.can_uninstall is False
+
+
+def test_status_presentation_prioritizes_missing_dependencies_and_version_drift(tmp_path):
+    missing = _status_presentation(_status(
+        gta_path=tmp_path,
+        valid_game=True,
+        edition="Enhanced",
+        mod_installed=True,
+        installed_version="0.4.1",
+        manager_version="0.4.1",
+    ))
+    assert missing.headline == "Required components are missing"
+    assert "ScriptHookV" in missing.detail
+
+    update = _status_presentation(_status(
+        gta_path=tmp_path,
+        valid_game=True,
+        edition="Enhanced",
+        mod_installed=True,
+        scripthookv_installed=True,
+        shvdn_installed=True,
+        installed_version="0.4.0",
+        manager_version="0.4.1",
+    ))
+    assert update.headline == "Client update available"
+    assert "0.4.0" in update.detail and "0.4.1" in update.detail
+
+
+def test_status_presentation_reports_ready_when_versions_match(tmp_path):
+    ready = _status_presentation(_status(
+        gta_path=tmp_path,
+        valid_game=True,
+        edition="Enhanced",
+        mod_installed=True,
+        scripthookv_installed=True,
+        shvdn_installed=True,
+        installed_version="0.4.1",
+        manager_version="0.4.1",
+    ))
+    assert ready.headline == "Ready to play"
+    assert ready.can_launch is True
+    assert ready.tone == "success"

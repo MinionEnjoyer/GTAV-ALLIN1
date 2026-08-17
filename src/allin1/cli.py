@@ -1,0 +1,466 @@
+"""Command-line interface for GTA V ALLIN1."""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+import click
+
+from allin1.config import Config
+from allin1 import __version__
+from allin1.installer import install, uninstall
+from allin1.logging import setup_logging
+from allin1.vehicles.database import VehicleDatabase
+
+# Resolve project root (where data/ lives) relative to this file
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+DEFAULT_CONFIG = PROJECT_ROOT / "config.toml"
+VEHICLES_DB = DATA_DIR / "vehicles.toml"
+
+log = logging.getLogger("allin1.cli")
+
+
+@click.group()
+@click.option(
+    "--config", "-c",
+    type=click.Path(exists=False),
+    default=str(DEFAULT_CONFIG),
+    help="Path to config.toml",
+)
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose (debug) output")
+@click.version_option(__version__, prog_name="GTA V ALLIN1")
+@click.pass_context
+def main(ctx: click.Context, config: str, verbose: bool) -> None:
+    """GTA V ALLIN1 - Unlock all GTA Online vehicles in single player."""
+    setup_logging(project_root=PROJECT_ROOT, verbose=verbose)
+    log.info("ALLIN1 started")
+
+    ctx.ensure_object(dict)
+    config_path = Path(config)
+    if config_path.exists():
+        ctx.obj["config"] = Config.load(config_path)
+        log.info("Loaded config from %s", config_path)
+    else:
+        ctx.obj["config"] = Config.default()
+        log.info("No config.toml found — using defaults")
+    ctx.obj["config_path"] = config_path
+
+
+@main.command()
+@click.pass_context
+def install_cmd(ctx: click.Context) -> None:
+    """Install MP vehicles into your GTA V single player."""
+    config: Config = ctx.obj["config"]
+    db = VehicleDatabase.load(VEHICLES_DB)
+
+    click.echo(f"Loaded {len(db)} vehicles from database.")
+    click.echo()
+
+    try:
+        result = install(config, db)
+    except (FileNotFoundError, ValueError) as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"GTA V path: {result.gta_path}")
+    click.echo(f"Edition: {'Enhanced' if result.is_enhanced else 'Legacy'}")
+
+    for warning in result.warnings:
+        click.echo(f"  {warning}")
+
+    click.echo()
+    if result.dll_deployed:
+        click.echo("ALLIN1.dll deployed to scripts/ folder.")
+    else:
+        click.echo("WARNING: ALLIN1.dll not found — build it or download from Releases.")
+
+    if not result.scripthookv_found:
+        click.echo()
+        click.echo("WARNING: ScriptHookV not found in your GTA V folder.")
+        click.echo("ALLIN1 requires ScriptHookV. Install it from:")
+        click.echo("  http://www.dev-c.com/gtav/scripthookv/")
+    else:
+        click.echo("ScriptHookV detected.")
+
+    if not result.shvdn_found:
+        click.echo()
+        click.echo("WARNING: ScriptHookVDotNet not found in your GTA V folder.")
+        click.echo("ALLIN1 requires ScriptHookVDotNet Enhanced. Install it from:")
+        click.echo("  https://github.com/Chiheb-Bacha/scripthookvdotnetenhanced/releases")
+    else:
+        click.echo("ScriptHookVDotNet detected.")
+
+    if not result.openrpf_found:
+        click.echo()
+        if result.is_enhanced:
+            click.echo("OpenRPF not detected. This is optional; GBAY will use safe placeholders.")
+            click.echo("For GBAY preview artwork, install it manually from:")
+        else:
+            click.echo("OpenIV.asi not detected. This is optional for vehicle artwork:")
+        click.echo("  https://www.gta5-mods.com/tools/openrpf-openiv-asi-for-gta-v-enhanced")
+    else:
+        asi_name = "OpenRPF" if result.is_enhanced else "OpenIV.asi"
+        click.echo(f"{asi_name} detected (optional artwork loader).")
+    if result.rpf_previews_deployed:
+        click.echo("GBAY RPF preview textures deployed.")
+
+    click.echo()
+    click.echo("To play: launch GTA V normally. DLC vehicles will appear in traffic.")
+
+
+# Register with a user-friendly name
+install_cmd.name = "install"
+
+
+@main.command()
+@click.pass_context
+def uninstall_cmd(ctx: click.Context) -> None:
+    """Remove ALLIN1 files from GTA V directory."""
+    config: Config = ctx.obj["config"]
+
+    try:
+        restored = uninstall(config)
+    except (FileNotFoundError, ValueError) as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Removed {len(restored)} files:")
+    for f in restored:
+        click.echo(f"  - {f}")
+    click.echo("Uninstall complete.")
+
+
+uninstall_cmd.name = "uninstall"
+
+
+@main.command()
+@click.option("--class", "-c", "vehicle_class", default=None, help="Filter by vehicle class")
+@click.pass_context
+def list_cmd(ctx: click.Context, vehicle_class: str | None) -> None:
+    """List all available MP vehicles."""
+    db = VehicleDatabase.load(VEHICLES_DB)
+
+    if vehicle_class:
+        vehicles = db.by_class(vehicle_class)
+        if not vehicles:
+            click.echo(f"No vehicles found in class '{vehicle_class}'.")
+            click.echo(f"Available classes: {', '.join(db.classes)}")
+            return
+    else:
+        vehicles = db.all_vehicles
+
+    # Group by class for display
+    by_class: dict[str, list] = {}
+    for v in vehicles:
+        by_class.setdefault(v.vehicle_class, []).append(v)
+
+    total = 0
+    for cls in sorted(by_class.keys()):
+        group = by_class[cls]
+        click.echo(f"\n  {cls.upper()} ({len(group)})")
+        click.echo(f"  {'─' * 40}")
+        for v in sorted(group, key=lambda x: x.name):
+            click.echo(f"    {v.model:<24} {v.name}")
+            total += 1
+
+    click.echo(f"\n  Total: {total} vehicles")
+
+
+list_cmd.name = "list"
+
+
+@main.command()
+@click.pass_context
+def status(ctx: click.Context) -> None:
+    """Show current installation status."""
+    config: Config = ctx.obj["config"]
+
+    click.echo("Configuration:")
+    click.echo(f"  Config file: {ctx.obj['config_path']}")
+    click.echo(f"  GTA path: {config.general.gta_path}")
+    click.echo(f"  Free GBAY purchases: {config.script.gbay_free_mode}")
+    click.echo(f"  Traffic: {'enabled' if config.traffic.enabled else 'disabled'}")
+    click.echo("  Garage wanted-level override: "
+               f"{'enabled' if config.script.garages_always_accessible else 'disabled'}")
+    click.echo(f"  Enable all: {config.vehicles.enable_all}")
+
+    if config.vehicles.disabled_classes:
+        click.echo(f"  Disabled classes: {', '.join(config.vehicles.disabled_classes)}")
+    if config.vehicles.disabled_vehicles:
+        click.echo(f"  Disabled vehicles: {len(config.vehicles.disabled_vehicles)} models")
+
+    db = VehicleDatabase.load(VEHICLES_DB)
+    click.echo(f"\nVehicle database: {len(db)} vehicles across {len(db.classes)} classes")
+
+
+@main.command("export-catalog")
+@click.option("--output", "-o", default=None, help="Output path (default: catalog/vehicles.json)")
+@click.pass_context
+def export_catalog(ctx: click.Context, output: str | None) -> None:
+    """Export vehicle database as JSON for the web catalog."""
+    import json
+
+    from allin1.config import load_prices
+
+    db = VehicleDatabase.load(VEHICLES_DB)
+    prices = load_prices(PROJECT_ROOT / "prices_vehicles.toml")
+
+    data = []
+    for v in db.all_vehicles:
+        entry = {
+            "model": v.model,
+            "name": v.name,
+            "class": v.vehicle_class,
+            "manufacturer": v.manufacturer,
+            "price": prices.get(v.model, 0),
+            "traffic": v.traffic,
+        }
+        data.append(entry)
+
+    out_path = Path(output) if output else PROJECT_ROOT / "catalog" / "vehicles.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    click.echo(f"Exported {len(data)} vehicles to {out_path}")
+
+
+@main.command("generate-vehiclelist")
+@click.option("--output", "-o", default=None,
+              help="Output path (default: script/src/VehicleList.cs)")
+@click.pass_context
+def generate_vehiclelist(ctx: click.Context, output: str | None) -> None:
+    """Regenerate VehicleList.cs with display names and prices."""
+    from allin1.generators.vehiclelist import generate_file
+
+    out_path = (
+        Path(output) if output
+        else PROJECT_ROOT / "script" / "src" / "VehicleList.cs"
+    )
+    count = generate_file(VEHICLES_DB, PROJECT_ROOT / "prices_vehicles.toml", out_path)
+    click.echo(f"Generated VehicleList.cs with {count} vehicles at {out_path}")
+
+
+@main.command("generate-weaponlist")
+@click.option("--output", "-o", default=None,
+              help="Output path (default: script/src/WeaponList.cs)")
+@click.pass_context
+def generate_weaponlist(ctx: click.Context, output: str | None) -> None:
+    """Regenerate WeaponList.cs from weapons.toml + prices_weapons.toml."""
+    from allin1.generators.weaponlist import generate_file
+
+    out_path = (
+        Path(output) if output
+        else PROJECT_ROOT / "script" / "src" / "WeaponList.cs"
+    )
+    count = generate_file(
+        DATA_DIR / "weapons.toml",
+        PROJECT_ROOT / "prices_weapons.toml",
+        out_path,
+    )
+    click.echo(f"Generated WeaponList.cs with {count} weapons at {out_path}")
+
+
+@main.command("import-previews")
+@click.argument("source", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option(
+    "--kind",
+    type=click.Choice(("vehicle", "weapon", "equipment"), case_sensitive=False),
+    default="vehicle",
+    show_default=True,
+    help="Catalog whose captures should be imported.",
+)
+def import_previews(source: Path, kind: str) -> None:
+    """Validate and import curated catalog preview PNGs."""
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        import tomli as tomllib
+    from allin1.preview_assets import GEAR_PREVIEW_ITEMS, merge_previews
+
+    kind = kind.lower()
+    if kind == "vehicle":
+        item_ids = [vehicle.model for vehicle in VehicleDatabase.load(VEHICLES_DB)]
+        destination_name = "previews"
+    elif kind == "weapon":
+        weapon_data = tomllib.loads((DATA_DIR / "weapons.toml").read_text())
+        item_ids = [weapon["name"] for weapon in weapon_data.get("weapons", [])]
+        destination_name = "weapon_previews"
+    else:
+        item_ids = list(GEAR_PREVIEW_ITEMS)
+        destination_name = "equipment_previews"
+
+    destination = PROJECT_ROOT / "script" / "dist" / destination_name
+    result = merge_previews([source], destination, item_ids)
+    click.echo(f"Imported {result.copied} valid {kind} preview(s).")
+    if result.rejected:
+        click.echo(f"Rejected {len(result.rejected)} invalid or unknown file(s).")
+        for reason in result.rejected:
+            click.echo(f"  - {reason}")
+
+
+@main.command("audit-previews")
+@click.argument("directory", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def audit_preview_quality(directory: Path) -> None:
+    """Inspect captured previews for blank, transparent, or poor framing."""
+    from allin1.preview_assets import audit_previews
+    models = [vehicle.model for vehicle in VehicleDatabase.load(VEHICLES_DB)]
+    results = audit_previews(directory, models)
+    failed = {model: quality for model, quality in results.items() if not quality.valid}
+    click.echo(f"Inspected {len(results)} preview(s); {len(failed)} need recapture.")
+    for model, quality in failed.items():
+        click.echo(f"  {model}: {'; '.join(quality.reasons)}", err=True)
+    if failed:
+        raise SystemExit(1)
+
+
+@main.command("verify-preview-artifacts")
+@click.argument("directory", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def verify_preview_artifacts(directory: Path) -> None:
+    """Verify that a built YTD directory covers the complete vehicle catalog."""
+    from allin1.preview_artifacts import verify_ytd_set
+
+    report = verify_ytd_set(directory, len(VehicleDatabase.load(VEHICLES_DB)))
+    if not report.valid:
+        if report.missing_dicts:
+            click.echo("Missing: " + ", ".join(report.missing_dicts), err=True)
+        if report.unexpected_dicts:
+            click.echo("Unexpected: " + ", ".join(report.unexpected_dicts), err=True)
+        raise SystemExit(1)
+    click.echo(f"Verified {len(report.present_dicts)} preview dictionaries.")
+
+
+@main.command("analyze-client-log")
+@click.argument("log_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--edition", type=click.Choice(["legacy", "enhanced"]), required=True)
+@click.option("--output", type=click.Path(path_type=Path), default="ALLIN1_smoke_report.json")
+def analyze_client_log_cmd(log_file: Path, edition: str, output: Path) -> None:
+    """Convert an in-game structured client log into a smoke-test report."""
+    from allin1.reliability import analyze_client_log, write_smoke_report
+
+    analysis = analyze_client_log(log_file)
+    passed = write_smoke_report(output, edition, analysis)
+    click.echo(f"Smoke report: {output} ({'PASS' if passed else 'FAIL'})")
+    if not passed:
+        raise SystemExit(1)
+
+
+@main.command("health-check")
+@click.argument("gta_path", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--json-output", type=click.Path(path_type=Path))
+def health_check_cmd(gta_path: Path, json_output: Path | None) -> None:
+    """Run the pre-launch dependency, duplicate, and integrity scanner."""
+    import json
+    from allin1.health import scan_installation
+
+    report = scan_installation(gta_path)
+    click.echo(f"Edition: {report.edition}; launch safe: {report.launch_safe}")
+    for issue in report.issues:
+        click.echo(f"[{issue.severity.upper()}] {issue.message}")
+    if json_output:
+        json_output.parent.mkdir(parents=True, exist_ok=True)
+        json_output.write_text(json.dumps(report.to_dict(), indent=2) + "\n")
+    if not report.launch_safe:
+        raise SystemExit(1)
+
+
+@main.command("repair-garage")
+@click.argument("garage_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def repair_garage_cmd(garage_file: Path) -> None:
+    """Repair slots and quarantine invalid entries in an ALLIN1 garage save."""
+    from allin1.customization import GarageSaveStore
+
+    models = {vehicle.model for vehicle in VehicleDatabase.load(VEHICLES_DB)}
+    report = GarageSaveStore(garage_file, models).repair()
+    click.echo(f"Kept {report.kept}; reassigned {report.reassigned}; quarantined {report.quarantined}.")
+
+
+@main.command("qualification-report")
+@click.argument("output", type=click.Path(path_type=Path))
+@click.option("--coverage-report", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
+@click.option("--minimum-coverage", type=float, default=91.0)
+@click.option("--script-assembly", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
+@click.option("--smoke-report", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
+def qualification_report_cmd(output: Path, coverage_report: Path, minimum_coverage: float,
+                             script_assembly: Path, smoke_report: Path) -> None:
+    """Create a release qualification dashboard JSON file."""
+    from allin1.qualification import build_report, checks_from_artifacts
+
+    try:
+        checks, metrics = checks_from_artifacts(
+            coverage_report, script_assembly, smoke_report,
+            minimum_coverage=minimum_coverage,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    report = build_report(output, checks, metrics=metrics)
+    click.echo(f"Qualification: {'PASS' if report['passed'] else 'FAIL'} ({output})")
+    if not report["passed"]:
+        raise SystemExit(1)
+
+
+@main.command("apply-update")
+@click.argument("archive", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("destination", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--backup-dir", type=click.Path(path_type=Path), required=True)
+def apply_update_cmd(archive: Path, destination: Path, backup_dir: Path) -> None:
+    """Apply a local checksum-verified release archive transactionally."""
+    from allin1.updater import deploy_release
+    result = deploy_release(archive, destination, backup_dir)
+    click.echo(f"Deployed {len(result.deployed)} files; rollback stored at {result.backup}.")
+
+
+@main.command("rollback-update")
+@click.argument("destination", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.argument("backup", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def rollback_update_cmd(destination: Path, backup: Path) -> None:
+    """Restore the files saved by the last transactional update."""
+    from allin1.updater import rollback_update
+    restored = rollback_update(destination, backup)
+    click.echo(f"Restored {len(restored)} files.")
+
+
+@main.command("build-release")
+@click.option(
+    "--output", "-o",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output ZIP (default: output/GTAV-ALLIN1-<version>.zip)",
+)
+def build_release_cmd(output: Path | None) -> None:
+    """Build and verify the minimal public Windows release archive."""
+    from allin1.release import build_public_release
+
+    destination = output or PROJECT_ROOT / "output" / f"GTAV-ALLIN1-{__version__}.zip"
+    report = build_public_release(PROJECT_ROOT, destination)
+    size = report.unpacked_bytes / (1024 * 1024)
+    click.echo(
+        f"Built ALLIN1 {report.version}: {report.file_count} files, "
+        f"{size:.1f} MiB unpacked -> {report.archive}"
+    )
+
+
+@main.command("verify-release")
+@click.argument("archive", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def verify_release_cmd(archive: Path) -> None:
+    """Verify a public release ZIP without extracting or installing it."""
+    from allin1.release import verify_public_release
+
+    report = verify_public_release(archive)
+    click.echo(f"Verified ALLIN1 {report.version} public release ({report.file_count} files).")
+
+
+@main.command("diagnostics")
+@click.option("--output", "-o", type=click.Path(path_type=Path),
+              default="ALLIN1_diagnostics.zip")
+@click.option("--scripts-dir", type=click.Path(path_type=Path), default=None)
+def diagnostics_cmd(output: Path, scripts_dir: Path | None) -> None:
+    """Create a redacted troubleshooting bundle for bug reports."""
+    from allin1.diagnostics import create_diagnostic_bundle
+    created = create_diagnostic_bundle(output, PROJECT_ROOT, scripts_dir)
+    click.echo(f"Diagnostic bundle created: {created}")
+
+
+if __name__ == "__main__":
+    main()

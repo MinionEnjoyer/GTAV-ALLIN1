@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GTA V ALLIN1 - Vehicle Catalog</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>ALLIN1 Vehicle Catalog <span>GTA Online Vehicles for Single Player</span></h1>
+    </header>
+
+    <div class="controls">
+        <div class="search-box">
+            <input type="text" id="search" placeholder="Search vehicles..." autocomplete="off">
+        </div>
+
+        <div class="filter-group">
+            <label for="classFilter">Class</label>
+            <select id="classFilter">
+                <option value="">All Classes</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label for="mfgFilter">Manufacturer</label>
+            <select id="mfgFilter">
+                <option value="">All Manufacturers</option>
+            </select>
+        </div>
+
+        <div class="actions">
+            <button class="btn" id="selectAll">Select All</button>
+            <button class="btn" id="deselectAll">Deselect All</button>
+            <button class="btn btn-accent" id="exportBtn">Export Config</button>
+        </div>
+
+        <div class="stats">
+            <strong id="selectedCount">0</strong> / <span id="totalCount">0</span> selected
+        </div>
+    </div>
+
+    <div class="vehicle-grid" id="vehicleGrid"></div>
+
+    <div class="modal-overlay" id="exportModal">
+        <div class="modal">
+            <h3>Export Configuration</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.85rem;">
+                Save this as <code>config.toml</code> in your ALLIN1 directory.
+            </p>
+            <textarea id="exportOutput" readonly></textarea>
+            <div class="modal-actions">
+                <button class="btn" id="copyBtn">Copy to Clipboard</button>
+                <button class="btn" id="downloadBtn">Download</button>
+                <button class="btn" id="closeModal">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

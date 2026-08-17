@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Base popgroups template for ALLIN1.
+
+  This is a minimal template containing only the vehicle population groups
+  that ALLIN1 injects into. For best results, extract the full popgroups.ymt
+  from your game using CodeWalker and use it instead — it includes vanilla
+  vehicles and pedestrian groups, so the game world stays populated normally.
+
+  The installer will merge MP vehicles into whichever vehGroups exist in this file.
+-->
+<CPopGroupList>
+  <pedGroups/>
+  <vehGroups>
+    <Item>
+      <Name>VEH_POOR</Name>
+      <models/>
+      <flags>POPGROUP_SCENARIO POPGROUP_AMBIENT</flags>
+    </Item>
+    <Item>
+      <Name>VEH_MID</Name>
+      <models/>
+      <flags>POPGROUP_SCENARIO POPGROUP_AMBIENT</flags>
+    </Item>
+    <Item>
+      <Name>VEH_RICH</Name>
+      <models/>
+      <flags>POPGROUP_SCENARIO POPGROUP_AMBIENT</flags>
+    </Item>
+    <Item>
+      <Name>VEH_FREEWAY</Name>
+      <models/>
+      <flags>POPGROUP_SCENARIO POPGROUP_AMBIENT</flags>
+    </Item>
+    <Item>
+      <Name>VEH_COUNTRYSIDE_ONROAD</Name>
+      <models/>
+      <flags>POPGROUP_SCENARIO POPGROUP_AMBIENT</flags>
+    </Item>
+    <Item>
+      <Name>VEH_BOATS</Name>
+      <models/>
+      <flags>POPGROUP_SCENARIO POPGROUP_AMBIENT</flags>
+    </Item>
+  </vehGroups>
+</CPopGroupList>

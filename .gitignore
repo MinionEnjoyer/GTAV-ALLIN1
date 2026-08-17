@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project
+.pytest_cache/
+.claude/
+config.toml
+allin1.log
+.gta_path
+.gh_token
+.coverage
+htmlcov/
+
+# Build artifacts (keep dist/ folders tracked for pre-built binaries)
+script/out/
+bin/
+obj/
+
+!script/dist/
+
+# Generated output files
+output/
+
+# Locally built external preview tools
+tools/YTDToolio.exe
+tools/FuckDX.dll
+tools/RpfPatcher/*.dll
+tools/RpfPatcher/*.exe
+tools/RpfPatcher/*.pdb
+tools/RpfPatcher/*.json
+tools/RpfPatcher/ShadersGen9Conversion.xml
+tools/RpfPatcher/SharpDX*.dll
+
+# Local investigation and visual QA scratch data
+.artifacts/
+work/
+tools/RpfPatcher/strings.txt

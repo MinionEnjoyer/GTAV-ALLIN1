@@ -1,0 +1,8 @@
+# Models intentionally using GBAY's generated placeholder until a verified
+# in-game preview capture is available. Keep this list synchronized with the
+# repository contract test.
+models = [
+  "velenogt",
+  "horus",
+  "warden",
+]

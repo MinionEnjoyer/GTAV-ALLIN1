@@ -1,0 +1,93 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A binary refresh commit can immediately supersede the source commit that
+# triggered it. Do not run two copies of the expensive Windows toolchain job.
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        python: ["3.10", "3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: python -m pip install -e ".[test]"
+      - run: python -m pytest --cov=allin1 --cov-report=term-missing
+
+  script-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet restore script/tests/ALLIN1.Tests.csproj
+      - run: dotnet test script/tests/ALLIN1.Tests.csproj -c Release --no-restore
+
+  windows-real-toolchain:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: python -m pip install -e ".[test]"
+      - name: Restore real toolchain cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            tools/gtautil
+            tools/YTDToolio.exe
+            tools/FuckDX.dll
+          key: windows-real-tools-v2-${{ hashFiles('runtools.ps1', '.gitmodules', 'tools/RpfPatcher/**') }}
+      - name: Build real preview and RPF tools
+        shell: powershell
+        timeout-minutes: 20
+        run: ./runtools.ps1
+      - name: Exercise real YTD and RPF packaging
+        shell: powershell
+        timeout-minutes: 8
+        env:
+          ALLIN1_RUN_TOOL_INTEGRATION: "1"
+        run: python -m pytest tests/test_windows_toolchain_integration.py -m windows_integration -v
+      - name: Rebuild packaged client binaries
+        shell: powershell
+        run: |
+          dotnet restore script/tests/ALLIN1.Tests.csproj
+          dotnet test script/tests/ALLIN1.Tests.csproj -c Release --no-restore
+          Copy-Item script/bin/Release/ALLIN1.dll script/dist/ALLIN1.dll -Force
+      - name: Build and verify public release contract
+        shell: powershell
+        run: |
+          python -m allin1.cli build-release --output output/GTAV-ALLIN1-windows.zip
+          python -m allin1.cli verify-release output/GTAV-ALLIN1-windows.zip
+      - name: Upload qualified release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: GTAV-ALLIN1-windows
+          path: output/GTAV-ALLIN1-windows.zip
+          if-no-files-found: error

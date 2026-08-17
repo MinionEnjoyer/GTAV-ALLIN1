@@ -1,0 +1,3395 @@
+# =============================================================================
+# GTA Online Vehicle Database
+# Every GTA Online-exclusive vehicle with model, display name, class,
+# manufacturer, and traffic group assignments.
+# Prices are stored separately in prices_vehicles.toml.
+# =============================================================================
+
+# =============================================================================
+# COMPACTS (8 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "brioso"
+name = "Grotti Brioso R/A"
+class = "compacts"
+manufacturer = "Grotti"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "brioso2"
+name = "Grotti Brioso 300"
+class = "compacts"
+manufacturer = "Grotti"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "brioso3"
+name = "Grotti Brioso 300 Widebody"
+class = "compacts"
+manufacturer = "Grotti"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "weevil"
+name = "BF Weevil"
+class = "compacts"
+manufacturer = "BF"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "club"
+name = "BF Club"
+class = "compacts"
+manufacturer = "BF"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "kanjo"
+name = "Dinka Blista Kanjo"
+class = "compacts"
+manufacturer = "Dinka"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "asbo"
+name = "Maxwell Asbo"
+class = "compacts"
+manufacturer = "Maxwell"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "issi3"
+name = "Weeny Issi Classic"
+class = "compacts"
+manufacturer = "Weeny"
+traffic = ["veh_mid", "veh_poor"]
+
+# =============================================================================
+# COUPES (7 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "kanjosj"
+name = "Dinka Kanjo SJ"
+class = "coupes"
+manufacturer = "Dinka"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "postlude"
+name = "Dinka Postlude"
+class = "coupes"
+manufacturer = "Dinka"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "previon"
+name = "Karin Previon"
+class = "coupes"
+manufacturer = "Karin"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "windsor2"
+name = "Enus Windsor Drop"
+class = "coupes"
+manufacturer = "Enus"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "windsor"
+name = "Enus Windsor"
+class = "coupes"
+manufacturer = "Enus"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "fr36"
+name = "Benefactor FR36"
+class = "coupes"
+manufacturer = "Benefactor"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "eurosx32"
+name = "Annis Euros X32"
+class = "coupes"
+manufacturer = "Annis"
+traffic = ["veh_mid"]
+
+# =============================================================================
+# SEDANS (24 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "rhinehart"
+name = "Ubermacht Rhinehart"
+class = "sedans"
+manufacturer = "Ubermacht"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "deity"
+name = "Enus Deity"
+class = "sedans"
+manufacturer = "Enus"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "cinquemila"
+name = "Lampadati Cinquemila"
+class = "sedans"
+manufacturer = "Lampadati"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "tailgater2"
+name = "Obey Tailgater S"
+class = "sedans"
+manufacturer = "Obey"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "warrener2"
+name = "Vulcar Warrener HKR"
+class = "sedans"
+manufacturer = "Vulcar"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "glendale2"
+name = "Benefactor Glendale Custom"
+class = "sedans"
+manufacturer = "Benefactor"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "stafford"
+name = "Enus Stafford"
+class = "sedans"
+manufacturer = "Enus"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "limo2"
+name = "Benefactor Turreted Limo"
+class = "sedans"
+manufacturer = "Benefactor"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "schafter5"
+name = "Benefactor Schafter V12 (Armored)"
+class = "sedans"
+manufacturer = "Benefactor"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "schafter6"
+name = "Benefactor Schafter LWB (Armored)"
+class = "sedans"
+manufacturer = "Benefactor"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "cog552"
+name = "Enus Cognoscenti 55 (Armored)"
+class = "sedans"
+manufacturer = "Enus"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "cog55"
+name = "Enus Cognoscenti 55"
+class = "sedans"
+manufacturer = "Enus"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "cognoscenti2"
+name = "Enus Cognoscenti (Armored)"
+class = "sedans"
+manufacturer = "Enus"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "cognoscenti"
+name = "Enus Cognoscenti"
+class = "sedans"
+manufacturer = "Enus"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "primo2"
+name = "Albany Primo Custom"
+class = "sedans"
+manufacturer = "Albany"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "asterope2"
+name = "Karin Asterope GZ"
+class = "sedans"
+manufacturer = "Karin"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "impaler5"
+name = "Declasse Impaler LX"
+class = "sedans"
+manufacturer = "Declasse"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "vorschlaghammer"
+name = "Benefactor Vorschlaghammer"
+class = "sedans"
+manufacturer = "Benefactor"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "chavosv6"
+name = "Dinka Chavos V6"
+class = "sedans"
+manufacturer = "Dinka"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "hardy"
+name = "Annis Hardy"
+class = "sedans"
+manufacturer = "Annis"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "minimus"
+name = "Annis Minimus"
+class = "sedans"
+manufacturer = "Annis"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "sentinel6"
+name = "Ubermacht Sentinel Classic II"
+class = "sedans"
+manufacturer = "Ubermacht"
+traffic = ["veh_mid"]
+
+# =============================================================================
+# SUVS (27 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "issi8"
+name = "Weeny Issi Rally"
+class = "suvs"
+manufacturer = "Weeny"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "granger2"
+name = "Declasse Granger 3600LX"
+class = "suvs"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "iwagen"
+name = "Obey I-Wagen"
+class = "suvs"
+manufacturer = "Obey"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "baller7"
+name = "Gallivanter Baller ST"
+class = "suvs"
+manufacturer = "Gallivanter"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "astron"
+name = "Pfister Astron"
+class = "suvs"
+manufacturer = "Pfister"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "jubilee"
+name = "Enus Jubilee"
+class = "suvs"
+manufacturer = "Enus"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "seminole2"
+name = "Canis Seminole Frontier"
+class = "suvs"
+manufacturer = "Canis"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "landstalker2"
+name = "Dundreary Landstalker XL"
+class = "suvs"
+manufacturer = "Dundreary"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "rebla"
+name = "Ubermacht Rebla GTS"
+class = "suvs"
+manufacturer = "Ubermacht"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "novak"
+name = "Lampadati Novak"
+class = "suvs"
+manufacturer = "Lampadati"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "toros"
+name = "Pegassi Toros"
+class = "suvs"
+manufacturer = "Pegassi"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "stretch"
+name = "Dundreary Stretch"
+class = "suvs"
+manufacturer = "Dundreary"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "contender"
+name = "Vapid Contender"
+class = "suvs"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "xls2"
+name = "Benefactor XLS (Armored)"
+class = "suvs"
+manufacturer = "Benefactor"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "baller3"
+name = "Gallivanter Baller LE"
+class = "suvs"
+manufacturer = "Gallivanter"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "baller4"
+name = "Gallivanter Baller LE LWB"
+class = "suvs"
+manufacturer = "Gallivanter"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "baller5"
+name = "Gallivanter Baller LE (Armored)"
+class = "suvs"
+manufacturer = "Gallivanter"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "baller6"
+name = "Gallivanter Baller LE LWB (Armored)"
+class = "suvs"
+manufacturer = "Gallivanter"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "vivanite"
+name = "Declasse Vivanite"
+class = "suvs"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "aleutian"
+name = "Albany Aleutian"
+class = "suvs"
+manufacturer = "Albany"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "cavalcade3"
+name = "Albany Cavalcade XL"
+class = "suvs"
+manufacturer = "Albany"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "baller8"
+name = "Gallivanter Baller ST-D"
+class = "suvs"
+manufacturer = "Gallivanter"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "dorado"
+name = "Bravado Dorado"
+class = "suvs"
+manufacturer = "Bravado"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "castigator"
+name = "Declasse Castigator"
+class = "suvs"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "astron2"
+name = "Pfister Astron Custom"
+class = "suvs"
+manufacturer = "Pfister"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "everon3"
+name = "Karin Everon RS"
+class = "suvs"
+manufacturer = "Karin"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "woodlander"
+name = "Vapid Woodlander"
+class = "suvs"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_rich"]
+
+# =============================================================================
+# MUSCLE (52 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "tahoma"
+name = "Declasse Tahoma Coupe"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "tulip2"
+name = "Declasse Tulip M-100"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "weevil2"
+name = "BF Weevil Custom"
+class = "muscle"
+manufacturer = "BF"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "vigero2"
+name = "Declasse Vigero ZX"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "ruiner4"
+name = "Imponte Ruiner ZZ-8"
+class = "muscle"
+manufacturer = "Imponte"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "buffalo4"
+name = "Bravado Buffalo STX"
+class = "muscle"
+manufacturer = "Bravado"
+traffic = ["veh_mid", "veh_poor"]
+weaponized = true
+
+[[vehicles]]
+model = "dominator7"
+name = "Vapid Dominator ASP"
+class = "muscle"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "dominator8"
+name = "Vapid Dominator GTT"
+class = "muscle"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "gauntlet5"
+name = "Bravado Gauntlet Classic Custom"
+class = "muscle"
+manufacturer = "Bravado"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "manana2"
+name = "Albany Manana Custom"
+class = "muscle"
+manufacturer = "Albany"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "dukes3"
+name = "Imponte Beater Dukes"
+class = "muscle"
+manufacturer = "Imponte"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "yosemite2"
+name = "Declasse Drift Yosemite"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "peyote2"
+name = "Vapid Peyote Gasser"
+class = "muscle"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "gauntlet4"
+name = "Bravado Gauntlet Hellfire"
+class = "muscle"
+manufacturer = "Bravado"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "gauntlet3"
+name = "Bravado Gauntlet Classic"
+class = "muscle"
+manufacturer = "Bravado"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "vamos"
+name = "Declasse Vamos"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "deviant"
+name = "Schyster Deviant"
+class = "muscle"
+manufacturer = "Schyster"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "tulip"
+name = "Declasse Tulip"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "clique"
+name = "Vapid Clique"
+class = "muscle"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "imperator"
+name = "Vapid Imperator"
+class = "muscle"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_poor"]
+weaponized = true
+
+[[vehicles]]
+model = "impaler"
+name = "Declasse Impaler"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "dominator3"
+name = "Vapid Dominator GTX"
+class = "muscle"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "ellie"
+name = "Vapid Ellie"
+class = "muscle"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "hustler"
+name = "Vapid Hustler"
+class = "muscle"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "hermes"
+name = "Albany Hermes"
+class = "muscle"
+manufacturer = "Albany"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "yosemite"
+name = "Declasse Yosemite"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "tampa3"
+name = "Declasse Weaponized Tampa"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+weaponized = true
+
+[[vehicles]]
+model = "ruiner2"
+name = "Imponte Ruiner 2000"
+class = "muscle"
+manufacturer = "Imponte"
+traffic = ["veh_mid", "veh_poor"]
+weaponized = true
+
+[[vehicles]]
+model = "sabregt2"
+name = "Declasse Sabre Turbo Custom"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "virgo2"
+name = "Dundreary Virgo Classic Custom"
+class = "muscle"
+manufacturer = "Dundreary"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "virgo3"
+name = "Dundreary Virgo Classic"
+class = "muscle"
+manufacturer = "Dundreary"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "faction3"
+name = "Willard Faction Custom Donk"
+class = "muscle"
+manufacturer = "Willard"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "tampa"
+name = "Declasse Tampa"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "nightshade"
+name = "Imponte Nightshade"
+class = "muscle"
+manufacturer = "Imponte"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "moonbeam2"
+name = "Declasse Moonbeam Custom"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "moonbeam"
+name = "Declasse Moonbeam"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "faction2"
+name = "Willard Faction Custom"
+class = "muscle"
+manufacturer = "Willard"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "faction"
+name = "Willard Faction"
+class = "muscle"
+manufacturer = "Willard"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "chino2"
+name = "Vapid Chino Custom"
+class = "muscle"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "buccaneer2"
+name = "Albany Buccaneer Custom"
+class = "muscle"
+manufacturer = "Albany"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "coquette3"
+name = "Invetero Coquette BlackFin"
+class = "muscle"
+manufacturer = "Invetero"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "chino"
+name = "Vapid Chino"
+class = "muscle"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "vigero"
+name = "Declasse Vigero"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "slamvan2"
+name = "Vapid Slamvan Custom"
+class = "muscle"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "clique2"
+name = "Vapid Clique Wagon"
+class = "muscle"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "buffalo5"
+name = "Bravado Buffalo EVX"
+class = "muscle"
+manufacturer = "Bravado"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "vigero3"
+name = "Declasse Vigero ZX Convertible"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "dominator9"
+name = "Vapid Dominator GT"
+class = "muscle"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "impaler6"
+name = "Declasse Impaler LX"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "dominator10"
+name = "Vapid Dominator FX"
+class = "muscle"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "arbitergt"
+name = "Vapid Arbiter GT"
+class = "muscle"
+manufacturer = "Vapid"
+traffic = ["veh_mid", "veh_poor"]
+
+[[vehicles]]
+model = "tampa4"
+name = "Declasse Drift Tampa"
+class = "muscle"
+manufacturer = "Declasse"
+traffic = ["veh_mid", "veh_poor"]
+
+# =============================================================================
+# SPORTSCLASSICS (99 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "everon2"
+name = "Karin Hotring Everon"
+class = "sportsclassics"
+manufacturer = "Karin"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "panthere"
+name = "Toundra Panthere"
+class = "sportsclassics"
+manufacturer = "Toundra"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "r300"
+name = "Annis 300R"
+class = "sportsclassics"
+manufacturer = "Annis"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "sentinel4"
+name = "Ubermacht Sentinel Classic Widebody"
+class = "sportsclassics"
+manufacturer = "Ubermacht"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "tenf2"
+name = "Obey 10F Widebody"
+class = "sportsclassics"
+manufacturer = "Obey"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "tenf"
+name = "Obey 10F"
+class = "sportsclassics"
+manufacturer = "Obey"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "sm722"
+name = "Benefactor SM722"
+class = "sportsclassics"
+manufacturer = "Benefactor"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "omnisegt"
+name = "Obey Omnis e-GT"
+class = "sportsclassics"
+manufacturer = "Obey"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "corsita"
+name = "Lampadati Corsita"
+class = "sportsclassics"
+manufacturer = "Lampadati"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "comet7"
+name = "Pfister Comet S2 Cabrio"
+class = "sportsclassics"
+manufacturer = "Pfister"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "cypher"
+name = "Ubermacht Cypher"
+class = "sportsclassics"
+manufacturer = "Ubermacht"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "sultan3"
+name = "Karin Sultan RS Classic"
+class = "sportsclassics"
+manufacturer = "Karin"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "growler"
+name = "Pfister Growler"
+class = "sportsclassics"
+manufacturer = "Pfister"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "vectre"
+name = "Emperor Vectre"
+class = "sportsclassics"
+manufacturer = "Emperor"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "comet6"
+name = "Pfister Comet S2"
+class = "sportsclassics"
+manufacturer = "Pfister"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "remus"
+name = "Annis Remus"
+class = "sportsclassics"
+manufacturer = "Annis"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "jester4"
+name = "Dinka Jester RR"
+class = "sportsclassics"
+manufacturer = "Dinka"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "rt3000"
+name = "Dinka RT3000"
+class = "sportsclassics"
+manufacturer = "Dinka"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "zr350"
+name = "Annis ZR350"
+class = "sportsclassics"
+manufacturer = "Annis"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "euros"
+name = "Annis Euros"
+class = "sportsclassics"
+manufacturer = "Annis"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "futo2"
+name = "Karin Futo GTX"
+class = "sportsclassics"
+manufacturer = "Karin"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "italirsx"
+name = "Ocelot Itali RSX"
+class = "sportsclassics"
+manufacturer = "Ocelot"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "penumbra2"
+name = "Maibatsu Penumbra FF"
+class = "sportsclassics"
+manufacturer = "Maibatsu"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "coquette4"
+name = "Invetero Coquette D10"
+class = "sportsclassics"
+manufacturer = "Invetero"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "sugoi"
+name = "Dinka Sugoi"
+class = "sportsclassics"
+manufacturer = "Dinka"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "vstr"
+name = "Albany V-STR"
+class = "sportsclassics"
+manufacturer = "Albany"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "sultan2"
+name = "Karin Sultan Classic"
+class = "sportsclassics"
+manufacturer = "Karin"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "imorgon"
+name = "Overflod Imorgon"
+class = "sportsclassics"
+manufacturer = "Overflod"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "komoda"
+name = "Lampadati Komoda"
+class = "sportsclassics"
+manufacturer = "Lampadati"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "jugular"
+name = "Ocelot Jugular"
+class = "sportsclassics"
+manufacturer = "Ocelot"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "zion3"
+name = "Ubermacht Zion Classic"
+class = "sportsclassics"
+manufacturer = "Ubermacht"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "locust"
+name = "Ocelot Locust"
+class = "sportsclassics"
+manufacturer = "Ocelot"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "nebula"
+name = "Vulcar Nebula Turbo"
+class = "sportsclassics"
+manufacturer = "Vulcar"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "neo"
+name = "Vysser Neo"
+class = "sportsclassics"
+manufacturer = "Vysser"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "issi7"
+name = "Weeny Issi Sport"
+class = "sportsclassics"
+manufacturer = "Weeny"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "drafter"
+name = "Obey 8F Drafter"
+class = "sportsclassics"
+manufacturer = "Obey"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "paragon"
+name = "Enus Paragon R"
+class = "sportsclassics"
+manufacturer = "Enus"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "paragon2"
+name = "Enus Paragon R (Armored)"
+class = "sportsclassics"
+manufacturer = "Enus"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "schlagen"
+name = "Benefactor Schlagen GT"
+class = "sportsclassics"
+manufacturer = "Benefactor"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "italigto"
+name = "Grotti Itali GTO"
+class = "sportsclassics"
+manufacturer = "Grotti"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "swinger"
+name = "Ocelot Swinger"
+class = "sportsclassics"
+manufacturer = "Ocelot"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "jester3"
+name = "Dinka Jester Classic"
+class = "sportsclassics"
+manufacturer = "Dinka"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "michelli"
+name = "Lampadati Michelli GT"
+class = "sportsclassics"
+manufacturer = "Lampadati"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "flashgt"
+name = "Vapid Flash GT"
+class = "sportsclassics"
+manufacturer = "Vapid"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "gb200"
+name = "Vapid GB200"
+class = "sportsclassics"
+manufacturer = "Vapid"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "hotring"
+name = "Declasse Hotring Sabre"
+class = "sportsclassics"
+manufacturer = "Declasse"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "comet5"
+name = "Pfister Comet SR"
+class = "sportsclassics"
+manufacturer = "Pfister"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "z190"
+name = "Karin 190z"
+class = "sportsclassics"
+manufacturer = "Karin"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "neon"
+name = "Pfister Neon"
+class = "sportsclassics"
+manufacturer = "Pfister"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "revolter"
+name = "Ubermacht Revolter"
+class = "sportsclassics"
+manufacturer = "Ubermacht"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "gt500"
+name = "Grotti GT500"
+class = "sportsclassics"
+manufacturer = "Grotti"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "viseris"
+name = "Lampadati Viseris"
+class = "sportsclassics"
+manufacturer = "Lampadati"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "savestra"
+name = "Annis Savestra"
+class = "sportsclassics"
+manufacturer = "Annis"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "streiter"
+name = "Benefactor Streiter"
+class = "sportsclassics"
+manufacturer = "Benefactor"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "sentinel3"
+name = "Ubermacht Sentinel Classic"
+class = "sportsclassics"
+manufacturer = "Ubermacht"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "raiden"
+name = "Coil Raiden"
+class = "sportsclassics"
+manufacturer = "Coil"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "pariah"
+name = "Ocelot Pariah"
+class = "sportsclassics"
+manufacturer = "Ocelot"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "comet4"
+name = "Pfister Comet Safari"
+class = "sportsclassics"
+manufacturer = "Pfister"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "rapidgt3"
+name = "Dewbauchee Rapid GT Classic"
+class = "sportsclassics"
+manufacturer = "Dewbauchee"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "retinue"
+name = "Vapid Retinue"
+class = "sportsclassics"
+manufacturer = "Vapid"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "ardent"
+name = "Ocelot Ardent"
+class = "sportsclassics"
+manufacturer = "Ocelot"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "torero"
+name = "Pegassi Torero"
+class = "sportsclassics"
+manufacturer = "Pegassi"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "cheetah2"
+name = "Grotti Cheetah Classic"
+class = "sportsclassics"
+manufacturer = "Grotti"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "turismo2"
+name = "Grotti Turismo Classic"
+class = "sportsclassics"
+manufacturer = "Grotti"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "infernus2"
+name = "Pegassi Infernus Classic"
+class = "sportsclassics"
+manufacturer = "Pegassi"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "ruston"
+name = "Hijak Ruston"
+class = "sportsclassics"
+manufacturer = "Hijak"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "specter2"
+name = "Dewbauchee Specter Custom"
+class = "sportsclassics"
+manufacturer = "Dewbauchee"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "specter"
+name = "Dewbauchee Specter"
+class = "sportsclassics"
+manufacturer = "Dewbauchee"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "comet3"
+name = "Pfister Comet Retro Custom"
+class = "sportsclassics"
+manufacturer = "Pfister"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "elegy"
+name = "Annis Elegy Retro Custom"
+class = "sportsclassics"
+manufacturer = "Annis"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "tampa2"
+name = "Declasse Drift Tampa"
+class = "sportsclassics"
+manufacturer = "Declasse"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "lynx"
+name = "Ocelot Lynx"
+class = "sportsclassics"
+manufacturer = "Ocelot"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "tropos"
+name = "Lampadati Tropos Rallye"
+class = "sportsclassics"
+manufacturer = "Lampadati"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "omnis"
+name = "Obey Omnis"
+class = "sportsclassics"
+manufacturer = "Obey"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "seven70"
+name = "Dewbauchee Seven-70"
+class = "sportsclassics"
+manufacturer = "Dewbauchee"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "bestiagts"
+name = "Grotti Bestia GTS"
+class = "sportsclassics"
+manufacturer = "Grotti"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "mamba"
+name = "Declasse Mamba"
+class = "sportsclassics"
+manufacturer = "Declasse"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "verlierer2"
+name = "Benefactor Feltzer"
+class = "sportsclassics"
+manufacturer = "Benefactor"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "schafter3"
+name = "Benefactor Schafter V12"
+class = "sportsclassics"
+manufacturer = "Benefactor"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "schafter4"
+name = "Benefactor Schafter LWB"
+class = "sportsclassics"
+manufacturer = "Benefactor"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "feltzer3"
+name = "Benefactor Stirling GT"
+class = "sportsclassics"
+manufacturer = "Benefactor"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "casco"
+name = "Lampadati Casco"
+class = "sportsclassics"
+manufacturer = "Lampadati"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "kuruma"
+name = "Karin Kuruma"
+class = "sportsclassics"
+manufacturer = "Karin"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "kuruma2"
+name = "Karin Kuruma (Armored)"
+class = "sportsclassics"
+manufacturer = "Karin"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "stingertt"
+name = "Grotti Stinger TT"
+class = "sportsclassics"
+manufacturer = "Grotti"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "gauntlet6"
+name = "Bravado Hotring Hellfire"
+class = "sportsclassics"
+manufacturer = "Bravado"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "coureur"
+name = "Penaud La Coureuse"
+class = "sportsclassics"
+manufacturer = "Penaud"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "coquette5"
+name = "Invetero Coquette D1"
+class = "sportsclassics"
+manufacturer = "Invetero"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "envisage"
+name = "Bollokan Envisage"
+class = "sportsclassics"
+manufacturer = "Bollokan"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "niobe"
+name = "Ubermacht Niobe"
+class = "sportsclassics"
+manufacturer = "Ubermacht"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "paragon3"
+name = "Enus Paragon S"
+class = "sportsclassics"
+manufacturer = "Enus"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "banshee3"
+name = "Bravado Banshee GTS"
+class = "sportsclassics"
+manufacturer = "Bravado"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "jester5"
+name = "Dinka LSCM Jester RR"
+class = "sportsclassics"
+manufacturer = "Dinka"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "coquette6"
+name = "Invetero Coquette D5"
+class = "sportsclassics"
+manufacturer = "Invetero"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "s95"
+name = "Karin S95"
+class = "sportsclassics"
+manufacturer = "Karin"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "cheetah3"
+name = "Grotti LSCM Cheetah Classic"
+class = "sportsclassics"
+manufacturer = "Grotti"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "rapidgt4"
+name = "Dewbauchee Rapid GT X"
+class = "sportsclassics"
+manufacturer = "Dewbauchee"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "sentinel5"
+name = "Ubermacht Sentinel GTS"
+class = "sportsclassics"
+manufacturer = "Ubermacht"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "astrale"
+name = "Pfister Astrale"
+class = "sportsclassics"
+manufacturer = "Pfister"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "gt750"
+name = "Grotti GT750"
+class = "sportsclassics"
+manufacturer = "Grotti"
+traffic = ["veh_rich", "veh_mid"]
+
+[[vehicles]]
+model = "itali2"
+name = "Grotti Itali Classic"
+class = "sportsclassics"
+manufacturer = "Grotti"
+traffic = ["veh_rich", "veh_mid"]
+
+# =============================================================================
+# SUPER (50 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "virtue"
+name = "Ocelot Virtue"
+class = "super"
+manufacturer = "Ocelot"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "entity3"
+name = "Overflod Entity MT"
+class = "super"
+manufacturer = "Overflod"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "lm87"
+name = "Benefactor LM87"
+class = "super"
+manufacturer = "Benefactor"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "torero2"
+name = "Pegassi Torero XO"
+class = "super"
+manufacturer = "Pegassi"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "zeno"
+name = "Overflod Zeno"
+class = "super"
+manufacturer = "Overflod"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "ignus"
+name = "Pegassi Ignus"
+class = "super"
+manufacturer = "Pegassi"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "champion"
+name = "Dewbauchee Champion"
+class = "super"
+manufacturer = "Dewbauchee"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "tigon"
+name = "Lampadati Tigon"
+class = "super"
+manufacturer = "Lampadati"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "furia"
+name = "Grotti Furia"
+class = "super"
+manufacturer = "Grotti"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "zorrusso"
+name = "Pegassi Zorrusso"
+class = "super"
+manufacturer = "Pegassi"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "krieger"
+name = "Benefactor Krieger"
+class = "super"
+manufacturer = "Benefactor"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "emerus"
+name = "Progen Emerus"
+class = "super"
+manufacturer = "Progen"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "s80"
+name = "Annis S80RR"
+class = "super"
+manufacturer = "Annis"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "thrax"
+name = "Truffade Thrax"
+class = "super"
+manufacturer = "Truffade"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "deveste"
+name = "Principe Deveste Eight"
+class = "super"
+manufacturer = "Principe"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "tyrant"
+name = "Overflod Tyrant"
+class = "super"
+manufacturer = "Overflod"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "tezeract"
+name = "Pegassi Tezeract"
+class = "super"
+manufacturer = "Pegassi"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "taipan"
+name = "Cheval Taipan"
+class = "super"
+manufacturer = "Cheval"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "entity2"
+name = "Overflod Entity XXR"
+class = "super"
+manufacturer = "Overflod"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "autarch"
+name = "Overflod Autarch"
+class = "super"
+manufacturer = "Overflod"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "sc1"
+name = "Ubermacht SC1"
+class = "super"
+manufacturer = "Ubermacht"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "cyclone"
+name = "Coil Cyclone"
+class = "super"
+manufacturer = "Coil"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "visione"
+name = "Grotti Visione"
+class = "super"
+manufacturer = "Grotti"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "xa21"
+name = "Ocelot XA-21"
+class = "super"
+manufacturer = "Ocelot"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "vagner"
+name = "Dewbauchee Vagner"
+class = "super"
+manufacturer = "Dewbauchee"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "gp1"
+name = "Progen GP1"
+class = "super"
+manufacturer = "Progen"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "italigtb"
+name = "Progen Itali GTB"
+class = "super"
+manufacturer = "Progen"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "italigtb2"
+name = "Progen Itali GTB Custom"
+class = "super"
+manufacturer = "Progen"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "nero"
+name = "Truffade Nero"
+class = "super"
+manufacturer = "Truffade"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "nero2"
+name = "Truffade Nero Custom"
+class = "super"
+manufacturer = "Truffade"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "tempesta"
+name = "Pegassi Tempesta"
+class = "super"
+manufacturer = "Pegassi"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "penetrator"
+name = "Ocelot Penetrator"
+class = "super"
+manufacturer = "Ocelot"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "tyrus"
+name = "Progen Tyrus"
+class = "super"
+manufacturer = "Progen"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "le7b"
+name = "Annis RE-7B"
+class = "super"
+manufacturer = "Annis"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "sheava"
+name = "Emperor ETR1"
+class = "super"
+manufacturer = "Emperor"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "pfister811"
+name = "Pfister 811"
+class = "super"
+manufacturer = "Pfister"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "prototipo"
+name = "Grotti X80 Proto"
+class = "super"
+manufacturer = "Grotti"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "reaper"
+name = "Pegassi Reaper"
+class = "super"
+manufacturer = "Pegassi"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "fmj"
+name = "Vapid FMJ"
+class = "super"
+manufacturer = "Vapid"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "sultanrs"
+name = "Karin Sultan RS"
+class = "super"
+manufacturer = "Karin"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "banshee2"
+name = "Bravado Banshee 900R"
+class = "super"
+manufacturer = "Bravado"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "t20"
+name = "Progen T20"
+class = "super"
+manufacturer = "Progen"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "osiris"
+name = "Pegassi Osiris"
+class = "super"
+manufacturer = "Pegassi"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "turismo3"
+name = "Grotti Turismo Omaggio"
+class = "super"
+manufacturer = "Grotti"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "pipistrello"
+name = "Grotti Pipistrello"
+class = "super"
+manufacturer = "Grotti"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "cyclone2"
+name = "Coil Cyclone II"
+class = "super"
+manufacturer = "Coil"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "suzume"
+name = "Overflod Suzume"
+class = "super"
+manufacturer = "Overflod"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "fmj2"
+name = "Vapid FMJ Mk V"
+class = "super"
+manufacturer = "Vapid"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "luiva"
+name = "Progen Luiva"
+class = "super"
+manufacturer = "Progen"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "xtreme"
+name = "Pfister X-treme"
+class = "super"
+manufacturer = "Pfister"
+traffic = ["veh_rich"]
+
+# =============================================================================
+# OFFROAD (39 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "boor"
+name = "Karin Boor"
+class = "offroad"
+manufacturer = "Karin"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "draugur"
+name = "Declasse Draugur"
+class = "offroad"
+manufacturer = "Declasse"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "patriot3"
+name = "Mammoth Patriot Mil-Spec"
+class = "offroad"
+manufacturer = "Mammoth"
+traffic = ["veh_countryside_onroad"]
+weaponized = true
+
+[[vehicles]]
+model = "verus"
+name = "Dinka Verus"
+class = "offroad"
+manufacturer = "Dinka"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "yosemite3"
+name = "Declasse Yosemite Rancher"
+class = "offroad"
+manufacturer = "Declasse"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "outlaw"
+name = "Nagasaki Outlaw"
+class = "offroad"
+manufacturer = "Nagasaki"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "zhaba"
+name = "RUNE Zhaba"
+class = "offroad"
+manufacturer = "RUNE"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "everon"
+name = "Karin Everon"
+class = "offroad"
+manufacturer = "Karin"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "vagrant"
+name = "Maxwell Vagrant"
+class = "offroad"
+manufacturer = "Maxwell"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "hellion"
+name = "Annis Hellion"
+class = "offroad"
+manufacturer = "Annis"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "caracara2"
+name = "Vapid Caracara 4x4"
+class = "offroad"
+manufacturer = "Vapid"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "brutus"
+name = "Declasse Brutus"
+class = "offroad"
+manufacturer = "Declasse"
+traffic = ["veh_countryside_onroad"]
+weaponized = true
+
+[[vehicles]]
+model = "monster3"
+name = "Declasse Apocalypse Sasquatch"
+class = "offroad"
+manufacturer = "Declasse"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "bruiser"
+name = "Benefactor Bruiser"
+class = "offroad"
+manufacturer = "Benefactor"
+traffic = ["veh_countryside_onroad"]
+weaponized = true
+
+[[vehicles]]
+model = "freecrawler"
+name = "Canis Freecrawler"
+class = "offroad"
+manufacturer = "Canis"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "menacer"
+name = "HVY Menacer"
+class = "offroad"
+manufacturer = "HVY"
+traffic = ["veh_countryside_onroad"]
+weaponized = true
+
+[[vehicles]]
+model = "caracara"
+name = "Vapid Caracara"
+class = "offroad"
+manufacturer = "Vapid"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "kamacho"
+name = "Canis Kamacho"
+class = "offroad"
+manufacturer = "Canis"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "riata"
+name = "Vapid Riata"
+class = "offroad"
+manufacturer = "Vapid"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "nightshark"
+name = "HVY Nightshark"
+class = "offroad"
+manufacturer = "HVY"
+traffic = ["veh_countryside_onroad"]
+weaponized = true
+
+[[vehicles]]
+model = "technical3"
+name = "Karin Technical Custom"
+class = "offroad"
+manufacturer = "Karin"
+traffic = ["veh_countryside_onroad"]
+weaponized = true
+
+[[vehicles]]
+model = "dune3"
+name = "BF Dune FAV"
+class = "offroad"
+manufacturer = "BF"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "blazer5"
+name = "Nagasaki Street Blazer"
+class = "offroad"
+manufacturer = "Nagasaki"
+traffic = ["veh_countryside_onroad"]
+weaponized = true
+
+[[vehicles]]
+model = "blazer4"
+name = "Nagasaki Hot Rod Blazer"
+class = "offroad"
+manufacturer = "Nagasaki"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "rallytruck"
+name = "Vapid Rally Truck"
+class = "offroad"
+manufacturer = "Vapid"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "trophytruck"
+name = "Vapid Trophy Truck"
+class = "offroad"
+manufacturer = "Vapid"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "trophytruck2"
+name = "Vapid Desert Raid"
+class = "offroad"
+manufacturer = "Vapid"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "brawler"
+name = "Coil Brawler"
+class = "offroad"
+manufacturer = "Coil"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "technical"
+name = "Karin Technical"
+class = "offroad"
+manufacturer = "Karin"
+traffic = ["veh_countryside_onroad"]
+weaponized = true
+
+[[vehicles]]
+model = "insurgent"
+name = "HVY Insurgent"
+class = "offroad"
+manufacturer = "HVY"
+traffic = ["veh_countryside_onroad"]
+weaponized = true
+
+[[vehicles]]
+model = "guardian"
+name = "Vapid Guardian"
+class = "offroad"
+manufacturer = "Vapid"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "l35"
+name = "Declasse Walton L35"
+class = "offroad"
+manufacturer = "Declasse"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "ratel"
+name = "Vapid Ratel"
+class = "offroad"
+manufacturer = "Vapid"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "monstrociti"
+name = "Maibatsu MonstroCiti"
+class = "offroad"
+manufacturer = "Maibatsu"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "terminus"
+name = "Canis Terminus"
+class = "offroad"
+manufacturer = "Canis"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "yosemite1500"
+name = "Declasse Yosemite 1500"
+class = "offroad"
+manufacturer = "Declasse"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "firebolt"
+name = "Vapid Firebolt ASP"
+class = "offroad"
+manufacturer = "Vapid"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "uranus"
+name = "Vapid Uranus LozSpeed"
+class = "offroad"
+manufacturer = "Vapid"
+traffic = ["veh_countryside_onroad"]
+
+[[vehicles]]
+model = "l352"
+name = "Declasse Drift Walton L35"
+class = "offroad"
+manufacturer = "Declasse"
+traffic = ["veh_countryside_onroad"]
+
+# =============================================================================
+# MOTORCYCLES (30 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "powersurge"
+name = "Western Powersurge"
+class = "motorcycles"
+manufacturer = "Western"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "manchez3"
+name = "Maibatsu Manchez Scout C"
+class = "motorcycles"
+manufacturer = "Maibatsu"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "reever"
+name = "Western Reever"
+class = "motorcycles"
+manufacturer = "Western"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "shinobi"
+name = "Nagasaki Shinobi"
+class = "motorcycles"
+manufacturer = "Nagasaki"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "manchez2"
+name = "Maibatsu Manchez Scout"
+class = "motorcycles"
+manufacturer = "Maibatsu"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "stryder"
+name = "Nagasaki Stryder"
+class = "motorcycles"
+manufacturer = "Nagasaki"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "fcr2"
+name = "Pegassi FCR 1000 Custom"
+class = "motorcycles"
+manufacturer = "Pegassi"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "fcr"
+name = "Pegassi FCR 1000"
+class = "motorcycles"
+manufacturer = "Pegassi"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "diablous"
+name = "Principe Diabolus"
+class = "motorcycles"
+manufacturer = "Principe"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "diablous2"
+name = "Principe Diabolus Custom"
+class = "motorcycles"
+manufacturer = "Principe"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "esskey"
+name = "Pegassi Esskey"
+class = "motorcycles"
+manufacturer = "Pegassi"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "vortex"
+name = "Pegassi Vortex"
+class = "motorcycles"
+manufacturer = "Pegassi"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "daemon2"
+name = "Western Daemon Custom"
+class = "motorcycles"
+manufacturer = "Western"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "zombiea"
+name = "Western Zombie Chopper"
+class = "motorcycles"
+manufacturer = "Western"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "zombieb"
+name = "Western Zombie Bobber"
+class = "motorcycles"
+manufacturer = "Western"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "wolfsbane"
+name = "Western Wolfsbane"
+class = "motorcycles"
+manufacturer = "Western"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "nightblade"
+name = "Western Nightblade"
+class = "motorcycles"
+manufacturer = "Western"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "manchez"
+name = "Maibatsu Manchez"
+class = "motorcycles"
+manufacturer = "Maibatsu"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "hakuchou2"
+name = "Shitzu Hakuchou Drag"
+class = "motorcycles"
+manufacturer = "Shitzu"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "faggio"
+name = "Principe Faggio Mod"
+class = "motorcycles"
+manufacturer = "Principe"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "faggio3"
+name = "Principe Faggio Sport"
+class = "motorcycles"
+manufacturer = "Principe"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "defiler"
+name = "Shitzu Defiler"
+class = "motorcycles"
+manufacturer = "Shitzu"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "chimera"
+name = "Nagasaki Chimera"
+class = "motorcycles"
+manufacturer = "Nagasaki"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "avarus"
+name = "LCC Avarus"
+class = "motorcycles"
+manufacturer = "LCC"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "cliffhanger"
+name = "Western Cliffhanger"
+class = "motorcycles"
+manufacturer = "Western"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "gargoyle"
+name = "Western Gargoyle"
+class = "motorcycles"
+manufacturer = "Western"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "bf400"
+name = "Nagasaki BF400"
+class = "motorcycles"
+manufacturer = "Nagasaki"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "vindicator"
+name = "Dinka Vindicator"
+class = "motorcycles"
+manufacturer = "Dinka"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "lectro"
+name = "Principe Lectro"
+class = "motorcycles"
+manufacturer = "Principe"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "enduro"
+name = "Dinka Enduro"
+class = "motorcycles"
+manufacturer = "Dinka"
+traffic = ["veh_mid"]
+
+# =============================================================================
+# BOATS (6 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "longfin"
+name = "Shitzu Longfin"
+class = "boats"
+manufacturer = "Shitzu"
+traffic = ["veh_boats"]
+
+[[vehicles]]
+model = "toro"
+name = "Lampadati Toro"
+class = "boats"
+manufacturer = "Lampadati"
+traffic = ["veh_boats"]
+
+[[vehicles]]
+model = "avisa"
+name = "Kraken Avisa"
+class = "boats"
+manufacturer = "Kraken"
+traffic = ["veh_boats"]
+
+[[vehicles]]
+model = "dinghy5"
+name = "Nagasaki Weaponized Dinghy"
+class = "boats"
+manufacturer = "Nagasaki"
+traffic = ["veh_boats"]
+weaponized = true
+
+[[vehicles]]
+model = "patrolboat"
+name = "Kurtz 31 Patrol Boat"
+class = "boats"
+manufacturer = "Kurtz"
+traffic = ["veh_boats"]
+
+[[vehicles]]
+model = "tug"
+name = "Buckingham Tug"
+class = "boats"
+manufacturer = "Buckingham"
+traffic = ["veh_boats"]
+
+# =============================================================================
+# HELICOPTERS (11 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "conada"
+name = "Buckingham Conada"
+class = "helicopters"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "havok"
+name = "Nagasaki Havok"
+class = "helicopters"
+manufacturer = "Nagasaki"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "volatus"
+name = "Buckingham Volatus"
+class = "helicopters"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "supervolito"
+name = "Buckingham SuperVolito"
+class = "helicopters"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "supervolito2"
+name = "Buckingham SuperVolito Carbon"
+class = "helicopters"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "swift2"
+name = "Buckingham Swift Deluxe"
+class = "helicopters"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "annihilator2"
+name = "Western Annihilator Stealth"
+class = "helicopters"
+manufacturer = "Western"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "akula"
+name = "Akula"
+class = "helicopters"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "hunter"
+name = "FH-1 Hunter"
+class = "helicopters"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "valkyrie"
+name = "Buckingham Valkyrie"
+class = "helicopters"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "savage"
+name = "Savage"
+class = "helicopters"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+weaponized = true
+
+# =============================================================================
+# PLANES (20 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "microlight"
+name = "Nagasaki Ultralight"
+class = "planes"
+manufacturer = "Nagasaki"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "nimbus"
+name = "Buckingham Nimbus"
+class = "planes"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "luxor2"
+name = "Buckingham Luxor Deluxe"
+class = "planes"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "velum2"
+name = "Buckingham Velum 5-Seater"
+class = "planes"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "alkonost"
+name = "RO-86 Alkonost"
+class = "planes"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "strikeforce"
+name = "B-11 Strikeforce"
+class = "planes"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "avenger"
+name = "Mammoth Avenger"
+class = "planes"
+manufacturer = "Mammoth"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "volatol"
+name = "Volatol"
+class = "planes"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "nokota"
+name = "P-45 Nokota"
+class = "planes"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "seabreeze"
+name = "Western Seabreeze"
+class = "planes"
+manufacturer = "Western"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "pyro"
+name = "Buckingham Pyro"
+class = "planes"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "mogul"
+name = "Mammoth Mogul"
+class = "planes"
+manufacturer = "Mammoth"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "howard"
+name = "Buckingham Howard NX-25"
+class = "planes"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "bombushka"
+name = "RM-10 Bombushka"
+class = "planes"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "molotok"
+name = "V-65 Molotok"
+class = "planes"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "tula"
+name = "Mammoth Tula"
+class = "planes"
+manufacturer = "Mammoth"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "rogue"
+name = "Western Rogue"
+class = "planes"
+manufacturer = "Western"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "starling"
+name = "LF-22 Starling"
+class = "planes"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+weaponized = true
+
+[[vehicles]]
+model = "alphaz1"
+name = "Buckingham Alpha-Z1"
+class = "planes"
+manufacturer = "Buckingham"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "hydra"
+name = "Mammoth Hydra"
+class = "planes"
+manufacturer = "Mammoth"
+traffic = ["veh_rich"]
+
+# =============================================================================
+# MILITARY (17 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "vetir"
+name = "Vetir"
+class = "military"
+manufacturer = "HVY"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "scarab"
+name = "HVY Scarab"
+class = "military"
+manufacturer = "HVY"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "terbyte"
+name = "Benefactor Terrorbyte"
+class = "military"
+manufacturer = "Benefactor"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "thruster"
+name = "Mammoth Thruster"
+class = "military"
+manufacturer = "Mammoth"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "khanjali"
+name = "TM-02 Khanjali"
+class = "military"
+manufacturer = "HVY"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "chernobog"
+name = "Chernobog"
+class = "military"
+manufacturer = "HVY"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "barrage"
+name = "HVY Barrage"
+class = "military"
+manufacturer = "HVY"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "halftrack"
+name = "Bravado Half-track"
+class = "military"
+manufacturer = "Bravado"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "apc"
+name = "HVY APC"
+class = "military"
+manufacturer = "HVY"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "oppressor"
+name = "Pegassi Oppressor"
+class = "military"
+manufacturer = "Pegassi"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "oppressor2"
+name = "Pegassi Oppressor Mk II"
+class = "military"
+manufacturer = "Pegassi"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "squaddie"
+name = "Mammoth Squaddie"
+class = "military"
+manufacturer = "Mammoth"
+traffic = []
+
+[[vehicles]]
+model = "winky"
+name = "Vapid Winky"
+class = "military"
+manufacturer = "Vapid"
+traffic = []
+
+[[vehicles]]
+model = "insurgent3"
+name = "HVY Insurgent Pick-Up Custom"
+class = "military"
+manufacturer = "HVY"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "raiju"
+name = "Mammoth F-160 Raiju"
+class = "military"
+manufacturer = "Mammoth"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "streamer216"
+name = "Mammoth Streamer216"
+class = "military"
+manufacturer = "Mammoth"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "conada2"
+name = "Buckingham Weaponized Conada"
+class = "military"
+manufacturer = "Buckingham"
+traffic = []
+weaponized = true
+
+# =============================================================================
+# INDUSTRIAL (10 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "pounder2"
+name = "MTL Pounder Custom"
+class = "industrial"
+manufacturer = "MTL"
+traffic = ["veh_freeway"]
+weaponized = true
+
+[[vehicles]]
+model = "mule4"
+name = "Maibatsu Mule Custom"
+class = "industrial"
+manufacturer = "Maibatsu"
+traffic = ["veh_freeway"]
+weaponized = true
+
+[[vehicles]]
+model = "phantom3"
+name = "JoBuilt Phantom Custom"
+class = "industrial"
+manufacturer = "JoBuilt"
+traffic = ["veh_freeway"]
+
+[[vehicles]]
+model = "hauler2"
+name = "JoBuilt Hauler Custom"
+class = "industrial"
+manufacturer = "JoBuilt"
+traffic = ["veh_freeway"]
+
+[[vehicles]]
+model = "phantom2"
+name = "JoBuilt Phantom Wedge"
+class = "industrial"
+manufacturer = "JoBuilt"
+traffic = ["veh_freeway"]
+
+[[vehicles]]
+model = "mule3"
+name = "Maibatsu Mule"
+class = "industrial"
+manufacturer = "Maibatsu"
+traffic = ["veh_freeway"]
+
+[[vehicles]]
+model = "boxville4"
+name = "Brute Boxville"
+class = "industrial"
+manufacturer = "Brute"
+traffic = ["veh_freeway"]
+
+[[vehicles]]
+model = "flatbed2"
+name = "MTL Flatbed"
+class = "industrial"
+manufacturer = "MTL"
+traffic = ["veh_freeway"]
+
+[[vehicles]]
+model = "stockade4"
+name = "Brute Stockade"
+class = "industrial"
+manufacturer = "Brute"
+traffic = ["veh_freeway"]
+
+[[vehicles]]
+model = "keitora"
+name = "Shitzu Keitora"
+class = "industrial"
+manufacturer = "Shitzu"
+traffic = ["veh_freeway"]
+
+# =============================================================================
+# OPENWHEEL (5 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "openwheel1"
+name = "Benefactor BR8"
+class = "openwheel"
+manufacturer = "Benefactor"
+traffic = []
+
+[[vehicles]]
+model = "openwheel2"
+name = "Progen PR4"
+class = "openwheel"
+manufacturer = "Progen"
+traffic = []
+
+[[vehicles]]
+model = "formula"
+name = "Ocelot R88"
+class = "openwheel"
+manufacturer = "Ocelot"
+traffic = []
+
+[[vehicles]]
+model = "formula2"
+name = "Declasse DR1"
+class = "openwheel"
+manufacturer = "Declasse"
+traffic = []
+
+[[vehicles]]
+model = "raptor"
+name = "BF Raptor"
+class = "openwheel"
+manufacturer = "BF"
+traffic = []
+
+# =============================================================================
+# VANS (8 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "journey2"
+name = "Zirconium Journey II"
+class = "vans"
+manufacturer = "Zirconium"
+traffic = ["veh_poor", "veh_freeway"]
+
+[[vehicles]]
+model = "surfer3"
+name = "BF Surfer Custom"
+class = "vans"
+manufacturer = "BF"
+traffic = ["veh_poor", "veh_freeway"]
+
+[[vehicles]]
+model = "youga3"
+name = "Bravado Youga Classic 4x4"
+class = "vans"
+manufacturer = "Bravado"
+traffic = ["veh_poor", "veh_freeway"]
+
+[[vehicles]]
+model = "speedo4"
+name = "Vapid Speedo Custom"
+class = "vans"
+manufacturer = "Vapid"
+traffic = ["veh_poor", "veh_freeway"]
+weaponized = true
+
+[[vehicles]]
+model = "youga2"
+name = "Bravado Youga Classic"
+class = "vans"
+manufacturer = "Bravado"
+traffic = ["veh_poor", "veh_freeway"]
+
+[[vehicles]]
+model = "rumpo3"
+name = "Bravado Rumpo Custom"
+class = "vans"
+manufacturer = "Bravado"
+traffic = ["veh_poor", "veh_freeway"]
+
+[[vehicles]]
+model = "minivan2"
+name = "Vapid Minivan Custom"
+class = "vans"
+manufacturer = "Vapid"
+traffic = ["veh_poor", "veh_freeway"]
+
+[[vehicles]]
+model = "boxville6"
+name = "Brute Boxville"
+class = "vans"
+manufacturer = "Brute"
+traffic = ["veh_poor", "veh_freeway"]
+
+# =============================================================================
+# EMERGENCY (11 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "riot2"
+name = "Brute RCV"
+class = "emergency"
+manufacturer = "Brute"
+traffic = []
+
+[[vehicles]]
+model = "polgauntlet"
+name = "Bravado Gauntlet Interceptor"
+class = "emergency"
+manufacturer = "Bravado"
+traffic = []
+
+[[vehicles]]
+model = "police5"
+name = "Vapid Stanier LE Cruiser"
+class = "emergency"
+manufacturer = "Vapid"
+traffic = []
+
+[[vehicles]]
+model = "polbuffalo"
+name = "Bravado Buffalo Cruiser"
+class = "emergency"
+manufacturer = "Bravado"
+traffic = []
+
+[[vehicles]]
+model = "polbuffalo6"
+name = "Bravado Buffalo STX Pursuit"
+class = "emergency"
+manufacturer = "Bravado"
+traffic = []
+
+[[vehicles]]
+model = "policet3"
+name = "Vapid Police Transporter"
+class = "emergency"
+manufacturer = "Vapid"
+traffic = []
+
+[[vehicles]]
+model = "policeb2"
+name = "Western Police Bike"
+class = "emergency"
+manufacturer = "Western"
+traffic = []
+
+[[vehicles]]
+model = "polcoquette4"
+name = "Invetero Coquette D10 Cruiser"
+class = "emergency"
+manufacturer = "Invetero"
+traffic = []
+
+[[vehicles]]
+model = "polcaracara"
+name = "Vapid Caracara Cruiser"
+class = "emergency"
+manufacturer = "Vapid"
+traffic = []
+
+[[vehicles]]
+model = "polfaction2"
+name = "Willard Faction Cruiser"
+class = "emergency"
+manufacturer = "Willard"
+traffic = []
+
+[[vehicles]]
+model = "polterminus"
+name = "Canis Terminus Cruiser"
+class = "emergency"
+manufacturer = "Canis"
+traffic = []
+
+# =============================================================================
+# CYCLES (2 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "inductor"
+name = "Coil Inductor"
+class = "cycles"
+manufacturer = "Coil"
+traffic = ["veh_mid"]
+
+[[vehicles]]
+model = "inductor2"
+name = "Coil Junk Energy Inductor"
+class = "cycles"
+manufacturer = "Coil"
+traffic = ["veh_mid"]
+
+# =============================================================================
+# SERVICE (6 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "pbus2"
+name = "Vapid Festival Bus"
+class = "service"
+manufacturer = "Vapid"
+traffic = ["veh_freeway"]
+
+[[vehicles]]
+model = "benson2"
+name = "Vapid Benson"
+class = "service"
+manufacturer = "Vapid"
+traffic = ["veh_freeway"]
+
+[[vehicles]]
+model = "slamtruck"
+name = "Vapid Slamtruck"
+class = "service"
+manufacturer = "Vapid"
+traffic = ["veh_freeway"]
+
+[[vehicles]]
+model = "wastelander"
+name = "MTL Wastelander"
+class = "service"
+manufacturer = "MTL"
+traffic = ["veh_freeway"]
+
+[[vehicles]]
+model = "towtruck4"
+name = "Vapid Tow Truck"
+class = "service"
+manufacturer = "Vapid"
+traffic = ["veh_freeway"]
+
+[[vehicles]]
+model = "pizzaboy"
+name = "Pegassi Pizza Boy"
+class = "service"
+manufacturer = "Pegassi"
+traffic = ["veh_freeway"]
+
+# =============================================================================
+# SPECIAL (10 vehicles)
+# =============================================================================
+
+[[vehicles]]
+model = "scramjet"
+name = "Declasse Scramjet"
+class = "special"
+manufacturer = "Declasse"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "vigilante"
+name = "Grotti Vigilante"
+class = "special"
+manufacturer = "Grotti"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "voltic2"
+name = "Coil Rocket Voltic"
+class = "special"
+manufacturer = "Coil"
+traffic = []
+
+[[vehicles]]
+model = "toreador"
+name = "Pegassi Toreador"
+class = "special"
+manufacturer = "Pegassi"
+traffic = []
+
+[[vehicles]]
+model = "jb7002"
+name = "Dewbauchee JB 700W"
+class = "special"
+manufacturer = "Dewbauchee"
+traffic = []
+
+[[vehicles]]
+model = "deluxo"
+name = "Imponte Deluxo"
+class = "special"
+manufacturer = "Imponte"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "stromberg"
+name = "Ocelot Stromberg"
+class = "special"
+manufacturer = "Ocelot"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "rrocket"
+name = "Western Rampant Rocket"
+class = "special"
+manufacturer = "Western"
+traffic = []
+
+[[vehicles]]
+model = "shotaro"
+name = "Nagasaki Shotaro"
+class = "special"
+manufacturer = "Nagasaki"
+traffic = []
+
+[[vehicles]]
+model = "dune5"
+name = "BF Ramp Buggy"
+class = "special"
+manufacturer = "BF"
+traffic = []
+
+# =============================================================================
+# CONTENT AUDIT ADDITIONS (GTA Online 1.69-1.72)
+# Source: DurtyFree gta-v-data-dumps, game build 3717 / Online 1.72.
+# These distinct models were omitted from the original curated list.
+# =============================================================================
+
+[[vehicles]]
+model = "poldominator10"
+name = "Vapid Dominator FX Interceptor"
+class = "emergency"
+manufacturer = "Vapid"
+traffic = []
+
+[[vehicles]]
+model = "poldorado"
+name = "Bravado Dorado Cruiser"
+class = "emergency"
+manufacturer = "Bravado"
+traffic = []
+
+[[vehicles]]
+model = "polgreenwood"
+name = "Bravado Greenwood Cruiser"
+class = "emergency"
+manufacturer = "Bravado"
+traffic = []
+
+[[vehicles]]
+model = "polimpaler5"
+name = "Declasse Impaler SZ Cruiser"
+class = "emergency"
+manufacturer = "Declasse"
+traffic = []
+
+[[vehicles]]
+model = "polimpaler6"
+name = "Declasse Impaler LX Cruiser"
+class = "emergency"
+manufacturer = "Declasse"
+traffic = []
+
+[[vehicles]]
+model = "cargobob5"
+name = "Buckingham DH-7 Iron Mule"
+class = "helicopters"
+manufacturer = "Buckingham"
+traffic = []
+
+[[vehicles]]
+model = "maverick2"
+name = "Higgins Helitours Maverick"
+class = "helicopters"
+manufacturer = "Higgins"
+traffic = []
+
+[[vehicles]]
+model = "duster2"
+name = "Western Duster 300-H"
+class = "planes"
+manufacturer = "Western"
+traffic = []
+
+[[vehicles]]
+model = "titan2"
+name = "Eberhard Titan 250 D"
+class = "planes"
+manufacturer = "Eberhard"
+traffic = []
+
+[[vehicles]]
+model = "youga5"
+name = "Vapid Youga Custom"
+class = "vans"
+manufacturer = "Vapid"
+traffic = ["veh_poor", "veh_freeway"]
+
+[[vehicles]]
+model = "vivanite2"
+name = "Karin Vivanite Service"
+class = "service"
+manufacturer = "Karin"
+traffic = ["veh_mid", "veh_rich"]
+
+# GTA Online 1.73 / The Kortz Center Heist (July 2026).
+[[vehicles]]
+model = "velenogt"
+name = "Grotti Veleno GT"
+class = "super"
+manufacturer = "Grotti"
+traffic = []
+
+[[vehicles]]
+model = "caracara3"
+name = "Vapid Caracara (Armored)"
+class = "offroad"
+manufacturer = "Vapid"
+traffic = []
+weaponized = true
+
+[[vehicles]]
+model = "merula"
+name = "Albany Merula"
+class = "sedans"
+manufacturer = "Albany"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "laufer"
+name = "Benefactor Läufer"
+class = "vans"
+manufacturer = "Benefactor"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "lrcgt"
+name = "Benefactor LRC GT"
+class = "super"
+manufacturer = "Benefactor"
+traffic = []
+
+[[vehicles]]
+model = "cartuccia"
+name = "Grotti Cartuccia GT"
+class = "sports"
+manufacturer = "Grotti"
+traffic = ["veh_rich"]
+
+[[vehicles]]
+model = "estride"
+name = "Ocelot E-Stride"
+class = "suvs"
+manufacturer = "Ocelot"
+traffic = ["veh_mid", "veh_rich"]
+
+[[vehicles]]
+model = "polignus"
+name = "Pegassi Ignus Pursuit"
+class = "emergency"
+manufacturer = "Pegassi"
+traffic = []
+
+[[vehicles]]
+model = "horus"
+name = "Pegassi Horus"
+class = "super"
+manufacturer = "Pegassi"
+traffic = []
+
+[[vehicles]]
+model = "warden"
+name = "Gallivanter Warden"
+class = "suvs"
+manufacturer = "Gallivanter"
+traffic = ["veh_rich"]
+
+# =============================================================================
+# END OF VEHICLE DATABASE
+# Total vehicles: 463
+# =============================================================================
