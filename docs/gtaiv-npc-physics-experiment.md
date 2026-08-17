@@ -21,23 +21,24 @@ reactions. It does not copy GTA IV assets and does not patch GTA V archives.
 
 The established overhauls mainly replace archive-level tuning data. That can
 affect every Euphoria task, but it also creates compatibility and removal costs.
-This first ALLIN1 prototype instead sends supported NaturalMotion messages only
-after a nearby ambient human ped takes fresh weapon damage.
+This ALLIN1 prototype instead sends supported NaturalMotion messages after a
+nearby ambient human takes fresh weapon damage, receives a close vehicle bump,
+or is hurt by a nearby explosion.
 
 ## Safety boundary
 
 The prototype excludes:
 
 - the player;
-- dead or non-human peds;
+- non-human peds and deaths without a freshly observed damage event;
 - mission entities and persistent peds;
 - peds occupying vehicles; and
 - health changes without a weapon-damage flag.
 
 It scans at 100 ms within 70 metres, processes at most 32 candidates per scan,
-and applies a per-ped reaction cooldown. The behavior times out after 4.5
-seconds. These limits are intentionally conservative for the first in-game
-test.
+and applies separate per-ped weapon and vehicle-impact cooldowns. Every helper
+has a short timeout. These limits keep the experiment bounded during normal
+play.
 
 ## Enabling it
 
@@ -53,15 +54,29 @@ gta_iv_npc_physics = true
 Set it to `false` and restart to restore vanilla behavior. No RPF repair is
 required.
 
-## First-pass tuning
+## Changelog-guided tuning
 
-The preset currently favors:
+The expanded runtime preset now includes:
 
-- more and larger recovery steps;
-- a longer balance window before collapse;
-- lower leg, spine, and arm stiffness;
-- gradual loss of lower-body strength while staggering; and
-- active catch-fall arm behavior.
+- minimum global Euphoria stiffness with controlled foot friction;
+- longer, looser balancing with additional recovery steps;
+- body-region reactions based on GTA's last-damaged bone;
+- delayed leg collapse and active stepping after leg shots;
+- gut/spine tension for torso wounds;
+- one- or two-handed wound reaching while standing, falling, or grounded;
+- subtle, chance-based grounded head-trauma leg movement;
+- chance-based knee drops on freshly observed lethal hits;
+- a chance for armed peds to retain point-gun behavior while balancing;
+- balanced electroshock and on-fire reactions;
+- protective upper-body flinching near explosions;
+- low-speed car-push balancing with short, weak bonnet bracing; and
+- higher-speed no-forward-roll falls with reduced rebound and tumbling.
+
+The runtime version intentionally does not alter global ragdoll pool limits,
+vehicle crash elasticity, material penetration, animal bounds, motorcycle
+bailout tuning, or archive-level task defaults. Those changelog items require
+replacement game data and would make this experiment less reversible and more
+likely to conflict with other mods.
 
 This cannot recreate GTA IV one-to-one. GTA V's own task selection, animation
 graph, ped skeleton, collision response, and underlying NaturalMotion behavior
