@@ -187,6 +187,8 @@ class ManagerWindow:
         self.gbay_free_mode = tk.BooleanVar(value=self.config.script.gbay_free_mode)
         self.garages_always_accessible = tk.BooleanVar(
             value=self.config.script.garages_always_accessible)
+        self.gta_iv_npc_physics = tk.BooleanVar(
+            value=self.config.script.gta_iv_npc_physics)
         self.status_text = tk.StringVar(value="Checking installation…")
         self.status_headline = tk.StringVar(value="Checking installation…")
         self.status_detail = tk.StringVar(value="Inspecting the selected GTA V folder.")
@@ -205,6 +207,7 @@ class ManagerWindow:
             self.safe_mode, self.reduced_motion, self.colorblind_mode, self.ui_scale,
             self.hold_duration_ms, self.gbay_free_mode,
             self.garages_always_accessible,
+            self.gta_iv_npc_physics,
         )
         for variable in self._setting_variables:
             variable.trace_add("write", self._mark_dirty)
@@ -371,6 +374,10 @@ class ManagerWindow:
         ttk.Checkbutton(options, text="Allow garage entry while wanted",
                         variable=self.garages_always_accessible).grid(
                             row=6, column=1, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(options, text="Experimental GTA IV-style NPC physics",
+                        variable=self.gta_iv_npc_physics).grid(
+                            row=7, column=0, columnspan=2, sticky="w",
+                            pady=(8, 0))
 
         controls = ttk.LabelFrame(controls_page, text="KEYBINDS & VEHICLE FILTERS", padding=14)
         controls.pack(fill="x", pady=(0, 12))
@@ -593,6 +600,8 @@ class ManagerWindow:
         self.config.script.gbay_free_mode = self.gbay_free_mode.get()
         self.config.script.garages_always_accessible = \
             self.garages_always_accessible.get()
+        self.config.script.gta_iv_npc_physics = \
+            self.gta_iv_npc_physics.get()
         return self.config
 
     @staticmethod
@@ -652,6 +661,8 @@ class ManagerWindow:
             self.gbay_free_mode.set(self.config.script.gbay_free_mode)
             self.garages_always_accessible.set(
                 self.config.script.garages_always_accessible)
+            self.gta_iv_npc_physics.set(
+                self.config.script.gta_iv_npc_physics)
             self.notice_text.set(
                 f"Profile '{self.profile_name.get()}' loaded · save to apply"
             )

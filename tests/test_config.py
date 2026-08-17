@@ -122,6 +122,7 @@ def test_default_config():
     assert config.script.ui_scale == 1.0
     assert config.script.seat_selector_key == "L"
     assert config.script.garages_always_accessible is False
+    assert config.script.gta_iv_npc_physics is False
 
 
 def test_save_round_trip_preserves_all_fields(tmp_path):
@@ -143,6 +144,7 @@ def test_save_round_trip_preserves_all_fields(tmp_path):
     config.script.seat_selector_key = "G"
     config.script.gbay_free_mode = True
     config.script.garages_always_accessible = True
+    config.script.gta_iv_npc_physics = True
     path = tmp_path / "nested" / "config.toml"
 
     config.save(path)

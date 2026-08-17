@@ -160,6 +160,7 @@ Available classes: `compacts`, `coupes`, `sedans`, `suvs`, `muscle`, `sports`, `
 | `seat_selector_enabled` | `true` | Enable hold-to-select vehicle seats. |
 | `gbay_free_mode` | `false` | All GBAY purchases are free; vehicle sales have no payout. |
 | `garages_always_accessible` | `false` | Allow garage entry with a wanted level. Mission, vehicle-ownership, and size safety rules still apply. |
+| `gta_iv_npc_physics` | `false` | Experimental runtime-only GTA IV-style Euphoria reactions for nearby ambient human NPCs. Excludes the player, mission/persistent peds, animals, and vehicle occupants. |
 | `enable_logging` | `false` | Write debug info to `scripts/ALLIN1.log`. |
 | `enable_dlc_police` | `false` | Replace vanilla police cars with DLC police vehicles. |
 

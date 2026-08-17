@@ -157,6 +157,8 @@ Important groups include:
 - `[vehicles]` — global enablement plus class and model exclusions;
 - `[script]` — GBAY, night vision and seat-selector keys, UI scale, reduced motion, colorblind mode,
   safe mode, free purchases, support logging, and the F10 world-vector overlay.
+  The experimental branch also offers an opt-in GTA IV-style ambient NPC physics preset.
+  See [the experiment notes](docs/gtaiv-npc-physics-experiment.md) for its safety boundary and prior art.
 
 Vehicle, weapon, and gear pricing is maintained in `prices_vehicles.toml`,
 `prices_weapons.toml`, and `prices_gear.toml`.

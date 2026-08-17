@@ -80,3 +80,6 @@ hold_duration_ms = 350
 gbay_free_mode = false
 # Default false: wanted players cannot enter, while garage exits stay usable.
 garages_always_accessible = false
+# Experimental runtime-only NaturalMotion preset for ambient human NPCs.
+# Mission characters, persistent peds, occupants, and the player are excluded.
+gta_iv_npc_physics = false

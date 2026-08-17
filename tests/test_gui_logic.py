@@ -44,6 +44,7 @@ def _window():
     window.hold_duration_ms = Variable(600)
     window.gbay_free_mode = Variable(True)
     window.garages_always_accessible = Variable(True)
+    window.gta_iv_npc_physics = Variable(True)
     return window
 
 
@@ -70,6 +71,7 @@ def test_current_config_collects_all_launcher_fields():
     assert config.script.hold_duration_ms == 600
     assert config.script.gbay_free_mode is True
     assert config.script.garages_always_accessible is True
+    assert config.script.gta_iv_npc_physics is True
 
 
 def test_queue_log_handler_sends_formatted_record():

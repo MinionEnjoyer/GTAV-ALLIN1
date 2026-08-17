@@ -63,6 +63,7 @@ class ScriptConfig:
     hold_duration_ms: int = 350
     gbay_free_mode: bool = False
     garages_always_accessible: bool = False
+    gta_iv_npc_physics: bool = False
 
 
 @dataclass
@@ -158,6 +159,7 @@ class Config:
             f"gbay_free_mode = {boolean(self.script.gbay_free_mode)}\n"
             "garages_always_accessible = "
             f"{boolean(self.script.garages_always_accessible)}\n"
+            f"gta_iv_npc_physics = {boolean(self.script.gta_iv_npc_physics)}\n"
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
