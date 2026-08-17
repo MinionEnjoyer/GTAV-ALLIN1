@@ -194,8 +194,10 @@ namespace ALLIN1
         private static bool _initialized;
         private static PedHash _lastGarageCharacter;
         private static bool _vehicleSavesDirty;
+        private static bool _garageCustomizationSavesDirty;
         private static bool _vehicleSaveCommitInProgress;
         private static bool _storySaveWasInProgress;
+        private static bool _discardStagedGarageStateAfterLoad;
         private static DateTime _lastStorySaveWriteUtc;
         private static DateTime _nextStorySavePollUtc;
 
@@ -1213,11 +1215,18 @@ namespace ALLIN1
             if (Game.IsLoading)
             {
                 _storySaveWasInProgress = false;
+                _discardStagedGarageStateAfterLoad = true;
                 return;
             }
 
             try
             {
+                if (_discardStagedGarageStateAfterLoad)
+                {
+                    _discardStagedGarageStateAfterLoad = false;
+                    ReloadCommittedGarageState();
+                }
+
                 bool saveInProgress =
                     Function.Call<bool>(Hash.IS_AUTO_SAVE_IN_PROGRESS);
                 DateTime latestWrite = _lastStorySaveWriteUtc;
@@ -1273,7 +1282,7 @@ namespace ALLIN1
             RuralUpdateStoredFromLive();
             PaletoUpdateStoredFromLive();
             YachtHelipadUpdateStoredFromLive();
-            if (!_vehicleSavesDirty) return;
+            if (!_vehicleSavesDirty && !_garageCustomizationSavesDirty) return;
 
             bool eclipseSaved;
             bool harmonySaved;
@@ -1284,6 +1293,8 @@ namespace ALLIN1
             bool helipadSaved;
             bool harbourSaved;
             bool yachtHelipadSaved;
+            bool harmonyThemesSaved;
+            bool davisCustomizationSaved;
             _vehicleSaveCommitInProgress = true;
             try
             {
@@ -1297,6 +1308,10 @@ namespace ALLIN1
                 harbourSaved = !_harbourInitialized || HarbourSave();
                 yachtHelipadSaved = !_yachtHelipadInitialized ||
                     YachtHelipadSave();
+                harmonyThemesSaved = !_garageCustomizationSavesDirty ||
+                    FloorGarageThemesWrite();
+                davisCustomizationSaved = !_garageCustomizationSavesDirty ||
+                    DavisCustomizationWrite();
             }
             finally
             {
@@ -1305,10 +1320,12 @@ namespace ALLIN1
 
             bool success = eclipseSaved && harmonySaved && davisSaved
                 && garmentSaved && ruralSaved && paletoSaved &&
-                helipadSaved && harbourSaved && yachtHelipadSaved;
+                helipadSaved && harbourSaved && yachtHelipadSaved &&
+                harmonyThemesSaved && davisCustomizationSaved;
             if (success)
             {
                 _vehicleSavesDirty = false;
+                _garageCustomizationSavesDirty = false;
                 ClientLog.Info("Garage", "vehicle_state_backed_up",
                     new Dictionary<string, object> { { "reason", reason } });
             }
@@ -1379,6 +1396,48 @@ namespace ALLIN1
                 LogException("RequiresSpecializedStorage", ex);
                 return true;
             }
+        }
+
+        private static void ReloadCommittedGarageState()
+        {
+            foreach (List<StoredVehicle> list in _stored.Values) list.Clear();
+            foreach (List<StoredVehicle> list in _floorGarageStored.Values) list.Clear();
+            foreach (List<StoredVehicle> list in _davisStored.Values) list.Clear();
+            foreach (List<StoredVehicle> list in _garmentStored.Values) list.Clear();
+            foreach (List<StoredVehicle> list in _ruralStored.Values) list.Clear();
+            foreach (List<StoredVehicle> list in _paletoStored.Values) list.Clear();
+            foreach (List<StoredVehicle> list in _helipadStored.Values) list.Clear();
+            foreach (List<StoredVehicle> list in _harbourStored.Values) list.Clear();
+            foreach (List<StoredVehicle> list in _yachtHelipadStored.Values) list.Clear();
+
+            ResetGarageCustomizationDefaults();
+            Load();
+            FloorGarageLoad();
+            DavisLoad();
+            GarmentLoad();
+            RuralLoad();
+            PaletoLoad();
+            HelipadLoad();
+            HarbourLoad();
+            YachtHelipadLoad();
+            FloorGarageThemesLoad();
+            DavisCustomizationLoad();
+            _vehicleSavesDirty = false;
+            _garageCustomizationSavesDirty = false;
+            ClientLog.Info("Garage", "unsaved_gbay_state_discarded");
+        }
+
+        private static void ResetGarageCustomizationDefaults()
+        {
+            _floorThemes[KEY_MICHAEL_FG] = DefaultThemes();
+            _floorThemes[KEY_FRANKLIN_FG] = DefaultThemes();
+            _floorThemes[KEY_TREVOR_FG] = DefaultThemes();
+            _davisCustomization[KEY_MICHAEL] =
+                (int[])DAVIS_DEFAULT_CUSTOMIZATION.Clone();
+            _davisCustomization[KEY_FRANKLIN] =
+                (int[])DAVIS_DEFAULT_CUSTOMIZATION.Clone();
+            _davisCustomization[KEY_TREVOR] =
+                (int[])DAVIS_DEFAULT_CUSTOMIZATION.Clone();
         }
 
         private static bool RejectGarageEntry(
@@ -4282,6 +4341,11 @@ namespace ALLIN1
 
         private static void FloorGarageThemesSave()
         {
+            _garageCustomizationSavesDirty = true;
+        }
+
+        private static bool FloorGarageThemesWrite()
+        {
             try
             {
                 var sb = new StringBuilder();
@@ -4304,10 +4368,12 @@ namespace ALLIN1
                 sb.AppendLine("}");
 
                 AtomicWriteText(FLOOR_GARAGE_THEMES_PATH, sb.ToString());
+                return true;
             }
             catch (Exception ex)
             {
                 LogException("FloorGarageThemesSave", ex);
+                return false;
             }
         }
 

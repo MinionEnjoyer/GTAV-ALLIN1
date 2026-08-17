@@ -17,15 +17,35 @@ namespace ALLIN1
     {
         private static readonly string PathName = Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory, "ALLIN1_gbay_preferences.json");
-        private static GbayPreferenceData _data = Load();
         private static readonly JavaScriptSerializer Serializer = new JavaScriptSerializer();
+        private static GbayPreferenceData _committedData = Normalize(Load());
+        private static GbayPreferenceData _data = Clone(_committedData);
+        private static bool _dirty;
 
         internal static bool IsVehicleFavorite(string model) => _data.FavoriteVehicles.Contains(model);
         internal static bool IsWeaponFavorite(string weapon) => _data.FavoriteWeapons.Contains(weapon);
-        internal static void ToggleVehicle(string model) { Toggle(_data.FavoriteVehicles, model); Save(); }
-        internal static void ToggleWeapon(string weapon) { Toggle(_data.FavoriteWeapons, weapon); Save(); }
-        internal static void RecordVehicle(string model) { Record(_data.RecentVehicles, model); Save(); }
-        internal static void RecordWeapon(string weapon) { Record(_data.RecentWeapons, weapon); Save(); }
+        internal static void ToggleVehicle(string model) { Toggle(_data.FavoriteVehicles, model); Stage(); }
+        internal static void ToggleWeapon(string weapon) { Toggle(_data.FavoriteWeapons, weapon); Stage(); }
+        internal static void RecordVehicle(string model) { Record(_data.RecentVehicles, model); Stage(); }
+        internal static void RecordWeapon(string weapon) { Record(_data.RecentWeapons, weapon); Stage(); }
+
+        internal static void CommitForStorySave(string reason)
+        {
+            if (!_dirty) return;
+            if (!Save()) return;
+            _committedData = Clone(_data);
+            _dirty = false;
+            ClientLog.Info("GBAY", "preferences_backed_up",
+                new Dictionary<string, object> { { "reason", reason } });
+        }
+
+        internal static void DiscardStaged()
+        {
+            if (!_dirty) return;
+            _data = Clone(_committedData);
+            _dirty = false;
+            ClientLog.Info("GBAY", "unsaved_preferences_discarded");
+        }
 
         private static void Toggle(List<string> values, string value)
         { if (values.Contains(value)) values.Remove(value); else values.Add(value); }
@@ -34,6 +54,33 @@ namespace ALLIN1
         {
             values.Remove(value); values.Insert(0, value);
             if (values.Count > 25) values.RemoveRange(25, values.Count - 25);
+        }
+
+        private static void Stage()
+        {
+            _dirty = true;
+        }
+
+        private static GbayPreferenceData Normalize(GbayPreferenceData data)
+        {
+            if (data == null) data = new GbayPreferenceData();
+            if (data.FavoriteVehicles == null) data.FavoriteVehicles = new List<string>();
+            if (data.FavoriteWeapons == null) data.FavoriteWeapons = new List<string>();
+            if (data.RecentVehicles == null) data.RecentVehicles = new List<string>();
+            if (data.RecentWeapons == null) data.RecentWeapons = new List<string>();
+            return data;
+        }
+
+        private static GbayPreferenceData Clone(GbayPreferenceData source)
+        {
+            source = Normalize(source);
+            return new GbayPreferenceData
+            {
+                FavoriteVehicles = new List<string>(source.FavoriteVehicles),
+                FavoriteWeapons = new List<string>(source.FavoriteWeapons),
+                RecentVehicles = new List<string>(source.RecentVehicles),
+                RecentWeapons = new List<string>(source.RecentWeapons),
+            };
         }
 
         private static GbayPreferenceData Load()
@@ -51,7 +98,7 @@ namespace ALLIN1
             }
         }
 
-        private static void Save()
+        private static bool Save()
         {
             try
             {
@@ -60,8 +107,13 @@ namespace ALLIN1
                 if (File.Exists(PathName)) File.Copy(PathName, PathName + ".bak", true);
                 if (File.Exists(PathName)) File.Delete(PathName);
                 File.Move(temporary, PathName);
+                return true;
             }
-            catch (Exception ex) { ClientLog.Error("GBAY", "preferences_save_failed", ex); }
+            catch (Exception ex)
+            {
+                ClientLog.Error("GBAY", "preferences_save_failed", ex);
+                return false;
+            }
         }
     }
 }

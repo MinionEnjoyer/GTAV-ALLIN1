@@ -19,11 +19,13 @@ namespace ALLIN1
         private static readonly int FranklinHash = Game.GenerateHash("player_one");
         private static readonly int TrevorHash = Game.GenerateHash("player_two");
         private static readonly Dictionary<string, int> WeaponHashes = BuildWeaponHashes();
-        private DateTime _lastWrite;
+        private static DateTime _lastWrite;
+        private static bool _stateDirty;
         private string _lastCharacter = "";
         private int _lastPedHandle;
         private bool _restorePending;
         private bool _saveWasInProgress;
+        private bool _discardStagedAfterLoad;
         private DateTime _lastStorySaveWriteUtc;
         private DateTime _nextStorySavePollUtc;
 
@@ -150,16 +152,25 @@ namespace ALLIN1
             {
                 try
                 {
-                    if (!File.Exists(PathName)) return;
-                    var loaded = Json.Deserialize<Dictionary<string, Inventory>>(File.ReadAllText(PathName));
+                    _state = EmptyState();
+                    _stateDirty = false;
+                    if (!File.Exists(PathName))
+                    {
+                        _lastWrite = DateTime.MinValue;
+                        return;
+                    }
+                    var loaded = Json.Deserialize<Dictionary<string, Inventory>>(
+                        File.ReadAllText(PathName));
                     if (loaded != null)
                     {
                         _state = loaded;
+                        EnsureCharacterKeys(_state);
                         bool migrated = false;
                         foreach (Inventory inventory in _state.Values)
                             migrated |= NormalizeInventory(inventory);
                         if (migrated) SaveStateLocked();
                     }
+                    _lastWrite = File.GetLastWriteTimeUtc(PathName);
                     ClientLog.Info("Character", "loadouts_loaded");
                 }
                 catch (Exception ex) { ClientLog.Error("Character", "loadouts_load_failed", ex); }
@@ -171,6 +182,7 @@ namespace ALLIN1
             if (Game.IsLoading)
             {
                 _restorePending = true;
+                _discardStagedAfterLoad = true;
                 _saveWasInProgress = false;
                 return;
             }
@@ -180,6 +192,17 @@ namespace ALLIN1
             {
                 _restorePending = true;
                 return;
+            }
+
+            if (_discardStagedAfterLoad)
+            {
+                _discardStagedAfterLoad = false;
+                GbayShop.DiscardStagedRuntimeGear(Game.Player.Character);
+                Reload();
+                GbayPreferences.DiscardStaged();
+                _lastCharacter = "";
+                _lastPedHandle = 0;
+                ClientLog.Info("Character", "unsaved_gbay_state_discarded");
             }
 
             DateTime write = File.Exists(PathName) ? File.GetLastWriteTimeUtc(PathName) : DateTime.MinValue;
@@ -345,14 +368,8 @@ namespace ALLIN1
                         Game.Player.Character.Handle, GetWeaponHash(item));
                     inventory.weapon_ammo[item] = Math.Max(0, ammo);
                 }
-                try
-                {
-                    SaveStateLocked();
-                    ClientLog.Info("Character", "gbay_inventory_synced", new Dictionary<string, object> {
-                        { "character", character }, { "item", item }, { "gear", gear }
-                    });
-                }
-                catch (Exception ex) { ClientLog.Error("Character", "inventory_save_failed", ex); }
+                StageStateLocked(character, gear
+                    ? "gear_purchase" : "weapon_purchase", item);
             }
         }
 
@@ -382,23 +399,8 @@ namespace ALLIN1
                     return true;
 
                 inventory.properties.Add(propertyId);
-                try
-                {
-                    SaveStateLocked();
-                    ClientLog.Info("Character", "property_ownership_synced",
-                        new Dictionary<string, object> {
-                            { "character", character },
-                            { "property", propertyId }
-                        });
-                    return true;
-                }
-                catch (Exception ex)
-                {
-                    inventory.properties.RemoveAll(value => string.Equals(
-                        value, propertyId, StringComparison.OrdinalIgnoreCase));
-                    ClientLog.Error("Character", "property_save_failed", ex);
-                    return false;
-                }
+                StageStateLocked(character, "property_purchase", propertyId);
+                return true;
             }
         }
 
@@ -413,16 +415,8 @@ namespace ALLIN1
                 NormalizeInventory(inventory);
                 if (equipped && !ContainsIgnoreCase(inventory.gear, item)) return;
                 SetEquippedInMemory(inventory, item, equipped);
-                try
-                {
-                    SaveStateLocked();
-                    ClientLog.Info("Character", "gear_equipment_synced",
-                        new Dictionary<string, object> {
-                            { "character", character }, { "item", item },
-                            { "equipped", equipped }
-                        });
-                }
-                catch (Exception ex) { ClientLog.Error("Character", "inventory_save_failed", ex); }
+                StageStateLocked(character,
+                    equipped ? "gear_equipped" : "gear_unequipped", item);
             }
         }
 
@@ -436,15 +430,7 @@ namespace ALLIN1
                 if (!_state.TryGetValue(character, out Inventory inventory)) return;
                 NormalizeInventory(inventory);
                 if (!RemoveOwnedGearInMemory(inventory, item)) return;
-                try
-                {
-                    SaveStateLocked();
-                    ClientLog.Info("Character", "gear_ownership_removed",
-                        new Dictionary<string, object> {
-                            { "character", character }, { "item", item }
-                        });
-                }
-                catch (Exception ex) { ClientLog.Error("Character", "inventory_save_failed", ex); }
+                StageStateLocked(character, "gear_removed", item);
             }
         }
 
@@ -459,8 +445,7 @@ namespace ALLIN1
                 NormalizeInventory(inventory);
                 if (!ContainsIgnoreCase(inventory.weapons, item)) return;
                 inventory.weapon_ammo[item] = Math.Max(0, ammo);
-                try { SaveStateLocked(); }
-                catch (Exception ex) { ClientLog.Error("Character", "inventory_save_failed", ex); }
+                StageStateLocked(character, "weapon_ammo_purchase", item);
             }
         }
 
@@ -522,17 +507,22 @@ namespace ALLIN1
                     inventory.weapon_ammo[weapon] = Math.Max(0, ammo);
                     captured++;
                 }
+                if (inventory.progress?.managed ?? false)
+                    inventory.progress.money = Math.Max(0, Game.Player.Money);
                 try
                 {
+                    bool hadStagedChanges = _stateDirty;
                     SaveStateLocked();
-                    ClientLog.Info("Character", "weapon_state_backed_up",
+                    ClientLog.Info("Character", "gbay_state_backed_up",
                         new Dictionary<string, object> {
                             { "character", character }, { "weapons", captured },
-                            { "reason", reason }
+                            { "reason", reason },
+                            { "had_staged_changes", hadStagedChanges }
                         });
                 }
                 catch (Exception ex) { ClientLog.Error("Character", "inventory_save_failed", ex); }
             }
+            GbayPreferences.CommitForStorySave(reason);
         }
 
         private void OnAborted(object sender, EventArgs args)
@@ -676,6 +666,25 @@ namespace ALLIN1
             return true;
         }
 
+        private static void EnsureCharacterKeys(
+            Dictionary<string, Inventory> state)
+        {
+            foreach (string character in new[] { "michael", "franklin", "trevor" })
+                if (!state.ContainsKey(character))
+                    state[character] = new Inventory();
+        }
+
+        private static void StageStateLocked(
+            string character, string action, string item)
+        {
+            _stateDirty = true;
+            ClientLog.Info("Character", "gbay_state_staged",
+                new Dictionary<string, object> {
+                    { "character", character }, { "action", action },
+                    { "item", item }
+                });
+        }
+
         private static void SaveStateLocked()
         {
             string temporary = PathName + ".tmp";
@@ -683,6 +692,8 @@ namespace ALLIN1
             if (File.Exists(PathName)) File.Copy(PathName, PathName + ".bak", true);
             if (File.Exists(PathName)) File.Replace(temporary, PathName, null);
             else File.Move(temporary, PathName);
+            _lastWrite = File.GetLastWriteTimeUtc(PathName);
+            _stateDirty = false;
         }
     }
 }

@@ -882,6 +882,11 @@ namespace ALLIN1
 
         private static void DavisCustomizationSave()
         {
+            _garageCustomizationSavesDirty = true;
+        }
+
+        private static bool DavisCustomizationWrite()
+        {
             try
             {
                 var sb = new StringBuilder();
@@ -898,10 +903,12 @@ namespace ALLIN1
                 }
                 sb.AppendLine("}");
                 AtomicWriteText(DAVIS_CUSTOMIZATION_PATH, sb.ToString());
+                return true;
             }
             catch (Exception ex)
             {
                 LogException("DavisCustomizationSave", ex);
+                return false;
             }
         }
 
