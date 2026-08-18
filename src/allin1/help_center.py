@@ -28,7 +28,8 @@ HELP_TOPICS: tuple[HelpTopic, ...] = (
         """1. Open the Setup workspace and select your GTA V Legacy and/or Enhanced folders.
 2. Choose the active edition. All install, launch, health, and package actions use it.
 3. Review the readiness card. Install / Repair resolves the ALLIN1 client and supported dependencies.
-4. Save settings, then launch GTA V from the persistent action bar.
+4. Leave Story Mode only enabled to block accidental GTA Online entry.
+5. Save settings, then launch GTA V from the persistent action bar.
 
 ALLIN1 is for Story Mode. Do not use a modified installation with GTA Online.""",
         ("setup", "first run", "game path", "story mode"),
@@ -47,6 +48,8 @@ Auto uses the best detected installation. A specific target is recommended while
         """Install / Repair synchronizes the ALLIN1 Story Mode client and required files. It preserves configured backups and reports progress in the bottom status bar.
 
 Health Check performs a deeper validation. Diagnostics creates a shareable report. Launch saves the current settings before handing off to Steam or Rockstar Games Launcher.
+
+Story Mode only uses Rockstar's supported -scofflineonly argument. ALLIN1 records whether it inserted that argument, preserves every unrelated commandline.txt option, and removes only its own line when the setting is disabled. A separately installed Straight To Story Mode ASI may still skip legal, splash, and landing screens; manage that package independently in Packages.
 
 If launch is blocked by an RPF safety warning, run Health Check before repairing. The warning is designed to prevent a known-bad package from hanging Story Mode.""",
         ("repair", "health", "launch", "dependencies", "blocked"),

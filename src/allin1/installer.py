@@ -30,6 +30,7 @@ from allin1 import asi_loader
 from allin1.config import Config
 from allin1.detector import detect_gta_path, validate_gta_path
 from allin1.health import inspect_windows_binary
+from allin1.launch_policy import configure_story_mode_only
 from allin1.preview_assets import GEAR_PREVIEW_ITEMS, WORLD_ASSET_PREVIEW_ITEMS
 from allin1.processes import run_hidden
 from allin1.vehicles.database import VehicleDatabase
@@ -292,6 +293,17 @@ def uninstall(config: Config) -> list[Path]:
     log.info("=== Starting uninstall ===")
     gta_path = resolve_gta_path(config)
     removed: list[Path] = []
+
+    # Remove only the offline launch argument previously owned by ALLIN1.
+    # Player-authored commandline.txt options, including an independently
+    # configured -scofflineonly argument, remain untouched.
+    try:
+        commandline_existed = (gta_path / "commandline.txt").is_file()
+        configure_story_mode_only(gta_path, False)
+        if commandline_existed and not (gta_path / "commandline.txt").exists():
+            removed.append(gta_path / "commandline.txt")
+    except OSError:
+        log.warning("Could not remove Story Mode-only launch policy", exc_info=True)
 
     _remove_smoke_tuning(gta_path)
     _remove_merged_smoke_canary(gta_path)

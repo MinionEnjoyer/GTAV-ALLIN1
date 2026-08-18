@@ -107,6 +107,55 @@ def test_install_forwards_progress_callback(tmp_path):
     assert install_fn.call_args.kwargs == {"progress": progress}
 
 
+def test_save_config_applies_and_reverses_story_mode_launch_policy(
+    tmp_path, monkeypatch,
+):
+    project = tmp_path / "project"
+    project.mkdir()
+    manager = _manager(project)
+    game = tmp_path / "game"
+    game.mkdir()
+    (game / "GTA5_Enhanced.exe").touch()
+    config = Config.default()
+    config.general.gta_path = str(game)
+    monkeypatch.setattr("allin1.manager.detect_gta_path", lambda: None)
+
+    manager.save_config(config)
+    assert "-scofflineonly" in (game / "commandline.txt").read_text()
+    assert not (game / "scripts/ALLIN1.toml").exists()
+
+    config.general.story_mode_only = False
+    manager.save_config(config)
+    assert not (game / "commandline.txt").exists()
+
+
+def test_disabling_story_mode_policy_clears_both_configured_editions(
+    tmp_path, monkeypatch,
+):
+    project = tmp_path / "project"
+    project.mkdir()
+    manager = _manager(project)
+    legacy = tmp_path / "legacy"
+    enhanced = tmp_path / "enhanced"
+    legacy.mkdir()
+    enhanced.mkdir()
+    (legacy / "GTA5.exe").touch()
+    (enhanced / "GTA5_Enhanced.exe").touch()
+    config = Config.default()
+    config.general.gta_legacy_path = str(legacy)
+    config.general.gta_enhanced_path = str(enhanced)
+    monkeypatch.setattr("allin1.manager.detect_gta_path", lambda: None)
+    from allin1.launch_policy import configure_story_mode_only
+    configure_story_mode_only(legacy, True)
+    configure_story_mode_only(enhanced, True)
+
+    config.general.story_mode_only = False
+    manager.save_config(config)
+
+    assert not (legacy / "commandline.txt").exists()
+    assert not (enhanced / "commandline.txt").exists()
+
+
 def test_uninstall_delegates_without_loading_database(tmp_path):
     uninstall_fn = Mock(return_value=[tmp_path / "scripts" / "ALLIN1.dll"])
     manager = _manager(tmp_path, uninstall_fn=uninstall_fn)

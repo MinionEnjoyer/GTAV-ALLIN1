@@ -55,7 +55,8 @@ If the ALLIN1 Launcher and SDK are useful to you, project support is available t
   skill levels, weapons, gear, garage saves, outfit components, props, and named outfit presets.
 - **Desktop control center** — detect the game edition, configure gameplay and accessibility
   options, install or repair the mod, run health checks, export redacted diagnostics, manage
-  profiles, and launch GTA V from one persistent launcher window.
+  profiles, block accidental GTA Online entry with a reversible Story Mode-only gameplay toggle,
+  and launch GTA V from one persistent launcher window.
 - **Local mod packages** — install, update, enable, disable, and uninstall user-supplied ASI,
   ScriptHookVDotNet, RPF, and config/data packages through validated `mod.toml` manifests,
   including transactional `dlclist.xml` registration for explicitly owned add-on packs.
@@ -125,7 +126,8 @@ ScriptHookV and ScriptHookVDotNet Enhanced must be installed in the directory co
 4. Open `manager.bat`.
 5. Confirm the Legacy and/or Enhanced GTA V directories, choose the active target, and select
    **Install / Repair**.
-6. Select **Launch GTA V** and remain in Story Mode. Press **F9** to open GBAY.
+6. Keep **Gameplay → Story Mode only** enabled, select **Launch GTA V**, and press **F9** in
+   Story Mode to open GBAY.
 
 The installer deploys the ALLIN1 client and configuration under `<GTA V>/scripts`, registers the
 GBAY preview DLC when artwork is enabled, creates recoverable backups before replacement, and adds the no-BattlEye

@@ -235,6 +235,9 @@ class ManagerWindow:
         self.legacy_path = tk.StringVar(value=self.config.general.gta_legacy_path)
         self.enhanced_path = tk.StringVar(value=self.config.general.gta_enhanced_path)
         self.target_edition = tk.StringVar(value=self.config.general.target_edition.title())
+        self.story_mode_only = tk.BooleanVar(
+            value=self.config.general.story_mode_only,
+        )
         self.rpf_previews = tk.BooleanVar(value=self.config.general.enable_rpf_previews)
         self.backup_enabled = tk.BooleanVar(value=self.config.general.backup)
         self.traffic = tk.BooleanVar(value=self.config.traffic.enabled)
@@ -289,7 +292,7 @@ class ManagerWindow:
         self._build()
         self._setting_variables = (
             self.path, self.legacy_path, self.enhanced_path, self.target_edition,
-            self.rpf_previews, self.backup_enabled, self.traffic,
+            self.story_mode_only, self.rpf_previews, self.backup_enabled, self.traffic,
             self.rich_areas_only, self.adaptive_performance, self.enable_all_vehicles,
             self.disabled_classes, self.disabled_vehicles, self.police,
             self.logging_enabled, self.gbay_key, self.night_vision_key,
@@ -672,6 +675,20 @@ class ManagerWindow:
         world.pack(fill="x", pady=(0, 12))
         world.columnconfigure(0, weight=1)
         world.columnconfigure(1, weight=1)
+        ttk.Checkbutton(
+            world,
+            text="Story Mode only — block GTA Online entry",
+            variable=self.story_mode_only,
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=4)
+        ttk.Label(
+            world,
+            text=(
+                "Uses Rockstar's supported offline launch argument for the active "
+                "edition. Other commandline.txt options are preserved; turning it "
+                "off clears ALLIN1's flag from both configured editions."
+            ),
+            foreground="#52635c", wraplength=900, justify="left",
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 5))
         for row, (left_text, left_var, right_text, right_var) in enumerate((
             ("Free GBAY purchases (no sale payouts)", self.gbay_free_mode,
              "Enable DLC traffic", self.traffic),
@@ -683,7 +700,7 @@ class ManagerWindow:
              "Allow garage entry while wanted", self.garages_always_accessible),
             ("Back up game changes", self.backup_enabled,
              "Safe mode (limits traffic and Harmony Garage)", self.safe_mode),
-        )):
+        ), start=2):
             ttk.Checkbutton(world, text=left_text, variable=left_var).grid(
                 row=row, column=0, sticky="w", padx=(0, 28), pady=4,
             )
@@ -1039,6 +1056,7 @@ class ManagerWindow:
             self.config.general.gta_path = selected_path
         else:
             self.config.general.gta_path = self.path.get().strip() or "auto"
+        self.config.general.story_mode_only = self.story_mode_only.get()
         self.config.general.free_mode = self.gbay_free_mode.get()
         self.config.general.backup = self.backup_enabled.get()
         self.config.general.enable_rpf_previews = self.rpf_previews.get()
@@ -1127,6 +1145,7 @@ class ManagerWindow:
                 self.legacy_path.set(self.config.general.gta_legacy_path)
                 self.enhanced_path.set(self.config.general.gta_enhanced_path)
                 self.target_edition.set(self.config.general.target_edition.title())
+            self.story_mode_only.set(self.config.general.story_mode_only)
             self.backup_enabled.set(self.config.general.backup)
             self.rpf_previews.set(self.config.general.enable_rpf_previews)
             self.traffic.set(self.config.traffic.enabled)
@@ -1454,7 +1473,7 @@ class ManagerWindow:
         )
 
     def launch_game(self) -> None:
-        """Save the current settings and start the selected GTA V installation."""
+        """Save the current settings and start the selected Story Mode installation."""
         if self.busy or self.launch_pending:
             return
         self.launch_pending = True
@@ -1492,6 +1511,10 @@ class ManagerWindow:
             return
         self._clear_dirty("Launching GTA V")
         self._append_log(f"Launching {target.description}.")
+        if config.general.story_mode_only:
+            self._append_log(
+                "Story Mode-only launch protection is enabled; GTA Online is unavailable."
+            )
         if smoke_canary_consumed:
             self._append_log(
                 "Consumed the one-run colored-smoke RPF canary authorization."

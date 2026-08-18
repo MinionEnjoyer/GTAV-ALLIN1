@@ -11,6 +11,7 @@ from allin1 import __version__
 from allin1.detector import detect_gta_path, validate_gta_path
 from allin1.installer import InstallResult, install, uninstall
 from allin1.health import inspect_windows_binary
+from allin1.launch_policy import configure_story_mode_only
 from allin1.vehicles.database import VehicleDatabase
 from allin1.versioning import read_installed_version
 
@@ -52,12 +53,34 @@ class ModManager:
         return Config.load(example) if example.exists() else Config.default()
 
     def save_config(self, config: Config) -> None:
-        config.save(self.config_path)
+        config.validate()
         gta_path = self.resolve_path(config)
-        if gta_path is not None:
+        runtime_scripts_present = bool(
+            gta_path is not None and (gta_path / "scripts").is_dir()
+        )
+        if gta_path is not None and gta_path.is_dir() and (
+            (gta_path / "GTA5.exe").is_file()
+            or (gta_path / "GTA5_Enhanced.exe").is_file()
+        ):
+            configure_story_mode_only(
+                gta_path, config.general.story_mode_only,
+            )
+        if not config.general.story_mode_only:
+            # A global opt-out must also clear any ALLIN1-owned policy left on
+            # the other configured edition after the player switched targets.
+            for other_path in set(self.resolve_paths(config).values()):
+                if other_path == gta_path or not other_path.is_dir():
+                    continue
+                if not (
+                    (other_path / "GTA5.exe").is_file()
+                    or (other_path / "GTA5_Enhanced.exe").is_file()
+                ):
+                    continue
+                configure_story_mode_only(other_path, False)
+        config.save(self.config_path)
+        if gta_path is not None and runtime_scripts_present:
             scripts = gta_path / "scripts"
-            if scripts.is_dir():
-                config.save(scripts / "ALLIN1.toml")
+            config.save(scripts / "ALLIN1.toml")
 
     @staticmethod
     def _path_value(value: str) -> Path | None:

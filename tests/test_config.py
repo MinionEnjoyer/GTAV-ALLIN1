@@ -116,6 +116,7 @@ def test_default_config():
     assert config.general.gta_legacy_path == "auto"
     assert config.general.gta_enhanced_path == "auto"
     assert config.general.target_edition == "auto"
+    assert config.general.story_mode_only is True
     assert config.traffic.enabled is True
     assert config.traffic.max_driven == 20
     assert config.traffic.replacement_chance == 0.30
@@ -139,6 +140,7 @@ def test_save_round_trip_preserves_all_fields(tmp_path):
     config.general.gta_legacy_path = r"C:\Games\GTAV Legacy"
     config.general.gta_enhanced_path = r"D:\Games\GTAV Enhanced"
     config.general.target_edition = "enhanced"
+    config.general.story_mode_only = False
     config.general.free_mode = True
     config.general.backup = False
     config.traffic.enabled = False

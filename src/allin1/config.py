@@ -21,6 +21,7 @@ class GeneralConfig:
     gta_legacy_path: str = "auto"
     gta_enhanced_path: str = "auto"
     target_edition: str = "auto"
+    story_mode_only: bool = True
     free_mode: bool = False
     backup: bool = True
     enable_rpf_previews: bool = True
@@ -154,6 +155,7 @@ class Config:
             f"gta_legacy_path = {quote(self.general.gta_legacy_path)}\n"
             f"gta_enhanced_path = {quote(self.general.gta_enhanced_path)}\n"
             f"target_edition = {quote(self.general.target_edition)}\n"
+            f"story_mode_only = {boolean(self.general.story_mode_only)}\n"
             f"free_mode = {boolean(self.general.free_mode)}\n"
             f"backup = {boolean(self.general.backup)}\n"
             f"enable_rpf_previews = {boolean(self.general.enable_rpf_previews)}\n\n"

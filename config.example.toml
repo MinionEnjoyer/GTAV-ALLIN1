@@ -8,6 +8,11 @@ gta_legacy_path = "auto"
 gta_enhanced_path = "auto"
 target_edition = "auto"
 
+# Recommended for this Story Mode-focused launcher. Uses Rockstar's supported
+# offline argument to prevent accidental GTA Online entry. Disable and save
+# before intentionally starting an unmodified Online installation.
+story_mode_only = true
+
 # Deprecated compatibility alias for script.gbay_free_mode.
 # The launcher keeps both values synchronized.
 free_mode = false

@@ -284,6 +284,24 @@ def test_uninstall_removes_owned_files_and_preserves_other_flags(tmp_path, monke
     remove_ytds.assert_called_once_with(game)
 
 
+def test_uninstall_removes_owned_story_policy_but_preserves_other_flags(
+    tmp_path, monkeypatch,
+):
+    game = _game(tmp_path)
+    (game / "commandline.txt").write_text("-windowed\n-nobattleye\n")
+    from allin1.launch_policy import configure_story_mode_only
+    configure_story_mode_only(game, True)
+    config = Config.default()
+    config.general.gta_path = str(game)
+    monkeypatch.setattr(installer, "_unpatch_dlclist_rpf", Mock())
+    monkeypatch.setattr(installer, "_remove_preview_ytds", Mock())
+
+    installer.uninstall(config)
+
+    assert (game / "commandline.txt").read_text() == "-windowed\n"
+    assert not (game / "scripts/.allin1/launch-policy.json").exists()
+
+
 def test_uninstall_removes_commandline_when_only_battleye_flag(tmp_path, monkeypatch):
     game = _game(tmp_path)
     (game / "commandline.txt").write_text("-nobattleye\n")
