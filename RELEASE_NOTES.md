@@ -1,3 +1,22 @@
+# GTA V ALLIN1 0.5.0
+
+Version 0.5.0 unifies the launcher, in-game client, and standalone SDK around a
+guarded package lifecycle and a more consistent professional desktop identity.
+
+## Launcher, client, and SDK integration
+
+- Added a Story Mode-only gameplay toggle that prevents accidental GTA Online
+  routing while preserving an explicit opt-out for users who need normal flow.
+- Added structured SDK agent commands to list, install, and uninstall validated
+  packages through approved console/API actions with two-stage write consent,
+  closed-game checks, audit logging, checksums, receipts, backups, and rollback.
+- Restored distinct high-DPI launcher and SDK branding across window headers,
+  title bars, taskbar icons, packaged executables, and release documentation.
+- Kept the launcher as the interactive package and game-launch workspace while
+  exposing the same guarded package lifecycle to developer and AI tooling.
+- Bumped the launcher, in-game client assembly, and SDK release surfaces
+  together to 0.5.0.
+
 # GTA V ALLIN1 0.4.9
 
 Version 0.4.9 promotes the standalone SDK from a read-only inspection surface
