@@ -325,7 +325,7 @@ def test_new_rpf_cli_index_extract_and_plan(tmp_path, monkeypatch):
 
     class FakeService:
         def __init__(self, project_root, gta_path):
-            assert Path(project_root).name == "ALLIN1"
+            assert (Path(project_root) / "pyproject.toml").is_file()
             assert Path(gta_path) == game
 
         def index(self, source):

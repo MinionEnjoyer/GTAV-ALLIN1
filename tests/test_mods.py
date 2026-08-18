@@ -640,8 +640,10 @@ def test_rpf_archive_copy_and_helper_wrappers(tmp_path: Path, monkeypatch):
         service._ensure_mods_archive("x64h.rpf")
 
     calls = []
-    assert service._rpf_patcher_path().name == "RpfPatcher.exe"
-    monkeypatch.setattr(service, "_rpf_patcher_path", lambda: Path("helper.exe"))
+    helper = tmp_path / "helper.exe"
+    helper.write_bytes(b"MZ")
+    monkeypatch.setattr(service, "_rpf_patcher_path", lambda *_args: helper)
+    assert service._rpf_patcher_path().name == "helper.exe"
     monkeypatch.setattr(
         "allin1.mods.run_hidden",
         lambda command, **kwargs: calls.append((command, kwargs))
@@ -649,7 +651,7 @@ def test_rpf_archive_copy_and_helper_wrappers(tmp_path: Path, monkeypatch):
     )
     result = service._run_rpf_command("inspect", archive)
     assert result.returncode == 0
-    assert calls[0][0][:3] == [Path("helper.exe"), "inspect", game]
+    assert calls[0][0][:3] == [helper, "inspect", game]
 
 
 def test_rpf_extract_replace_delete_error_contracts(tmp_path: Path, monkeypatch):
@@ -703,6 +705,9 @@ def test_rpf_extract_replace_delete_error_contracts(tmp_path: Path, monkeypatch)
 def test_dlc_registration_helper_contract(tmp_path: Path, monkeypatch):
     game = _game(tmp_path)
     service = ModIntegrationService(game)
+    helper = tmp_path / "helper.exe"
+    helper.write_bytes(b"MZ")
+    monkeypatch.setattr(service, "_rpf_patcher_path", lambda *_args: helper)
     results = iter((
         SimpleNamespace(returncode=0, stdout="registered", stderr=""),
         SimpleNamespace(returncode=0, stdout="No changes needed", stderr=""),

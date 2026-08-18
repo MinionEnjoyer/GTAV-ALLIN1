@@ -407,15 +407,7 @@ class ModIntegrationService:
     def _set_dlc_registration(self, pack: str, enabled: bool) -> bool:
         if not _DLC_PACK_PATTERN.fullmatch(pack):
             raise ValueError(f"Invalid DLC pack name in install receipt: {pack}")
-        patcher = (
-            Path(__file__).resolve().parents[2]
-            / "tools" / "RpfPatcher" / "RpfPatcher.exe"
-        )
-        if not patcher.is_file():
-            raise FileNotFoundError(
-                "RpfPatcher.exe is required for managed DLC registration; "
-                "run runtools.ps1 to build the helper."
-            )
+        patcher = self._rpf_patcher_path("managed DLC registration")
         command = "register-dlc" if enabled else "unregister-dlc"
         result = run_hidden(
             [patcher, command, self.gta_path, pack],
@@ -429,14 +421,14 @@ class ModIntegrationService:
             )
         return "No changes needed" not in result.stdout
 
-    def _rpf_patcher_path(self) -> Path:
+    def _rpf_patcher_path(self, purpose: str = "managed RPF entries") -> Path:
         patcher = (
             Path(__file__).resolve().parents[2]
             / "tools" / "RpfPatcher" / "RpfPatcher.exe"
         )
         if not patcher.is_file():
             raise FileNotFoundError(
-                "RpfPatcher.exe is required for managed RPF entries; "
+                f"RpfPatcher.exe is required for {purpose}; "
                 "run runtools.ps1 to build the helper."
             )
         return patcher
