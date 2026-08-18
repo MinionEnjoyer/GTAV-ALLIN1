@@ -296,11 +296,13 @@ if (-not (Test-Path $CwGitDir)) {
     throw "CodeWalker source is not a Git checkout; cannot verify the authoring core."
 }
 $CurrentCwCommit = (git -C $CwDir rev-parse HEAD 2>$null)
-if ($LASTEXITCODE -ne 0 -or $CurrentCwCommit -ne $CwCommit) {
+if ($LASTEXITCODE -ne 0 -or $CurrentCwCommit -ne $CwCommit -or -not (Test-Path $CwCorePath)) {
     Write-Host "  Synchronizing CodeWalker authoring core to $CwCommit..."
     git -C $CwDir fetch --depth 1 origin $CwCommit
     if ($LASTEXITCODE -ne 0) { throw "Failed to fetch pinned CodeWalker commit" }
-    git -C $CwDir checkout --detach $CwCommit
+    # A --no-checkout clone can report HEAD at the pinned commit while its
+    # working tree is still empty. Force materialization when Core is absent.
+    git -C $CwDir checkout --detach --force $CwCommit
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to select pinned CodeWalker commit; check for local changes in $CwDir"
     }
