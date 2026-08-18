@@ -1739,7 +1739,8 @@ def test_rpf_toolchain_pins_enhanced_aware_codewalker_authoring_core():
     modules = (ROOT / ".gitmodules").read_text(encoding="utf-8")
     assert "https://github.com/crxhvrd/CodeWalkerProjects.git" in tools_script
     assert "0bf552913d96da9ad1f266eb5c7d6d75b96c89f2" in tools_script
-    assert "checkout --detach $CwCommit" in tools_script
+    assert "checkout --detach --force $CwCommit" in tools_script
+    assert "-or -not (Test-Path $CwCorePath)" in tools_script
     assert "https://github.com/crxhvrd/CodeWalkerProjects.git" in modules
 
 
