@@ -38,6 +38,10 @@ jobs:
           Copy-Item -Path "script/out/LemonUI.SHVDN3.dll" -Destination "script/dist/LemonUI.SHVDN3.dll" -Force
 
       - name: Upload artifact
+        # GitHub can temporarily report a full artifact quota for 6–12 hours
+        # after old artifacts are removed. The build and binary commit remain
+        # authoritative; storage availability must not fail the build itself.
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: ALLIN1-dll

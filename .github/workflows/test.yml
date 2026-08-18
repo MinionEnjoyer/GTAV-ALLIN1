@@ -86,6 +86,9 @@ jobs:
           python -m allin1.cli build-release --output output/GTAV-ALLIN1-windows.zip
           python -m allin1.cli verify-release output/GTAV-ALLIN1-windows.zip
       - name: Upload qualified release candidate
+        # The release contract above is the required qualification gate.
+        # Artifact storage is a convenience and may be quota-limited.
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: GTAV-ALLIN1-windows
