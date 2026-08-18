@@ -1,3 +1,33 @@
+# GTA V ALLIN1 0.4.9
+
+Version 0.4.9 promotes the standalone SDK from a read-only inspection surface
+to a guarded authoring workbench while keeping every archive mutation outside
+stock GTA V files.
+
+## SDK and launcher integration
+
+- Added transactional root and first-level nested RPF replacement, addition,
+  and deletion with checksummed plans, whole-archive backups, staged
+  verification, collision checks, rollback, and per-archive process locks.
+- Added persistent transaction history, interrupted-operation recovery, stale
+  lock inspection, and progress reporting in both the SDK desktop UI and CLI.
+- Added a real-archive canary that operates only on a disposable copy and proves
+  replace/add/delete rollback by comparing the final SHA-256 with its untouched
+  source. The Enhanced canary passed against a real installed archive.
+- Added semantic META/XML comparison and parse/serialize/reparse validation so
+  formatting-only changes can be distinguished from meaningful game-data
+  changes; binary PSO/RBF files remain routed to native inspection.
+- Fixed filename-sensitive Enhanced NG archive staging in the SDK and RPF
+  helper while preserving the exact outer archive name throughout a mutation.
+- Integrated the dedicated ALLIN1 SDK logo and favicon into the desktop app,
+  release package, documentation, and Windows build.
+- Added an in-app SDK Console backed by the real CLI, with Source-style
+  progressive command, option, path, and history suggestions, Tab completion,
+  keyboard history, persistent recall, and non-blocking command execution.
+- Bumped the launcher and in-game assembly version surfaces together to 0.4.9;
+  the launcher continues to discover and checksum-install the latest public SDK
+  release through its existing Install / Manage SDK panel.
+
 # GTA V ALLIN1 0.4.8
 
 Version 0.4.8 expands GBAY into a save-safe weapon workbench and develops the
