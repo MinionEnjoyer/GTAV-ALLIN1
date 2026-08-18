@@ -25,5 +25,13 @@ def test_launcher_icon_bundle_includes_high_dpi_sizes():
         assert icon.mode == "RGBA"
         assert icon.size == (256, 256)
     with Image.open(ASSETS / "ALLIN1.ico") as icon:
-        assert {(16, 16), (32, 32), (48, 48), (128, 128), (256, 256)} <= \
-            icon.ico.sizes()
+        expected = {
+            (size, size) for size in (
+                16, 20, 24, 28, 32, 36, 40, 48,
+                56, 64, 72, 80, 96, 128, 256,
+            )
+        }
+        assert expected == icon.ico.sizes()
+        for size in expected:
+            frame = icon.ico.getimage(size).convert("RGBA")
+            assert frame.getchannel("A").getextrema() == (0, 255)

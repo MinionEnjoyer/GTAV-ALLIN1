@@ -1157,7 +1157,9 @@ def test_launcher_packages_and_applies_allin1_branding():
     assert (ROOT / "src/allin1/assets/ALLIN1.ico").stat().st_size > 0
     assert "SetCurrentProcessExplicitAppUserModelID" in gui
     assert "self.root.iconphoto(True, self._window_icon)" in gui
-    assert "user32.SendMessageW(hwnd, 0x0080, 1, handle)" in gui
+    assert "user32.GetSystemMetricsForDpi(11, dpi)" in gui
+    assert "user32.SendMessageW(target, 0x0080, 1, icon_big)" in gui
+    assert "user32.SendMessageW(target, 0x0080, 2, icon_small)" in gui
     assert gui.index("_register_windows_app()") < gui.rindex("root = tk.Tk()")
     assert 'allin1 = ["assets/*.png", "assets/*.ico"]' in project
 

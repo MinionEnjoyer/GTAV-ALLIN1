@@ -228,7 +228,7 @@ class ManagerWindow:
         root.minsize(980, 700)
         self._window_icon: tk.PhotoImage | None = None
         self._banner_logo: ImageTk.PhotoImage | None = None
-        self._native_icon_handle: int | None = None
+        self._native_icon_handles: tuple[int, int] | None = None
         self._apply_window_branding()
 
         self.path = tk.StringVar(value=self.config.general.gta_path)
@@ -340,18 +340,55 @@ class ManagerWindow:
                 self.root.update_idletasks()
 
                 # Tk's iconbitmap can be ignored by Windows taskbar grouping.
-                # Set both native icon slots on the actual HWND as well.
+                # Load native-size frames for the current monitor DPI and set
+                # every Windows icon slot on both Tk's client and wrapper HWND.
                 user32 = ctypes.windll.user32
-                user32.LoadImageW.restype = ctypes.c_void_p
-                handle = user32.LoadImageW(
-                    None, str(icon_path), 1, 0, 0, 0x10 | 0x40
+                from ctypes import wintypes
+
+                user32.GetParent.argtypes = (wintypes.HWND,)
+                user32.GetParent.restype = wintypes.HWND
+                user32.GetDpiForWindow.argtypes = (wintypes.HWND,)
+                user32.GetDpiForWindow.restype = wintypes.UINT
+                user32.GetSystemMetricsForDpi.argtypes = (ctypes.c_int, wintypes.UINT)
+                user32.GetSystemMetricsForDpi.restype = ctypes.c_int
+                user32.LoadImageW.argtypes = (
+                    wintypes.HINSTANCE, wintypes.LPCWSTR, wintypes.UINT,
+                    ctypes.c_int, ctypes.c_int, wintypes.UINT,
                 )
-                if handle:
-                    hwnd = self.root.winfo_id()
-                    user32.SendMessageW(hwnd, 0x0080, 0, handle)  # ICON_SMALL
-                    user32.SendMessageW(hwnd, 0x0080, 1, handle)  # ICON_BIG
-                    self._native_icon_handle = handle
-        except (OSError, tk.TclError):
+                user32.LoadImageW.restype = wintypes.HANDLE
+                user32.SendMessageW.argtypes = (
+                    wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM,
+                )
+                user32.SendMessageW.restype = wintypes.LPARAM
+
+                client = int(self.root.winfo_id())
+                wrapper = int(user32.GetParent(client) or 0)
+                targets = tuple(dict.fromkeys(
+                    handle for handle in (wrapper, client) if handle
+                ))
+                if targets:
+                    dpi = int(user32.GetDpiForWindow(targets[0]) or 96)
+                    small_width = max(16, int(user32.GetSystemMetricsForDpi(49, dpi)))
+                    small_height = max(16, int(user32.GetSystemMetricsForDpi(50, dpi)))
+                    large_width = max(32, int(user32.GetSystemMetricsForDpi(11, dpi)))
+                    large_height = max(32, int(user32.GetSystemMetricsForDpi(12, dpi)))
+                    load_from_file = 0x0010
+                    small = int(user32.LoadImageW(
+                        None, str(icon_path), 1,
+                        small_width, small_height, load_from_file,
+                    ) or 0)
+                    large = int(user32.LoadImageW(
+                        None, str(icon_path), 1,
+                        large_width, large_height, load_from_file,
+                    ) or 0)
+                    if small or large:
+                        self._native_icon_handles = (small or large, large or small)
+                        icon_small, icon_big = self._native_icon_handles
+                        for target in targets:
+                            user32.SendMessageW(target, 0x0080, 0, icon_small)
+                            user32.SendMessageW(target, 0x0080, 1, icon_big)
+                            user32.SendMessageW(target, 0x0080, 2, icon_small)
+        except (AttributeError, OSError, TypeError, ValueError, tk.TclError):
             # Branding is optional; never prevent the repair tool from opening.
             self._window_icon = None
 
