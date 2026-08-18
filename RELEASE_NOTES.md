@@ -1,6 +1,6 @@
-# GTA V ALLIN1 0.4.7
+# GTA V ALLIN1 0.4.8
 
-Version 0.4.7 expands GBAY into a save-safe weapon workbench and develops the
+Version 0.4.8 expands GBAY into a save-safe weapon workbench and develops the
 optional physics experiment into a coordinated police-response layer. It also
 hardens DLC vehicle compatibility, input handling, diagnostics, and the
 launcher controls used to configure the new systems.
@@ -15,6 +15,19 @@ launcher controls used to configure the new systems.
   of the player and world when the workbench closes.
 - Kept every GBAY purchase transactional until a real Story Mode save commits
   the character state, including weapons, attachments, ammunition, and gear.
+- Added seven separately stocked GBAY smoke colours as independent, labeled
+  weapon-wheel throwables with separate ammo pools and per-throw consumption.
+  Capped each colour at five, reused the BZ Gas wheel icon, removed Reload
+  cycling, and left native Tear Gas unchanged.
+- Layered a bounded, colour-tinted bloom over the persistent smoke field,
+  enlarged its scale and footprint without adding emitters, retired settled
+  canisters to stop persistent rolling audio, added retry-safe particle loading
+  and sampled emission diagnostics, and verified that Enhanced already supplies
+  the M18-shaped smoke canister.
+- Required collided, grounded stability before deployment; removed native
+  trail/primed/explosion smoke from the generated color ammo; isolated colored
+  fields from multicomponent/native fallbacks; and added sampled projectile
+  motion, settlement, backend, overlap, and expiration diagnostics.
 - Improved GBAY readability, scrolling, navigation repeat behavior, catalog
   recovery, preview cleanup, and structured client logging.
 
@@ -34,16 +47,86 @@ launcher controls used to configure the new systems.
 
 ## DLC vehicles and launcher
 
+- Split the developer experience into a separate `ALLIN1-SDK` repository and
+  desktop application. The launcher now hands off to that external process,
+  while the SDK owns its linker, importer, native asset viewer, RPF explorer,
+  help center, CLI, examples, pinned CodeWalker source, and release lifecycle.
+- Reworked the launcher around persistent Setup, Gameplay, Input, Packages,
+  and Activity work zones. Application menus and contextual dropdowns replace
+  dense button rows; the footer now keeps only game actions, save, and launch.
+- Added a searchable, contextual Help Center and a dedicated SDK help corpus.
+  The SDK, asset viewer, and RPF explorer expose their own Content, Review,
+  Archive/Entry, Package Intelligence, and Help menus.
 - Applied Story Mode getaway-vehicle suitability rules to DLC vehicles and
   prevented aircraft and watercraft from entering ordinary car garages.
 - Improved traffic and special-vehicle compatibility for seats, weaponized
   vehicles, and nonstandard vehicle classes.
 - Added launcher configuration for controller bindings, experimental physics,
   archive tuning, and **Enhanced Police AI**.
+- Added a read-only **Add-on Content SDK** linker/viewer to the standalone SDK.
+  It explains and validates cross-file metadata, animation, native text,
+  Scaleform HUD, runtime, storefront, packaging, and rollback fields. The
+  complete colored-smoke integration ships as its first example.
+- Listed the colored-smoke integration in the launcher Packages catalog and
+  the SDK as a self-contained built-in example, and added safe loose-folder/OIV/ZIP inspection
+  that generates a reviewable SDK draft without extracting or installing the
+  source package. The importer rejects unsafe archive paths and XML entities,
+  discovers visible weapon/ammo/animation/shop links, and flags opaque RPF and
+  unresolved integration work for author review.
+- Refocused the player-facing desktop application as **ALLIN1 Launcher** and
+  moved authoring into **ALLIN1 SDK**. Both share a restrained visual system,
+  clear work zones, contextual actions, readable typography, and help surfaces.
+- Added a read-only SDK package asset viewer for loose DLC folders and OIV/ZIP
+  packages, with filtering, image/text previews, binary-format guidance,
+  bounded header inspection, hashing, and JSON inventory export.
+- Expanded the asset viewer with native RAGE header parsing, structured
+  CodeWalker XML for YTD/YDR/YDD/YFT/YBN/YMAP/YTYP/YMT/GXT2, automatic
+  Legacy/Enhanced decoder fallback, and visual YTD texture contact sheets.
+- Added an interactive RPF explorer backed by a versioned JSON helper contract.
+  It follows root and nested archives, searches and filters exact entries,
+  exposes storage/resource/page metadata, extracts nested assets for preview,
+  exports JSON/CSV, and creates inert checksummed replacement safety plans.
+- Extended package inspection to RAR/7z and linked vehicle, handling,
+  variation, tuning, streaming, and DLC-registration metadata. Missing model,
+  texture, tuning, and resource-manifest assets now fail visibly in SDK reports.
+- Expanded the importer beyond vehicle and weapon packages: mixed test folders
+  now distinguish managed scripts, native ASIs, ReShade add-ons and shaders,
+  replacements, standalone DLC archives, edition layouts, dependencies, and
+  inferred RPF targets. PE headers are inspected without executing plug-ins,
+  and every generated draft remains explicitly blocked for author review.
+- Added batch folder audits plus temporary, read-only inspection of packaged and
+  first-level nested RPFs. Reports retain resource-version evidence while all
+  extracted inspection copies are removed after the audit.
+- Added edition-aware loose-RPF inventory and transactional, manifest-owned DLC
+  registration. RPF packages declare `dlc_packs`; install/enable registers them,
+  while rollback/disable/uninstall removes or restores their entries.
+- Added independent Legacy and Enhanced installation paths plus an active-target
+  selector. Package rows now show Legacy, Enhanced, dual-edition, or unresolved
+  tags and route installs only to a compatible configured game root.
+- Connected the Add-on Content SDK to remembered external manifests, the local
+  package catalog, and installation receipts from every configured Legacy and
+  Enhanced root. Installed packages now appear in the SDK without duplicating
+  their payloads, with a receipt-only fallback when their source was removed.
+- Added reviewed `mixed` packages and transactionally managed `[[rpf_entries]]`.
+  Exact archive entries are backed up, verified, collision-checked, toggled, and
+  restored without replacing unrelated RPF content.
+- Corrected custom smoke artwork by linking all seven signed weapon hashes to
+  both native BZ Gas HUD frames; unknown hashes no longer fall back to C4.
+- Added a read-only OIV operation workbench based on the OIV 2.x grammar. It
+  previews ordered archive/file/delete/text/XML/PSO operations and exports a
+  managed package only when every action reduces to an owned file copy or exact
+  existing-RPF entry transaction.
+- Added an edition-aware DLC inventory that compares Rockstar and modded
+  `dlcpacks` folders, live `dlclist.xml` registrations, duplicates, missing or
+  incomplete payloads, and ALLIN1 receipt ownership without rewriting anything.
+- Added a cross-file vehicle data compiler joining `vehicles.meta`,
+  `handling.meta`, `carvariations.meta`, `carcols.meta`, streamed models and
+  textures, labels, and package registrations. It exports JSON, CSV, XLSX,
+  Markdown, and a separate unresolved-reference table.
 
 ## Release
 
-- Bumped the desktop launcher and in-game assembly together to 0.4.7.
+- Bumped the desktop launcher and in-game assembly together to 0.4.8.
 - Rebuilt and verified the client and automated test suites for the release.
 
 ---

@@ -5,6 +5,9 @@ from __future__ import annotations
 import logging
 import os
 import queue
+import shutil
+import subprocess
+import sys
 import threading
 import tkinter as tk
 import webbrowser
@@ -20,6 +23,10 @@ from allin1.logging import setup_logging
 from allin1.manager import InstallationStatus, ModManager
 from allin1.mods import ModCatalog, ModIntegrationService, ModManifest
 from allin1.customization_ui import CharacterCustomizationDialog
+from allin1.addon_sdk import AddonManifest, AddonSdkCatalog
+from allin1.asset_viewer import AssetViewerDialog
+from allin1.rpf_explorer import RpfExplorerDialog
+from allin1.help_center import HelpCenterDialog
 from allin1 import __version__
 from allin1.versioning import fetch_latest_release
 from allin1.profiles import ProfileStore
@@ -150,20 +157,25 @@ class ManagerWindow:
         self.profiles = ProfileStore(manager.project_root / "profiles")
         self.mod_catalog = ModCatalog(manager.project_root / "mods" / "catalog")
         self.mod_manifests: dict[str, ModManifest] = {}
+        self.sdk_catalog = AddonSdkCatalog(manager.project_root)
+        self.sdk_manifests: dict[str, AddonManifest] = {}
         self.installed_mod_ids: set[str] = set()
-        self.mod_action_buttons: list[ttk.Button] = []
+        self.mod_action_buttons: list[tk.Widget] = []
         self.current_status: InstallationStatus | None = None
         self.settings_dirty = False
 
-        root.title("GTA V ALLIN1 Launcher")
-        root.geometry("1000x760")
-        root.minsize(760, 600)
+        root.title("ALLIN1 Launcher")
+        root.geometry("1240x840")
+        root.minsize(980, 700)
         self._window_icon: tk.PhotoImage | None = None
         self._banner_logo: ImageTk.PhotoImage | None = None
         self._native_icon_handle: int | None = None
         self._apply_window_branding()
 
         self.path = tk.StringVar(value=self.config.general.gta_path)
+        self.legacy_path = tk.StringVar(value=self.config.general.gta_legacy_path)
+        self.enhanced_path = tk.StringVar(value=self.config.general.gta_enhanced_path)
+        self.target_edition = tk.StringVar(value=self.config.general.target_edition.title())
         self.rpf_previews = tk.BooleanVar(value=self.config.general.enable_rpf_previews)
         self.backup_enabled = tk.BooleanVar(value=self.config.general.backup)
         self.traffic = tk.BooleanVar(value=self.config.traffic.enabled)
@@ -193,6 +205,8 @@ class ManagerWindow:
             value=self.config.script.gta_iv_npc_physics)
         self.gta_iv_npc_physics_debug = tk.BooleanVar(
             value=self.config.script.gta_iv_npc_physics_debug)
+        self.enhanced_smoke_effects = tk.BooleanVar(
+            value=self.config.script.enhanced_smoke_effects)
         self.controller_enabled = tk.BooleanVar(value=self.config.script.controller_enabled)
         for name in (
             "controller_open_gbay", "controller_open_gbay_modifier",
@@ -215,7 +229,8 @@ class ManagerWindow:
 
         self._build()
         self._setting_variables = (
-            self.path, self.rpf_previews, self.backup_enabled, self.traffic,
+            self.path, self.legacy_path, self.enhanced_path, self.target_edition,
+            self.rpf_previews, self.backup_enabled, self.traffic,
             self.rich_areas_only, self.adaptive_performance, self.enable_all_vehicles,
             self.disabled_classes, self.disabled_vehicles, self.police,
             self.logging_enabled, self.gbay_key, self.night_vision_key,
@@ -226,6 +241,7 @@ class ManagerWindow:
             self.enhanced_police_ai,
             self.gta_iv_npc_physics,
             self.gta_iv_npc_physics_debug,
+            self.enhanced_smoke_effects,
             self.controller_enabled,
             self.controller_open_gbay, self.controller_open_gbay_modifier,
             self.controller_night_vision, self.controller_night_vision_modifier,
@@ -242,6 +258,7 @@ class ManagerWindow:
         self.root.bind("<Control-s>", lambda _event: self.save())
         self.root.bind("<F5>", lambda _event: self.refresh())
         self.root.bind("<Control-l>", lambda _event: self.launch_game())
+        self.root.bind("<F1>", lambda _event: self.open_help_center())
         handler = QueueLogHandler(self.messages)
         handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
         logging.getLogger("allin1").addHandler(handler)
@@ -276,6 +293,80 @@ class ManagerWindow:
             # Branding is optional; never prevent the repair tool from opening.
             self._window_icon = None
 
+    def _build_application_menu(self) -> None:
+        """Build the stable application command hierarchy."""
+        menu = tk.Menu(self.root, tearoff=False)
+
+        file_menu = tk.Menu(menu, tearoff=False)
+        file_menu.add_command(label="Save changes", accelerator="Ctrl+S", command=self.save)
+        file_menu.add_command(label="Refresh status", accelerator="F5", command=self.refresh)
+        file_menu.add_separator()
+        file_menu.add_command(label="Apply selected profile", command=self.load_profile)
+        file_menu.add_command(label="Save profile as…", command=self.save_profile)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self._on_close)
+        self.file_menu = file_menu
+        menu.add_cascade(label="File", menu=file_menu)
+
+        self.game_menu = tk.Menu(menu, tearoff=False)
+        self.game_menu.add_command(
+            label="Launch GTA V", accelerator="Ctrl+L", command=self.launch_game,
+        )
+        self.game_menu.add_command(label="Install / Repair…", command=self.install)
+        self.game_menu.add_command(label="Health Check…", command=self.run_health_check)
+        self.game_menu.add_separator()
+        self.game_menu.add_command(
+            label="Characters & garages…", command=self.customize_characters,
+        )
+        self.game_menu.add_command(label="Create diagnostics…", command=self.create_diagnostics)
+        self.game_menu.add_separator()
+        self.game_menu.add_command(label="Uninstall ALLIN1…", command=self.uninstall)
+        menu.add_cascade(label="Game", menu=self.game_menu)
+
+        sdk_menu = tk.Menu(menu, tearoff=False)
+        sdk_menu.add_command(label="Open ALLIN1 SDK…", command=self.open_addon_sdk)
+        sdk_menu.add_separator()
+        sdk_menu.add_command(
+            label="SDK Help", command=lambda: self.open_help_center("sdk"),
+        )
+        self.sdk_menu = sdk_menu
+        menu.add_cascade(label="SDK", menu=sdk_menu)
+
+        view_menu = tk.Menu(menu, tearoff=False)
+        for index, (key, label) in enumerate((
+            ("setup", "Setup"),
+            ("gameplay", "Gameplay"),
+            ("input", "Input"),
+            ("mods", "Packages"),
+            ("activity", "Activity"),
+        ), start=1):
+            view_menu.add_command(
+                label=label, accelerator=f"Ctrl+{index}",
+                command=lambda selected=key: self._select_workspace(selected),
+            )
+        menu.add_cascade(label="View", menu=view_menu)
+
+        help_menu = tk.Menu(menu, tearoff=False)
+        help_menu.add_command(
+            label="Help Center", accelerator="F1", command=self.open_help_center,
+        )
+        help_menu.add_separator()
+        help_menu.add_command(label="About ALLIN1", command=self.show_about)
+        menu.add_cascade(label="Help", menu=help_menu)
+        self.root.configure(menu=menu)
+
+    def _select_workspace(self, key: str) -> None:
+        """Show one task-oriented workspace and keep navigation state obvious."""
+        pages = getattr(self, "workspace_pages", {})
+        if key not in pages:
+            return
+        pages[key].tkraise()
+        self.current_workspace = key
+        for name, button in self.workspace_buttons.items():
+            button.configure(
+                style="NavSelected.TButton" if name == key else "Nav.TButton",
+            )
+
     def _build(self) -> None:
         green, dark_green, body_bg = "#2d9c50", "#1f7f42", "#f4f7f5"
         self.root.configure(background=body_bg)
@@ -285,9 +376,21 @@ class ManagerWindow:
         style.configure(".", font=("Segoe UI", 10), foreground="#173d32")
         style.configure("TFrame", background=body_bg)
         style.configure("TLabel", background=body_bg, foreground="#1e1e23")
+        style.configure("TButton", padding=(11, 7))
+        style.configure("TEntry", padding=(6, 5))
+        style.configure("TCombobox", padding=(5, 4))
+        style.configure("TCheckbutton", padding=(0, 2))
+        style.configure("Surface.TFrame", background="#ffffff")
         style.configure("TLabelframe", background="#ffffff", bordercolor="#d2dcd7")
         style.configure("TLabelframe.Label", background=body_bg, foreground=green,
-                        font=("Segoe UI Semibold", 10))
+                        font=("Segoe UI Semibold", 11))
+        style.configure("PageTitle.TLabel", font=("Segoe UI Semibold", 15),
+                        foreground="#173d32")
+        style.configure("PageIntro.TLabel", foreground="#52635c")
+        style.configure("Section.TLabel", font=("Segoe UI Semibold", 11),
+                        foreground="#173d32")
+        style.configure("FieldLabel.TLabel", font=("Segoe UI Semibold", 9),
+                        foreground="#52635c")
         style.configure("Accent.TButton", background=green, foreground="white",
                         font=("Segoe UI", 10, "bold"), padding=(12, 7))
         style.map("Accent.TButton", background=[("active", dark_green),
@@ -295,6 +398,13 @@ class ManagerWindow:
                   foreground=[("disabled", "#edf7f0")])
         style.configure("Quiet.TButton", padding=(10, 7))
         style.configure("Danger.TButton", foreground="#9a3412", padding=(10, 7))
+        style.configure("Nav.TButton", anchor="w", padding=(16, 11), relief="flat",
+                        background="#eef3f0", foreground="#3c5048")
+        style.map("Nav.TButton", background=[("active", "#e2ebe6")])
+        style.configure("NavSelected.TButton", anchor="w", padding=(16, 11),
+                        relief="flat", background="#dcefe3", foreground="#176b36",
+                        font=("Segoe UI Semibold", 10))
+        style.map("NavSelected.TButton", background=[("active", "#d2e8da")])
         style.configure("Success.Status.TLabel", font=("Segoe UI Semibold", 15),
                         foreground="#18753a")
         style.configure("Warning.Status.TLabel", font=("Segoe UI Semibold", 15),
@@ -306,31 +416,36 @@ class ManagerWindow:
                         foreground="#646e69")
         style.map("TNotebook.Tab", background=[("selected", "#ffffff")],
                   foreground=[("selected", green)])
-        outer = ttk.Frame(self.root, padding=16)
+        style.configure("Treeview", rowheight=28, font=("Segoe UI", 10),
+                        background="#ffffff", fieldbackground="#ffffff")
+        style.configure("Treeview.Heading", font=("Segoe UI Semibold", 10),
+                        padding=(6, 6), foreground="#26332e")
+        self._build_application_menu()
+
+        outer = ttk.Frame(self.root, padding=(16, 14, 16, 12))
         outer.pack(fill="both", expand=True)
 
-        banner = tk.Frame(outer, background=dark_green, padx=18, pady=13)
-        banner.pack(fill="x", pady=(0, 14))
+        banner = tk.Frame(outer, background=dark_green, padx=16, pady=9)
+        banner.pack(fill="x", pady=(0, 12))
         try:
             with Image.open(ASSET_DIR / "ALLIN1.png") as source:
                 logo = source.convert("RGBA")
-                logo.thumbnail((112, 72), Image.Resampling.LANCZOS)
+                logo.thumbnail((68, 44), Image.Resampling.LANCZOS)
             self._banner_logo = ImageTk.PhotoImage(logo)
             tk.Label(banner, image=self._banner_logo, background=dark_green,
-                     borderwidth=0).pack(side="left", padx=(0, 16))
+                     borderwidth=0).pack(side="left", padx=(0, 12))
         except (OSError, tk.TclError):
             self._banner_logo = None
 
         banner_text = tk.Frame(banner, background=dark_green)
         banner_text.pack(side="left", fill="y")
-        tk.Label(banner_text, text="GTA V ALLIN1 LAUNCHER", background=dark_green,
-                 foreground="white", font=("Impact", 24)).pack(anchor="w")
-        support = tk.Label(banner_text, text="A mod by MinionEnjoyer (Support Link!)", background=dark_green,
-                           foreground="#d2ead9", cursor="hand2",
-                           font=("Segoe UI Semibold", 9, "underline"))
-        support.pack(anchor="w", pady=(3, 0))
-        support.bind("<Button-1>", lambda _event: webbrowser.open(
-            "https://buymeacoffee.com/minionenjoyer"))
+        tk.Label(banner_text, text="ALLIN1 · GTA V LAUNCHER", background=dark_green,
+                 foreground="white", font=("Segoe UI Semibold", 17)).pack(anchor="w")
+        tk.Label(
+            banner_text,
+            text="Install · Configure · Launch · Recover",
+            background=dark_green, foreground="#d2ead9", font=("Segoe UI", 9),
+        ).pack(anchor="w", pady=(2, 0))
         tk.Label(
             banner,
             text=f"v{__version__}",
@@ -341,77 +456,198 @@ class ManagerWindow:
             pady=5,
         ).pack(side="right", anchor="n")
 
-        tabs = ttk.Notebook(outer)
-        self.tabs = tabs
-        tabs.pack(fill="both", expand=True)
-        home_view = ScrollableFrame(tabs, body_bg)
-        gameplay_view = ScrollableFrame(tabs, body_bg)
-        controls_view = ScrollableFrame(tabs, body_bg)
-        mods_view = ScrollableFrame(tabs, body_bg)
-        activity = ttk.Frame(tabs, padding=14)
-        tabs.add(home_view, text="HOME")
-        tabs.add(gameplay_view, text="GAMEPLAY")
-        tabs.add(controls_view, text="CONTROLS")
-        tabs.add(mods_view, text="MODS")
-        tabs.add(activity, text="ACTIVITY")
-        for index in range(5):
+        shell = ttk.Frame(outer)
+        shell.pack(fill="both", expand=True)
+        sidebar = ttk.Frame(shell, style="Surface.TFrame", padding=(8, 12))
+        sidebar.pack(side="left", fill="y", padx=(0, 12))
+        ttk.Label(
+            sidebar, text="WORKSPACES", style="FieldLabel.TLabel",
+            background="#ffffff",
+        ).pack(anchor="w", padx=10, pady=(0, 6))
+        workspace = ttk.Frame(shell)
+        workspace.pack(side="left", fill="both", expand=True)
+        workspace.rowconfigure(0, weight=1)
+        workspace.columnconfigure(0, weight=1)
+
+        home_view = ScrollableFrame(workspace, body_bg)
+        gameplay_view = ScrollableFrame(workspace, body_bg)
+        controls_view = ScrollableFrame(workspace, body_bg)
+        mods_view = ScrollableFrame(workspace, body_bg)
+        activity = ttk.Frame(workspace, padding=14)
+        self.workspace_pages = {
+            "setup": home_view,
+            "gameplay": gameplay_view,
+            "input": controls_view,
+            "mods": mods_view,
+            "activity": activity,
+        }
+        self.workspace_buttons: dict[str, ttk.Button] = {}
+        for key, label in (
+            ("setup", "Setup"),
+            ("gameplay", "Gameplay"),
+            ("input", "Input"),
+            ("mods", "Packages"),
+            ("activity", "Activity"),
+        ):
+            page = self.workspace_pages[key]
+            page.grid(row=0, column=0, sticky="nsew")
+            button = ttk.Button(
+                sidebar, text=label, style="Nav.TButton",
+                command=lambda selected=key: self._select_workspace(selected),
+                width=18,
+            )
+            button.pack(fill="x", pady=1)
+            self.workspace_buttons[key] = button
+        ttk.Separator(sidebar).pack(fill="x", padx=8, pady=(14, 8))
+        ttk.Button(
+            sidebar, text="Help center  F1", style="Nav.TButton",
+            command=self.open_help_center, width=18,
+        ).pack(fill="x")
+        for index, key in enumerate(self.workspace_pages):
             self.root.bind(
                 f"<Control-Key-{index + 1}>",
-                lambda _event, selected=index: tabs.select(selected),
+                lambda _event, selected=key: self._select_workspace(selected),
             )
+        self.current_workspace = "setup"
+        self._select_workspace("setup")
         home = home_view.content
         gameplay = gameplay_view.content
         controls_page = controls_view.content
         mods_page = mods_view.content
 
-        profiles = ttk.LabelFrame(home, text="PROFILE", padding=12)
+        self._page_intro(
+            home, "Game setup",
+            "Check dependencies, choose a profile, repair the installation, and launch Story Mode.",
+        )
+        self._page_intro(
+            gameplay, "Gameplay systems",
+            "Configure GBAY, DLC traffic, accessibility, experimental physics, and police behavior.",
+        )
+        self._page_intro(
+            controls_page, "Input & filtering",
+            "Set keyboard shortcuts, controller bindings, and vehicle catalog filters.",
+        )
+        self._page_intro(
+            mods_page, "Packages & authoring",
+            "Install and manage validated optional content. Developer tooling lives in the separate ALLIN1 SDK.",
+        )
+        self._page_intro(
+            activity, "Activity & diagnostics",
+            "Review launcher operations and copy useful details when troubleshooting.",
+        )
+
+        profiles = ttk.LabelFrame(home, text="Configuration profile", padding=12)
         profiles.pack(fill="x", pady=(0, 10))
         self.profile_box = ttk.Combobox(profiles, textvariable=self.profile_name,
-                                        values=self.profiles.list(), width=28)
-        self.profile_box.pack(side="left")
-        ttk.Button(profiles, text="Load", command=self.load_profile).pack(side="left", padx=6)
-        ttk.Button(profiles, text="Save as…", command=self.save_profile).pack(side="left")
+                                        values=self.profiles.list(), width=34,
+                                        state="readonly")
+        self.profile_box.pack(side="left", fill="x", expand=True)
+        ttk.Button(profiles, text="Apply profile", command=self.load_profile).pack(
+            side="left", padx=(8, 0),
+        )
 
-        location = ttk.LabelFrame(home, text="GAME LOCATION", padding=12)
+        location = ttk.LabelFrame(home, text="GTA V installations", padding=12)
         location.pack(fill="x")
-        ttk.Entry(location, textvariable=self.path).pack(side="left", fill="x", expand=True)
-        ttk.Button(location, text="Browse…", command=self._browse).pack(side="left", padx=(8, 0))
+        location.columnconfigure(1, weight=1)
+        for row, (label, variable, edition) in enumerate((
+            ("Legacy folder", self.legacy_path, "legacy"),
+            ("Enhanced folder", self.enhanced_path, "enhanced"),
+        )):
+            ttk.Label(location, text=label).grid(row=row, column=0, sticky="w", pady=3)
+            ttk.Entry(location, textvariable=variable).grid(
+                row=row, column=1, sticky="ew", padx=(10, 8), pady=3,
+            )
+            ttk.Button(
+                location, text="Browse…",
+                command=lambda value=edition: self._browse(value),
+            ).grid(row=row, column=2, sticky="e", pady=3)
+        ttk.Label(location, text="Active target").grid(
+            row=2, column=0, sticky="w", pady=(8, 3),
+        )
+        ttk.Combobox(
+            location, textvariable=self.target_edition,
+            values=("Auto", "Legacy", "Enhanced"), state="readonly", width=16,
+        ).grid(row=2, column=1, sticky="w", padx=(10, 8), pady=(8, 3))
+        ttk.Label(
+            location,
+            text="Install, launch, health, and package actions use this edition.",
+            foreground="#3f6659",
+        ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(5, 0))
 
-        options = ttk.LabelFrame(gameplay, text="MOD FEATURES", padding=14)
-        options.pack(fill="x", pady=12)
-        options.columnconfigure(0, weight=1)
-        options.columnconfigure(1, weight=1)
-        ttk.Checkbutton(options, text="Free GBAY purchases (no sale payouts)", variable=self.gbay_free_mode).grid(row=0, column=0, sticky="w", padx=(0, 30))
-        ttk.Checkbutton(options, text="DLC traffic", variable=self.traffic).grid(row=0, column=1, sticky="w", padx=(0, 30))
-        ttk.Checkbutton(options, text="DLC police", variable=self.police).grid(row=1, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Detailed script logging", variable=self.logging_enabled).grid(row=1, column=1, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Safe mode (disables traffic and Harmony Garage)", variable=self.safe_mode).grid(row=2, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Disable GBAY page-transition fades", variable=self.reduced_motion).grid(row=2, column=1, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Colorblind-safe palette", variable=self.colorblind_mode).grid(row=3, column=0, sticky="w", pady=(8, 0))
-        ttk.Label(options, text="UI text scale").grid(row=3, column=1, sticky="w", pady=(8, 0))
-        ttk.Spinbox(options, from_=0.75, to=1.5, increment=0.05, textvariable=self.ui_scale,
-                    width=6).grid(row=3, column=1, sticky="e", pady=(8, 0))
-        ttk.Checkbutton(options, text="Back up game changes", variable=self.backup_enabled).grid(row=4, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Supercars only in wealthy areas", variable=self.rich_areas_only).grid(row=4, column=1, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Adaptive traffic performance", variable=self.adaptive_performance).grid(row=5, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Enable every DLC vehicle", variable=self.enable_all_vehicles).grid(row=5, column=1, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="GBAY preview artwork (requires OpenRPF/OpenIV)",
-                        variable=self.rpf_previews).grid(row=6, column=0,
-                                                         sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Allow garage entry while wanted",
-                        variable=self.garages_always_accessible).grid(
-                            row=6, column=1, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Enhanced Police AI",
-                        variable=self.enhanced_police_ai).grid(
-                            row=7, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Experimental GTA IV-style NPC physics",
-                        variable=self.gta_iv_npc_physics).grid(
-                            row=7, column=1, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(options, text="Physics experiment diagnostics",
-                        variable=self.gta_iv_npc_physics_debug).grid(
-                            row=8, column=0, sticky="w", pady=(8, 0))
+        world = ttk.LabelFrame(gameplay, text="Story Mode content", padding=14)
+        world.pack(fill="x", pady=(0, 12))
+        world.columnconfigure(0, weight=1)
+        world.columnconfigure(1, weight=1)
+        for row, (left_text, left_var, right_text, right_var) in enumerate((
+            ("Free GBAY purchases (no sale payouts)", self.gbay_free_mode,
+             "Enable DLC traffic", self.traffic),
+            ("Enable DLC police vehicles", self.police,
+             "Supercars only in wealthy areas", self.rich_areas_only),
+            ("Adaptive traffic performance", self.adaptive_performance,
+             "Enable every DLC vehicle", self.enable_all_vehicles),
+            ("GBAY preview artwork (OpenRPF/OpenIV)", self.rpf_previews,
+             "Allow garage entry while wanted", self.garages_always_accessible),
+            ("Back up game changes", self.backup_enabled,
+             "Safe mode (limits traffic and Harmony Garage)", self.safe_mode),
+        )):
+            ttk.Checkbutton(world, text=left_text, variable=left_var).grid(
+                row=row, column=0, sticky="w", padx=(0, 28), pady=4,
+            )
+            ttk.Checkbutton(world, text=right_text, variable=right_var).grid(
+                row=row, column=1, sticky="w", pady=4,
+            )
 
-        controls = ttk.LabelFrame(controls_page, text="KEYBINDS & VEHICLE FILTERS", padding=14)
+        presentation = ttk.LabelFrame(gameplay, text="Interface & accessibility", padding=14)
+        presentation.pack(fill="x", pady=(0, 12))
+        presentation.columnconfigure(0, weight=1)
+        presentation.columnconfigure(1, weight=1)
+        ttk.Checkbutton(
+            presentation, text="Reduce GBAY transition motion",
+            variable=self.reduced_motion,
+        ).grid(row=0, column=0, sticky="w", pady=4)
+        ttk.Checkbutton(
+            presentation, text="Use colorblind-safe palette",
+            variable=self.colorblind_mode,
+        ).grid(row=0, column=1, sticky="w", pady=4)
+        scale_row = ttk.Frame(presentation)
+        scale_row.grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        ttk.Label(scale_row, text="In-game UI text scale").pack(side="left")
+        ttk.Spinbox(
+            scale_row, from_=0.75, to=1.5, increment=0.05,
+            textvariable=self.ui_scale, width=7,
+        ).pack(side="left", padx=(10, 6))
+        ttk.Label(scale_row, text="0.75×–1.50×", foreground="#52635c").pack(side="left")
+
+        experiments = ttk.LabelFrame(gameplay, text="Experimental systems & diagnostics", padding=14)
+        experiments.pack(fill="x", pady=(0, 12))
+        experiments.columnconfigure(0, weight=1)
+        experiments.columnconfigure(1, weight=1)
+        ttk.Checkbutton(
+            experiments, text="Enhanced Police AI", variable=self.enhanced_police_ai,
+        ).grid(row=0, column=0, sticky="w", padx=(0, 28), pady=4)
+        ttk.Checkbutton(
+            experiments, text="GTA IV-style NPC physics",
+            variable=self.gta_iv_npc_physics,
+        ).grid(row=0, column=1, sticky="w", pady=4)
+        for row, (left_text, left_var, right_text, right_var) in enumerate((
+            ("Physics experiment diagnostics", self.gta_iv_npc_physics_debug,
+             "Enhanced custom smoke effects", self.enhanced_smoke_effects),
+            ("Detailed script logging", self.logging_enabled, "", None),
+        ), start=1):
+            ttk.Checkbutton(experiments, text=left_text, variable=left_var).grid(
+                row=row, column=0, sticky="w", padx=(0, 28), pady=4,
+            )
+            if right_var is not None:
+                ttk.Checkbutton(experiments, text=right_text, variable=right_var).grid(
+                    row=row, column=1, sticky="w", pady=4,
+                )
+        ttk.Label(
+            experiments,
+            text="Experimental features may require extra logging and iterative in-game testing.",
+            foreground="#52635c", wraplength=900, justify="left",
+        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
+
+        controls = ttk.LabelFrame(controls_page, text="Keyboard shortcuts & vehicle filters", padding=14)
         controls.pack(fill="x", pady=(0, 12))
         controls.columnconfigure(1, weight=1)
         controls.columnconfigure(3, weight=1)
@@ -443,7 +679,7 @@ class ManagerWindow:
                       row=6, column=0, columnspan=4, sticky="w", pady=(8, 0))
 
         controller = ttk.LabelFrame(
-            controls_page, text="CONTROLLER CONFIGURATION", padding=14)
+            controls_page, text="Controller configuration", padding=14)
         controller.pack(fill="x", pady=(0, 12))
         controller.columnconfigure(1, weight=1)
         controller.columnconfigure(3, weight=1)
@@ -491,8 +727,8 @@ class ManagerWindow:
                       row=len(controller_rows) + 1, column=0, columnspan=4,
                       sticky="w", pady=(8, 0))
 
-        mod_library = ttk.LabelFrame(mods_page, text="OPTIONAL MOD LIBRARY", padding=14)
-        mod_library.pack(fill="both", expand=True, pady=(0, 12))
+        mod_library = ttk.LabelFrame(mods_page, text="Package library", padding=14)
+        mod_library.pack(fill="x", pady=(0, 12))
         ttk.Label(
             mod_library,
             text=("Install user-supplied ASI, script, RPF, and config/data packages from a "
@@ -512,19 +748,21 @@ class ManagerWindow:
         tree_frame.pack(fill="both", expand=True)
         self.mod_tree = ttk.Treeview(
             tree_frame,
-            columns=("type", "version", "status"),
+            columns=("type", "edition", "version", "status"),
             show="tree headings",
-            height=10,
+            height=7,
             selectmode="browse",
         )
         self.mod_tree.heading("#0", text="Mod")
         self.mod_tree.heading("type", text="Type")
+        self.mod_tree.heading("edition", text="Edition")
         self.mod_tree.heading("version", text="Version")
         self.mod_tree.heading("status", text="Status")
-        self.mod_tree.column("#0", width=310, minwidth=180)
-        self.mod_tree.column("type", width=90, anchor="center")
-        self.mod_tree.column("version", width=100, anchor="center")
-        self.mod_tree.column("status", width=120, anchor="center")
+        self.mod_tree.column("#0", width=440, minwidth=260, stretch=False)
+        self.mod_tree.column("type", width=80, anchor="center", stretch=False)
+        self.mod_tree.column("edition", width=125, anchor="center", stretch=False)
+        self.mod_tree.column("version", width=80, anchor="center", stretch=False)
+        self.mod_tree.column("status", width=120, anchor="center", stretch=False)
         mod_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self.mod_tree.yview)
         self.mod_tree.configure(yscrollcommand=mod_scroll.set)
         self.mod_tree.pack(side="left", fill="both", expand=True)
@@ -535,19 +773,42 @@ class ManagerWindow:
         ttk.Label(mod_library, textvariable=self.mod_details, wraplength=790,
                   justify="left").pack(fill="x", anchor="w", pady=(10, 0))
 
-        mod_actions = ttk.Frame(mods_page)
-        mod_actions.pack(fill="x", pady=(0, 12))
-        for label, command, style_name in (
-            ("Import & install package…", self.import_mod_package, "Accent.TButton"),
-            ("Install / Update", self.install_selected_mod, "TButton"),
-            ("Enable", lambda: self.toggle_selected_mod(True), "TButton"),
-            ("Disable", lambda: self.toggle_selected_mod(False), "TButton"),
-            ("Uninstall", self.uninstall_selected_mod, "TButton"),
-        ):
-            button = ttk.Button(mod_actions, text=label, command=command, style=style_name)
-            button.pack(side="left", padx=(0, 8))
-            self.mod_action_buttons.append(button)
-        ttk.Button(mod_actions, text="Refresh", command=self.refresh_mods).pack(side="right")
+        authoring_actions = ttk.Frame(mods_page)
+        authoring_actions.pack(fill="x", pady=(0, 8), before=mod_library)
+        add_package_button = ttk.Button(
+            authoring_actions, text="Add package…", command=self.import_mod_package,
+            style="Accent.TButton",
+        )
+        add_package_button.pack(side="left")
+        self.mod_action_buttons.append(add_package_button)
+        library_menu = tk.Menu(authoring_actions, tearoff=False)
+        library_menu.add_command(label="Refresh package library", command=self.refresh_mods)
+        library_menu.add_separator()
+        library_menu.add_command(label="Open ALLIN1 SDK…", command=self.open_addon_sdk)
+        library_button = ttk.Menubutton(
+            authoring_actions, text="Library options", menu=library_menu,
+        )
+        library_button.pack(side="left", padx=(8, 0))
+        self.mod_action_buttons.append(library_button)
+
+        package_actions = ttk.Frame(mods_page)
+        package_actions.pack(fill="x", pady=(0, 12), before=mod_library)
+        ttk.Label(
+            package_actions,
+            text="Select a package, then choose an action.", foreground="#52635c",
+        ).pack(side="left")
+        package_menu = tk.Menu(package_actions, tearoff=False)
+        package_menu.add_command(label="Install / update", command=self.install_selected_mod)
+        package_menu.add_separator()
+        package_menu.add_command(label="Enable", command=lambda: self.toggle_selected_mod(True))
+        package_menu.add_command(label="Disable", command=lambda: self.toggle_selected_mod(False))
+        package_menu.add_separator()
+        package_menu.add_command(label="Uninstall…", command=self.uninstall_selected_mod)
+        package_button = ttk.Menubutton(
+            package_actions, text="Package actions", menu=package_menu,
+        )
+        package_button.pack(side="right")
+        self.mod_action_buttons.append(package_button)
 
         ttk.Label(
             mods_page,
@@ -558,8 +819,8 @@ class ManagerWindow:
             justify="left",
         ).pack(fill="x", anchor="w")
 
-        state = ttk.LabelFrame(home, text="INSTALLATION STATUS", padding=14)
-        state.pack(fill="x")
+        state = ttk.LabelFrame(home, text="Installation status", padding=14)
+        state.pack(fill="x", before=profiles, pady=(0, 10))
         self.status_headline_label = ttk.Label(
             state,
             textvariable=self.status_headline,
@@ -578,22 +839,6 @@ class ManagerWindow:
         ttk.Label(state, textvariable=self.version_text, justify="left",
                   foreground="#3f6659").pack(anchor="w", pady=(5, 0))
 
-        utilities = ttk.LabelFrame(home, text="MAINTENANCE", padding=12)
-        utilities.pack(fill="x", pady=(0, 10))
-        for column, (label, command) in enumerate((
-            ("Characters & garages", self.customize_characters),
-            ("Diagnostics", self.create_diagnostics),
-            ("Health check", self.run_health_check),
-            ("About", self.show_about),
-        )):
-            ttk.Button(utilities, text=label, command=command,
-                       style="Quiet.TButton").grid(row=0, column=column, padx=(0, 8), sticky="w")
-        self.uninstall_button = ttk.Button(
-            utilities, text="Uninstall ALLIN1", command=self.uninstall, style="Danger.TButton"
-        )
-        self.uninstall_button.grid(row=0, column=4, sticky="e")
-        utilities.columnconfigure(4, weight=1)
-
         activity_toolbar = ttk.Frame(activity)
         activity_toolbar.pack(fill="x", pady=(0, 10))
         ttk.Label(
@@ -601,15 +846,21 @@ class ManagerWindow:
             text="Launcher operations and diagnostics appear here.",
             foreground="#3f6659",
         ).pack(side="left")
-        ttk.Button(activity_toolbar, text="Open log folder", command=self.open_log_folder,
-                   style="Quiet.TButton").pack(side="right")
-        ttk.Button(activity_toolbar, text="Clear", command=self.clear_activity,
-                   style="Quiet.TButton").pack(side="right", padx=6)
-        ttk.Button(activity_toolbar, text="Copy", command=self.copy_activity,
-                   style="Quiet.TButton").pack(side="right")
-        log_frame = ttk.LabelFrame(activity, text="ACTIVITY LOG", padding=10)
+        activity_menu = tk.Menu(activity_toolbar, tearoff=False)
+        activity_menu.add_command(label="Copy activity", command=self.copy_activity)
+        activity_menu.add_command(label="Clear activity", command=self.clear_activity)
+        activity_menu.add_separator()
+        activity_menu.add_command(label="Open log folder", command=self.open_log_folder)
+        ttk.Menubutton(
+            activity_toolbar, text="Activity actions", menu=activity_menu,
+        ).pack(side="right")
+        log_frame = ttk.LabelFrame(activity, text="Launcher log", padding=10)
         log_frame.pack(fill="both", expand=True)
-        self.log = tk.Text(log_frame, height=12, wrap="word", state="disabled")
+        self.log = tk.Text(
+            log_frame, height=12, wrap="word", state="disabled",
+            background="#ffffff", foreground="#1e2925", relief="flat",
+            font=("Cascadia Mono", 9), padx=9, pady=9,
+        )
         scroll = ttk.Scrollbar(log_frame, orient="vertical", command=self.log.yview)
         self.log.configure(yscrollcommand=scroll.set)
         self.log.pack(side="left", fill="both", expand=True)
@@ -636,27 +887,59 @@ class ManagerWindow:
         ttk.Label(footer_left, textvariable=self.operation_text,
                   foreground="#3f6659").pack(side="left")
 
-        self.refresh_button = ttk.Button(footer_actions, text="Refresh", command=self.refresh,
-                                         style="Quiet.TButton")
-        self.refresh_button.pack(side="left")
-        self.save_button = ttk.Button(footer_actions, text="Save settings", command=self.save,
+        game_action_menu = tk.Menu(footer_actions, tearoff=False)
+        game_action_menu.add_command(label="Install / Repair…", command=self.install)
+        game_action_menu.add_command(label="Health Check…", command=self.run_health_check)
+        game_action_menu.add_command(label="Create diagnostics…", command=self.create_diagnostics)
+        game_action_menu.add_separator()
+        game_action_menu.add_command(label="Refresh status", command=self.refresh)
+        self.game_action_button = ttk.Menubutton(
+            footer_actions, text="Game actions", menu=game_action_menu,
+        )
+        self.game_action_button.pack(side="left")
+        self.save_button = ttk.Button(footer_actions, text="Save changes", command=self.save,
                                       style="Quiet.TButton")
         self.save_button.pack(side="left", padx=7)
-        self.install_button = ttk.Button(footer_actions, text="Install / Repair",
-                                         command=self.install, style="Quiet.TButton")
-        self.install_button.pack(side="left")
         self.launch_button = ttk.Button(footer_actions, text="Launch GTA V",
                                         command=self.launch_game, style="Accent.TButton")
-        self.launch_button.pack(side="left", padx=(7, 0))
+        self.launch_button.pack(side="left")
 
-    def _browse(self) -> None:
-        selected = filedialog.askdirectory(title="Select the GTA V installation folder")
+    @staticmethod
+    def _page_intro(parent: tk.Misc, title: str, description: str) -> None:
+        heading = ttk.Frame(parent)
+        heading.pack(fill="x", pady=(0, 12))
+        ttk.Label(heading, text=title, style="PageTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            heading, text=description, style="PageIntro.TLabel",
+            wraplength=900, justify="left",
+        ).pack(anchor="w", pady=(2, 0))
+
+    def _browse(self, edition: str | None = None) -> None:
+        label = f"GTA V {edition.title()}" if edition else "GTA V"
+        selected = filedialog.askdirectory(title=f"Select the {label} installation folder")
         if selected:
-            self.path.set(selected)
+            if edition == "legacy":
+                self.legacy_path.set(selected)
+            elif edition == "enhanced":
+                self.enhanced_path.set(selected)
+            else:
+                self.path.set(selected)
             self.refresh()
 
     def _current_config(self) -> Config:
-        self.config.general.gta_path = self.path.get().strip() or "auto"
+        if hasattr(self, "legacy_path"):
+            self.config.general.gta_legacy_path = self.legacy_path.get().strip() or "auto"
+            self.config.general.gta_enhanced_path = self.enhanced_path.get().strip() or "auto"
+            target = self.target_edition.get().strip().lower() or "auto"
+            self.config.general.target_edition = target
+            selected_path = (
+                self.config.general.gta_legacy_path if target == "legacy"
+                else self.config.general.gta_enhanced_path if target == "enhanced"
+                else self.path.get().strip() or "auto"
+            )
+            self.config.general.gta_path = selected_path
+        else:
+            self.config.general.gta_path = self.path.get().strip() or "auto"
         self.config.general.free_mode = self.gbay_free_mode.get()
         self.config.general.backup = self.backup_enabled.get()
         self.config.general.enable_rpf_previews = self.rpf_previews.get()
@@ -687,6 +970,9 @@ class ManagerWindow:
             self.gta_iv_npc_physics.get()
         self.config.script.gta_iv_npc_physics_debug = \
             self.gta_iv_npc_physics_debug.get()
+        enhanced_smoke = getattr(self, "enhanced_smoke_effects", None)
+        if enhanced_smoke is not None:
+            self.config.script.enhanced_smoke_effects = enhanced_smoke.get()
         if hasattr(self, "controller_enabled"):
             self.config.script.controller_enabled = self.controller_enabled.get()
         for name in (
@@ -738,6 +1024,10 @@ class ManagerWindow:
         try:
             self.config = self.profiles.load(self.profile_name.get())
             self.path.set(self.config.general.gta_path)
+            if hasattr(self, "legacy_path"):
+                self.legacy_path.set(self.config.general.gta_legacy_path)
+                self.enhanced_path.set(self.config.general.gta_enhanced_path)
+                self.target_edition.set(self.config.general.target_edition.title())
             self.backup_enabled.set(self.config.general.backup)
             self.rpf_previews.set(self.config.general.enable_rpf_previews)
             self.traffic.set(self.config.traffic.enabled)
@@ -767,6 +1057,8 @@ class ManagerWindow:
                 self.config.script.gta_iv_npc_physics)
             self.gta_iv_npc_physics_debug.set(
                 self.config.script.gta_iv_npc_physics_debug)
+            self.enhanced_smoke_effects.set(
+                self.config.script.enhanced_smoke_effects)
             self.controller_enabled.set(self.config.script.controller_enabled)
             for name in (
                 "controller_open_gbay", "controller_open_gbay_modifier",
@@ -791,8 +1083,12 @@ class ManagerWindow:
         self._show_status(status)
         self.refresh_mods()
 
-    def _mod_service(self) -> ModIntegrationService:
-        gta_path = self.manager.resolve_path(self._current_config())
+    def _mod_service(self, manifest: ModManifest | None = None) -> ModIntegrationService:
+        config = self._current_config()
+        gta_path = (
+            self.manager.resolve_mod_path(config, manifest.editions)
+            if manifest else self.manager.resolve_path(config)
+        )
         if gta_path is None:
             raise ValueError("Select a valid GTA V installation first.")
         return ModIntegrationService(gta_path)
@@ -809,6 +1105,15 @@ class ManagerWindow:
         except (OSError, ValueError) as exc:
             self.mod_manifests = {}
             catalog_error = str(exc)
+        try:
+            sdk_examples = self.sdk_catalog.discover()
+            self.sdk_manifests = {
+                f"sdk:{manifest.addon_id}": manifest
+                for manifest in sdk_examples
+            }
+        except (OSError, ValueError) as exc:
+            self.sdk_manifests = {}
+            catalog_error = catalog_error or f"SDK catalog: {exc}"
 
         installed = {}
         try:
@@ -823,15 +1128,29 @@ class ManagerWindow:
             name = manifest.name if manifest else status.name
             mod_type = manifest.mod_type if manifest else status.mod_type
             version = manifest.version if manifest else status.version
+            editions = (
+                " + ".join(value.title() for value in manifest.editions)
+                if manifest else self.config.general.target_edition.title()
+            )
             state = "Enabled" if status and status.enabled else "Disabled" if status else "Available"
             self.mod_tree.insert("", "end", iid=mod_id, text=name,
-                                 values=(mod_type.upper(), version, state))
+                                 values=(mod_type.upper(), editions, version, state))
+        for sdk_id, manifest in sorted(
+            self.sdk_manifests.items(), key=lambda item: item[1].name.lower()
+        ):
+            self.mod_tree.insert(
+                "", "end", iid=sdk_id, text=manifest.name,
+                values=(
+                    "SDK", " + ".join(value.title() for value in manifest.editions),
+                    manifest.version, "Built-in example",
+                ),
+            )
         if selected and self.mod_tree.exists(selected):
             self.mod_tree.selection_set(selected)
             self.mod_tree.focus(selected)
         elif catalog_error:
             self.mod_details.set(f"Catalog error: {catalog_error}")
-        elif not mod_ids:
+        elif not mod_ids and not self.sdk_manifests:
             self.mod_details.set(
                 "No optional mods installed or present in the local catalog. Import a package to begin."
             )
@@ -847,6 +1166,14 @@ class ManagerWindow:
         if not mod_id:
             return
         manifest = self.mod_manifests.get(mod_id)
+        sdk_manifest = self.sdk_manifests.get(mod_id)
+        if sdk_manifest:
+            self.mod_details.set(
+                f"{sdk_manifest.summary or 'Built-in SDK integration example.'}\n"
+                f"Package ID: {sdk_manifest.addon_id} · Read-only SDK example · "
+                f"Supports: {', '.join(value.title() for value in sdk_manifest.editions)}"
+            )
+            return
         if manifest:
             requirements = ", ".join(manifest.dependencies) or "none"
             description = manifest.description or "No description provided."
@@ -877,6 +1204,9 @@ class ManagerWindow:
 
     def install_selected_mod(self) -> None:
         mod_id = self._selected_mod_id()
+        if mod_id in self.sdk_manifests:
+            self.open_addon_sdk()
+            return
         manifest = self.mod_manifests.get(mod_id or "")
         if manifest is None:
             messagebox.showinfo(
@@ -894,7 +1224,7 @@ class ManagerWindow:
         ):
             return
         try:
-            service = self._mod_service()
+            service = self._mod_service(manifest)
         except (OSError, ValueError) as exc:
             messagebox.showerror("Game not found", str(exc))
             return
@@ -904,6 +1234,13 @@ class ManagerWindow:
         mod_id = self._selected_mod_id()
         if not mod_id:
             messagebox.showinfo("Optional mods", "Select an installed mod first.")
+            return
+        if mod_id in self.sdk_manifests:
+            messagebox.showinfo(
+                "Built-in SDK example",
+                "This package documents an ALLIN1 built-in feature and is not "
+                "enabled or disabled as a separate mod.",
+            )
             return
         if mod_id not in self.installed_mod_ids:
             messagebox.showinfo("Optional mods", "Install the selected package first.")
@@ -920,6 +1257,13 @@ class ManagerWindow:
         mod_id = self._selected_mod_id()
         if not mod_id:
             messagebox.showinfo("Optional mods", "Select an installed mod first.")
+            return
+        if mod_id in self.sdk_manifests:
+            messagebox.showinfo(
+                "Built-in SDK example",
+                "This package is part of ALLIN1 and cannot be uninstalled from "
+                "the optional package manager.",
+            )
             return
         if mod_id not in self.installed_mod_ids:
             messagebox.showinfo("Optional mods", "The selected package is not installed.")
@@ -965,22 +1309,28 @@ class ManagerWindow:
 
     def show_about(self) -> None:
         dialog = tk.Toplevel(self.root)
-        dialog.title("About GTA V ALLIN1")
-        dialog.geometry("560x390")
+        dialog.title("About ALLIN1 Launcher")
+        dialog.geometry("590x420")
         dialog.resizable(False, False)
         body = ttk.Frame(dialog, padding=22)
         body.pack(fill="both", expand=True)
-        ttk.Label(body, text="GTA V ALLIN1", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-        ttk.Label(body, text=f"Manager and mod client version {__version__}").pack(anchor="w", pady=(2, 16))
+        ttk.Label(
+            body, text="ALLIN1 Launcher",
+            font=("Segoe UI Semibold", 20),
+        ).pack(anchor="w")
+        ttk.Label(
+            body, text=f"Desktop tool and Story Mode client version {__version__}",
+            foreground="#52635c",
+        ).pack(anchor="w", pady=(2, 16))
         ttk.Label(
             body,
-            text=("Project goal\n\nBring GTA Online DLC vehicles, weapons, garages, "
-                  "and related content into GTA V Story Mode through a safe, manageable "
-                  "one-click install."),
+            text=("Install and manage ALLIN1's Story Mode expansion, inspect local "
+                  "mod packages, validate add-on content, browse package assets, and "
+                  "recover changes through one safety-focused desktop tool."),
             wraplength=510, justify="left",
         ).pack(anchor="w")
-        ttk.Label(body, text="Created and maintained by MinionEnjoyer.").pack(anchor="w", pady=(18, 4))
-        link = ttk.Label(body, text="buymeacoffee.com/minionenjoyer",
+        ttk.Label(body, text="Created and maintained by MinionEnjoyer.").pack(anchor="w", pady=(20, 4))
+        link = ttk.Label(body, text="Support ALLIN1 on Buy Me a Coffee ↗",
                          foreground="#087f5b", cursor="hand2")
         link.pack(anchor="w")
         link.bind("<Button-1>", lambda _event: webbrowser.open(
@@ -1003,6 +1353,18 @@ class ManagerWindow:
 
         button = ttk.Button(body, text="Check for updates", command=check)
         button.pack(anchor="w")
+
+    def open_help_center(self, topic: str | None = None) -> None:
+        """Open task help, defaulting to the user's current work zone."""
+        if topic is None:
+            topic = {
+                "setup": "getting-started",
+                "gameplay": "gameplay",
+                "input": "input",
+                "mods": "packages",
+                "activity": "troubleshooting",
+            }.get(getattr(self, "current_workspace", "setup"), "getting-started")
+        HelpCenterDialog(self.root, initial_topic=topic)
 
     def install(self) -> None:
         config = self._current_config()
@@ -1027,8 +1389,25 @@ class ManagerWindow:
             messagebox.showerror("Game not found", "Select a GTA V installation first.")
             return
         try:
+            # A structurally readable RPF can still fail GTA's startup data
+            # manager. Block packs that failed a real Story Mode canary instead
+            # of asking the player to discover the same hang again.
+            from allin1.health import consume_rpf_canary, scan_installation
+            rpf_hazards = [
+                issue for issue in scan_installation(gta_path).issues
+                if issue.code in {"rpf_pack_quarantined", "rpf_pack_incomplete"}
+            ]
+            if rpf_hazards:
+                details = "\n".join(f"• {issue.message}" for issue in rpf_hazards)
+                raise ValueError(
+                    "RPF safety check blocked launch:\n\n" + details +
+                    "\n\nRun Install / Repair, then launch again."
+                )
             self.manager.save_config(config)
             target = launch_gta(gta_path)
+            smoke_canary_consumed = consume_rpf_canary(
+                gta_path, "allin1_smoke"
+            )
         except (FileNotFoundError, OSError, ValueError) as exc:
             self._reset_launch_guard()
             self._append_log(f"Launch failed: {exc}")
@@ -1036,6 +1415,10 @@ class ManagerWindow:
             return
         self._clear_dirty("Launching GTA V")
         self._append_log(f"Launching {target.description}.")
+        if smoke_canary_consumed:
+            self._append_log(
+                "Consumed the one-run colored-smoke RPF canary authorization."
+            )
         # Ignore repeated clicks or key-repeat while Steam and Rockstar hand
         # off the request. Reopening the URI can restart the game's intro.
         self.root.after(15000, self._reset_launch_guard)
@@ -1058,6 +1441,55 @@ class ManagerWindow:
             return
         CharacterCustomizationDialog(self.root, self.manager.project_root,
                                      gta_path / "scripts", self.config)
+
+    def open_addon_sdk(self) -> None:
+        installed = shutil.which("allin1-sdk-gui")
+        sdk_root = self.manager.project_root.parent / "ALLIN1-SDK"
+        environment = os.environ.copy()
+        if installed:
+            command = [installed]
+            working_directory = Path(installed).parent
+        elif (sdk_root / "src" / "allin1_sdk" / "app.py").is_file():
+            command = [sys.executable, "-m", "allin1_sdk.app"]
+            working_directory = sdk_root
+            source = str(sdk_root / "src")
+            existing = environment.get("PYTHONPATH", "")
+            environment["PYTHONPATH"] = source + (os.pathsep + existing if existing else "")
+        else:
+            messagebox.showerror(
+                "ALLIN1 SDK not found",
+                "Install the standalone ALLIN1 SDK or place its repository beside "
+                "the ALLIN1 Launcher repository.",
+            )
+            return
+        options: dict[str, object] = {}
+        if os.name == "nt":
+            options["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        try:
+            subprocess.Popen(
+                command, cwd=working_directory, env=environment, **options,
+            )
+        except OSError as exc:
+            messagebox.showerror("Could not open ALLIN1 SDK", str(exc))
+            return
+        self._append_log(f"Opened standalone ALLIN1 SDK from {working_directory}.")
+
+    def open_asset_viewer(self) -> None:
+        mod_id = self._selected_mod_id()
+        source: Path | None = None
+        manifest = self.mod_manifests.get(mod_id or "")
+        sdk_manifest = self.sdk_manifests.get(mod_id or "")
+        if manifest is not None:
+            source = manifest.package_root
+        elif sdk_manifest is not None:
+            source = sdk_manifest.manifest_path.parent
+        AssetViewerDialog(self.root, source)
+
+    def open_rpf_explorer(self) -> None:
+        roots = tuple(self.manager.resolve_paths(self._current_config()).values())
+        RpfExplorerDialog(
+            self.root, self.manager.project_root, installation_roots=roots,
+        )
 
     def create_diagnostics(self) -> None:
         from allin1.diagnostics import create_diagnostic_bundle
@@ -1177,7 +1609,7 @@ class ManagerWindow:
                 if label == "Repairing":
                     self._clear_dirty("Install / Repair complete")
                 self._append_log(f"{label} completed.")
-                messagebox.showinfo("GTA V ALLIN1", f"{label} completed successfully.")
+                messagebox.showinfo("ALLIN1 Launcher", f"{label} completed successfully.")
             elif kind == "error":
                 label, exc = payload
                 self._finish()
@@ -1211,14 +1643,12 @@ class ManagerWindow:
 
     def _set_actions(self, enabled: bool) -> None:
         if not enabled:
-            for button in (
-                self.launch_button,
-                self.install_button,
-                self.uninstall_button,
-                self.save_button,
-                self.refresh_button,
-            ):
+            for button in (self.launch_button, self.save_button, self.game_action_button):
                 button.configure(state="disabled")
+            for menu in (self.file_menu, self.game_menu, self.sdk_menu):
+                for index in range(menu.index("end") + 1):
+                    if menu.type(index) == "command":
+                        menu.entryconfigure(index, state="disabled")
         else:
             presentation = (
                 _status_presentation(self.current_status)
@@ -1232,14 +1662,31 @@ class ManagerWindow:
                     else "disabled"
                 )
             )
-            self.install_button.configure(
-                state="normal" if presentation and presentation.can_install else "disabled"
-            )
-            self.uninstall_button.configure(
-                state="normal" if presentation and presentation.can_uninstall else "disabled"
-            )
             self.save_button.configure(state="normal")
-            self.refresh_button.configure(state="normal")
+            self.game_action_button.configure(state="normal")
+            for menu in (self.file_menu, self.sdk_menu):
+                for index in range(menu.index("end") + 1):
+                    if menu.type(index) == "command":
+                        menu.entryconfigure(index, state="normal")
+            for index in range(self.game_menu.index("end") + 1):
+                if self.game_menu.type(index) == "command":
+                    self.game_menu.entryconfigure(index, state="normal")
+            self.game_menu.entryconfigure(
+                "Launch GTA V",
+                state=(
+                    "normal"
+                    if presentation and presentation.can_launch and not self.launch_pending
+                    else "disabled"
+                ),
+            )
+            self.game_menu.entryconfigure(
+                "Install / Repair…",
+                state="normal" if presentation and presentation.can_install else "disabled",
+            )
+            self.game_menu.entryconfigure(
+                "Uninstall ALLIN1…",
+                state="normal" if presentation and presentation.can_uninstall else "disabled",
+            )
         state = "normal" if enabled else "disabled"
         for button in self.mod_action_buttons:
             button.configure(state=state)

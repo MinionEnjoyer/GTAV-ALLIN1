@@ -517,26 +517,74 @@ namespace ALLIN1.Tests
         }
 
         [Theory]
-        [InlineData(false, false, true, false, false,
-            (int)AerialSupportRole.Recon)]
-        [InlineData(true, true, true, false, false,
-            (int)AerialSupportRole.Recon)]
-        [InlineData(true, false, false, false, false,
-            (int)AerialSupportRole.Recon)]
-        [InlineData(true, false, true, true, false,
-            (int)AerialSupportRole.Recon)]
-        [InlineData(true, false, true, false, true,
-            (int)AerialSupportRole.Recon)]
-        [InlineData(true, false, true, false, false,
-            (int)AerialSupportRole.Cas)]
-        public void Cas_requires_a_ground_request_fresh_intel_and_a_safe_slot(
-            bool requested, bool aggressive, bool freshIntel,
-            bool claimedByOther, bool casevacActive, int expected)
+        [InlineData(true, false, false, 1, true, false, 0, true)]
+        [InlineData(true, false, false, 0, true, false, 0, false)]
+        [InlineData(true, false, false, 5, false, false, 0, false)]
+        [InlineData(true, false, false, 5, true, true, 0, false)]
+        [InlineData(true, false, false, 5, true, false, 1, false)]
+        [InlineData(true, true, false, 5, true, false, 0, false)]
+        [InlineData(true, false, true, 5, true, false, 0, false)]
+        public void Dedicated_casevac_spawns_only_for_a_waiting_casualty(
+            bool enabled, bool missionActive, bool cutsceneActive,
+            int wantedLevel, bool casualtyWaiting, bool active,
+            int cooldownRemaining, bool expected)
         {
-            Assert.Equal((AerialSupportRole)expected,
-                NpcPhysicsExperimentPolicy.SelectAerialSupportRole(
-                    requested, aggressive, freshIntel,
-                    claimedByOther, casevacActive));
+            Assert.Equal(expected,
+                NpcPhysicsExperimentPolicy.ShouldSpawnDedicatedCasevac(
+                    enabled, missionActive, cutsceneActive,
+                    wantedLevel, casualtyWaiting, active,
+                    cooldownRemaining));
+        }
+
+        [Theory]
+        [InlineData(true, false, true, 0f, true)]
+        [InlineData(true, false, true, 18f, true)]
+        [InlineData(true, false, true, 18.1f, false)]
+        [InlineData(false, false, true, 0f, false)]
+        [InlineData(true, true, true, 0f, false)]
+        [InlineData(true, false, false, 0f, false)]
+        public void Casevac_batches_only_waiting_casualties_at_the_same_zone(
+            bool waiting, bool assigned, bool freeSeat,
+            float landingDistance, bool expected)
+        {
+            Assert.Equal(expected,
+                NpcPhysicsExperimentPolicy.CanBatchCasevacCasualty(
+                    waiting, assigned, freeSeat, landingDistance));
+        }
+
+        [Fact]
+        public void Dedicated_casevac_despawns_after_its_flyout()
+        {
+            Assert.False(
+                NpcPhysicsExperimentPolicy.ShouldDespawnDedicatedCasevac(
+                    true, true, 180f, 5000));
+            Assert.True(
+                NpcPhysicsExperimentPolicy.ShouldDespawnDedicatedCasevac(
+                    true, true,
+                    NpcPhysicsExperimentPolicy.
+                        DedicatedCasevacDespawnDistance,
+                    5000));
+            Assert.True(
+                NpcPhysicsExperimentPolicy.ShouldDespawnDedicatedCasevac(
+                    true, true, 180f, 15000));
+            Assert.False(
+                NpcPhysicsExperimentPolicy.ShouldDespawnDedicatedCasevac(
+                    true, false, 500f, 15000));
+        }
+
+        [Theory]
+        [InlineData(120, 100, false, 120)]
+        [InlineData(120, 100, true, 100)]
+        [InlineData(120, 135, false, 120)]
+        [InlineData(120, 120, false, 120)]
+        [InlineData(0, 0, false, 0)]
+        public void Stabilization_pins_passive_changes_but_accepts_damage(
+            int holdingHealth, int currentHealth,
+            bool directDamage, int expected)
+        {
+            Assert.Equal(expected,
+                NpcPhysicsExperimentPolicy.ResolveStabilizedHoldingHealth(
+                    holdingHealth, currentHealth, directDamage));
         }
 
         private static bool ShouldReact()

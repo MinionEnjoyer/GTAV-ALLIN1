@@ -113,6 +113,9 @@ def test_load_prices_missing_file(tmp_path):
 def test_default_config():
     config = Config.default()
     assert config.general.gta_path == "auto"
+    assert config.general.gta_legacy_path == "auto"
+    assert config.general.gta_enhanced_path == "auto"
+    assert config.general.target_edition == "auto"
     assert config.traffic.enabled is True
     assert config.traffic.max_driven == 20
     assert config.traffic.replacement_chance == 0.30
@@ -125,6 +128,7 @@ def test_default_config():
     assert config.script.enhanced_police_ai is True
     assert config.script.gta_iv_npc_physics is False
     assert config.script.gta_iv_npc_physics_debug is True
+    assert config.script.enhanced_smoke_effects is True
     assert config.script.controller_enabled is True
     assert config.script.controller_open_gbay == "FrontendRdown"
 
@@ -132,6 +136,9 @@ def test_default_config():
 def test_save_round_trip_preserves_all_fields(tmp_path):
     config = Config.default()
     config.general.gta_path = r'C:\Games\Grand "Theft" Auto V'
+    config.general.gta_legacy_path = r"C:\Games\GTAV Legacy"
+    config.general.gta_enhanced_path = r"D:\Games\GTAV Enhanced"
+    config.general.target_edition = "enhanced"
     config.general.free_mode = True
     config.general.backup = False
     config.traffic.enabled = False
@@ -151,12 +158,20 @@ def test_save_round_trip_preserves_all_fields(tmp_path):
     config.script.enhanced_police_ai = True
     config.script.gta_iv_npc_physics = True
     config.script.gta_iv_npc_physics_debug = False
+    config.script.enhanced_smoke_effects = True
     path = tmp_path / "nested" / "config.toml"
 
     config.save(path)
     loaded = Config.load(path)
 
     assert loaded == config
+
+
+def test_target_edition_validation_rejects_unknown_value():
+    config = Config.default()
+    config.general.target_edition = "online"
+    with pytest.raises(ValueError, match="target_edition"):
+        config.validate()
 
 
 @pytest.mark.parametrize("field,value,match", [

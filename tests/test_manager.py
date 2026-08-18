@@ -4,6 +4,8 @@ from pathlib import Path
 import struct
 from unittest.mock import Mock
 
+import pytest
+
 from allin1.config import Config
 from allin1.manager import ModManager
 
@@ -50,7 +52,7 @@ def test_status_reports_complete_legacy_install(tmp_path):
     assert status.openrpf_installed is True
     assert status.rpf_loader_status == "Installed (file validated)"
     assert status.installed_version == "0.2.0"
-    assert status.manager_version == "0.4.7"
+    assert status.manager_version == "0.4.8"
 
 
 def test_status_reports_invalid_manual_path(tmp_path):
@@ -128,3 +130,40 @@ def test_load_config_precedence_and_auto_detection_none(tmp_path, monkeypatch):
     monkeypatch.setattr("allin1.manager.detect_gta_path", lambda: None)
     assert manager.resolve_path(Config.default()) is None
     assert manager.status(Config.default()).gta_path is None
+
+
+def test_resolve_paths_keeps_legacy_and_enhanced_installations_independent(
+    tmp_path, monkeypatch,
+):
+    legacy = tmp_path / "legacy"
+    enhanced = tmp_path / "enhanced"
+    legacy.mkdir()
+    enhanced.mkdir()
+    (legacy / "GTA5.exe").touch()
+    (enhanced / "GTA5_Enhanced.exe").touch()
+    config = Config.default()
+    config.general.gta_legacy_path = str(legacy)
+    config.general.gta_enhanced_path = str(enhanced)
+    config.general.target_edition = "legacy"
+    manager = _manager(tmp_path)
+    monkeypatch.setattr("allin1.manager.detect_gta_path", lambda: None)
+
+    assert manager.resolve_paths(config) == {
+        "legacy": legacy,
+        "enhanced": enhanced,
+    }
+    assert manager.resolve_path(config) == legacy
+    assert manager.resolve_mod_path(config, ("enhanced",)) == enhanced
+
+
+def test_resolve_mod_path_reports_missing_compatible_edition(tmp_path, monkeypatch):
+    enhanced = tmp_path / "enhanced"
+    enhanced.mkdir()
+    (enhanced / "GTA5_Enhanced.exe").touch()
+    config = Config.default()
+    config.general.gta_enhanced_path = str(enhanced)
+    manager = _manager(tmp_path)
+    monkeypatch.setattr("allin1.manager.detect_gta_path", lambda: None)
+
+    with pytest.raises(ValueError, match="No configured Legacy"):
+        manager.resolve_mod_path(config, ("legacy",))

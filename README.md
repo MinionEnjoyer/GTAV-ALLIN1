@@ -2,9 +2,9 @@
   <img src="src/allin1/assets/ALLIN1.png" alt="GTA V ALLIN1" width="120" height="120" />
 </p>
 
-# GTA V ALLIN1
+# ALLIN1 Launcher — GTA V Story Mode
 
-A Windows mod manager and Story Mode expansion for bringing GTA Online vehicles, weapons, and
+A Windows mod tool and Story Mode expansion for bringing GTA Online vehicles, weapons, and
 supporting systems into Grand Theft Auto V single-player. ALLIN1 combines a desktop control center,
 an in-game storefront called **GBAY**, persistent garages, DLC-aware traffic, character editing,
 and a general-purpose local mod-package manager in one project.
@@ -13,12 +13,12 @@ ALLIN1 supports both GTA V Legacy and GTA V Enhanced. It is designed exclusively
 Mode**; the installer configures the game to launch without BattlEye and should never be used in
 GTA Online.
 
-> **Current public release:** **0.4.7**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
+> **Current public release:** **0.4.8**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
 > highlights and hardening work included in this build.
 
 ## Support
 
-If GTA V ALLIN1 is useful to you, project support is available through
+If the ALLIN1 Launcher and SDK are useful to you, project support is available through
 [Buy Me a Coffee](https://buymeacoffee.com/minionenjoyer).
 
 ## Features
@@ -57,7 +57,30 @@ If GTA V ALLIN1 is useful to you, project support is available through
   options, install or repair the mod, run health checks, export redacted diagnostics, manage
   profiles, and launch GTA V.
 - **Local mod packages** — install, update, enable, disable, and uninstall user-supplied ASI,
-  ScriptHookVDotNet, RPF, and config/data packages through validated `mod.toml` manifests.
+  ScriptHookVDotNet, RPF, and config/data packages through validated `mod.toml` manifests,
+  including transactional `dlclist.xml` registration for explicitly owned add-on packs.
+- **Add-on Content SDK** — inspect linked weapon, ammo, animation, native-text, HUD, runtime,
+  storefront, vehicle, handling, variation, tuning, streamed-asset, archive, and rollback fields
+  in the desktop viewer; validate an `addon.json` integration and export its ordered install plan
+  before any archive is written. The seven colored smoke grenades are included as the first
+  complete example. Its live package index also combines remembered external SDK drafts, local
+  catalog manifests, and receipt-backed packages from every configured Legacy and Enhanced
+  installation without copying third-party payloads.
+- **Package and native asset viewer** — safely browse loose DLC folders and OIV/ZIP/RAR/7z
+  packages, preview images and authored text, parse GTA binary headers, convert supported RAGE
+  resources to structured CodeWalker XML, and render YTD texture contact sheets without installing
+  or executing content.
+- **Interactive RPF explorer** — search root and nested RPFs as one hierarchy, inspect logical and
+  stored sizes, offsets, compression/encryption state, resource versions, page flags, and hashes;
+  extract exact root or nested entries, export JSON/CSV indexes, and create checksummed replacement
+  plans without changing an archive. Mixed test-mod folders can be batch-audited into a report that
+  distinguishes DLL scripts, ASIs, ReShade companions, replacements, DLC archives, and incomplete
+  downloads.
+- **Package intelligence workbench** — preview actual OIV operation recipes and convert only fully
+  translatable packages into validated, rollback-owned `mod.toml` packages; reconcile stock,
+  external, and ALLIN1-owned DLC folders against `dlclist.xml`; and compile vehicle, handling,
+  variation, tuning, streaming, label, and registration metadata into JSON, CSV, XLSX, and
+  unresolved-reference reports.
 - **Recovery-minded operation** — backs up replaced files, preserves garage recovery copies,
   detects unclean sessions, offers a safe mode, and writes structured client diagnostics.
 
@@ -100,7 +123,7 @@ ScriptHookV and ScriptHookVDotNet Enhanced must be installed in the directory co
 2. Install ScriptHookV and ScriptHookVDotNet Enhanced into the GTA V root directory.
 3. Run `install.bat` once. It creates the local Python environment and prepares the manager.
 4. Open `manager.bat`.
-5. Confirm the detected GTA V directory, choose the desired settings, and select
+5. Confirm the Legacy and/or Enhanced GTA V directories, choose the active target, and select
    **Install / Repair**.
 6. Select **Launch GTA V** and remain in Story Mode. Press **F9** to open GBAY.
 
@@ -116,6 +139,8 @@ The launcher is the main configuration surface. Its pages cover:
 - installation status, dependency and RPF-loader health, updates, and rollback-aware repair;
 - per-character skills, money, garages, inventories, outfits, and presets;
 - local third-party mod packages with dependency, conflict, edition, and checksum validation;
+- a read-only add-on SDK linker/viewer with field explanations, built-in examples, imported
+  drafts, and installed-package reconstruction;
 - redacted support bundles and runtime log inspection.
 
 Named profiles can preserve different combinations of traffic, GBAY, input, and accessibility
@@ -152,7 +177,8 @@ models, including authored access geometry and verified exceptions for inaccessi
 
 Important groups include:
 
-- `[general]` — game path, backups, and RPF preview artwork;
+- `[general]` — independent Legacy and Enhanced game paths, active target, backups, and RPF
+  preview artwork;
 - `[traffic]` — spawn distances, population limits, replacement behavior, and adaptive FPS guard;
 - `[vehicles]` — global enablement plus class and model exclusions;
 - `[script]` — GBAY, night vision and seat-selector keys, UI scale, reduced motion, colorblind mode,
@@ -165,20 +191,32 @@ Vehicle, weapon, and gear pricing is maintained in `prices_vehicles.toml`,
 
 ## Optional mod packages
 
-The manager's **Mods** page accepts local packages containing a `mod.toml` manifest. Supported
-package types include ASI plugins, ScriptHookVDotNet scripts, RPF content, and config/data files.
+The launcher's **Packages** workspace accepts local packages containing a `mod.toml` manifest.
+Supported package types include ASI plugins, ScriptHookVDotNet scripts, whole RPF content,
+entry-level RPF patches, mixed packages, and config/data files. Every package is tagged as
+Legacy, Enhanced, both, or unresolved; installs are routed only to a compatible configured game
+directory. Legacy and Enhanced can be configured and managed side by side.
 The manager validates edition support, loader requirements, conflicts, destination paths, and
 optional SHA-256 hashes before installation. Replaced files are backed up and restored when the
-package is removed.
+package is removed. Entry-level RPF ownership and rollback preserve unrelated archive content.
 
 The format and inert examples are documented in [mods/README.md](mods/README.md). ALLIN1 does not
 ship or download arbitrary third-party mods through this interface.
+
+## Standalone ALLIN1 SDK
+
+Developer tooling now lives in the independent sibling
+[ALLIN1-SDK](../ALLIN1-SDK/README.md) repository. The launcher opens that application as a
+separate process; the SDK has its own `allin1_sdk` namespace, version, tests, CLI/GUI entry
+points, user state, CodeWalker submodule, and RPF helper build. Package importing and lifecycle
+management remain in the launcher, while integration linking, native asset inspection, RPF
+exploration, OIV auditing, DLC inventory, and vehicle-data compilation belong to the SDK.
 
 ## Tech stack
 
 - **Desktop manager:** Python 3.10+, Tk/ttk, Click, Pillow, and TOML configuration.
 - **Game client:** C# on .NET Framework 4.8 with ScriptHookVDotNet Enhanced and LemonUI.
-- **RPF and YTD tooling:** .NET, CodeWalker resource libraries, Pillow BC3 encoding, and the
+- **RPF and YTD tooling:** .NET, a pinned Enhanced-aware CodeWalker authoring core, Pillow BC3 encoding, and the
   repository's `RpfPatcher` utility.
 - **Testing:** pytest for manager, installer, generator, and repository contracts; dotnet builds
   for the in-game client and native tool integration checks on Windows.
@@ -186,12 +224,13 @@ ship or download arbitrary third-party mods through this interface.
 ## Repository layout
 
 ```text
-src/allin1                 Python manager, installer, diagnostics, and package integration
+src/allin1                 Python launcher, installer, diagnostics, and package management
 script/src                 C# Story Mode client, GBAY, garages, traffic, and character systems
 script/dist                Prebuilt client binaries and runtime artwork
 data                       Vehicle and weapon source catalogs
 catalog                    Generated and curated DLC content metadata
 mods                       Local mod-package format and examples
+sdk                        Compatibility mirror for the extracted standalone SDK contract
 tools/RpfPatcher           RPF, YTD, Gen9 conversion, and verification utility
 tests                      Python, build, packaging, and repository contract tests
 documentation.md           Complete configuration, architecture, and troubleshooting reference

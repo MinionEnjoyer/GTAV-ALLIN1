@@ -47,6 +47,10 @@ namespace ALLIN1
         internal bool QuantityPriced;
         internal bool PurchaseAvailable;
         internal bool Owned;
+        internal bool IsSmoke;
+        internal string SmokeColor;
+        internal int SmokeQuantity;
+        internal bool SmokeLoaded;
     }
 
     internal partial class GbayBrowser
@@ -211,8 +215,8 @@ namespace ALLIN1
 
         private static readonly WeaponCategory[] WEAPON_CATEGORIES =
         {
-            new WeaponCategory("All",             WeaponList.All),
-            new WeaponCategory("Favorites",       WeaponList.All, true),
+            new WeaponCategory("All",             BuildSmokeWeaponCatalog(WeaponList.All)),
+            new WeaponCategory("Favorites",       BuildSmokeWeaponCatalog(WeaponList.All), true),
             new WeaponCategory("Pistols",         WeaponList.Pistols),
             new WeaponCategory("SMGs",            WeaponList.Smgs),
             new WeaponCategory("Shotguns",        WeaponList.Shotguns),
@@ -221,9 +225,21 @@ namespace ALLIN1
             new WeaponCategory("Sniper Rifles",   WeaponList.Snipers),
             new WeaponCategory("Heavy Weapons",   WeaponList.Heavy),
             new WeaponCategory("Melee",           WeaponList.Melee),
-            new WeaponCategory("Throwables",      WeaponList.Throwables),
+            new WeaponCategory("Throwables",      BuildSmokeWeaponCatalog(WeaponList.Throwables)),
             new WeaponCategory("Miscellaneous",   WeaponList.Misc),
         };
+
+        private static string[] BuildSmokeWeaponCatalog(string[] source)
+        {
+            var result = new List<string>();
+            foreach (string weapon in source)
+                if (!string.Equals(weapon,
+                        SmokeGrenadeCatalog.NativeWeaponName,
+                        StringComparison.OrdinalIgnoreCase))
+                    result.Add(weapon);
+            result.AddRange(SmokeGrenadeCatalog.ProductIds);
+            return result.ToArray();
+        }
 
         // ------------------------------------------------------------------ //
         //  State                                                              //
@@ -2314,8 +2330,11 @@ namespace ALLIN1
 
             GbayRenderer.DrawRect(cx, topAreaCY, cardW - 0.004f, topAreaH - 0.004f,
                 Color.FromArgb(255, 30, 35, 32));
+            string previewWeapon = card.IsSmoke
+                ? SmokeGrenadeCatalog.NativeWeaponName : card.WeaponName;
             bool previewDrawn = GbayRenderer.DrawWeaponPreviewTexture(
-                card.WeaponName, cx, topAreaCY, cardW - 0.004f, topAreaH - 0.004f);
+                previewWeapon, cx, topAreaCY,
+                cardW - 0.004f, topAreaH - 0.004f);
             if (!previewDrawn)
             {
                 Color topColor = GetWeaponCategoryColor(card.Category, hovered || selected);
@@ -2333,6 +2352,17 @@ namespace ALLIN1
                     left + cardW - 0.049f, top + 0.021f, 0.082f,
                     GbayRenderer.HeaderBg, GbayRenderer.TextWhite);
 
+            if (card.IsSmoke && SmokeGrenadeCatalog.TryGetByColor(
+                    card.SmokeColor, out SmokeGrenadeProduct smokeProduct))
+            {
+                GbayRenderer.DrawStatusPill(
+                    card.SmokeColor.ToUpperInvariant(),
+                    left + 0.052f, top + 0.021f, 0.088f,
+                    smokeProduct.UiColor,
+                    card.SmokeColor == "white"
+                        ? GbayRenderer.TextDark : GbayRenderer.TextWhite);
+            }
+
             // Text area below
             float textTop = top + topAreaH + 0.005f;
             float textLeft = left + 0.008f;
@@ -2343,7 +2373,25 @@ namespace ALLIN1
                 GbayRenderer.FONT_CHALET);
 
             // Price, OWNED status, or ammo info
-            if (card.Owned)
+            if (card.IsSmoke)
+            {
+                string stockText = card.SmokeQuantity == 1
+                    ? "1 grenade in stock"
+                    : $"{card.SmokeQuantity:N0} grenades in stock";
+                GbayRenderer.DrawTextFit(stockText, textLeft,
+                    textTop + 0.054f, 0.26f, 0.20f,
+                    cardW - 0.125f, GbayRenderer.TextDim,
+                    GbayRenderer.FONT_CONDENSED);
+                string priceText = card.Price <= 0
+                    ? $"{card.PurchaseQuantity}-PACK - FREE"
+                    : $"{card.PurchaseQuantity}-PACK  ${card.Price:N0}";
+                GbayRenderer.DrawStatusPill(priceText,
+                    left + cardW - 0.066f, textTop + 0.091f, 0.120f,
+                    GbayRenderer.AccentSoft,
+                    card.Price <= 0 ? GbayRenderer.TextPriceFree
+                        : GbayRenderer.TextPrice);
+            }
+            else if (card.Owned)
             {
                 if (!_weaponWorkbenchMode)
                 {
@@ -2574,7 +2622,13 @@ namespace ALLIN1
                 {
                     WeaponCard card = _weaponFiltered[idx];
 
-                    if (card.Owned)
+                    if (card.IsSmoke)
+                    {
+                        GbayRenderer.PlaySelect();
+                        _shop.ExecuteGiveSmokeGrenades(card.WeaponName);
+                        RebuildWeaponFilteredList();
+                    }
+                    else if (card.Owned)
                     {
                         if (_weaponWorkbenchMode)
                         {
@@ -2618,26 +2672,36 @@ namespace ALLIN1
 
             foreach (string weaponName in weapons)
             {
-                string displayName = WeaponList.DisplayNames.ContainsKey(weaponName)
-                    ? WeaponList.DisplayNames[weaponName] : weaponName;
+                bool isSmoke = SmokeGrenadeCatalog.TryGetProduct(
+                    weaponName, out SmokeGrenadeProduct smokeProduct);
+                if (_weaponWorkbenchMode && isSmoke) continue;
+                string displayName = isSmoke ? smokeProduct.DisplayName
+                    : WeaponList.DisplayNames.ContainsKey(weaponName)
+                        ? WeaponList.DisplayNames[weaponName] : weaponName;
 
-                int price = 0;
-                if (WeaponList.Prices.ContainsKey(weaponName))
+                int price = isSmoke ? smokeProduct.UnitPrice : 0;
+                if (!isSmoke && WeaponList.Prices.ContainsKey(weaponName))
                     price = WeaponList.Prices[weaponName];
 
-                string category = WeaponList.CategoryNames.ContainsKey(weaponName)
-                    ? WeaponList.CategoryNames[weaponName] : "";
+                string category = isSmoke ? "Throwables"
+                    : WeaponList.CategoryNames.ContainsKey(weaponName)
+                        ? WeaponList.CategoryNames[weaponName] : "";
                 WeaponPurchaseQuote quote = _shop.GetWeaponPurchaseQuote(
                     weaponName, price);
 
                 // Check if player already owns this weapon
                 Hash weaponHash = (Hash)CharacterInventory.GetWeaponHash(weaponName);
-                bool owned = Function.Call<bool>(
-                    (Hash)0x8DECB02F88F428BC, player, weaponHash, false) ||
-                    CharacterInventory.IsOwned(weaponName, false);  // HAS_PED_GOT_WEAPON
+                int smokeQuantity = isSmoke
+                    ? CharacterInventory.GetSmokeQuantity(
+                        smokeProduct.ColorName) : 0;
+                bool owned = isSmoke ? smokeQuantity > 0
+                    : Function.Call<bool>(
+                        (Hash)0x8DECB02F88F428BC,
+                        player, weaponHash, false) ||
+                        CharacterInventory.IsOwned(weaponName, false);
 
                 if ((_weaponWorkbenchMode || _weaponOwnershipFilter == 1) && !owned) continue;
-                if (_weaponOwnershipFilter == 2 && owned) continue;
+                if (_weaponOwnershipFilter == 2 && owned && !isSmoke) continue;
                 if (activeCategory.FavoritesOnly &&
                     !GbayPreferences.IsWeaponFavorite(weaponName)) continue;
                 if (_weaponSearch.Length > 0 &&
@@ -2656,6 +2720,10 @@ namespace ALLIN1
                     QuantityPriced = quote.QuantityPriced,
                     PurchaseAvailable = quote.Status == WeaponPurchaseStatus.Available,
                     Owned = owned,
+                    IsSmoke = isSmoke,
+                    SmokeColor = isSmoke ? smokeProduct.ColorName : null,
+                    SmokeQuantity = smokeQuantity,
+                    SmokeLoaded = false,
                 });
             }
 

@@ -47,6 +47,12 @@ LEMONUI_FILENAME = "LemonUI.SHVDN3.dll"
 GROUNDING_CATALOG_FILENAME = "ALLIN1_vehicle_grounding.json"
 SCRIPTS_DIR = "scripts"
 ALLIN1_DATA_DIR = "ALLIN1"  # Legacy data folder — cleaned up on install
+COLORED_SMOKE_PACK_ID = "allin1_smoke"
+COLORED_SMOKE_QUARANTINE_REASON = (
+    "Disabled after repeatable Story Mode startup hangs on GTA V Enhanced. "
+    "The script-only colored smoke fallback remains available while the DLC "
+    "metadata is rebuilt and validated against the current game data loader."
+)
 
 # Files from previous ALLIN1 versions to clean up
 LEGACY_FILES = ("ALLIN1.asi", "ALLIN1.dll", "ALLIN1-Launcher.exe")
@@ -128,12 +134,23 @@ class InstallResult:
     openrpf_found: bool = False
     rpf_previews_deployed: bool = False
     standalone_maps_deployed: bool = False
+    smoke_tuning_installed: bool = False
+    colored_smoke_weapons_installed: bool = False
     battleye_status: str = ""
     warnings: list[str] = field(default_factory=list)
 
 
 def resolve_gta_path(config: Config) -> Path:
     """Resolve the GTA V path from config or auto-detection."""
+    target = config.general.target_edition.strip().lower()
+    if target in {"legacy", "enhanced"}:
+        configured = (
+            config.general.gta_legacy_path if target == "legacy"
+            else config.general.gta_enhanced_path
+        )
+        if configured.strip().lower() != "auto":
+            log.info("Using configured GTA V %s path: %s", target, configured)
+            return validate_gta_path(configured)
     if config.general.gta_path != "auto":
         log.info("Using configured GTA V path: %s", config.general.gta_path)
         return validate_gta_path(config.general.gta_path)
@@ -197,6 +214,12 @@ def install(
     _remove_preview_pack(gta_path)
     _remove_map_pack(gta_path)
     _unpatch_dlclist_rpf(gta_path)
+    if enhanced:
+        # This exclusion is independent of the smoke feature toggle: Repair
+        # must also clean up a failed pack left by an older configuration.
+        _remove_merged_smoke_canary(gta_path)
+        _remove_colored_smoke_weapons(gta_path)
+        _write_rpf_quarantine(gta_path)
     _report_progress(progress, 43, "DLC registration refreshed")
 
     # Build the standalone compatibility pack from this GTA installation.
@@ -230,6 +253,31 @@ def install(
     else:
         log.info("RPF previews disabled; using crash-safe GBAY placeholders")
 
+    if config.script.enhanced_smoke_effects:
+        stock_update = gta_path / "update" / "update.rpf"
+        archive_is_real = stock_update.is_file() and stock_update.stat().st_size > 1024
+        if result.openrpf_found and archive_is_real:
+            result.smoke_tuning_installed = _install_smoke_tuning(
+                gta_path, result,
+            )
+            # Do not let Install / Repair silently reintroduce a DLC pack that
+            # has failed the only validation that matters: loading Story Mode.
+            # Keep its lower-risk archive tuning independent from the quarantined
+            # custom weapon definitions.
+            result.warnings.append(
+                "Independent colored-smoke weapon DLC is quarantined after "
+                "repeatable Story Mode startup hangs. Colored purchases remain "
+                "staged but unavailable until a corrected pack passes its canary."
+            )
+        elif result.openrpf_found:
+            log.debug("Skipping smoke RPF tuning for placeholder update.rpf")
+        else:
+            result.warnings.append(
+                "Enhanced smoke requested but no compatible OpenRPF/OpenIV "
+                "loader was detected; scripted CASEVAC smoke remains available, "
+                "but purchasable colored weapons require the custom weapon pack."
+            )
+
     # --- Write -nobattleye to commandline.txt (belt-and-suspenders) ---
     result.battleye_status = asi_loader.ensure_nobattleye(gta_path, enhanced)
     _report_progress(progress, 96, "Finalizing Story Mode settings")
@@ -244,6 +292,10 @@ def uninstall(config: Config) -> list[Path]:
     log.info("=== Starting uninstall ===")
     gta_path = resolve_gta_path(config)
     removed: list[Path] = []
+
+    _remove_smoke_tuning(gta_path)
+    _remove_merged_smoke_canary(gta_path)
+    _remove_colored_smoke_weapons(gta_path)
 
     # Remove script DLL, config, and log from scripts/
     scripts_dir = gta_path / SCRIPTS_DIR
@@ -266,6 +318,9 @@ def uninstall(config: Config) -> list[Path]:
                    *RETIRED_DEVELOPER_ARTIFACTS,
                    "ALLIN1_garages.json.bak", "ALLIN1_gbay_preferences.json",
                    "ALLIN1_gbay_preferences.json.bak", "ALLIN1_session.lock",
+                   "ALLIN1_rpf_quarantine.json",
+                   "ALLIN1_rpf_quarantine.json.bak",
+                   "ALLIN1_colored_smoke_merged_canary.json",
                    "ALLIN1_garage.quarantine.json", "ALLIN1_preview_pending.toml",
                    VERSION_FILE, "ALLIN1.ini"):
         fpath = scripts_dir / fname
@@ -1043,6 +1098,161 @@ def _unpatch_dlclist_rpf(gta_path: Path) -> None:
                         (proc.stderr or "")[:300])
     except Exception as exc:
         log.warning("Could not unpatch dlclist.xml: %s", exc)
+
+
+def _install_smoke_tuning(gta_path: Path, result: InstallResult) -> bool:
+    """Patch only ALLIN1's dedicated smoke-grenade records in update.rpf."""
+    rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
+    if not rpf_patcher.exists():
+        result.warnings.append(
+            "RpfPatcher.exe missing; enhanced smoke archive tuning was skipped."
+        )
+        return False
+    try:
+        proc = run_hidden(
+            [str(rpf_patcher), "install-smoke-tuning", str(gta_path)],
+            capture_output=True, text=True, timeout=600,
+        )
+        if proc.stdout:
+            for line in proc.stdout.strip().splitlines():
+                log.info("RpfPatcher smoke: %s", line)
+        if proc.returncode == 0:
+            log.info("Installed and verified custom smoke archive tuning")
+            return True
+        detail = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
+        result.warnings.append(f"Enhanced smoke archive tuning failed: {detail}")
+        return False
+    except Exception as exc:
+        log.error("Could not install smoke archive tuning: %s", exc, exc_info=True)
+        result.warnings.append(f"Could not install smoke archive tuning: {exc}")
+        return False
+
+
+def _remove_smoke_tuning(gta_path: Path) -> None:
+    """Restore only ALLIN1's two original smoke entries when installed."""
+    marker = gta_path / "scripts" / "ALLIN1_smoke_tuning.json"
+    if not marker.exists():
+        return
+    rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
+    if not rpf_patcher.exists():
+        log.warning("RpfPatcher.exe missing — cannot restore smoke tuning entries")
+        return
+    try:
+        proc = run_hidden(
+            [str(rpf_patcher), "remove-smoke-tuning", str(gta_path)],
+            capture_output=True, text=True, timeout=600,
+        )
+        if proc.returncode == 0:
+            log.info("Removed custom smoke archive tuning")
+        else:
+            log.warning("RpfPatcher smoke removal failed (rc=%d): %s",
+                        proc.returncode, (proc.stderr or "")[:300])
+    except Exception as exc:
+        log.warning("Could not remove smoke archive tuning: %s", exc)
+
+
+def _install_colored_smoke_weapons(
+    gta_path: Path, result: InstallResult,
+) -> bool:
+    """Generate and install seven current-build smoke weapon definitions."""
+    rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
+    if not rpf_patcher.exists():
+        result.warnings.append(
+            "RpfPatcher.exe missing; independent colored smoke weapons were skipped."
+        )
+        return False
+    try:
+        proc = run_hidden(
+            [str(rpf_patcher), "install-colored-smoke-weapons", str(gta_path)],
+            capture_output=True, text=True, timeout=600,
+        )
+        if proc.stdout:
+            for line in proc.stdout.strip().splitlines():
+                log.info("RpfPatcher colored smoke: %s", line)
+        if proc.returncode == 0:
+            log.info("Installed and verified independent colored smoke weapons")
+            return True
+        detail = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
+        result.warnings.append(f"Colored smoke weapon installation failed: {detail}")
+        return False
+    except Exception as exc:
+        log.error("Could not install colored smoke weapons: %s", exc, exc_info=True)
+        result.warnings.append(f"Could not install colored smoke weapons: {exc}")
+        return False
+
+
+def _remove_colored_smoke_weapons(gta_path: Path) -> None:
+    """Remove only the ALLIN1 colored-smoke DLC and registration."""
+    marker = gta_path / "scripts" / "ALLIN1_colored_smoke_weapons.json"
+    archive = (
+        gta_path / "mods" / "update" / "x64" / "dlcpacks" /
+        COLORED_SMOKE_PACK_ID / "dlc.rpf"
+    )
+    if not marker.exists() and not archive.exists():
+        return
+    rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
+    if not rpf_patcher.exists():
+        log.warning("RpfPatcher.exe missing — cannot remove colored smoke DLC")
+        return
+    try:
+        proc = run_hidden(
+            [str(rpf_patcher), "remove-colored-smoke-weapons", str(gta_path)],
+            capture_output=True, text=True, timeout=600,
+        )
+        if proc.returncode == 0:
+            log.info("Removed independent colored smoke weapons")
+        else:
+            log.warning("Colored smoke removal failed (rc=%d): %s",
+                        proc.returncode, (proc.stderr or "")[:300])
+    except Exception as exc:
+        log.warning("Could not remove colored smoke weapons: %s", exc)
+
+
+def _remove_merged_smoke_canary(gta_path: Path) -> None:
+    """Restore base weapons.meta when the one-color merge canary is present."""
+    marker = (
+        gta_path / "scripts" / "ALLIN1_colored_smoke_merged_canary.json"
+    )
+    if not marker.is_file():
+        return
+    rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
+    if not rpf_patcher.exists():
+        log.warning(
+            "RpfPatcher.exe missing — cannot restore merged smoke canary"
+        )
+        return
+    try:
+        proc = run_hidden(
+            [str(rpf_patcher), "remove-merged-smoke-canary", str(gta_path)],
+            capture_output=True, text=True, timeout=600,
+        )
+        if proc.returncode == 0:
+            log.info("Restored base weapons.meta after merged smoke canary")
+        else:
+            log.warning(
+                "Merged smoke canary removal failed (rc=%d): %s",
+                proc.returncode, (proc.stderr or "")[:300],
+            )
+    except Exception as exc:
+        log.warning("Could not remove merged smoke canary: %s", exc)
+
+
+def _write_rpf_quarantine(gta_path: Path) -> None:
+    """Persist boot-tested RPF exclusions for diagnostics and pre-launch checks."""
+    scripts = gta_path / SCRIPTS_DIR
+    scripts.mkdir(parents=True, exist_ok=True)
+    _write_json_atomic(
+        {
+            "schema": 1,
+            "packs": {
+                COLORED_SMOKE_PACK_ID: {
+                    "state": "quarantined",
+                    "reason": COLORED_SMOKE_QUARANTINE_REASON,
+                }
+            },
+        },
+        scripts / "ALLIN1_rpf_quarantine.json",
+    )
 
 
 def _remove_preview_ytds(gta_path: Path) -> None:

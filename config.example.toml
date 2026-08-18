@@ -4,6 +4,9 @@
 [general]
 # Path to your GTA V installation. Set to "auto" to detect automatically.
 gta_path = "auto"
+gta_legacy_path = "auto"
+gta_enhanced_path = "auto"
+target_edition = "auto"
 
 # Deprecated compatibility alias for script.gbay_free_mode.
 # The launcher keeps both values synchronized.
@@ -86,6 +89,10 @@ enhanced_police_ai = true
 # Mission characters, persistent peds, occupants, and the player are excluded.
 gta_iv_npc_physics = false
 gta_iv_npc_physics_debug = true
+# Port the audited BZ-gas smoke records into mods/update/update.rpf.
+# Player colour: white, red, orange, yellow, green, blue, or purple.
+# CASEVAC smoke always uses its dedicated orange signal.
+enhanced_smoke_effects = true
 
 # Controller shortcuts use modifier + action. Defaults are LB+R3 for GBAY,
 # LB+D-pad left for night vision, and LB+D-pad right for the seat selector.

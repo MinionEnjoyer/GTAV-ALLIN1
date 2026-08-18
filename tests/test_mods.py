@@ -7,6 +7,7 @@ import json
 import shutil
 import struct
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -41,6 +42,7 @@ def _package(
     editions: tuple[str, ...] = ("legacy", "enhanced"),
     checksum: bool = True,
     version: str = "1.2.3",
+    dlc_packs: tuple[str, ...] = (),
 ) -> Path:
     package = tmp_path / mod_id
     package.mkdir(parents=True)
@@ -52,6 +54,7 @@ def _package(
     checksum_line = (
         f'sha256 = "{hashlib.sha256(payload).hexdigest()}"\n' if checksum else ""
     )
+    dlc_pack_text = ", ".join(f'"{value}"' for value in dlc_packs)
     (package / "mod.toml").write_text(
         "schema_version = 1\n"
         f'id = "{mod_id}"\n'
@@ -62,6 +65,7 @@ def _package(
         f"editions = [{edition_text}]\n"
         f"dependencies = [{dependency_text}]\n"
         f"conflicts = [{conflict_text}]\n"
+        f"dlc_packs = [{dlc_pack_text}]\n"
         "[[files]]\n"
         'source = "payload.bin"\n'
         f'destination = "{destination}"\n'
@@ -69,6 +73,67 @@ def _package(
         encoding="utf-8",
     )
     return package
+
+
+def _rpf_entry_package(
+    tmp_path: Path,
+    mod_id: str,
+    *,
+    payload: bytes = b"replacement entry",
+    archive: str = "mods/x64h.rpf",
+    entry: str = "levels/gta5/test.bin",
+    mod_type: str = "rpf",
+) -> Path:
+    package = tmp_path / mod_id
+    package.mkdir(parents=True)
+    (package / "entry.bin").write_bytes(payload)
+    (package / "mod.toml").write_text(
+        "schema_version = 1\n"
+        f'id = "{mod_id}"\n'
+        f'name = "Synthetic {mod_id}"\n'
+        'version = "1.0.0"\n'
+        f'type = "{mod_type}"\n'
+        'editions = ["legacy", "enhanced"]\n'
+        'dependencies = ["openrpf"]\n'
+        "[[rpf_entries]]\n"
+        'source = "entry.bin"\n'
+        f'archive = "{archive}"\n'
+        f'entry = "{entry}"\n'
+        f'sha256 = "{hashlib.sha256(payload).hexdigest()}"\n',
+        encoding="utf-8",
+    )
+    return package
+
+
+def _fake_rpf_service(
+    service: ModIntegrationService,
+    monkeypatch,
+    entries: dict[tuple[str, str], bytes],
+) -> None:
+    monkeypatch.setattr(service, "_check_dependencies", lambda _manifest: None)
+
+    def key(archive: Path, entry: str) -> tuple[str, str]:
+        return (str(Path(archive).resolve()).casefold(), entry.casefold())
+
+    def extract(archive, entry, output, *, allow_missing=False):
+        payload = entries.get(key(Path(archive), str(entry)))
+        if payload is None:
+            if allow_missing:
+                return False
+            raise RuntimeError("synthetic entry missing")
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        Path(output).write_bytes(payload)
+        return True
+
+    def replace(archive, entry, payload):
+        entries[key(Path(archive), str(entry))] = Path(payload).read_bytes()
+
+    def delete(archive, entry):
+        entries.pop(key(Path(archive), str(entry)), None)
+
+    monkeypatch.setattr(service, "_extract_rpf_entry", extract)
+    monkeypatch.setattr(service, "_replace_rpf_entry", replace)
+    monkeypatch.setattr(service, "_delete_rpf_entry", delete)
 
 
 @pytest.mark.parametrize(
@@ -322,3 +387,332 @@ def test_enable_refuses_missing_or_colliding_managed_file(tmp_path: Path):
     target.write_bytes(b"collision")
     with pytest.raises(FileExistsError, match="destination exists"):
         service.set_enabled("toggle-test", True)
+
+
+def test_raw_archive_is_rejected_with_sdk_guidance(tmp_path: Path):
+    archive = tmp_path / "vehicle.rar"
+    archive.write_bytes(b"Rar!\x1a\x07\x01\x00")
+    with pytest.raises(ValueError, match="Add-on Content SDK"):
+        ModManifest.load(archive)
+
+
+@pytest.mark.parametrize(
+    ("mod_type", "dependencies", "dlc_packs", "destination", "message"),
+    [
+        ("script", (), ("vehicle_pack",), "scripts/Test.dll", "RPF or mixed"),
+        ("rpf", (), ("vehicle_pack",),
+         "mods/update/x64/dlcpacks/vehicle_pack/dlc.rpf", "depend on openrpf"),
+        ("rpf", ("openrpf",), ("BAD PACK",),
+         "mods/update/x64/dlcpacks/BAD PACK/dlc.rpf", "pack names"),
+        ("rpf", ("openrpf",), ("vehicle_pack",),
+         "mods/update/x64/dlcpacks/other/dlc.rpf", "must own exactly"),
+    ],
+)
+def test_dlc_pack_manifest_contract(
+    tmp_path: Path, mod_type: str, dependencies: tuple[str, ...],
+    dlc_packs: tuple[str, ...], destination: str, message: str,
+):
+    package = _package(
+        tmp_path, "managed-dlc", mod_type, destination,
+        dependencies=dependencies, dlc_packs=dlc_packs,
+    )
+    with pytest.raises(ValueError, match=message):
+        ModManifest.load(package)
+
+
+def test_managed_dlc_registration_follows_install_toggle_and_uninstall(
+    tmp_path: Path, monkeypatch,
+):
+    game = _game(tmp_path)
+    for loader in ("OpenRPF.asi", "xinput1_4.dll"):
+        _write_pe(game / loader)
+    package = _package(
+        tmp_path, "managed-vehicle", "rpf",
+        "mods/update/x64/dlcpacks/vehicle_pack/dlc.rpf",
+        dependencies=("openrpf",), dlc_packs=("vehicle_pack",),
+    )
+    service = ModIntegrationService(game)
+    registrations: list[tuple[str, bool]] = []
+    monkeypatch.setattr(
+        service, "_set_dlc_registration",
+        lambda pack, enabled: registrations.append((pack, enabled)) or True,
+    )
+
+    service.install(ModManifest.load(package))
+    receipt = json.loads(
+        (service.state_root / "managed-vehicle.json").read_text(encoding="utf-8")
+    )
+    assert receipt["dlc_packs"] == ["vehicle_pack"]
+    assert receipt["owned_dlc_packs"] == ["vehicle_pack"]
+    service.set_enabled("managed-vehicle", False)
+    service.set_enabled("managed-vehicle", True)
+    service.uninstall("managed-vehicle")
+    assert registrations == [
+        ("vehicle_pack", True),
+        ("vehicle_pack", False),
+        ("vehicle_pack", True),
+        ("vehicle_pack", False),
+    ]
+
+
+def test_failed_dlc_registration_rolls_back_payload(tmp_path: Path, monkeypatch):
+    game = _game(tmp_path)
+    for loader in ("OpenRPF.asi", "xinput1_4.dll"):
+        _write_pe(game / loader)
+    destination = "mods/update/x64/dlcpacks/failing_pack/dlc.rpf"
+    manifest = ModManifest.load(_package(
+        tmp_path, "failing-dlc", "rpf", destination,
+        dependencies=("openrpf",), dlc_packs=("failing_pack",),
+    ))
+    service = ModIntegrationService(game)
+
+    def fail_registration(_pack: str, enabled: bool) -> None:
+        if enabled:
+            raise RuntimeError("synthetic registration failure")
+
+    monkeypatch.setattr(service, "_set_dlc_registration", fail_registration)
+    with pytest.raises(RuntimeError, match="synthetic registration failure"):
+        service.install(manifest)
+    assert not (game / Path(destination)).exists()
+    assert service.list_installed() == []
+
+
+def test_preexisting_dlc_registration_is_not_claimed_or_removed(
+    tmp_path: Path, monkeypatch,
+):
+    game = _game(tmp_path)
+    for loader in ("OpenRPF.asi", "xinput1_4.dll"):
+        _write_pe(game / loader)
+    package = _package(
+        tmp_path, "shared-registration", "rpf",
+        "mods/update/x64/dlcpacks/shared_pack/dlc.rpf",
+        dependencies=("openrpf",), dlc_packs=("shared_pack",),
+    )
+    service = ModIntegrationService(game)
+    calls: list[tuple[str, bool]] = []
+
+    def preexisting(pack: str, enabled: bool) -> bool:
+        calls.append((pack, enabled))
+        return False
+
+    monkeypatch.setattr(service, "_set_dlc_registration", preexisting)
+    service.install(ModManifest.load(package))
+    receipt = json.loads(
+        (service.state_root / "shared-registration.json").read_text(encoding="utf-8")
+    )
+    assert receipt["owned_dlc_packs"] == []
+    service.set_enabled("shared-registration", False)
+    service.set_enabled("shared-registration", True)
+    service.uninstall("shared-registration")
+    assert calls == [("shared_pack", True)]
+
+
+def test_rpf_entry_install_toggle_and_uninstall_restore_exact_entry(
+    tmp_path: Path, monkeypatch,
+):
+    game = _game(tmp_path)
+    (game / "x64h.rpf").write_bytes(b"synthetic base archive")
+    service = ModIntegrationService(game)
+    archive = game / "mods" / "x64h.rpf"
+    entry = "levels/gta5/test.bin"
+    entries = {(str(archive.resolve()).casefold(), entry.casefold()): b"stock"}
+    _fake_rpf_service(service, monkeypatch, entries)
+    manifest = ModManifest.load(_rpf_entry_package(tmp_path, "entry-lifecycle"))
+
+    service.install(manifest)
+    assert archive.read_bytes() == b"synthetic base archive"
+    assert entries[(str(archive.resolve()).casefold(), entry.casefold())] == (
+        b"replacement entry"
+    )
+    receipt = json.loads(
+        (service.state_root / "entry-lifecycle.json").read_text(encoding="utf-8")
+    )
+    assert receipt["rpf_entries"][0]["backup"]
+    assert receipt["rpf_entries"][0]["sha256"] == hashlib.sha256(
+        b"replacement entry"
+    ).hexdigest()
+
+    service.set_enabled("entry-lifecycle", False)
+    assert entries[(str(archive.resolve()).casefold(), entry.casefold())] == b"stock"
+    service.set_enabled("entry-lifecycle", True)
+    assert entries[(str(archive.resolve()).casefold(), entry.casefold())] == (
+        b"replacement entry"
+    )
+    service.uninstall("entry-lifecycle")
+    assert entries[(str(archive.resolve()).casefold(), entry.casefold())] == b"stock"
+    assert not (service.state_root / ".payloads" / "entry-lifecycle").exists()
+
+
+def test_rpf_entry_uninstall_refuses_external_change(tmp_path: Path, monkeypatch):
+    game = _game(tmp_path)
+    (game / "x64h.rpf").write_bytes(b"synthetic base archive")
+    service = ModIntegrationService(game)
+    archive = game / "mods" / "x64h.rpf"
+    entry = "levels/gta5/test.bin"
+    key = (str(archive.resolve()).casefold(), entry.casefold())
+    entries = {key: b"stock"}
+    _fake_rpf_service(service, monkeypatch, entries)
+    service.install(ModManifest.load(_rpf_entry_package(tmp_path, "entry-protect")))
+    entries[key] = b"external edit"
+
+    with pytest.raises(RuntimeError, match="externally changed RPF entry"):
+        service.uninstall("entry-protect")
+    assert entries[key] == b"external edit"
+    assert (service.state_root / "entry-protect.json").is_file()
+
+
+def test_rpf_entry_collision_and_update_are_fail_closed(tmp_path: Path, monkeypatch):
+    game = _game(tmp_path)
+    (game / "x64h.rpf").write_bytes(b"synthetic base archive")
+    service = ModIntegrationService(game)
+    archive = game / "mods" / "x64h.rpf"
+    entry = "levels/gta5/test.bin"
+    entries = {(str(archive.resolve()).casefold(), entry.casefold()): b"stock"}
+    _fake_rpf_service(service, monkeypatch, entries)
+    first = ModManifest.load(_rpf_entry_package(tmp_path, "entry-first"))
+    second = ModManifest.load(_rpf_entry_package(tmp_path, "entry-second"))
+    service.install(first)
+
+    with pytest.raises(ValueError, match="RPF entry destination is owned"):
+        service.install(second)
+    with pytest.raises(ValueError, match="requires uninstalling"):
+        service.install(first)
+
+
+@pytest.mark.parametrize(
+    ("replacement", "message"),
+    [
+        ('archive = "mods/x64h.rpf"', "below the GTA V mods directory"),
+        ('entry = "levels/gta5/test.bin"', "traversal"),
+        ('dependencies = ["openrpf"]', "require the openrpf"),
+        ('type = "rpf"', "require an RPF or mixed"),
+    ],
+)
+def test_rpf_entry_manifest_contract(
+    tmp_path: Path, replacement: str, message: str,
+):
+    package = _rpf_entry_package(tmp_path, "entry-contract")
+    manifest_path = package / "mod.toml"
+    text = manifest_path.read_text(encoding="utf-8")
+    if replacement.startswith("archive"):
+        text = text.replace(replacement, 'archive = "x64h.rpf"')
+    elif replacement.startswith("entry"):
+        text = text.replace(replacement, 'entry = "../test.bin"')
+    elif replacement.startswith("dependencies"):
+        text = text.replace(replacement, "dependencies = []")
+    else:
+        text = text.replace(replacement, 'type = "script"')
+    manifest_path.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
+        ModManifest.load(package)
+
+
+def test_mixed_manifest_accepts_loose_and_rpf_entry_payloads(tmp_path: Path):
+    package = _rpf_entry_package(tmp_path, "mixed-entry", mod_type="mixed")
+    dll = package / "script.dll"
+    dll.write_bytes(b"script")
+    with (package / "mod.toml").open("a", encoding="utf-8") as manifest:
+        manifest.write(
+            "[[files]]\n"
+            'source = "script.dll"\n'
+            'destination = "scripts/Mixed/script.dll"\n'
+        )
+    loaded = ModManifest.load(package)
+    assert loaded.mod_type == "mixed"
+    assert len(loaded.files) == len(loaded.rpf_entries) == 1
+
+
+def test_rpf_archive_copy_and_helper_wrappers(tmp_path: Path, monkeypatch):
+    game = _game(tmp_path)
+    (game / "x64h.rpf").write_bytes(b"stock archive")
+    service = ModIntegrationService(game)
+
+    archive = service._ensure_mods_archive("mods/x64h.rpf")
+    assert archive.read_bytes() == b"stock archive"
+    assert service._ensure_mods_archive("mods/x64h.rpf") == archive
+    with pytest.raises(FileNotFoundError, match="Base archive"):
+        service._ensure_mods_archive("mods/missing.rpf")
+    invalid = game / "mods" / "directory.rpf"
+    invalid.mkdir(parents=True)
+    with pytest.raises(ValueError, match="not a file"):
+        service._ensure_mods_archive("mods/directory.rpf")
+    with pytest.raises(ValueError, match="below mods"):
+        service._ensure_mods_archive("x64h.rpf")
+
+    calls = []
+    assert service._rpf_patcher_path().name == "RpfPatcher.exe"
+    monkeypatch.setattr(service, "_rpf_patcher_path", lambda: Path("helper.exe"))
+    monkeypatch.setattr(
+        "allin1.mods.run_hidden",
+        lambda command, **kwargs: calls.append((command, kwargs))
+        or SimpleNamespace(returncode=0, stdout="ok", stderr=""),
+    )
+    result = service._run_rpf_command("inspect", archive)
+    assert result.returncode == 0
+    assert calls[0][0][:3] == [Path("helper.exe"), "inspect", game]
+
+
+def test_rpf_extract_replace_delete_error_contracts(tmp_path: Path, monkeypatch):
+    game = _game(tmp_path)
+    service = ModIntegrationService(game)
+    archive = game / "mods" / "x64h.rpf"
+    archive.parent.mkdir()
+    archive.write_bytes(b"archive")
+    output = tmp_path / "entry.bin"
+
+    def success_extract(command, *arguments):
+        assert command == "extract-entry"
+        Path(arguments[-1]).write_bytes(b"entry")
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(service, "_run_rpf_command", success_extract)
+    assert service._extract_rpf_entry(archive, "path/entry.bin", output)
+    assert output.read_bytes() == b"entry"
+
+    monkeypatch.setattr(
+        service, "_run_rpf_command",
+        lambda *_args: SimpleNamespace(
+            returncode=5, stdout="", stderr="ERROR: Entry not found",
+        ),
+    )
+    assert not service._extract_rpf_entry(
+        archive, "missing.bin", output, allow_missing=True,
+    )
+    with pytest.raises(RuntimeError, match="Could not extract"):
+        service._extract_rpf_entry(archive, "missing.bin", output)
+
+    monkeypatch.setattr(
+        service, "_run_rpf_command",
+        lambda *_args: SimpleNamespace(returncode=0, stdout="ok", stderr=""),
+    )
+    with pytest.raises(RuntimeError, match="without extracting"):
+        service._extract_rpf_entry(archive, "missing.bin", output)
+    service._replace_rpf_entry(archive, "path/entry.bin", tmp_path / "payload")
+    service._delete_rpf_entry(archive, "path/entry.bin")
+
+    monkeypatch.setattr(
+        service, "_run_rpf_command",
+        lambda *_args: SimpleNamespace(returncode=99, stdout="", stderr="failure"),
+    )
+    with pytest.raises(RuntimeError, match="Could not replace"):
+        service._replace_rpf_entry(archive, "path/entry.bin", tmp_path / "payload")
+    with pytest.raises(RuntimeError, match="Could not delete"):
+        service._delete_rpf_entry(archive, "path/entry.bin")
+
+
+def test_dlc_registration_helper_contract(tmp_path: Path, monkeypatch):
+    game = _game(tmp_path)
+    service = ModIntegrationService(game)
+    results = iter((
+        SimpleNamespace(returncode=0, stdout="registered", stderr=""),
+        SimpleNamespace(returncode=0, stdout="No changes needed", stderr=""),
+        SimpleNamespace(returncode=9, stdout="", stderr="registration failed"),
+    ))
+    monkeypatch.setattr("allin1.mods.run_hidden", lambda *_args, **_kwargs: next(results))
+
+    assert service._set_dlc_registration("valid_pack", True)
+    assert not service._set_dlc_registration("valid_pack", False)
+    with pytest.raises(RuntimeError, match="registration failed"):
+        service._set_dlc_registration("valid_pack", True)
+    with pytest.raises(ValueError, match="Invalid DLC pack"):
+        service._set_dlc_registration("bad pack", True)

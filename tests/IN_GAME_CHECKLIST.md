@@ -176,29 +176,76 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   pistol, shotgun, SMG, PDW, or carbine pickup nearby and confirm it can be
   selected; explosives and heavy weapons must be ignored.
 - Down a living officer near an established firing line. Confirm stabilization
-  routes the casualty and rescuer behind the line. If an eligible recon
-  helicopter has a free seat and the rear landing zone is clear, confirm it
-  lands, boards the casualty, departs, and produces the corresponding CASEVAC
-  events without affecting mission or cutscene helicopters.
+  routes the casualty and rescuer behind the line. Once the casualty reaches the
+  collection zone, confirm a new script-owned Police Maverick logs
+  `dedicated_casevac_spawned`, approaches the rear landing point, lands, and
+  boards the casualty. Its pilot must not attack the player and ambient recon
+  helicopters must remain on their existing assignments.
+- Stage two or more stabilized officers at the same collection zone. Confirm
+  one dedicated CASEVAC helicopter loads every casualty for which it has a free
+  passenger seat, logging `dedicated_casevac_batch_assigned` between boardings.
+  It must then log `dedicated_casevac_departing`, fly away from the engagement,
+  and log `dedicated_casevac_despawned` only after reaching the fly-out distance
+  (or the bounded cleanup timeout). It must not depart after only the first
+  passenger when another eligible casualty is waiting at that zone.
+- While a casualty waits at the collection zone, record their health and leave
+  them untouched long enough for any native bleed/recovery behavior to run.
+  Confirm the value remains pinned. Then shoot the casualty once and confirm
+  the lower value becomes the new pinned baseline; additional damage must still
+  be able to kill them. Correlate this with
+  `casualty_stabilized_health_held` and the three stabilization heartbeat
+  counters.
+- In GBAY's Throwables category, buy each five-pack of **White/Red/Orange/
+  Yellow/Green/Blue/Purple Smoke Grenades**. Confirm each card shows independent
+  stock and its color badge, with no **LOADED** state. Confirm each stocked
+  color appears as its own normally selectable
+  throwable with a `(Color) Smoke` weapon-wheel label, the BZ Gas canister
+  icon, its own ammo count, and a maximum stock of five.
+  Reload must retain its normal GTA function and ALLIN1 must not draw any
+  replacement panel over the native weapon wheel. Throw one and confirm exactly
+  one unit is removed from only that colour. After deployment, listen for and
+  confirm the settled canister's rolling sound does not persist. Reload
+  the game without saving and confirm the purchase/consumption is discarded;
+  repeat and make a Story Mode save to confirm it persists.
+- Trigger player, casualty-extraction, and withdrawal smoke. First run
+  `verify-smoke-tuning` and confirm both audited RPF entries and the marker pass.
+  Confirm the physical canister remains on the ground until its native fuse
+  finishes rather than being deleted by the fallback. No trail, primed cloud,
+  native plume, or scripted field may appear while the canister is airborne or
+  bouncing. After at least 300 ms of grounded stability, the custom canister
+  must produce one consistently coloured field at its final position for
+  roughly 40 seconds. It must not display residual white/green smoke, inherit
+  the color of another active grenade, shake the camera, knock entities down,
+  or add damage. Casualty extraction must
+  always use orange, while ordinary police withdrawal smoke remains white.
+  Confirm the log sequence
+  contains `enhanced_smoke_projectile_tracked`,
+  sampled `enhanced_smoke_projectile_motion`,
+  `enhanced_smoke_projectile_settled` with `is_in_air=false`,
+  `has_collided=true`, `stationary_ms>=300`, and low speed/displacement,
+  `enhanced_smoke_projectile_consumed`,
+  `enhanced_smoke_field_started`, `enhanced_smoke_loop_started` with
+  `single_color_backend=true` for non-white colors, and
+  `enhanced_smoke_supplemental_pulse` with a
+  positive `effects_emitted` count. The heartbeat must report both
+  `particle_asset_ready` and `supplemental_particle_asset_ready`; neither pulse
+  counter should grow after its field completes,
+  and `enhanced_smoke_field_completed`. Then throw native **Tear Gas** and
+  confirm it retains its original gas behavior without the ALLIN1 smoke field;
+  its `EXP_TAG_BZGAS` record and `EXP_VFXTAG_BZGAS` row must remain stock.
 - Trigger an ambient police hot-rope deployment near an established firing
   line. Confirm the aircraft does not hover over the player or continuously
   reset its flight task. It must approach a logged
   `aerial_safe_rappel_planned` rooftop when one is navigable, otherwise use the
   screened ground point behind the line; release only from a stable hover; and
-  log `aerial_safe_rappel_completed`. If a stabilized casualty is waiting,
-  confirm that same now-empty helicopter accepts CASEVAC before returning to
-  its recon orbit.
+  log `aerial_safe_rappel_completed`. Confirm it is not borrowed for CASEVAC;
+  the casualty should wait for the dedicated evacuation aircraft instead.
 - Repeat without an established firing line. Confirm an intercepted airborne
   exit logs `aerial_rappel_request_inferred_from_exit`, the officer is reseated,
   and throttled `aerial_safe_rappel_deferred` events report
   `no_established_firing_line`. If a recon leg cannot close on its waypoint for
   18 seconds, confirm one `aerial_recon_leg_stalled` event appears and orbit
   commands stop until unsafe-perimeter egress is needed.
-- During a fully assembled police rush, confirm only one helicopter switches
-  from recon into a CAS sortie and additional helicopters remain recon. End the
-  ground move, break visual contact, or sustain player fire; the CAS aircraft
-  must log `aerial_cas_departing`, suppress its guns, fly out, and never be
-  selected for CASEVAC during that sortie.
 - In the SMG Mk II customizer, equip each special-ammo magazine, refill it, move
   to another option, and reopen the workbench. The purchased ammo must remain
   at the component's capacity and a second refill must report fully stocked

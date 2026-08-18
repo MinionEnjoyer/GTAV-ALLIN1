@@ -24,6 +24,7 @@ config.toml
 allin1.log
 .gta_path
 .gh_token
+sdk/imported_packages.json
 .coverage
 htmlcov/
 

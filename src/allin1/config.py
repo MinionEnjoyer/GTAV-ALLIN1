@@ -18,6 +18,9 @@ else:
 @dataclass
 class GeneralConfig:
     gta_path: str = "auto"
+    gta_legacy_path: str = "auto"
+    gta_enhanced_path: str = "auto"
+    target_edition: str = "auto"
     free_mode: bool = False
     backup: bool = True
     enable_rpf_previews: bool = True
@@ -66,6 +69,7 @@ class ScriptConfig:
     enhanced_police_ai: bool = True
     gta_iv_npc_physics: bool = False
     gta_iv_npc_physics_debug: bool = True
+    enhanced_smoke_effects: bool = True
     controller_enabled: bool = True
     controller_open_gbay: str = "FrontendRdown"
     controller_open_gbay_modifier: str = "FrontendLb"
@@ -101,7 +105,11 @@ class Config:
         with open(path, "rb") as f:
             raw = tomllib.load(f)
 
-        general = GeneralConfig(**raw.get("general", {}))
+        general_raw = raw.get("general", {})
+        general_fields = {f.name for f in GeneralConfig.__dataclass_fields__.values()}
+        general = GeneralConfig(**{
+            key: value for key, value in general_raw.items() if key in general_fields
+        })
 
         # Filter unknown keys (e.g. removed 'density') for backwards compat.
         traffic_raw = raw.get("traffic", {})
@@ -143,6 +151,9 @@ class Config:
         text = (
             "[general]\n"
             f"gta_path = {quote(self.general.gta_path)}\n"
+            f"gta_legacy_path = {quote(self.general.gta_legacy_path)}\n"
+            f"gta_enhanced_path = {quote(self.general.gta_enhanced_path)}\n"
+            f"target_edition = {quote(self.general.target_edition)}\n"
             f"free_mode = {boolean(self.general.free_mode)}\n"
             f"backup = {boolean(self.general.backup)}\n"
             f"enable_rpf_previews = {boolean(self.general.enable_rpf_previews)}\n\n"
@@ -186,6 +197,8 @@ class Config:
             f"gta_iv_npc_physics = {boolean(self.script.gta_iv_npc_physics)}\n"
             "gta_iv_npc_physics_debug = "
             f"{boolean(self.script.gta_iv_npc_physics_debug)}\n"
+            "enhanced_smoke_effects = "
+            f"{boolean(self.script.enhanced_smoke_effects)}\n"
             f"controller_enabled = {boolean(self.script.controller_enabled)}\n"
             f"controller_open_gbay = {quote(self.script.controller_open_gbay)}\n"
             f"controller_open_gbay_modifier = {quote(self.script.controller_open_gbay_modifier)}\n"
@@ -212,6 +225,12 @@ class Config:
 
     def validate(self) -> None:
         """Reject invalid or conflicting launcher-controlled key bindings."""
+        target_edition = self.general.target_edition.strip().lower()
+        if target_edition not in {"auto", "legacy", "enhanced"}:
+            raise ValueError(
+                "general.target_edition must be 'auto', 'legacy', or 'enhanced'"
+            )
+        self.general.target_edition = target_edition
         keys = {
             "gbay_key": self.script.gbay_key,
             "night_vision_key": self.script.night_vision_key,

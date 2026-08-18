@@ -1,5 +1,7 @@
 import logging
 import queue
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -9,6 +11,9 @@ from allin1.gui import (
     ManagerWindow, QueueLogHandler, _operation_progress_text, _status_presentation,
 )
 from allin1.manager import InstallationStatus
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class Variable:
@@ -47,6 +52,7 @@ def _window():
     window.enhanced_police_ai = Variable(True)
     window.gta_iv_npc_physics = Variable(True)
     window.gta_iv_npc_physics_debug = Variable(False)
+    window.enhanced_smoke_effects = Variable(True)
     return window
 
 
@@ -76,6 +82,21 @@ def test_current_config_collects_all_launcher_fields():
     assert config.script.enhanced_police_ai is True
     assert config.script.gta_iv_npc_physics is True
     assert config.script.gta_iv_npc_physics_debug is False
+    assert config.script.enhanced_smoke_effects is True
+
+
+def test_current_config_collects_both_game_roots_and_active_target():
+    window = _window()
+    window.legacy_path = Variable(r"C:\Games\GTAV Legacy")
+    window.enhanced_path = Variable(r"D:\Games\GTAV Enhanced")
+    window.target_edition = Variable("Enhanced")
+
+    config = window._current_config()
+
+    assert config.general.gta_legacy_path == r"C:\Games\GTAV Legacy"
+    assert config.general.gta_enhanced_path == r"D:\Games\GTAV Enhanced"
+    assert config.general.target_edition == "enhanced"
+    assert config.general.gta_path == r"D:\Games\GTAV Enhanced"
 
 
 def test_queue_log_handler_sends_formatted_record():
@@ -84,6 +105,77 @@ def test_queue_log_handler_sends_formatted_record():
     handler.setFormatter(logging.Formatter("%(levelname)s:%(message)s"))
     handler.emit(logging.LogRecord("test", logging.WARNING, "", 0, "hello", (), None))
     assert messages.get_nowait() == ("log", "WARNING:hello")
+
+
+def test_mod_package_list_includes_builtin_smoke_sdk_example():
+    window = ManagerWindow.__new__(ManagerWindow)
+    window.mod_tree = Mock()
+    window.mod_tree.selection.return_value = ()
+    window.mod_tree.get_children.return_value = ()
+    window.mod_catalog = Mock()
+    window.mod_catalog.discover.return_value = []
+    window.sdk_catalog = Mock()
+    from allin1.addon_sdk import AddonSdkCatalog
+    smoke = AddonSdkCatalog(ROOT).discover()[0]
+    window.sdk_catalog.discover.return_value = [smoke]
+    window.mod_details = Mock()
+    window._mod_service = Mock(side_effect=ValueError("game not selected"))
+
+    window.refresh_mods()
+
+    assert window.sdk_manifests == {"sdk:allin1.colored_smokes": smoke}
+    window.mod_tree.insert.assert_called_once_with(
+        "", "end", iid="sdk:allin1.colored_smokes",
+        text="ALLIN1 Colored Smoke Grenades",
+        values=("SDK", "Enhanced", "1.0.0", "Built-in example"),
+    )
+
+
+def test_asset_viewer_opens_selected_package_root(tmp_path, monkeypatch):
+    window = ManagerWindow.__new__(ManagerWindow)
+    window.root = Mock()
+    window._selected_mod_id = Mock(return_value="package.test")
+    window.mod_manifests = {
+        "package.test": SimpleNamespace(package_root=tmp_path),
+    }
+    window.sdk_manifests = {}
+    viewer = Mock()
+    monkeypatch.setattr("allin1.gui.AssetViewerDialog", viewer)
+
+    window.open_asset_viewer()
+
+    viewer.assert_called_once_with(window.root, tmp_path)
+
+
+def test_launcher_opens_sdk_as_an_external_application(tmp_path, monkeypatch):
+    window = ManagerWindow.__new__(ManagerWindow)
+    window.manager = SimpleNamespace(project_root=tmp_path / "ALLIN1")
+    window._append_log = Mock()
+    executable = tmp_path / "bin" / "allin1-sdk-gui.exe"
+    executable.parent.mkdir()
+    executable.write_bytes(b"sdk")
+    launched = Mock()
+    monkeypatch.setattr("allin1.gui.shutil.which", lambda _name: str(executable))
+    monkeypatch.setattr("allin1.gui.subprocess.Popen", launched)
+
+    window.open_addon_sdk()
+
+    launched.assert_called_once()
+    assert launched.call_args.args[0] == [str(executable)]
+    window._append_log.assert_called_once()
+
+
+def test_launcher_explains_when_standalone_sdk_is_missing(tmp_path, monkeypatch):
+    window = ManagerWindow.__new__(ManagerWindow)
+    window.manager = SimpleNamespace(project_root=tmp_path / "ALLIN1")
+    shown = Mock()
+    monkeypatch.setattr("allin1.gui.shutil.which", lambda _name: None)
+    monkeypatch.setattr("allin1.gui.messagebox.showerror", shown)
+
+    window.open_addon_sdk()
+
+    shown.assert_called_once()
+    assert "standalone ALLIN1 SDK" in shown.call_args.args[1]
 
 
 def test_repair_progress_text_clamps_percentages():
@@ -111,6 +203,31 @@ def test_launch_guard_submits_only_one_storefront_request(tmp_path, monkeypatch)
 
     launcher.assert_called_once_with(tmp_path)
     window.root.after.assert_called_once_with(15000, window._reset_launch_guard)
+
+
+def test_launch_guard_blocks_quarantined_rpf_pack(tmp_path, monkeypatch):
+    window = _window()
+    window.busy = False
+    window.launch_pending = False
+    window.manager = Mock()
+    window.manager.resolve_path.return_value = tmp_path
+    window.launch_button = Mock()
+    window.root = Mock()
+    window._clear_dirty = Mock()
+    window._append_log = Mock()
+    pack = tmp_path / "mods/update/x64/dlcpacks/allin1_smoke"
+    pack.mkdir(parents=True)
+    (pack / "dlc.rpf").write_bytes(b"unsafe")
+    launcher = Mock()
+    shown = Mock()
+    monkeypatch.setattr("allin1.gui.launch_gta", launcher)
+    monkeypatch.setattr("allin1.gui.messagebox.showerror", shown)
+
+    window.launch_game()
+
+    launcher.assert_not_called()
+    shown.assert_called_once()
+    assert "RPF safety check blocked launch" in shown.call_args.args[1]
 
 
 def test_save_displays_validation_errors(monkeypatch):

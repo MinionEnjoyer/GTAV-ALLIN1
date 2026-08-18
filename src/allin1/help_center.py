@@ -1,0 +1,276 @@
+"""Searchable, task-oriented help for the ALLIN1 desktop application."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import tkinter as tk
+from tkinter import ttk
+
+
+@dataclass(frozen=True)
+class HelpTopic:
+    """One concise help-center article."""
+
+    key: str
+    category: str
+    title: str
+    summary: str
+    body: str
+    keywords: tuple[str, ...] = ()
+
+
+HELP_TOPICS: tuple[HelpTopic, ...] = (
+    HelpTopic(
+        "getting-started", "Start here", "Getting started",
+        "Connect a game installation, check readiness, and launch safely.",
+        """1. Open the Setup workspace and select your GTA V Legacy and/or Enhanced folders.
+2. Choose the active edition. All install, launch, health, and package actions use it.
+3. Review the readiness card. Install / Repair resolves the ALLIN1 client and supported dependencies.
+4. Save settings, then launch GTA V from the persistent action bar.
+
+ALLIN1 is for Story Mode. Do not use a modified installation with GTA Online.""",
+        ("setup", "first run", "game path", "story mode"),
+    ),
+    HelpTopic(
+        "editions", "Start here", "Legacy and Enhanced installations",
+        "Keep independent paths for both GTA V editions and choose an active target.",
+        """Legacy and Enhanced can be installed on the same PC. Store each path separately in Setup, then select Auto, Legacy, or Enhanced as the active target.
+
+Auto uses the best detected installation. A specific target is recommended while authoring or testing edition-sensitive packages. Package scans label compatibility but never silently convert native assets between editions.""",
+        ("gen9", "path", "target", "compatibility"),
+    ),
+    HelpTopic(
+        "install-repair", "Game management", "Install, repair, and launch",
+        "Understand the safe game-management workflow.",
+        """Install / Repair synchronizes the ALLIN1 Story Mode client and required files. It preserves configured backups and reports progress in the bottom status bar.
+
+Health Check performs a deeper validation. Diagnostics creates a shareable report. Launch saves the current settings before handing off to Steam or Rockstar Games Launcher.
+
+If launch is blocked by an RPF safety warning, run Health Check before repairing. The warning is designed to prevent a known-bad package from hanging Story Mode.""",
+        ("repair", "health", "launch", "dependencies", "blocked"),
+    ),
+    HelpTopic(
+        "gameplay", "Configuration", "Gameplay systems",
+        "Configure GBAY, traffic, police behavior, accessibility, and experiments.",
+        """The Gameplay workspace contains game-facing feature switches. Stable Story Mode content is separated from interface/accessibility options and experimental systems.
+
+Changes are staged in the launcher until Save changes or Launch GTA V is used. Experimental physics and police systems can produce detailed logs for tuning; enable diagnostics only while investigating behavior because verbose logs grow quickly.""",
+        ("gbay", "traffic", "police", "physics", "smoke", "accessibility"),
+    ),
+    HelpTopic(
+        "input", "Configuration", "Keyboard and controller input",
+        "Assign shortcuts, controller actions, and vehicle filters.",
+        """The Input workspace separates keyboard shortcuts from controller navigation. Avoid assigning one keyboard key to multiple launcher actions.
+
+Controller shortcut actions may combine a modifier with an action button. Menu navigation bindings apply while GBAY menus are open. Vehicle class and model filters accept comma-separated values.""",
+        ("controls", "keys", "gamepad", "bindings", "filter"),
+    ),
+    HelpTopic(
+        "packages", "Mods & SDK", "Package library",
+        "Import, inspect, install, enable, disable, and remove optional content.",
+        """Use Add package to import supported content. Select a package in the library, then use Package actions for installation and lifecycle commands.
+
+ALLIN1 validates manifests, records installed files, and backs up replaced files when backup support is enabled. Only install content you trust. Edition tags describe the package's declared or detected compatibility.""",
+        ("mods", "install", "manifest", "receipt", "enable", "uninstall"),
+    ),
+    HelpTopic(
+        "sdk", "Mods & SDK", "Add-on SDK",
+        "Trace game-facing fields and audit add-on integration before installation.",
+        """The Add-on SDK links authored package fields to metadata, native UI text, animations, runtime behavior, packaging, and rollback expectations.
+
+Import a DLC folder or archive, inspect its integration graph, then select nodes and fields for explanations. Package Intelligence contains OIV preview, DLC inventory, and vehicle-data compilation tools.""",
+        ("authoring", "addon", "dlc", "audit", "linker", "developer"),
+    ),
+    HelpTopic(
+        "asset-viewer", "Inspectors", "Native Asset Viewer",
+        "Browse package files and preview supported native resources without executing code.",
+        """Open a package folder or supported archive, search its inventory, and select an asset. Images and text preview directly. Supported Rockstar resources receive header analysis, structured CodeWalker XML, and texture contact sheets when possible.
+
+The viewer is read-only. Compiled DLL, ASI, and script payloads are never executed.""",
+        ("ytd", "ydr", "yft", "texture", "model", "preview", "codewalker"),
+    ),
+    HelpTopic(
+        "rpf-explorer", "Inspectors", "RPF Explorer",
+        "Search nested archives, inspect metadata, extract entries, and create safe plans.",
+        """Select the matching GTA V installation before opening an RPF so the correct encryption keys and resource decoder are used.
+
+Search and filter the archive tree, then use Entry actions to preview or extract the selected entry. Replacement planning creates an inert JSON review plan with hashes, backup requirements, verification steps, and rollback information. It does not modify the archive.""",
+        ("archive", "nested", "extract", "replacement", "rpf", "metadata"),
+    ),
+    HelpTopic(
+        "recovery", "Safety & recovery", "Backups and recovery",
+        "Understand what ALLIN1 changes and how to recover it.",
+        """Keep Back up game changes enabled for normal use. Package receipts identify installed files; uninstall uses those receipts and backups to restore replaced content.
+
+Never manually delete a partially installed package before collecting diagnostics. Use Health Check, then Install / Repair or the package's Uninstall action. RPF replacement remains plan-only in the explorer because archive mutation requires stronger transactional guarantees.""",
+        ("backup", "rollback", "restore", "safety", "receipt"),
+    ),
+    HelpTopic(
+        "troubleshooting", "Safety & recovery", "Troubleshooting and logs",
+        "Collect useful evidence when installation, launch, or gameplay fails.",
+        """Open Activity to review the current launcher session. Use Activity actions to copy it or open the persistent log folder.
+
+For installation and startup failures, run Health Check and create a diagnostics bundle. For in-game behavior, reproduce the issue once with only the relevant diagnostic setting enabled, then retain the newest ScriptHookVDotNet and ALLIN1 logs.
+
+Keyboard shortcuts: Ctrl+1–5 changes workspaces, Ctrl+S saves, Ctrl+L launches, F5 refreshes, and F1 opens this help center.""",
+        ("logs", "crash", "hang", "diagnostics", "shortcuts", "fatal"),
+    ),
+)
+
+
+def search_help_topics(query: str) -> tuple[HelpTopic, ...]:
+    """Return help topics ranked by a simple, predictable text match."""
+    words = tuple(part.casefold() for part in query.split() if part.strip())
+    if not words:
+        return HELP_TOPICS
+
+    scored: list[tuple[int, HelpTopic]] = []
+    for topic in HELP_TOPICS:
+        title = topic.title.casefold()
+        category = topic.category.casefold()
+        summary = topic.summary.casefold()
+        body = topic.body.casefold()
+        keywords = " ".join(topic.keywords).casefold()
+        haystack = " ".join((title, category, summary, body, keywords))
+        if not all(word in haystack for word in words):
+            continue
+        score = sum(
+            8 if word in title else 4 if word in keywords else 2 if word in summary else 1
+            for word in words
+        )
+        scored.append((score, topic))
+    return tuple(topic for _score, topic in sorted(
+        scored, key=lambda item: (-item[0], item[1].category, item[1].title),
+    ))
+
+
+class HelpCenterDialog(tk.Toplevel):
+    """Searchable help center shared by the launcher and inspection tools."""
+
+    def __init__(self, parent: tk.Misc, initial_topic: str | None = None) -> None:
+        super().__init__(parent)
+        self.initial_topic = initial_topic
+        self.visible_topics: tuple[HelpTopic, ...] = ()
+        self.topic_items: dict[str, HelpTopic] = {}
+        self.title("ALLIN1 Help Center")
+        self.geometry("1040x700")
+        self.minsize(780, 540)
+        self.transient(parent)
+        self._build()
+        self._populate()
+        self.bind("<Escape>", lambda _event: self.destroy())
+
+    def _build(self) -> None:
+        outer = ttk.Frame(self, padding=20)
+        outer.pack(fill="both", expand=True)
+        header = ttk.Frame(outer)
+        header.pack(fill="x", pady=(0, 16))
+        ttk.Label(
+            header, text="Help Center", font=("Segoe UI Semibold", 20),
+            foreground="#173d32",
+        ).pack(anchor="w")
+        ttk.Label(
+            header,
+            text="Guidance for setup, package authoring, native assets, and recovery.",
+            foreground="#52635c",
+        ).pack(anchor="w", pady=(3, 0))
+
+        body = ttk.Panedwindow(outer, orient="horizontal")
+        body.pack(fill="both", expand=True)
+        navigation = ttk.Frame(body, padding=(0, 0, 14, 0))
+        article = ttk.Frame(body, padding=(18, 4, 4, 4))
+        body.add(navigation, weight=2)
+        body.add(article, weight=5)
+
+        ttk.Label(navigation, text="Search help", style="FieldLabel.TLabel").pack(
+            anchor="w",
+        )
+        self.query = tk.StringVar()
+        search = ttk.Entry(navigation, textvariable=self.query)
+        search.pack(fill="x", pady=(6, 12))
+        self.query.trace_add("write", lambda *_args: self._populate())
+        self.results = tk.Listbox(
+            navigation, exportselection=False, activestyle="none", borderwidth=0,
+            highlightthickness=1, highlightbackground="#d7e0dc",
+            selectbackground="#dcefe3", selectforeground="#173d32",
+            font=("Segoe UI", 10),
+        )
+        result_scroll = ttk.Scrollbar(
+            navigation, orient="vertical", command=self.results.yview,
+        )
+        self.results.configure(yscrollcommand=result_scroll.set)
+        self.results.pack(side="left", fill="both", expand=True)
+        result_scroll.pack(side="right", fill="y")
+        self.results.bind("<<ListboxSelect>>", self._select_topic)
+
+        self.category = tk.StringVar(value="START HERE")
+        self.heading = tk.StringVar(value="Select a help topic")
+        self.summary = tk.StringVar(value="")
+        ttk.Label(
+            article, textvariable=self.category, foreground="#1f7f42",
+            font=("Segoe UI Semibold", 9),
+        ).pack(anchor="w")
+        ttk.Label(
+            article, textvariable=self.heading, font=("Segoe UI Semibold", 18),
+            foreground="#173d32",
+        ).pack(anchor="w", pady=(4, 2))
+        ttk.Label(
+            article, textvariable=self.summary, foreground="#52635c",
+            wraplength=650, justify="left",
+        ).pack(anchor="w", pady=(0, 12))
+        ttk.Separator(article).pack(fill="x", pady=(0, 12))
+        article_frame = ttk.Frame(article)
+        article_frame.pack(fill="both", expand=True)
+        self.body = tk.Text(
+            article_frame, wrap="word", relief="flat", borderwidth=0,
+            background="#ffffff", foreground="#24332d", font=("Segoe UI", 10),
+            padx=4, pady=4, spacing1=3, spacing3=8, state="disabled",
+        )
+        article_scroll = ttk.Scrollbar(
+            article_frame, orient="vertical", command=self.body.yview,
+        )
+        self.body.configure(yscrollcommand=article_scroll.set)
+        self.body.pack(side="left", fill="both", expand=True)
+        article_scroll.pack(side="right", fill="y")
+
+    def _populate(self) -> None:
+        self.visible_topics = search_help_topics(self.query.get())
+        self.results.delete(0, "end")
+        self.topic_items.clear()
+        for index, topic in enumerate(self.visible_topics):
+            label = f"{topic.category}\n   {topic.title}"
+            self.results.insert("end", label)
+            self.topic_items[str(index)] = topic
+        if not self.visible_topics:
+            self.category.set("NO RESULTS")
+            self.heading.set("No matching help topics")
+            self.summary.set("Try a shorter search such as ‘RPF’, ‘install’, or ‘logs’.")
+            self._set_body("")
+            return
+        selected_index = 0
+        if self.initial_topic:
+            for index, topic in enumerate(self.visible_topics):
+                if topic.key == self.initial_topic:
+                    selected_index = index
+                    break
+            self.initial_topic = None
+        self.results.selection_set(selected_index)
+        self.results.see(selected_index)
+        self._show_topic(self.visible_topics[selected_index])
+
+    def _select_topic(self, _event: object | None = None) -> None:
+        selection = self.results.curselection()
+        if selection and selection[0] < len(self.visible_topics):
+            self._show_topic(self.visible_topics[selection[0]])
+
+    def _show_topic(self, topic: HelpTopic) -> None:
+        self.category.set(topic.category.upper())
+        self.heading.set(topic.title)
+        self.summary.set(topic.summary)
+        self._set_body(topic.body)
+
+    def _set_body(self, value: str) -> None:
+        self.body.configure(state="normal")
+        self.body.delete("1.0", "end")
+        self.body.insert("1.0", value)
+        self.body.configure(state="disabled")

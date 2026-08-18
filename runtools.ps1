@@ -278,17 +278,31 @@ if (-not (Test-Path $RpfPatcherProj)) {
 # Ensure CodeWalker source is available
 $CwDir = Join-Path (Join-Path $ScriptRoot "tools") "CodeWalker"
 $CwCorePath = Join-Path (Join-Path $CwDir "CodeWalker.Core") "CodeWalker.Core.csproj"
+$CwRepository = "https://github.com/crxhvrd/CodeWalkerProjects.git"
+$CwCommit = "0bf552913d96da9ad1f266eb5c7d6d75b96c89f2"
 if (-not (Test-Path $CwCorePath)) {
-    $GitDir = Join-Path $ScriptRoot ".git"
-    if (Test-Path $GitDir) {
-        Write-Host "  Initializing CodeWalker submodule..."
-        Push-Location $ScriptRoot
-        git submodule update --init --recursive tools/CodeWalker
-        Pop-Location
-    } else {
-        Write-Host "  Cloning CodeWalker (no .git folder, cannot use submodule)..."
-        git clone --depth 1 "https://github.com/dexyfex/CodeWalker.git" $CwDir
-        if ($LASTEXITCODE -ne 0) { throw "Failed to clone CodeWalker" }
+    if (Test-Path $CwDir) {
+        throw "CodeWalker directory is incomplete: $CwDir. Move it aside and rerun."
+    }
+    Write-Host "  Cloning the pinned Enhanced-aware CodeWalker authoring core..."
+    git clone --filter=blob:none --no-checkout $CwRepository $CwDir
+    if ($LASTEXITCODE -ne 0) { throw "Failed to clone CodeWalkerProjects" }
+}
+
+# RPF round trips are sensitive to the exact serialization implementation.
+# Pin the audited commit even when a developer already has another revision.
+$CwGitDir = Join-Path $CwDir ".git"
+if (-not (Test-Path $CwGitDir)) {
+    throw "CodeWalker source is not a Git checkout; cannot verify the authoring core."
+}
+$CurrentCwCommit = (git -C $CwDir rev-parse HEAD 2>$null)
+if ($LASTEXITCODE -ne 0 -or $CurrentCwCommit -ne $CwCommit) {
+    Write-Host "  Synchronizing CodeWalker authoring core to $CwCommit..."
+    git -C $CwDir fetch --depth 1 origin $CwCommit
+    if ($LASTEXITCODE -ne 0) { throw "Failed to fetch pinned CodeWalker commit" }
+    git -C $CwDir checkout --detach $CwCommit
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to select pinned CodeWalker commit; check for local changes in $CwDir"
     }
 }
 

@@ -173,6 +173,41 @@ namespace ALLIN1.Tests
         }
 
         [Theory]
+        [InlineData((int)PoliceCombatRole.PassiveHold, 1, 3, true, false)]
+        [InlineData((int)PoliceCombatRole.Containment, 1, 3, true, false)]
+        [InlineData((int)PoliceCombatRole.DefensiveLine, 1, 3, true, false)]
+        [InlineData((int)PoliceCombatRole.Support, 1, 2, true, false)]
+        [InlineData((int)PoliceCombatRole.Assault, 2, 1, false, true)]
+        [InlineData((int)PoliceCombatRole.Rescue, 1, 3, true, false)]
+        public void Combat_profiles_keep_non_assault_roles_at_standoff_range(
+            int roleValue, int movement, int range,
+            bool maintainsDistance, bool advances)
+        {
+            var role = (PoliceCombatRole)roleValue;
+            Assert.Equal(movement,
+                PoliceTacticsPolicy.CombatMovementForRole(role));
+            Assert.Equal(range,
+                PoliceTacticsPolicy.CombatRangeForRole(role));
+            Assert.Equal(maintainsDistance,
+                PoliceTacticsPolicy.MaintainsMinimumDistance(role));
+            Assert.Equal(advances,
+                PoliceTacticsPolicy.AllowsNativeAdvance(role));
+        }
+
+        [Theory]
+        [InlineData(48f, 4f, false, true)]
+        [InlineData(35f, 2f, false, false)]
+        [InlineData(60f, 8f, false, false)]
+        [InlineData(40f, 8f, true, true)]
+        public void Dynamic_vehicle_block_dismounts_only_at_a_safe_slow_perimeter(
+            float distance, float speed, bool timedOut, bool expected)
+        {
+            Assert.Equal(expected,
+                PoliceTacticsPolicy.CanDismountDynamicContainment(
+                    distance, speed, timedOut));
+        }
+
+        [Theory]
         [InlineData(3, 3, 0.90f, false)]
         [InlineData(3, 2, 0.90f, true)]
         [InlineData(6, 4, 0.90f, true)]

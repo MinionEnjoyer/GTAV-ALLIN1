@@ -59,13 +59,73 @@ class ModManager:
             if scripts.is_dir():
                 config.save(scripts / "ALLIN1.toml")
 
+    @staticmethod
+    def _path_value(value: str) -> Path | None:
+        if not value.strip() or value.strip().lower() == "auto":
+            return None
+        try:
+            return validate_gta_path(value)
+        except (FileNotFoundError, ValueError):
+            return Path(value).expanduser()
+
+    def resolve_paths(self, config: Config) -> dict[str, Path]:
+        """Resolve independently configured game roots for both GTA editions."""
+        paths: dict[str, Path] = {}
+        for edition, value in (
+            ("legacy", config.general.gta_legacy_path),
+            ("enhanced", config.general.gta_enhanced_path),
+        ):
+            candidate = self._path_value(value)
+            if candidate is not None:
+                paths[edition] = candidate
+
+        old_value = config.general.gta_path.strip()
+        if old_value and old_value.lower() != "auto":
+            fallback = self._path_value(old_value)
+            if fallback is not None:
+                if (fallback / "GTA5_Enhanced.exe").is_file():
+                    paths.setdefault("enhanced", fallback)
+                elif (fallback / "GTA5.exe").is_file():
+                    paths.setdefault("legacy", fallback)
+                else:
+                    selected = config.general.target_edition.lower()
+                    if selected in {"legacy", "enhanced"}:
+                        paths.setdefault(selected, fallback)
+
+        detected = detect_gta_path()
+        if detected is not None:
+            edition = (
+                "enhanced" if (detected / "GTA5_Enhanced.exe").is_file()
+                else "legacy"
+            )
+            paths.setdefault(edition, detected)
+        return paths
+
     def resolve_path(self, config: Config) -> Path | None:
+        target = config.general.target_edition.strip().lower()
+        paths = self.resolve_paths(config)
+        if target in {"legacy", "enhanced"}:
+            return paths.get(target)
         if config.general.gta_path != "auto":
-            try:
-                return validate_gta_path(config.general.gta_path)
-            except (FileNotFoundError, ValueError):
-                return Path(config.general.gta_path).expanduser()
-        return detect_gta_path()
+            return self._path_value(config.general.gta_path)
+        return paths.get("enhanced") or paths.get("legacy")
+
+    def resolve_mod_path(self, config: Config, editions: tuple[str, ...]) -> Path:
+        """Choose a configured game root compatible with a package manifest."""
+        paths = self.resolve_paths(config)
+        preferred = config.general.target_edition.strip().lower()
+        if preferred in editions and preferred in paths:
+            return paths[preferred]
+        compatible = [
+            edition for edition in ("enhanced", "legacy")
+            if edition in editions and edition in paths
+        ]
+        if compatible:
+            return paths[compatible[0]]
+        supported = " / ".join(value.title() for value in editions)
+        raise ValueError(
+            f"No configured {supported} GTA V installation is available for this package."
+        )
 
     def status(self, config: Config | None = None) -> InstallationStatus:
         config = config or self.load_config()

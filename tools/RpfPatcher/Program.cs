@@ -7,6 +7,8 @@
 //   RpfPatcher.exe verify-ytd   <gta_path> <ytd_folder>  — verify expected .ytd files in script_txds.rpf
 //   RpfPatcher.exe patch        <gta_path>                — add allin1_previews to dlclist.xml
 //   RpfPatcher.exe unpatch      <gta_path>                — remove allin1_previews from dlclist.xml
+//   RpfPatcher.exe register-dlc <gta_path> <pack_name>    — register a manifest-owned add-on pack
+//   RpfPatcher.exe unregister-dlc <gta_path> <pack_name>  — unregister a manifest-owned add-on pack
 //   RpfPatcher.exe build-dlc    <loose_folder> <output_rpf> [--embed-rpf <src_folder> <dest_path>]
 //   RpfPatcher.exe verify-dlc   <dlc_rpf> <ytd_folder>      — verify a preview DLC and its dictionaries
 //   RpfPatcher.exe convert-gen9 <ytd_folder>              — convert .ytd files from Legacy to Enhanced format
@@ -17,14 +19,20 @@
 //   RpfPatcher.exe verify-euphoria  <gta_path> <payload_folder>
 //   RpfPatcher.exe validate-euphoria <payload_folder_or_archive>
 //   RpfPatcher.exe remove-euphoria  <gta_path>
+//   RpfPatcher.exe build-colored-smoke-weapons <gta_path> <output_rpf>
+//   RpfPatcher.exe build-merged-smoke-canary <gta_path> <output_meta>
+//   RpfPatcher.exe build-merged-smoke-weapons <gta_path> <output_meta>
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using CodeWalker.Core.Utils;
 using CodeWalker.GameFiles;
@@ -39,6 +47,7 @@ namespace RpfPatcher
             {
                 { "allin1_previews", "dlcpacks:/allin1_previews/" },
                 { "allin1_maps", "dlcpacks:/allin1_maps/" },
+                { "allin1_smoke", "dlcpacks:/allin1_smoke/" },
             };
 
         static int Main(string[] args)
@@ -52,16 +61,41 @@ namespace RpfPatcher
                     "  RpfPatcher.exe verify-ytd   <gta_path> <ytd_folder>\n" +
                     "  RpfPatcher.exe patch        <gta_path>\n" +
                     "  RpfPatcher.exe unpatch      <gta_path>\n" +
+                    "  RpfPatcher.exe register-dlc <gta_path> <pack_name>\n" +
+                    "  RpfPatcher.exe unregister-dlc <gta_path> <pack_name>\n" +
                     "  RpfPatcher.exe build-dlc    <loose_folder> <output_rpf> [--embed-rpf <src> <dest>]\n" +
                     "  RpfPatcher.exe verify-dlc   <dlc_rpf> <ytd_folder>\n" +
                     "  RpfPatcher.exe verify-map-dlc <dlc_rpf> <manifest_tsv>\n" +
                     "  RpfPatcher.exe convert-gen9 <ytd_folder>\n" +
                     "  RpfPatcher.exe inspect      <gta_path> <rpf_path>\n" +
+                    "  RpfPatcher.exe index-json   <gta_path> <rpf_path> <output_json>\n" +
+                    "  RpfPatcher.exe extract-virtual-entry <gta_path> <rpf_path> <archive_path> <entry_path> <output>\n" +
+                    "  RpfPatcher.exe asset-xml    <input_asset> <output_xml> <asset_folder> [legacy|gen9]\n" +
                     "  RpfPatcher.exe audit-seats  <gta_path> <output_json> [output_cs]\n" +
                     "  RpfPatcher.exe build-ytd    <dds_folder> <output_ytd> [legacy|gen9]\n" +
                     "  RpfPatcher.exe unpack-ytd   <ytd_path> <output_folder> [legacy|gen9]\n" +
                     "  RpfPatcher.exe extract-entry <gta_path> <rpf_path> <name> <output>\n" +
+                    "  RpfPatcher.exe replace-entry <gta_path> <rpf_path> <entry_path> <payload>\n" +
+                    "  RpfPatcher.exe delete-entry <gta_path> <rpf_path> <entry_path>\n" +
                     "  RpfPatcher.exe extract-entries <gta_path> <rpf_path> <manifest_tsv> <output_root>\n" +
+                    "  RpfPatcher.exe pso-to-xml <input_pso> <output_xml>\n" +
+                    "  RpfPatcher.exe inspect-pso <input_pso>\n" +
+                    "  RpfPatcher.exe build-smoke-tuning <input_ymt> <input_dat> <output_folder>\n" +
+                    "  RpfPatcher.exe install-smoke-tuning <gta_path>\n" +
+                    "  RpfPatcher.exe verify-smoke-tuning <gta_path>\n" +
+                    "  RpfPatcher.exe remove-smoke-tuning <gta_path>\n" +
+                    "  RpfPatcher.exe build-colored-smoke-weapons <gta_path> <output_rpf>\n" +
+                    "  RpfPatcher.exe install-colored-smoke-weapons <gta_path>\n" +
+                    "  RpfPatcher.exe verify-colored-smoke-weapons <gta_path>\n" +
+                    "  RpfPatcher.exe remove-colored-smoke-weapons <gta_path>\n" +
+                    "  RpfPatcher.exe build-merged-smoke-canary <gta_path> <output_meta>\n" +
+                    "  RpfPatcher.exe install-merged-smoke-canary <gta_path>\n" +
+                    "  RpfPatcher.exe verify-merged-smoke-canary <gta_path>\n" +
+                    "  RpfPatcher.exe remove-merged-smoke-canary <gta_path>\n" +
+                    "  RpfPatcher.exe build-merged-smoke-weapons <gta_path> <output_meta>\n" +
+                    "  RpfPatcher.exe install-merged-smoke-weapons <gta_path>\n" +
+                    "  RpfPatcher.exe verify-merged-smoke-weapons <gta_path>\n" +
+                    "  RpfPatcher.exe remove-merged-smoke-weapons <gta_path>\n" +
                     "  RpfPatcher.exe open-rpfs <gta_path> <manifest_tsv> <output_root>\n" +
                     "  RpfPatcher.exe install-euphoria <gta_path> <payload_folder_or_archive> [--allow-enhanced]\n" +
                     "  RpfPatcher.exe verify-euphoria <gta_path> <payload_folder_or_archive>\n" +
@@ -89,6 +123,12 @@ namespace RpfPatcher
                 return ConvertGen9(args);
             if (command == "inspect")
                 return InspectRpf(args);
+            if (command == "index-json")
+                return IndexRpfJson(args);
+            if (command == "extract-virtual-entry")
+                return ExtractVirtualEntry(args);
+            if (command == "asset-xml")
+                return ExportAssetXml(args);
             if (command == "audit-seats")
                 return SeatCatalogAudit.Run(args);
             if (command == "build-ytd")
@@ -97,8 +137,52 @@ namespace RpfPatcher
                 return UnpackYtd(args);
             if (command == "extract-entry")
                 return ExtractEntry(args);
+            if (command == "replace-entry")
+                return ReplaceEntry(args);
+            if (command == "delete-entry")
+                return DeleteEntry(args);
             if (command == "extract-entries")
                 return ExtractEntries(args);
+            if (command == "pso-to-xml")
+                return PsoToXml(args);
+            if (command == "inspect-pso")
+                return InspectPso(args);
+            if (command == "build-smoke-tuning")
+                return BuildSmokeTuning(args);
+            if (command == "install-smoke-tuning")
+                return InstallSmokeTuning(args);
+            if (command == "verify-smoke-tuning")
+                return VerifySmokeTuning(args);
+            if (command == "remove-smoke-tuning")
+                return RemoveSmokeTuning(args);
+            if (command == "build-colored-smoke-weapons")
+                return BuildColoredSmokeWeapons(args);
+            if (command == "install-colored-smoke-weapons")
+                return InstallColoredSmokeWeapons(args);
+            if (command == "verify-colored-smoke-weapons")
+                return VerifyColoredSmokeWeapons(args);
+            if (command == "remove-colored-smoke-weapons")
+                return RemoveColoredSmokeWeapons(args);
+            if (command == "build-merged-smoke-canary")
+                return BuildMergedSmokeCanary(args);
+            if (command == "install-merged-smoke-canary")
+                return InstallMergedSmokeCanary(args);
+            if (command == "verify-merged-smoke-canary")
+                return VerifyMergedSmokeCanary(args);
+            if (command == "remove-merged-smoke-canary")
+                return RemoveMergedSmokeCanary(args);
+            if (command == "build-merged-smoke-weapons")
+                return BuildMergedSmokeWeapons(args);
+            if (command == "install-merged-smoke-weapons")
+                return InstallMergedSmokeWeapons(args);
+            if (command == "verify-merged-smoke-weapons")
+                return VerifyMergedSmokeWeapons(args);
+            if (command == "remove-merged-smoke-weapons")
+                return RemoveMergedSmokeCanary(args);
+            if (command == "merge-smoke-language-worker")
+                return MergeSmokeLanguageWorker(args);
+            if (command == "merge-smoke-hud-worker")
+                return MergeSmokeHudWorker(args);
             if (command == "open-rpfs")
                 return OpenRpfs(args);
             if (command == "install-euphoria")
@@ -113,6 +197,10 @@ namespace RpfPatcher
                 return DumpYtd(args);
             if (command == "patch" || command == "unpatch")
                 return PatchCommand(command, args);
+            if (command == "register-dlc")
+                return PatchCommand("patch", args, true);
+            if (command == "unregister-dlc")
+                return PatchCommand("unpatch", args, true);
 
             Console.Error.WriteLine($"ERROR: Unknown command '{command}'.");
             return 1;
@@ -227,6 +315,22 @@ namespace RpfPatcher
                 Console.WriteLine("Ensuring OPEN encryption...");
                 RpfFile.EnsureValidEncryption(rpf, null, true);
                 Console.WriteLine("Encryption converted to OPEN.");
+
+                // EnsureValidEncryption can rewrite the archive in place.
+                // Never keep reading entry offsets from the pre-conversion
+                // scan: reopen the file and validate its new structure first.
+                rpf = new RpfFile(modsRpf, modsRpf);
+                rpf.ScanStructure(null, err => Console.Error.WriteLine(
+                    $"RPF post-conversion scan warning: {err}"));
+                if (rpf.AllEntries == null || rpf.AllEntries.Count == 0)
+                {
+                    Console.Error.WriteLine(
+                        "ERROR: RPF post-conversion scan returned no entries.");
+                    errorCode = 4;
+                    return null;
+                }
+                Console.WriteLine(
+                    $"RPF reopened: {rpf.AllEntries.Count} entries");
             }
 
             return rpf;
@@ -1109,6 +1213,405 @@ namespace RpfPatcher
             }
         }
 
+        // Structured, read-only inventory used by the ALLIN1 desktop RPF
+        // explorer.  The older `inspect` command remains intentionally human
+        // readable; this command is a stable machine contract and never writes
+        // to the archive it scans.
+        static int IndexRpfJson(string[] args)
+        {
+            if (args.Length < 4)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe index-json <gta_path> <rpf_path> <output_json>");
+                return 1;
+            }
+
+            string gtaPath = Path.GetFullPath(args[1]);
+            string rpfPath = Path.GetFullPath(args[2]);
+            string outputPath = Path.GetFullPath(args[3]);
+            if (!File.Exists(rpfPath))
+            {
+                Console.Error.WriteLine($"ERROR: File not found: {rpfPath}");
+                return 4;
+            }
+
+            try
+            {
+                bool isGen9 = File.Exists(Path.Combine(gtaPath, "GTA5_Enhanced.exe"))
+                           || File.Exists(Path.Combine(gtaPath, "eboot.bin"));
+                var warnings = new List<string>();
+                try
+                {
+                    GTA5Keys.LoadFromPath(gtaPath, isGen9, null);
+                }
+                catch (Exception ex)
+                {
+                    warnings.Add("Encryption keys could not be loaded: " + ex.Message);
+                }
+
+                // A filesystem path contains a drive-colon, which CodeWalker's
+                // nested-RPF safety check correctly rejects as a virtual path.
+                // Keep the physical FilePath while using only the archive name
+                // for the in-archive hierarchy so child RPFs are discovered.
+                var rpf = new RpfFile(rpfPath, Path.GetFileName(rpfPath));
+                rpf.ScanStructure(null, warning => warnings.Add(warning));
+                if (rpf.AllEntries == null || rpf.AllEntries.Count == 0)
+                    throw new InvalidDataException("RPF scan returned no entries.");
+
+                var archives = new List<Dictionary<string, object>>();
+                var entries = new List<Dictionary<string, object>>();
+                IndexArchive(rpf, string.Empty, archives, entries, warnings);
+                var document = new Dictionary<string, object>
+                {
+                    { "schema_version", 1 },
+                    { "source", rpfPath },
+                    { "edition", isGen9 ? "Enhanced" : "Legacy" },
+                    { "archive_size", new FileInfo(rpfPath).Length },
+                    { "archives", archives },
+                    { "entries", entries },
+                    { "warnings", warnings },
+                };
+                string parent = Path.GetDirectoryName(outputPath);
+                if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
+                File.WriteAllText(
+                    outputPath,
+                    JsonSerializer.Serialize(document, new JsonSerializerOptions
+                    {
+                        WriteIndented = true,
+                    }) + Environment.NewLine,
+                    new UTF8Encoding(false));
+                Console.WriteLine(
+                    $"Indexed {entries.Count:N0} entries across {archives.Count:N0} RPF archive(s): {outputPath}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: RPF indexing failed: {ex.Message}");
+                return 99;
+            }
+        }
+
+        static void IndexArchive(
+            RpfFile archive, string virtualPath,
+            List<Dictionary<string, object>> archives,
+            List<Dictionary<string, object>> entries,
+            List<string> warnings)
+        {
+            archives.Add(new Dictionary<string, object>
+            {
+                { "path", virtualPath },
+                { "name", archive.Name ?? Path.GetFileName(archive.FilePath) },
+                { "version", archive.Version },
+                { "encryption", archive.Encryption.ToString() },
+                { "size", archive.FileSize },
+                { "entry_count", archive.AllEntries?.Count ?? 0 },
+            });
+
+            foreach (RpfEntry entry in archive.AllEntries ?? new List<RpfEntry>())
+            {
+                if (entry == archive.Root) continue;
+                string relative = RelativeRpfEntryPath(archive, entry)
+                    .Replace('\\', '/').Trim('/');
+                if (string.IsNullOrWhiteSpace(relative)) continue;
+                var item = new Dictionary<string, object>
+                {
+                    { "id", virtualPath + "::" + relative },
+                    { "archive_path", virtualPath },
+                    { "path", relative },
+                    { "name", entry.Name ?? Path.GetFileName(relative) },
+                    { "name_hash", entry.NameHash },
+                    { "short_name_hash", entry.ShortNameHash },
+                };
+                if (entry is RpfDirectoryEntry directory)
+                {
+                    item["kind"] = "directory";
+                    item["size"] = 0L;
+                    item["stored_size"] = 0L;
+                    item["child_count"] =
+                        (directory.Directories?.Count ?? 0) +
+                        (directory.Files?.Count ?? 0);
+                }
+                else if (entry is RpfResourceFileEntry resource)
+                {
+                    item["kind"] = "resource";
+                    item["size"] = (long)resource.SystemSize + resource.GraphicsSize;
+                    item["stored_size"] = resource.FileSize;
+                    item["offset"] = (long)resource.FileOffset * 512L;
+                    item["encrypted"] = resource.IsEncrypted;
+                    item["resource_version"] = resource.Version;
+                    item["system_size"] = resource.SystemSize;
+                    item["graphics_size"] = resource.GraphicsSize;
+                    item["system_flags"] = $"0x{resource.SystemFlags.Value:X8}";
+                    item["graphics_flags"] = $"0x{resource.GraphicsFlags.Value:X8}";
+                }
+                else if (entry is RpfBinaryFileEntry binary)
+                {
+                    item["kind"] = relative.EndsWith(
+                        ".rpf", StringComparison.OrdinalIgnoreCase)
+                        ? "archive" : "binary";
+                    item["size"] = binary.FileUncompressedSize > 0
+                        ? binary.FileUncompressedSize : binary.FileSize;
+                    item["stored_size"] = binary.FileSize;
+                    item["offset"] = (long)binary.FileOffset * 512L;
+                    item["encrypted"] = binary.IsEncrypted;
+                    item["compressed"] = binary.FileSize > 0
+                        && binary.FileUncompressedSize > binary.FileSize;
+                }
+                entries.Add(item);
+            }
+
+            foreach (RpfFile child in archive.Children ?? new List<RpfFile>())
+            {
+                string childEntry = child.ParentFileEntry == null
+                    ? child.Name
+                    : RelativeRpfEntryPath(archive, child.ParentFileEntry)
+                        .Replace('\\', '/').Trim('/');
+                string childVirtual = string.IsNullOrEmpty(virtualPath)
+                    ? childEntry
+                    : virtualPath + "!" + childEntry;
+                try
+                {
+                    IndexArchive(child, childVirtual, archives, entries, warnings);
+                }
+                catch (Exception ex)
+                {
+                    warnings.Add($"Nested RPF could not be indexed ({childVirtual}): {ex.Message}");
+                }
+            }
+        }
+
+        static RpfFile FindVirtualArchive(
+            RpfFile root, string requested, string current = "")
+        {
+            string normalized = (requested ?? string.Empty)
+                .Replace('\\', '/').Trim('/');
+            if (string.Equals(normalized, current,
+                    StringComparison.OrdinalIgnoreCase)) return root;
+            foreach (RpfFile child in root.Children ?? new List<RpfFile>())
+            {
+                string childEntry = child.ParentFileEntry == null
+                    ? child.Name
+                    : RelativeRpfEntryPath(root, child.ParentFileEntry)
+                        .Replace('\\', '/').Trim('/');
+                string childVirtual = string.IsNullOrEmpty(current)
+                    ? childEntry
+                    : current + "!" + childEntry;
+                RpfFile found = FindVirtualArchive(child, normalized, childVirtual);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        static int ExtractVirtualEntry(string[] args)
+        {
+            if (args.Length < 6)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe extract-virtual-entry <gta_path> <rpf_path> <archive_path> <entry_path> <output>");
+                return 1;
+            }
+            string gtaPath = Path.GetFullPath(args[1]);
+            string rpfPath = Path.GetFullPath(args[2]);
+            string archivePath = args[3];
+            string entryPath = args[4];
+            string outputPath = Path.GetFullPath(args[5]);
+            if (!File.Exists(rpfPath))
+            {
+                Console.Error.WriteLine($"ERROR: File not found: {rpfPath}");
+                return 4;
+            }
+            try
+            {
+                bool isGen9 = File.Exists(Path.Combine(gtaPath, "GTA5_Enhanced.exe"))
+                           || File.Exists(Path.Combine(gtaPath, "eboot.bin"));
+                GTA5Keys.LoadFromPath(gtaPath, isGen9, null);
+                var root = new RpfFile(rpfPath, Path.GetFileName(rpfPath));
+                root.ScanStructure(null,
+                    warning => Console.Error.WriteLine("RPF scan warning: " + warning));
+                RpfFile archive = FindVirtualArchive(root, archivePath);
+                if (archive == null)
+                {
+                    Console.Error.WriteLine($"ERROR: Nested archive not found: {archivePath}");
+                    return 5;
+                }
+                RpfFileEntry entry = FindExactFileEntry(archive, entryPath);
+                if (entry == null)
+                {
+                    Console.Error.WriteLine($"ERROR: Entry not found: {entryPath}");
+                    return 5;
+                }
+                byte[] data = entry.File.ExtractFile(entry);
+                if (data == null || data.Length == 0)
+                {
+                    Console.Error.WriteLine("ERROR: Extracted entry was empty.");
+                    return 5;
+                }
+                if (entry is RpfResourceFileEntry resource)
+                {
+                    data = ResourceBuilder.AddResourceHeader(
+                        resource, ResourceBuilder.Compress(data));
+                }
+                string parent = Path.GetDirectoryName(outputPath);
+                if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
+                File.WriteAllBytes(outputPath, data);
+                Console.WriteLine(
+                    $"Extracted {archivePath}::{entryPath} ({data.Length:N0} bytes) to {outputPath}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: RPF extraction failed: {ex.Message}");
+                return 99;
+            }
+        }
+
+        // Converts native RAGE resources to the CodeWalker XML representation
+        // and writes referenced textures/audio beside it. This is deliberately
+        // read-only and is shared by the package viewer and RPF explorer.
+        static int ExportAssetXml(string[] args)
+        {
+            if (args.Length < 4)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe asset-xml <input_asset> <output_xml> <asset_folder> [legacy|gen9]");
+                return 1;
+            }
+            string input = Path.GetFullPath(args[1]);
+            string output = Path.GetFullPath(args[2]);
+            string assetFolder = Path.GetFullPath(args[3]);
+            bool gen9 = args.Length >= 5 && args[4].Equals(
+                "gen9", StringComparison.OrdinalIgnoreCase);
+            if (!File.Exists(input))
+            {
+                Console.Error.WriteLine($"ERROR: File not found: {input}");
+                return 4;
+            }
+            bool previous = RpfManager.IsGen9;
+            try
+            {
+                RpfManager.IsGen9 = gen9;
+                byte[] data = File.ReadAllBytes(input);
+                string suffix = Path.GetExtension(input).ToLowerInvariant();
+                string xml;
+                switch (suffix)
+                {
+                    case ".ytd":
+                        var ytd = new YtdFile(); ytd.Load(data);
+                        xml = YtdXml.GetXml(ytd, assetFolder); break;
+                    case ".ydr":
+                        var ydr = new YdrFile(); ydr.Load(data);
+                        xml = YdrXml.GetXml(ydr, assetFolder); break;
+                    case ".ydd":
+                        var ydd = new YddFile(); ydd.Load(data);
+                        xml = YddXml.GetXml(ydd, assetFolder); break;
+                    case ".yft":
+                        var yft = new YftFile(); yft.Load(data);
+                        xml = YftXml.GetXml(yft, assetFolder); break;
+                    case ".ybn":
+                        var ybn = new YbnFile(); ybn.Load(data);
+                        xml = YbnXml.GetXml(ybn); break;
+                    case ".ymap":
+                        var ymap = new YmapFile(); ymap.Load(data);
+                        xml = MetaXml.GetXml(ymap, out _); break;
+                    case ".ytyp":
+                        var ytyp = new YtypFile(); ytyp.Load(data);
+                        xml = MetaXml.GetXml(ytyp, out _); break;
+                    case ".ymt":
+                        var ymt = new YmtFile(); ymt.Load(data);
+                        xml = MetaXml.GetXml(ymt, out _); break;
+                    case ".ymf":
+                        var ymfEntry = LooseBinaryEntry(input);
+                        var ymf = RpfFile.GetFile<YmfFile>(ymfEntry, data);
+                        xml = MetaXml.GetXml(ymf, out _); break;
+                    case ".ynd":
+                        var ynd = new YndFile(); ynd.Load(data);
+                        xml = YndXml.GetXml(ynd); break;
+                    case ".ynv":
+                        var ynv = new YnvFile(); ynv.Load(data);
+                        xml = YnvXml.GetXml(ynv); break;
+                    case ".ypt":
+                        var ypt = new YptFile(); ypt.Load(data);
+                        xml = YptXml.GetXml(ypt, assetFolder); break;
+                    case ".ycd":
+                        var ycd = RpfFile.GetResourceFile<YcdFile>(data);
+                        xml = YcdXml.GetXml(ycd); break;
+                    case ".yed":
+                        var yed = RpfFile.GetResourceFile<YedFile>(data);
+                        xml = YedXml.GetXml(yed); break;
+                    case ".yfd":
+                        var yfd = RpfFile.GetResourceFile<YfdFile>(data);
+                        xml = YfdXml.GetXml(yfd); break;
+                    case ".yvr":
+                        var yvr = RpfFile.GetResourceFile<YvrFile>(data);
+                        xml = YvrXml.GetXml(yvr); break;
+                    case ".ywr":
+                        var ywr = RpfFile.GetResourceFile<YwrFile>(data);
+                        xml = YwrXml.GetXml(ywr); break;
+                    case ".rel":
+                        var relEntry = LooseBinaryEntry(input);
+                        var rel = new RelFile(); rel.Load(data, relEntry);
+                        xml = RelXml.GetXml(rel); break;
+                    case ".awc":
+                        var awcEntry = LooseBinaryEntry(input);
+                        var awc = new AwcFile(); awc.Load(data, awcEntry);
+                        xml = AwcXml.GetXml(awc, assetFolder); break;
+                    case ".gxt2":
+                        var entry = new RpfBinaryFileEntry
+                        {
+                            Name = Path.GetFileName(input),
+                            NameLower = Path.GetFileName(input).ToLowerInvariant(),
+                            Path = input,
+                        };
+                        var gxt = new Gxt2File(); gxt.Load(data, entry);
+                        xml = new XElement("GXT2",
+                            new XAttribute("count", gxt.EntryCount),
+                            (gxt.TextEntries ?? Array.Empty<Gxt2Entry>()).Select(item =>
+                                new XElement("Entry",
+                                    new XAttribute("hash", $"0x{item.Hash:X8}"),
+                                    new XCData(item.Text ?? string.Empty))))
+                            .ToString();
+                        break;
+                    default:
+                        Console.Error.WriteLine(
+                            $"ERROR: Native XML preview is not available for {suffix}");
+                        return 6;
+                }
+                if (string.IsNullOrWhiteSpace(xml))
+                {
+                    Console.Error.WriteLine("ERROR: Native asset conversion produced no XML.");
+                    return 5;
+                }
+                string parent = Path.GetDirectoryName(output);
+                if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
+                Directory.CreateDirectory(assetFolder);
+                File.WriteAllText(output, xml, new UTF8Encoding(false));
+                Console.WriteLine($"Exported native asset XML: {output}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: Native asset conversion failed: {ex.Message}");
+                return 99;
+            }
+            finally
+            {
+                RpfManager.IsGen9 = previous;
+            }
+        }
+
+        static RpfBinaryFileEntry LooseBinaryEntry(string path)
+        {
+            string name = Path.GetFileName(path);
+            return new RpfBinaryFileEntry
+            {
+                Name = name,
+                NameLower = name.ToLowerInvariant(),
+                Path = path,
+                FileUncompressedSize = (uint)Math.Min(
+                    new FileInfo(path).Length, uint.MaxValue),
+            };
+        }
+
         // Build a texture dictionary from standards-compliant DDS files.
         // PNG-to-BC3 conversion is intentionally performed by the Python
         // installer because the historical YTDToolio PNG encoder emits
@@ -1233,6 +1736,708 @@ namespace RpfPatcher
 
         // Read-only diagnostics used to compare ALLIN1 resources with native
         // Enhanced files without requiring a GUI archive editor.
+        static int PsoToXml(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe pso-to-xml <input_pso> <output_xml>");
+                return 1;
+            }
+
+            try
+            {
+                var pso = new PsoFile();
+                pso.Load(args[1]);
+                PsoTypes.EnsurePsoTypes(pso);
+                string xml = PsoXml.GetXml(pso);
+                if (string.IsNullOrWhiteSpace(xml))
+                {
+                    Console.Error.WriteLine("ERROR: PSO conversion produced no XML.");
+                    return 5;
+                }
+
+                string output = Path.GetFullPath(args[2]);
+                string parent = Path.GetDirectoryName(output);
+                if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
+                File.WriteAllText(output, xml, new UTF8Encoding(false));
+                Console.WriteLine($"Converted PSO to XML: {output}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 99;
+            }
+        }
+
+        static int InspectPso(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine("Usage: RpfPatcher.exe inspect-pso <input_pso>");
+                return 1;
+            }
+
+            try
+            {
+                var pso = new PsoFile();
+                pso.Load(args[1]);
+                var cont = new PsoXml.PsoCont(pso);
+                Console.WriteLine($"Root block: {pso.DataMapSection.RootId}");
+                for (int i = 0; i < pso.DataMapSection.Entries.Length; i++)
+                {
+                    PsoDataMappingEntry block = pso.DataMapSection.Entries[i];
+                    Console.WriteLine(
+                        $"BLOCK {i + 1}: {PsoXml.HashString(block.NameHash)} " +
+                        $"offset={block.Offset} length={block.Length}");
+                }
+
+                foreach (PsoStructureInfo structure in
+                    pso.SchemaSection.Entries.OfType<PsoStructureInfo>())
+                {
+                    Console.WriteLine(
+                        $"STRUCT {PsoXml.HashString(structure.IndexInfo.NameHash)} " +
+                        $"length={structure.StructureLength}");
+                    foreach (PsoStructureEntryInfo entry in structure.Entries)
+                    {
+                        Console.WriteLine(
+                            $"  {PsoXml.HashString(entry.EntryNameHash)} " +
+                            $"type={entry.Type} subtype={entry.Unk_5h} " +
+                            $"offset={entry.DataOffset} ref=0x{entry.ReferenceKey:X8}");
+                    }
+                }
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 99;
+            }
+        }
+
+        private const string SmokeExplosionPath =
+            "x64/data/metadata/explosion.ymt";
+        private const string SmokeExplosionFxPath =
+            "common/data/effects/explosionfx.dat";
+        private const string SmokeExplosionTag = "EXP_TAG_SMOKEGRENADE";
+        private const string SmokeVfxTag = "EXP_VFXTAG_SMOKE_GRENADE";
+        private const float SmokeRadius = 9.0f;
+        private const float SmokeLifetimeSeconds = 40.0f;
+        private const float SmokeVfxScale = 2.0f;
+
+        static int BuildSmokeTuning(string[] args)
+        {
+            if (args.Length < 4)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe build-smoke-tuning " +
+                    "<input_ymt> <input_dat> <output_folder>");
+                return 1;
+            }
+            try
+            {
+                byte[] sourceYmt = File.ReadAllBytes(args[1]);
+                byte[] sourceDat = File.ReadAllBytes(args[2]);
+                Dictionary<string, byte[]> payload = BuildSmokePayload(
+                    sourceYmt, sourceDat);
+                string output = Path.GetFullPath(args[3]);
+                Directory.CreateDirectory(output);
+                File.WriteAllBytes(Path.Combine(output, "explosion.ymt"),
+                    payload[SmokeExplosionPath]);
+                File.WriteAllBytes(Path.Combine(output, "explosionfx.dat"),
+                    payload[SmokeExplosionFxPath]);
+                Console.WriteLine(
+                    $"Built isolated smoke-grenade tuning in {output}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 99;
+            }
+        }
+
+        static int InstallSmokeTuning(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe install-smoke-tuning <gta_path>");
+                return 1;
+            }
+            string gtaPath = Path.GetFullPath(args[1]);
+            if (IsGtaProcessRunning())
+            {
+                Console.Error.WriteLine(
+                    "ERROR: Close GTA V before installing smoke archive tuning.");
+                return 11;
+            }
+
+            string modsRpf = Path.Combine(gtaPath, "mods", "update", "update.rpf");
+            bool writesStarted = false;
+            try
+            {
+                RpfFile rpf = OpenModsUpdateRpf(gtaPath, out int errorCode);
+                if (rpf == null) return errorCode;
+                byte[] sourceYmt = ExtractRequiredEntry(rpf, SmokeExplosionPath);
+                byte[] sourceDat = ExtractRequiredEntry(rpf, SmokeExplosionFxPath);
+                Dictionary<string, byte[]> payload = BuildSmokePayload(
+                    sourceYmt, sourceDat);
+
+                Dictionary<string, byte[]> originals =
+                    EnsureSmokeEntryBackups(gtaPath, sourceYmt, sourceDat);
+                EnsureSmokeBackup(modsRpf);
+                writesStarted = true;
+                InstallArchiveEntries(rpf, payload);
+                int result = VerifySmokeArchive(rpf);
+                if (result != 0)
+                {
+                    RestoreSmokeBackup(gtaPath);
+                    return result;
+                }
+                WriteSmokeMarker(gtaPath, payload, originals);
+                Console.WriteLine(
+                    "Installed ALLIN1 custom smoke tuning; native tear gas was not changed.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                if (writesStarted) RestoreSmokeBackup(gtaPath);
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 99;
+            }
+        }
+
+        static int VerifySmokeTuning(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe verify-smoke-tuning <gta_path>");
+                return 1;
+            }
+            string gtaPath = Path.GetFullPath(args[1]);
+            try
+            {
+                RpfFile rpf = OpenModsUpdateRpf(
+                    gtaPath, out int errorCode, "update.rpf", false);
+                if (rpf == null) return errorCode;
+                int result = VerifySmokeArchive(rpf);
+                if (result != 0) return result;
+
+                string marker = GetSmokeMarkerPath(gtaPath);
+                if (!File.Exists(marker))
+                {
+                    Console.Error.WriteLine(
+                        $"ERROR: Smoke archive marker is missing: {marker}");
+                    return 12;
+                }
+                string json = File.ReadAllText(marker);
+                byte[] ymt = ExtractRequiredEntry(rpf, SmokeExplosionPath);
+                byte[] dat = ExtractRequiredEntry(rpf, SmokeExplosionFxPath);
+                foreach (string expected in new[] { Sha256(ymt), Sha256(dat),
+                    "WEAPON_SMOKEGRENADE", SmokeExplosionTag,
+                    SmokeVfxTag })
+                {
+                    if (json.IndexOf(expected,
+                            StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                    Console.Error.WriteLine(
+                        $"ERROR: Smoke marker is incomplete: {expected}");
+                    return 12;
+                }
+                Console.WriteLine("ALLIN1 custom smoke archive tuning verified.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 99;
+            }
+        }
+
+        static int RemoveSmokeTuning(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe remove-smoke-tuning <gta_path>");
+                return 1;
+            }
+            string gtaPath = Path.GetFullPath(args[1]);
+            if (IsGtaProcessRunning())
+            {
+                Console.Error.WriteLine(
+                    "ERROR: Close GTA V before removing smoke archive tuning.");
+                return 11;
+            }
+            try
+            {
+                RpfFile rpf = OpenModsUpdateRpf(gtaPath, out int errorCode);
+                if (rpf == null) return errorCode;
+                Dictionary<string, byte[]> originals =
+                    ReadSmokeEntryBackups(gtaPath);
+                InstallArchiveEntries(rpf, originals);
+                int failures = VerifyArchiveEntries(
+                    rpf, originals, "restored smoke original");
+                if (failures != 0) return failures;
+                string marker = GetSmokeMarkerPath(gtaPath);
+                if (File.Exists(marker)) File.Delete(marker);
+                Console.WriteLine(
+                    "Removed ALLIN1 custom smoke tuning; unrelated RPF entries were preserved.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 99;
+            }
+        }
+
+        static Dictionary<string, byte[]> BuildSmokePayload(
+            byte[] sourceYmt, byte[] sourceDat)
+        {
+            var payload = new Dictionary<string, byte[]>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                { SmokeExplosionPath, PatchSmokeExplosionPso(sourceYmt) },
+                { SmokeExplosionFxPath, PatchSmokeExplosionFx(sourceDat) },
+            };
+            ValidateSmokeExplosionPso(payload[SmokeExplosionPath]);
+            ValidateSmokeExplosionFx(payload[SmokeExplosionFxPath]);
+            return payload;
+        }
+
+        static byte[] PatchSmokeExplosionPso(byte[] source)
+        {
+            var pso = new PsoFile();
+            pso.Load(source);
+            int recordOffset = LocateExplosionRecord(
+                pso, SmokeExplosionTag, out PsoStructureInfo recordInfo);
+            var allowedChanges = new HashSet<int>();
+
+            SetPsoFloat(pso, recordInfo, recordOffset,
+                "damageAtCentre", 0.0f, allowedChanges);
+            SetPsoFloat(pso, recordInfo, recordOffset,
+                "damageAtEdge", 0.0f, allowedChanges);
+            SetPsoFloat(pso, recordInfo, recordOffset,
+                "endRadius", SmokeRadius, allowedChanges);
+            SetPsoFloat(pso, recordInfo, recordOffset,
+                "forceFactor", 0.0f, allowedChanges);
+            SetPsoFloat(pso, recordInfo, recordOffset,
+                "fRagdollForceModifier", 0.0f, allowedChanges);
+            SetPsoFloat(pso, recordInfo, recordOffset,
+                "fSelfForceModifier", 0.0f, allowedChanges);
+            SetPsoFloat(pso, recordInfo, recordOffset,
+                "directedLifeTime", SmokeLifetimeSeconds, allowedChanges);
+            SetPsoBool(pso, recordInfo, recordOffset,
+                "bAppliesContinuousDamage", false, allowedChanges);
+            SetPsoBool(pso, recordInfo, recordOffset,
+                "bNoOcclusion", true, allowedChanges);
+
+            // Do not call PsoFile.Save here. CodeWalker's PSO serializer uses
+            // its built-in schema and drops newer Enhanced-only fields. PSIN
+            // starts at byte zero, so the audited data offsets map directly
+            // onto the original file. Copy only those bytes and preserve every
+            // section, schema field, and record that the current game shipped.
+            byte[] patched = (byte[])source.Clone();
+            foreach (int index in allowedChanges)
+                patched[index] = pso.DataSection.Data[index];
+            return patched;
+        }
+
+        static byte[] PatchSmokeExplosionFx(byte[] source)
+        {
+            string text = Encoding.ASCII.GetString(source);
+            var pattern = new Regex(
+                @"^(EXP_VFXTAG_SMOKE_GRENADE(?:\s+\S+){8}\s+)(\S+)",
+                RegexOptions.Multiline | RegexOptions.CultureInvariant);
+            MatchCollection matches = pattern.Matches(text);
+            if (matches.Count != 1)
+                throw new InvalidDataException(
+                    $"Expected one {SmokeVfxTag} row; found {matches.Count}.");
+            string replacement = matches[0].Groups[1].Value +
+                SmokeVfxScale.ToString("0.0",
+                    System.Globalization.CultureInfo.InvariantCulture);
+            string patched = text.Substring(0, matches[0].Index) + replacement +
+                text.Substring(matches[0].Index + matches[0].Length);
+            return Encoding.ASCII.GetBytes(patched);
+        }
+
+        static int LocateExplosionRecord(PsoFile pso, string recordName,
+            out PsoStructureInfo recordInfo)
+        {
+            var cont = new PsoXml.PsoCont(pso);
+            PsoDataMappingEntry rootBlock = pso.GetBlock(
+                pso.DataMapSection.RootId);
+            PsoStructureInfo rootInfo = cont.GetStructureInfo(
+                rootBlock.NameHash);
+            PsoStructureEntryInfo arrayEntry = FindPsoEntry(
+                rootInfo, "aExplosionTagData", PsoDataType.Array);
+            var records = MetaTypes.ConvertData<Array_Structure>(
+                pso.DataSection.Data, rootBlock.Offset + arrayEntry.DataOffset);
+            records.SwapEnd();
+            PsoDataMappingEntry recordBlock = pso.GetBlock(
+                (int)records.PointerDataId);
+            if (recordBlock == null)
+                throw new InvalidDataException("Explosion record block is missing.");
+            recordInfo = cont.GetStructureInfo(recordBlock.NameHash);
+            PsoStructureEntryInfo nameEntry = FindPsoEntry(
+                recordInfo, "name", PsoDataType.String);
+
+            for (int index = 0; index < records.Count1; index++)
+            {
+                int offset = recordBlock.Offset +
+                    (int)records.PointerDataOffset +
+                    index * recordInfo.StructureLength;
+                var pointer = MetaTypes.ConvertData<CharPointer>(
+                    pso.DataSection.Data, offset + nameEntry.DataOffset);
+                pointer.SwapEnd();
+                string currentName = PsoTypes.GetString(pso, pointer);
+                if (string.Equals(currentName, recordName,
+                        StringComparison.Ordinal)) return offset;
+            }
+            throw new InvalidDataException(
+                $"Explosion record not found: {recordName}");
+        }
+
+        static PsoStructureEntryInfo FindPsoEntry(PsoStructureInfo structure,
+            string name, PsoDataType type)
+        {
+            PsoStructureEntryInfo entry = structure?.Entries?.FirstOrDefault(
+                candidate => candidate.Type == type &&
+                PsoXml.HashString(candidate.EntryNameHash).Equals(
+                    name, StringComparison.Ordinal));
+            if (entry == null)
+                throw new InvalidDataException(
+                    $"PSO field is missing or has the wrong type: {name}");
+            return entry;
+        }
+
+        static void SetPsoFloat(PsoFile pso, PsoStructureInfo structure,
+            int recordOffset, string name, float value,
+            HashSet<int> allowedChanges)
+        {
+            PsoStructureEntryInfo entry = FindPsoEntry(
+                structure, name, PsoDataType.Float);
+            int offset = recordOffset + entry.DataOffset;
+            byte[] bytes = BitConverter.GetBytes(value);
+            if (BitConverter.IsLittleEndian) Array.Reverse(bytes);
+            Buffer.BlockCopy(bytes, 0, pso.DataSection.Data, offset, 4);
+            for (int index = 0; index < 4; index++)
+                allowedChanges.Add(offset + index);
+        }
+
+        static void SetPsoBool(PsoFile pso, PsoStructureInfo structure,
+            int recordOffset, string name, bool value,
+            HashSet<int> allowedChanges)
+        {
+            PsoStructureEntryInfo entry = FindPsoEntry(
+                structure, name, PsoDataType.Bool);
+            int offset = recordOffset + entry.DataOffset;
+            pso.DataSection.Data[offset] = value ? (byte)1 : (byte)0;
+            allowedChanges.Add(offset);
+        }
+
+        static float ReadPsoFloat(PsoFile pso, PsoStructureInfo structure,
+            int recordOffset, string name)
+        {
+            int offset = recordOffset + FindPsoEntry(
+                structure, name, PsoDataType.Float).DataOffset;
+            byte[] bytes = new byte[4];
+            Buffer.BlockCopy(pso.DataSection.Data, offset, bytes, 0, 4);
+            if (BitConverter.IsLittleEndian) Array.Reverse(bytes);
+            return BitConverter.ToSingle(bytes, 0);
+        }
+
+        static bool ReadPsoBool(PsoFile pso, PsoStructureInfo structure,
+            int recordOffset, string name)
+        {
+            int offset = recordOffset + FindPsoEntry(
+                structure, name, PsoDataType.Bool).DataOffset;
+            return pso.DataSection.Data[offset] != 0;
+        }
+
+        static void ValidateSmokeExplosionPso(byte[] data)
+        {
+            var pso = new PsoFile();
+            pso.Load(data);
+            int offset = LocateExplosionRecord(
+                pso, SmokeExplosionTag, out PsoStructureInfo info);
+            var expectedFloats = new Dictionary<string, float>
+            {
+                { "damageAtCentre", 0.0f },
+                { "damageAtEdge", 0.0f },
+                { "endRadius", SmokeRadius },
+                { "forceFactor", 0.0f },
+                { "fRagdollForceModifier", 0.0f },
+                { "fSelfForceModifier", 0.0f },
+                { "directedLifeTime", SmokeLifetimeSeconds },
+            };
+            foreach (KeyValuePair<string, float> expected in expectedFloats)
+            {
+                float actual = ReadPsoFloat(pso, info, offset, expected.Key);
+                if (Math.Abs(actual - expected.Value) > 0.00001f)
+                    throw new InvalidDataException(
+                        $"Smoke PSO verification failed for {expected.Key}: {actual}");
+            }
+            if (ReadPsoBool(pso, info, offset,
+                    "bAppliesContinuousDamage"))
+                throw new InvalidDataException(
+                    "Smoke PSO still applies continuous damage.");
+            if (!ReadPsoBool(pso, info, offset, "bNoOcclusion"))
+                throw new InvalidDataException(
+                    "Smoke PSO no-occlusion flag was not enabled.");
+        }
+
+        static void ValidateSmokeExplosionFx(byte[] data)
+        {
+            string text = Encoding.ASCII.GetString(data);
+            var pattern = new Regex(
+                @"^EXP_VFXTAG_SMOKE_GRENADE(?:\s+\S+){8}\s+(\S+)",
+                RegexOptions.Multiline | RegexOptions.CultureInvariant);
+            MatchCollection matches = pattern.Matches(text);
+            if (matches.Count != 1 ||
+                !float.TryParse(matches[0].Groups[1].Value,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out float scale) ||
+                Math.Abs(scale - SmokeVfxScale) > 0.00001f)
+                throw new InvalidDataException(
+                    "Smoke-grenade VFX scale verification failed.");
+        }
+
+        static byte[] ExtractRequiredEntry(RpfFile rpf, string path)
+        {
+            RpfFileEntry entry = FindRelativeEntry(rpf, path);
+            byte[] data = entry?.File.ExtractFile(entry);
+            if (data == null || data.Length == 0)
+                throw new InvalidDataException(
+                    $"Required RPF entry is missing or empty: {path}");
+            return data;
+        }
+
+        static int VerifySmokeArchive(RpfFile rpf)
+        {
+            try
+            {
+                byte[] ymt = ExtractRequiredEntry(rpf, SmokeExplosionPath);
+                byte[] dat = ExtractRequiredEntry(rpf, SmokeExplosionFxPath);
+                ValidateSmokeExplosionPso(ymt);
+                ValidateSmokeExplosionFx(dat);
+                Console.WriteLine(
+                    $"  OK {SmokeExplosionPath} ({ymt.Length:N0} bytes, " +
+                    $"sha256={Sha256(ymt)})");
+                Console.WriteLine(
+                    $"  OK {SmokeExplosionFxPath} ({dat.Length:N0} bytes, " +
+                    $"sha256={Sha256(dat)})");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"ERROR: Smoke archive verification failed: {ex.Message}");
+                return 9;
+            }
+        }
+
+        static void EnsureSmokeBackup(string modsRpf)
+        {
+            string backup = modsRpf + ".allin1-smoke.bak";
+            if (File.Exists(backup))
+            {
+                Console.WriteLine($"Preserving rollback snapshot: {backup}");
+                return;
+            }
+            long sourceLength = new FileInfo(modsRpf).Length;
+            var drive = new DriveInfo(Path.GetPathRoot(modsRpf));
+            if (drive.AvailableFreeSpace < sourceLength + 268435456L)
+                throw new IOException(
+                    "Not enough free disk space for the smoke tuning rollback snapshot.");
+            string temporary = backup + ".tmp";
+            if (File.Exists(temporary)) File.Delete(temporary);
+            try
+            {
+                File.Copy(modsRpf, temporary, false);
+                if (new FileInfo(temporary).Length != sourceLength)
+                    throw new IOException(
+                        "Smoke tuning rollback snapshot failed size verification.");
+                File.Move(temporary, backup);
+            }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+            }
+            Console.WriteLine($"Created rollback snapshot: {backup}");
+        }
+
+        static bool RestoreSmokeBackup(string gtaPath)
+        {
+            string target = Path.Combine(
+                gtaPath, "mods", "update", "update.rpf");
+            string backup = target + ".allin1-smoke.bak";
+            if (!File.Exists(backup))
+            {
+                Console.Error.WriteLine(
+                    $"MISSING ROLLBACK SNAPSHOT: {backup}");
+                return false;
+            }
+            File.Copy(backup, target, true);
+            Console.WriteLine($"Restored: {target}");
+            return true;
+        }
+
+        static Dictionary<string, byte[]> EnsureSmokeEntryBackups(
+            string gtaPath, byte[] currentYmt, byte[] currentDat)
+        {
+            string directory = GetSmokeEntryBackupDirectory(gtaPath);
+            string ymtPath = Path.Combine(directory, "explosion.ymt");
+            string datPath = Path.Combine(directory, "explosionfx.dat");
+            bool ymtExists = File.Exists(ymtPath);
+            bool datExists = File.Exists(datPath);
+            if (ymtExists != datExists)
+                throw new InvalidDataException(
+                    $"Smoke entry backup is incomplete: {directory}");
+            if (ymtExists)
+            {
+                Console.WriteLine(
+                    $"Preserving original smoke entries: {directory}");
+                return ReadSmokeEntryBackups(gtaPath);
+            }
+
+            byte[] originalYmt = currentYmt;
+            byte[] originalDat = currentDat;
+            string marker = GetSmokeMarkerPath(gtaPath);
+            string archive = Path.Combine(
+                gtaPath, "mods", "update", "update.rpf");
+            string legacyBackup = archive + ".allin1-smoke.bak";
+            if (File.Exists(marker))
+            {
+                if (!File.Exists(legacyBackup))
+                    throw new InvalidDataException(
+                        "Smoke tuning is marked installed, but no original-entry " +
+                        "or legacy full-archive backup is available.");
+                var legacyRpf = new RpfFile(legacyBackup, legacyBackup);
+                legacyRpf.ScanStructure(null, err =>
+                    Console.Error.WriteLine(
+                        $"RPF backup scan warning: {err}"));
+                originalYmt = ExtractRequiredEntry(
+                    legacyRpf, SmokeExplosionPath);
+                originalDat = ExtractRequiredEntry(
+                    legacyRpf, SmokeExplosionFxPath);
+                Console.WriteLine(
+                    "Migrating original smoke entries from the legacy full snapshot.");
+            }
+
+            Directory.CreateDirectory(directory);
+            WriteAtomicFile(ymtPath, originalYmt);
+            WriteAtomicFile(datPath, originalDat);
+            string manifest = Path.Combine(directory, "manifest.txt");
+            File.WriteAllText(manifest,
+                $"{SmokeExplosionPath}\t{originalYmt.Length}\t{Sha256(originalYmt)}\n" +
+                $"{SmokeExplosionFxPath}\t{originalDat.Length}\t{Sha256(originalDat)}\n",
+                new UTF8Encoding(false));
+            Console.WriteLine($"Saved original smoke entries: {directory}");
+            return new Dictionary<string, byte[]>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                { SmokeExplosionPath, originalYmt },
+                { SmokeExplosionFxPath, originalDat },
+            };
+        }
+
+        static Dictionary<string, byte[]> ReadSmokeEntryBackups(
+            string gtaPath)
+        {
+            string directory = GetSmokeEntryBackupDirectory(gtaPath);
+            string ymtPath = Path.Combine(directory, "explosion.ymt");
+            string datPath = Path.Combine(directory, "explosionfx.dat");
+            if (!File.Exists(ymtPath) || !File.Exists(datPath))
+                throw new FileNotFoundException(
+                    $"Original smoke-entry backup is missing: {directory}");
+            byte[] ymt = File.ReadAllBytes(ymtPath);
+            byte[] dat = File.ReadAllBytes(datPath);
+            if (ymt.Length == 0 || dat.Length == 0)
+                throw new InvalidDataException(
+                    $"Original smoke-entry backup is empty: {directory}");
+            return new Dictionary<string, byte[]>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                { SmokeExplosionPath, ymt },
+                { SmokeExplosionFxPath, dat },
+            };
+        }
+
+        static int VerifyArchiveEntries(RpfFile rpf,
+            Dictionary<string, byte[]> expected, string label)
+        {
+            int failures = 0;
+            foreach (KeyValuePair<string, byte[]> item in expected)
+            {
+                byte[] actual = ExtractRequiredEntry(rpf, item.Key);
+                bool matches = actual.SequenceEqual(item.Value);
+                Console.WriteLine(
+                    $"  {(matches ? "OK" : "FAIL")} {label}/{item.Key}" +
+                    $" ({actual.Length:N0} bytes, sha256={Sha256(actual)})");
+                if (!matches) failures++;
+            }
+            if (failures == 0) return 0;
+            Console.Error.WriteLine(
+                $"ERROR: {label} verification failed ({failures} entries).");
+            return 9;
+        }
+
+        static void WriteAtomicFile(string path, byte[] data)
+        {
+            string temporary = path + ".tmp";
+            if (File.Exists(temporary)) File.Delete(temporary);
+            try
+            {
+                File.WriteAllBytes(temporary, data);
+                File.Move(temporary, path);
+            }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+            }
+        }
+
+        static string GetSmokeEntryBackupDirectory(string gtaPath)
+        {
+            return Path.Combine(gtaPath, "mods", "update",
+                ".allin1-smoke-originals");
+        }
+
+        static void WriteSmokeMarker(string gtaPath,
+            Dictionary<string, byte[]> payload,
+            Dictionary<string, byte[]> originals)
+        {
+            string marker = GetSmokeMarkerPath(gtaPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(marker));
+            string json = "{\n" +
+                $"  \"installed_utc\": \"{DateTime.UtcNow:o}\",\n" +
+                "  \"archive\": \"mods/update/update.rpf\",\n" +
+                "  \"carrier\": \"WEAPON_SMOKEGRENADE\",\n" +
+                $"  \"explosion_tag\": \"{SmokeExplosionTag}\",\n" +
+                $"  \"vfx_tag\": \"{SmokeVfxTag}\",\n" +
+                $"  \"radius\": {SmokeRadius:0.0},\n" +
+                $"  \"lifetime_seconds\": {SmokeLifetimeSeconds:0.0},\n" +
+                $"  \"vfx_scale\": {SmokeVfxScale:0.0},\n" +
+                $"  \"explosion_ymt_sha256\": \"{Sha256(payload[SmokeExplosionPath])}\",\n" +
+                $"  \"explosionfx_dat_sha256\": \"{Sha256(payload[SmokeExplosionFxPath])}\",\n" +
+                $"  \"original_explosion_ymt_sha256\": \"{Sha256(originals[SmokeExplosionPath])}\",\n" +
+                $"  \"original_explosionfx_dat_sha256\": \"{Sha256(originals[SmokeExplosionFxPath])}\"\n" +
+                "}\n";
+            File.WriteAllText(marker, json, new UTF8Encoding(false));
+            Console.WriteLine($"Wrote smoke archive marker: {marker}");
+        }
+
+        static string GetSmokeMarkerPath(string gtaPath)
+        {
+            return Path.Combine(gtaPath, "scripts",
+                "ALLIN1_smoke_tuning.json");
+        }
+
         static int ExtractEntry(string[] args)
         {
             if (args.Length < 5)
@@ -1263,22 +2468,14 @@ namespace RpfPatcher
                 string normalizedRequest = entryName
                     .Replace('\\', '/').TrimStart('/');
                 bool pathRequest = normalizedRequest.Contains('/');
-                string archivePrefix = Path.GetFullPath(rpfPath)
-                    .Replace('\\', '/').TrimEnd('/') + "/";
-                var matches = rpf.AllEntries?
-                    .OfType<RpfFileEntry>()
-                    .Where(entry => pathRequest
-                        ? string.Equals(
-                            entry.Path.Replace('\\', '/').StartsWith(
-                                archivePrefix, StringComparison.OrdinalIgnoreCase)
-                                ? entry.Path.Replace('\\', '/').Substring(
-                                    archivePrefix.Length)
-                                : entry.Path.Replace('\\', '/'),
-                            normalizedRequest,
-                            StringComparison.OrdinalIgnoreCase)
-                        : string.Equals(entry.Name, entryName,
+                var matches = pathRequest
+                    ? new[] { FindExactFileEntry(rpf, normalizedRequest) }
+                        .Where(entry => entry != null).ToArray()
+                    : rpf.AllEntries?
+                        .OfType<RpfFileEntry>()
+                        .Where(entry => string.Equals(entry.Name, entryName,
                             StringComparison.OrdinalIgnoreCase))
-                    .ToArray() ?? Array.Empty<RpfFileEntry>();
+                        .ToArray() ?? Array.Empty<RpfFileEntry>();
                 if (matches.Length == 0)
                 {
                     Console.Error.WriteLine($"ERROR: Entry not found: {entryName}");
@@ -1526,6 +2723,174 @@ namespace RpfPatcher
             internal Dictionary<string, byte[]> Entries;
         }
 
+        static string RelativeRpfEntryPath(RpfFile rpf, RpfEntry entry)
+        {
+            string normalized = entry.Path.Replace('\\', '/');
+            string authoredPrefix = (rpf.Path ?? string.Empty)
+                .Replace('\\', '/').TrimEnd('/') + "/";
+            if (normalized.StartsWith(
+                    authoredPrefix, StringComparison.OrdinalIgnoreCase))
+                return normalized.Substring(authoredPrefix.Length);
+            string physicalPrefix = Path.GetFullPath(rpf.Path)
+                .Replace('\\', '/').TrimEnd('/') + "/";
+            return normalized.StartsWith(
+                    physicalPrefix, StringComparison.OrdinalIgnoreCase)
+                ? normalized.Substring(physicalPrefix.Length)
+                : normalized.TrimStart('/');
+        }
+
+        static RpfFileEntry FindExactFileEntry(RpfFile rpf, string entryPath)
+        {
+            string requested = entryPath.Replace('\\', '/').Trim('/');
+            var matches = rpf.AllEntries?
+                .OfType<RpfFileEntry>()
+                .Where(entry =>
+                {
+                    string relative = RelativeRpfEntryPath(rpf, entry);
+                    return string.Equals(relative, requested,
+                            StringComparison.OrdinalIgnoreCase)
+                        || relative.EndsWith("/" + requested,
+                            StringComparison.OrdinalIgnoreCase);
+                })
+                .ToArray() ?? Array.Empty<RpfFileEntry>();
+            if (matches.Length > 1)
+                throw new InvalidOperationException(
+                    "RPF entry path is ambiguous: " + entryPath);
+            return matches.SingleOrDefault();
+        }
+
+        static RpfDirectoryEntry FindExactDirectory(RpfFile rpf, string directoryPath)
+        {
+            string requested = directoryPath.Replace('\\', '/').Trim('/');
+            if (string.IsNullOrEmpty(requested)) return rpf.Root;
+            var matches = rpf.AllEntries?
+                .OfType<RpfDirectoryEntry>()
+                .Where(entry =>
+                {
+                    string relative = RelativeRpfEntryPath(rpf, entry).TrimEnd('/');
+                    return string.Equals(relative, requested,
+                            StringComparison.OrdinalIgnoreCase)
+                        || relative.EndsWith("/" + requested,
+                            StringComparison.OrdinalIgnoreCase);
+                })
+                .ToArray() ?? Array.Empty<RpfDirectoryEntry>();
+            if (matches.Length > 1)
+                throw new InvalidOperationException(
+                    "RPF directory path is ambiguous: " + directoryPath);
+            return matches.SingleOrDefault();
+        }
+
+        static RpfFile OpenWritableRpf(string gtaPath, string rpfPath)
+        {
+            bool isGen9 = File.Exists(Path.Combine(gtaPath, "GTA5_Enhanced.exe"))
+                       || File.Exists(Path.Combine(gtaPath, "eboot.bin"));
+            GTA5Keys.LoadFromPath(gtaPath, isGen9, null);
+            var rpf = new RpfFile(rpfPath, rpfPath);
+            rpf.ScanStructure(null,
+                err => Console.Error.WriteLine($"RPF scan warning: {err}"));
+            if (rpf.AllEntries == null || rpf.AllEntries.Count == 0)
+                throw new InvalidDataException("RPF scan returned no entries.");
+            RpfFile.EnsureValidEncryption(rpf, null, true);
+            rpf = new RpfFile(rpfPath, rpfPath);
+            rpf.ScanStructure(null,
+                err => Console.Error.WriteLine($"RPF reopen warning: {err}"));
+            return rpf;
+        }
+
+        static int ReplaceEntry(string[] args)
+        {
+            if (args.Length < 5)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe replace-entry <gta_path> <rpf_path> <entry_path> <payload>");
+                return 1;
+            }
+            string gtaPath = args[1];
+            string rpfPath = args[2];
+            string entryPath = args[3].Replace('\\', '/').Trim('/');
+            string payloadPath = args[4];
+            if (!File.Exists(rpfPath) || !File.Exists(payloadPath))
+            {
+                Console.Error.WriteLine("ERROR: RPF or payload file not found.");
+                return 4;
+            }
+            if (entryPath.Contains("../") || entryPath.Contains("/..")
+                || Path.IsPathRooted(entryPath))
+            {
+                Console.Error.WriteLine("ERROR: Unsafe RPF entry path.");
+                return 4;
+            }
+            try
+            {
+                var rpf = OpenWritableRpf(gtaPath, rpfPath);
+                var existing = FindExactFileEntry(rpf, entryPath);
+                string name = entryPath.Split('/').Last();
+                byte[] data = File.ReadAllBytes(payloadPath);
+                if (existing != null)
+                {
+                    RpfFile.CreateFile(existing.Parent, existing.Name, data, true);
+                    Console.WriteLine($"Replaced RPF entry: {entryPath} ({data.Length:N0} bytes)");
+                }
+                else
+                {
+                    int separator = entryPath.LastIndexOf('/');
+                    string parentPath = separator >= 0
+                        ? entryPath.Substring(0, separator) : string.Empty;
+                    var parent = FindExactDirectory(rpf, parentPath);
+                    if (parent == null)
+                    {
+                        Console.Error.WriteLine(
+                            $"ERROR: RPF target directory not found: {parentPath}");
+                        return 5;
+                    }
+                    RpfFile.CreateFile(parent, name, data, true);
+                    Console.WriteLine($"Added RPF entry: {entryPath} ({data.Length:N0} bytes)");
+                }
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: RPF entry replacement failed: {ex.Message}");
+                return 99;
+            }
+        }
+
+        static int DeleteEntry(string[] args)
+        {
+            if (args.Length < 4)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe delete-entry <gta_path> <rpf_path> <entry_path>");
+                return 1;
+            }
+            string gtaPath = args[1];
+            string rpfPath = args[2];
+            string entryPath = args[3].Replace('\\', '/').Trim('/');
+            if (!File.Exists(rpfPath))
+            {
+                Console.Error.WriteLine($"ERROR: File not found: {rpfPath}");
+                return 4;
+            }
+            try
+            {
+                var rpf = OpenWritableRpf(gtaPath, rpfPath);
+                var existing = FindExactFileEntry(rpf, entryPath);
+                if (existing == null)
+                {
+                    Console.WriteLine($"No changes needed; RPF entry is absent: {entryPath}");
+                    return 0;
+                }
+                RpfFile.DeleteEntry(existing);
+                Console.WriteLine($"Deleted RPF entry: {entryPath}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: RPF entry deletion failed: {ex.Message}");
+                return 99;
+            }
+        }
+
         private sealed class EuphoriaArchiveTarget
         {
             internal EuphoriaArchiveSpec Spec;
@@ -1597,7 +2962,7 @@ namespace RpfPatcher
                 tuningWritesStarted = true;
                 foreach (EuphoriaArchiveTarget target in targets)
                 {
-                    InstallEuphoriaEntries(target.Rpf, target.Spec.Entries);
+                    InstallArchiveEntries(target.Rpf, target.Spec.Entries);
                     int verification = VerifyEuphoriaArchive(
                         target.Rpf, target.Spec.Entries,
                         "mods/" + target.Spec.Archive);
@@ -1954,6 +3319,17 @@ namespace RpfPatcher
             return rpf;
         }
 
+        private static void ReloadGtaEncryptionKeys(string gtaPath)
+        {
+            bool isGen9 = File.Exists(Path.Combine(
+                    gtaPath, "GTA5_Enhanced.exe")) ||
+                File.Exists(Path.Combine(gtaPath, "eboot.bin"));
+            GTA5Keys.LoadFromPath(gtaPath, isGen9, null);
+            if (GTA5Keys.PC_AES_KEY == null)
+                throw new InvalidDataException(
+                    "Could not reload GTA encryption keys for a nested archive.");
+        }
+
         static string GetModsArchivePath(string gtaPath, string archive)
         {
             return Path.GetFullPath(Path.Combine(gtaPath, "mods",
@@ -2014,7 +3390,7 @@ namespace RpfPatcher
             }
         }
 
-        static void InstallEuphoriaEntries(RpfFile rpf,
+        static void InstallArchiveEntries(RpfFile rpf,
             Dictionary<string, byte[]> entries)
         {
             foreach (KeyValuePair<string, byte[]> item in entries)
@@ -2063,13 +3439,24 @@ namespace RpfPatcher
         static RpfFileEntry FindRelativeEntry(RpfFile rpf, string requested)
         {
             string normalized = requested.Replace('\\', '/').TrimStart('/');
-            return rpf.AllEntries?.OfType<RpfFileEntry>().FirstOrDefault(entry =>
-            {
-                string path = entry.Path.Replace('\\', '/');
-                return path.Equals(normalized, StringComparison.OrdinalIgnoreCase) ||
-                    path.EndsWith("/" + normalized,
+            string archivePrefix = Path.GetFullPath(rpf.FilePath)
+                .Replace('\\', '/').TrimEnd('/') + "/";
+            RpfFileEntry[] matches = rpf.AllEntries?
+                .OfType<RpfFileEntry>()
+                .Where(entry =>
+                {
+                    string path = entry.Path.Replace('\\', '/');
+                    string relative = path.StartsWith(archivePrefix,
+                            StringComparison.OrdinalIgnoreCase)
+                        ? path.Substring(archivePrefix.Length)
+                        : path.TrimStart('/');
+                    return relative.Equals(normalized,
                         StringComparison.OrdinalIgnoreCase);
-            });
+                }).ToArray() ?? Array.Empty<RpfFileEntry>();
+            if (matches.Length > 1)
+                throw new InvalidDataException(
+                    $"Archive-relative entry is ambiguous: {requested}");
+            return matches.Length == 1 ? matches[0] : null;
         }
 
         static string Sha256(byte[] data)
@@ -2297,16 +3684,2702 @@ namespace RpfPatcher
             }
         }
 
+        private sealed class ColoredSmokeWeaponSpec
+        {
+            internal string Color;
+            internal string DisplayName;
+            internal string WeaponName;
+            internal string AmmoName;
+            internal string SlotName;
+            internal string HumanNameLabel;
+            internal string DescriptionLabel;
+            internal string TooltipLabel;
+            internal string UppercaseLabel;
+            internal string LockHash;
+        }
+
+        private const string BaseWeaponsMetaPath =
+            "common/data/ai/weapons.meta";
+        private const string BaseWeaponAnimationsMetaPath =
+            "common/data/ai/weaponanimations.meta";
+        private const string BaseAmericanLanguageArchivePath =
+            "x64/patch/data/lang/american_rel.rpf";
+        private const string BaseScaleformGenericArchivePath =
+            "x64/data/cdimages/scaleform_generic.rpf";
+        private const string MergedSmokeCanaryMarkerName =
+            "ALLIN1_colored_smoke_merged_canary.json";
+
+        private static readonly ColoredSmokeWeaponSpec[] ColoredSmokeWeapons =
+        {
+            ColoredSmokeSpec("white", "White Smoke"),
+            ColoredSmokeSpec("red", "Red Smoke"),
+            ColoredSmokeSpec("orange", "Orange Smoke"),
+            ColoredSmokeSpec("yellow", "Yellow Smoke"),
+            ColoredSmokeSpec("green", "Green Smoke"),
+            ColoredSmokeSpec("blue", "Blue Smoke"),
+            ColoredSmokeSpec("purple", "Purple Smoke"),
+        };
+
+        private static ColoredSmokeWeaponSpec ColoredSmokeSpec(
+            string color, string displayName)
+        {
+            string suffix = color.ToUpperInvariant();
+            string labelSuffix = suffix.Substring(
+                0, Math.Min(3, suffix.Length));
+            return new ColoredSmokeWeaponSpec
+            {
+                Color = color,
+                DisplayName = displayName,
+                WeaponName = "WEAPON_ALLIN1_SMOKE_" + suffix,
+                AmmoName = "AMMO_ALLIN1_SMOKE_" + suffix,
+                SlotName = "SLOT_ALLIN1_SMOKE_" + suffix,
+                HumanNameLabel = "WT_A1SM" + labelSuffix,
+                DescriptionLabel = "WTD_A1SM" + labelSuffix,
+                TooltipLabel = "WTT_A1SM" + labelSuffix,
+                UppercaseLabel = "WTU_A1SM" + labelSuffix,
+                LockHash = "CU_WEP_A1SM" + labelSuffix,
+            };
+        }
+
+        static int InstallColoredSmokeWeapons(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe install-colored-smoke-weapons <gta_path>");
+                return 1;
+            }
+            string gtaPath = Path.GetFullPath(args[1]);
+            if (IsGtaProcessRunning())
+            {
+                Console.Error.WriteLine(
+                    "ERROR: Close GTA V before installing colored smoke weapons.");
+                return 11;
+            }
+
+            string staging = Path.Combine(Path.GetTempPath(),
+                $"allin1-colored-smoke-install-{Guid.NewGuid():N}");
+            string destination = Path.Combine(gtaPath, "mods", "update",
+                "x64", "dlcpacks", "allin1_smoke", "dlc.rpf");
+            string backup = destination + ".allin1.bak";
+            bool destinationWritten = false;
+            try
+            {
+                string output = Path.Combine(staging, "dlc.rpf");
+                int buildResult = BuildColoredSmokeDlcArtifact(
+                    gtaPath, output);
+                if (buildResult != 0) return buildResult;
+
+                Directory.CreateDirectory(Path.GetDirectoryName(destination));
+                if (File.Exists(destination) && !File.Exists(backup))
+                    File.Copy(destination, backup, false);
+                File.Copy(output, destination, true);
+                destinationWritten = true;
+
+                int patchResult = PatchCommand("patch", new[]
+                {
+                    "patch", gtaPath, "allin1_smoke",
+                });
+                if (patchResult != 0)
+                {
+                    RestoreColoredSmokeDestination(destination, backup);
+                    destinationWritten = false;
+                    return patchResult;
+                }
+                WriteColoredSmokeMarker(gtaPath, destination);
+                Console.WriteLine(
+                    "Installed seven independent ALLIN1 smoke weapons and ammo pools.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                if (destinationWritten)
+                    RestoreColoredSmokeDestination(destination, backup);
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                Console.Error.WriteLine(ex.StackTrace);
+                return 99;
+            }
+            finally
+            {
+                if (Directory.Exists(staging))
+                    Directory.Delete(staging, true);
+            }
+        }
+
+        static int BuildColoredSmokeWeapons(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe build-colored-smoke-weapons " +
+                    "<gta_path> <output_rpf>");
+                return 1;
+            }
+            string gtaPath = Path.GetFullPath(args[1]);
+            string output = Path.GetFullPath(args[2]);
+            if (IsGtaProcessRunning())
+            {
+                Console.Error.WriteLine(
+                    "ERROR: Close GTA V before reading its weapon archives.");
+                return 11;
+            }
+            return BuildColoredSmokeDlcArtifact(gtaPath, output);
+        }
+
+        static int BuildColoredSmokeDlcArtifact(
+            string gtaPath, string output)
+        {
+            string staging = Path.Combine(Path.GetTempPath(),
+                $"allin1-colored-smoke-build-{Guid.NewGuid():N}");
+            try
+            {
+                RpfFile update = OpenModsUpdateRpf(
+                    gtaPath, out int errorCode, "update.rpf", false);
+                if (update == null) return errorCode;
+                byte[] sourceWeapons = ExtractRequiredEntry(
+                    update, "common/data/ai/weapons.meta");
+
+                string outer = Path.Combine(staging, "outer");
+                string language = Path.Combine(staging, "language");
+                Directory.CreateDirectory(Path.Combine(
+                    outer, "common", "data", "ai"));
+                Directory.CreateDirectory(Path.Combine(
+                    outer, "common", "data"));
+                Directory.CreateDirectory(language);
+                string outputDirectory = Path.GetDirectoryName(output);
+                if (!string.IsNullOrEmpty(outputDirectory))
+                    Directory.CreateDirectory(outputDirectory);
+
+                File.WriteAllBytes(Path.Combine(outer, "common", "data", "ai",
+                    "weaponAllin1Smoke.meta"),
+                    BuildColoredSmokeWeaponMeta(sourceWeapons));
+                File.WriteAllText(Path.Combine(outer, "common", "data",
+                    "shop_weapon.meta"), BuildColoredSmokeShopMeta(),
+                    new UTF8Encoding(false));
+                File.WriteAllText(Path.Combine(outer, "content.xml"),
+                    BuildColoredSmokeContentXml(), new UTF8Encoding(false));
+                File.WriteAllText(Path.Combine(outer, "setup2.xml"),
+                    BuildColoredSmokeSetupXml(), new UTF8Encoding(false));
+                File.WriteAllText(Path.Combine(outer, "common", "data",
+                    "dlctext.meta"), BuildColoredSmokeTextMeta(),
+                    new UTF8Encoding(false));
+                File.WriteAllBytes(Path.Combine(language, "global.gxt2"),
+                    BuildColoredSmokeGxt2());
+
+                int buildResult = BuildDlc(new[]
+                {
+                    "build-dlc", outer, output,
+                    "--embed-rpf", language,
+                    "x64/data/lang/americandlc.rpf",
+                    "--gta-path", gtaPath,
+                });
+                if (buildResult != 0)
+                {
+                    if (File.Exists(output)) File.Delete(output);
+                    return buildResult;
+                }
+                int verifyResult = VerifyColoredSmokeDlc(output);
+                if (verifyResult != 0)
+                {
+                    if (File.Exists(output)) File.Delete(output);
+                    return verifyResult;
+                }
+                Console.WriteLine(
+                    $"Built boot-schema-validated colored smoke DLC: {output}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                if (File.Exists(output)) File.Delete(output);
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                Console.Error.WriteLine(ex.StackTrace);
+                return 99;
+            }
+            finally
+            {
+                if (Directory.Exists(staging))
+                    Directory.Delete(staging, true);
+            }
+        }
+
+        static int VerifyColoredSmokeWeapons(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe verify-colored-smoke-weapons <gta_path>");
+                return 1;
+            }
+            string gtaPath = Path.GetFullPath(args[1]);
+            string archive = Path.Combine(gtaPath, "mods", "update", "x64",
+                "dlcpacks", "allin1_smoke", "dlc.rpf");
+            int result = VerifyColoredSmokeDlc(archive);
+            if (result != 0) return result;
+            string marker = GetColoredSmokeMarkerPath(gtaPath);
+            if (!File.Exists(marker) ||
+                File.ReadAllText(marker).IndexOf(Sha256(
+                    File.ReadAllBytes(archive)),
+                    StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                Console.Error.WriteLine(
+                    "ERROR: Colored smoke weapon marker is missing or stale.");
+                return 12;
+            }
+            Console.WriteLine("ALLIN1 colored smoke weapon DLC verified.");
+            return 0;
+        }
+
+        static int RemoveColoredSmokeWeapons(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe remove-colored-smoke-weapons <gta_path>");
+                return 1;
+            }
+            string gtaPath = Path.GetFullPath(args[1]);
+            if (IsGtaProcessRunning())
+            {
+                Console.Error.WriteLine(
+                    "ERROR: Close GTA V before removing colored smoke weapons.");
+                return 11;
+            }
+            int patchResult = PatchCommand("unpatch", new[]
+            {
+                "unpatch", gtaPath, "allin1_smoke",
+            });
+            if (patchResult != 0) return patchResult;
+            string destination = Path.Combine(gtaPath, "mods", "update",
+                "x64", "dlcpacks", "allin1_smoke", "dlc.rpf");
+            if (File.Exists(destination)) File.Delete(destination);
+            string marker = GetColoredSmokeMarkerPath(gtaPath);
+            if (File.Exists(marker)) File.Delete(marker);
+            Console.WriteLine("Removed ALLIN1 colored smoke weapon DLC.");
+            return 0;
+        }
+
+        static int BuildMergedSmokeCanary(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe build-merged-smoke-canary " +
+                    "<gta_path> <output_meta>");
+                return 1;
+            }
+            string gtaPath = Path.GetFullPath(args[1]);
+            string output = Path.GetFullPath(args[2]);
+            if (IsGtaProcessRunning())
+            {
+                Console.Error.WriteLine(
+                    "ERROR: Close GTA V before reading its base weapon data.");
+                return 11;
+            }
+            try
+            {
+                RpfFile rpf = OpenModsUpdateRpf(
+                    gtaPath, out int errorCode, "update.rpf", false);
+                if (rpf == null) return errorCode;
+                byte[] source = ExtractRequiredEntry(rpf,
+                    BaseWeaponsMetaPath);
+                byte[] merged = BuildMergedSmokeWeaponMeta(source, 1);
+                ValidateMergedSmokeWeaponMeta(source, merged, 1);
+                string directory = Path.GetDirectoryName(output);
+                if (!string.IsNullOrEmpty(directory))
+                    Directory.CreateDirectory(directory);
+                WriteAtomicFile(output, merged);
+                Console.WriteLine(
+                    $"Built White Smoke base-meta canary: {output}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 99;
+            }
+        }
+
+        static int BuildMergedSmokeWeapons(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe build-merged-smoke-weapons " +
+                    "<gta_path> <output_meta>");
+                return 1;
+            }
+            string gtaPath = Path.GetFullPath(args[1]);
+            string output = Path.GetFullPath(args[2]);
+            if (IsGtaProcessRunning())
+            {
+                Console.Error.WriteLine(
+                    "ERROR: Close GTA V before reading its base weapon data.");
+                return 11;
+            }
+            try
+            {
+                RpfFile rpf = OpenModsUpdateRpf(
+                    gtaPath, out int errorCode, "update.rpf", false);
+                if (rpf == null) return errorCode;
+                byte[] current = ExtractRequiredEntry(rpf,
+                    BaseWeaponsMetaPath);
+                byte[] source = current;
+                if (ContainsAllin1SmokeDefinitions(current))
+                {
+                    string backup = GetMergedSmokeEntryBackupPath(gtaPath);
+                    if (!File.Exists(backup))
+                        throw new InvalidDataException(
+                            "Original weapons.meta backup is missing.");
+                    source = File.ReadAllBytes(backup);
+                    int count = GetMergedSmokeDefinitionCount(current);
+                    ValidateMergedSmokeWeaponMeta(source, current, count);
+                }
+                byte[] merged = BuildMergedSmokeWeaponMeta(
+                    source, ColoredSmokeWeapons.Length);
+                ValidateMergedSmokeWeaponMeta(source, merged,
+                    ColoredSmokeWeapons.Length);
+                string directory = Path.GetDirectoryName(output);
+                if (!string.IsNullOrEmpty(directory))
+                    Directory.CreateDirectory(directory);
+                WriteAtomicFile(output, merged);
+                Console.WriteLine(
+                    $"Built seven-color base-meta smoke payload: {output}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 99;
+            }
+        }
+
+        static int InstallMergedSmokeCanary(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe install-merged-smoke-canary <gta_path>");
+                return 1;
+            }
+            string gtaPath = Path.GetFullPath(args[1]);
+            if (IsGtaProcessRunning())
+            {
+                Console.Error.WriteLine(
+                    "ERROR: Close GTA V before installing the merged smoke canary.");
+                return 11;
+            }
+            string modsRpf = Path.Combine(
+                gtaPath, "mods", "update", "update.rpf");
+            bool writesStarted = false;
+            try
+            {
+                RpfFile rpf = OpenModsUpdateRpf(
+                    gtaPath, out int errorCode);
+                if (rpf == null) return errorCode;
+                byte[] current = ExtractRequiredEntry(
+                    rpf, BaseWeaponsMetaPath);
+                byte[] currentAnimations = ExtractRequiredEntry(
+                    rpf, BaseWeaponAnimationsMetaPath);
+                if (ContainsAllin1SmokeDefinitions(current))
+                {
+                    int existing = VerifyMergedSmokeCanaryCore(gtaPath);
+                    if (existing == 0)
+                    {
+                        Console.WriteLine(
+                            "White Smoke merged canary is already installed.");
+                        return 0;
+                    }
+                    throw new InvalidDataException(
+                        "Base weapons.meta already contains unverified ALLIN1 smoke definitions.");
+                }
+
+                byte[] merged = BuildMergedSmokeWeaponMeta(current, 1);
+                byte[] mergedAnimations =
+                    BuildMergedSmokeWeaponAnimationsMeta(
+                        currentAnimations, 1);
+                ValidateMergedSmokeWeaponMeta(current, merged, 1);
+                ValidateMergedSmokeWeaponAnimationsMeta(
+                    currentAnimations, mergedAnimations, 1);
+                EnsureMergedSmokeEntryBackups(
+                    gtaPath, current, currentAnimations);
+                CreateMergedSmokeArchiveSnapshot(modsRpf, gtaPath);
+                writesStarted = true;
+                InstallArchiveEntries(rpf,
+                    new Dictionary<string, byte[]>(
+                        StringComparer.OrdinalIgnoreCase)
+                    {
+                        { BaseWeaponsMetaPath, merged },
+                        { BaseWeaponAnimationsMetaPath, mergedAnimations },
+                    });
+
+                RpfFile reopened = OpenModsUpdateRpf(
+                    gtaPath, out errorCode, "update.rpf", false);
+                if (reopened == null)
+                    throw new InvalidDataException(
+                        $"Could not reopen modified update.rpf (error {errorCode}).");
+                byte[] installed = ExtractRequiredEntry(
+                    reopened, BaseWeaponsMetaPath);
+                byte[] installedAnimations = ExtractRequiredEntry(
+                    reopened, BaseWeaponAnimationsMetaPath);
+                ValidateMergedSmokeWeaponMeta(current, installed, 1);
+                ValidateMergedSmokeWeaponAnimationsMeta(
+                    currentAnimations, installedAnimations, 1);
+                if (!installed.SequenceEqual(merged))
+                    throw new InvalidDataException(
+                        "Installed weapons.meta differs from the verified canary payload.");
+                if (!installedAnimations.SequenceEqual(mergedAnimations))
+                    throw new InvalidDataException(
+                        "Installed weaponanimations.meta differs from the verified canary payload.");
+                WriteMergedSmokeCanaryMarker(
+                    gtaPath, current, installed, currentAnimations,
+                    installedAnimations, 1, "pending", false);
+                Console.WriteLine(
+                    "Installed one White Smoke definition by merging it into " +
+                    "the existing base CWeaponInfoBlob; no DLC pack was added.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                if (writesStarted)
+                    RestoreMergedSmokeArchiveSnapshot(gtaPath);
+                string marker = GetMergedSmokeCanaryMarkerPath(gtaPath);
+                if (File.Exists(marker)) File.Delete(marker);
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 99;
+            }
+        }
+
+        static int InstallMergedSmokeWeapons(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe install-merged-smoke-weapons <gta_path>");
+                return 1;
+            }
+            string gtaPath = Path.GetFullPath(args[1]);
+            if (IsGtaProcessRunning())
+            {
+                Console.Error.WriteLine(
+                    "ERROR: Close GTA V before installing merged smoke weapons.");
+                return 11;
+            }
+            bool writesStarted = false;
+            try
+            {
+                RpfFile rpf = OpenModsUpdateRpf(
+                    gtaPath, out int errorCode);
+                if (rpf == null) return errorCode;
+                byte[] current = ExtractRequiredEntry(
+                    rpf, BaseWeaponsMetaPath);
+                byte[] currentAnimations = ExtractRequiredEntry(
+                    rpf, BaseWeaponAnimationsMetaPath);
+                byte[] currentLanguage = ExtractRequiredEntry(
+                    rpf, BaseAmericanLanguageArchivePath);
+                byte[] currentHud = ExtractRequiredEntry(
+                    rpf, BaseScaleformGenericArchivePath);
+                Console.WriteLine(
+                    $"Read base language archive ({currentLanguage.Length:N0} bytes, " +
+                    $"sha256={Sha256(currentLanguage)}).");
+                byte[] original;
+                byte[] originalAnimations;
+                byte[] originalLanguage;
+                byte[] originalHud;
+                bool promotedFromWhiteCanary = false;
+                if (ContainsAllin1SmokeDefinitions(current))
+                {
+                    string backup = GetMergedSmokeEntryBackupPath(gtaPath);
+                    string animationBackup =
+                        GetMergedSmokeAnimationBackupPath(gtaPath);
+                    string languageBackup =
+                        GetMergedSmokeLanguageBackupPath(gtaPath);
+                    if (!File.Exists(backup) || !File.Exists(animationBackup))
+                        throw new InvalidDataException(
+                            "Original smoke metadata backup is missing.");
+                    original = File.ReadAllBytes(backup);
+                    originalAnimations = File.ReadAllBytes(animationBackup);
+                    int currentCount = GetMergedSmokeDefinitionCount(current);
+                    ValidateMergedSmokeWeaponMeta(
+                        original, current, currentCount);
+                    ValidateMergedSmokeWeaponAnimationsMeta(
+                        originalAnimations, currentAnimations, currentCount);
+                    if (currentCount == ColoredSmokeWeapons.Length)
+                        return VerifyMergedSmokeWeaponsCore(gtaPath);
+                    if (currentCount != 1 ||
+                        VerifyMergedSmokeCanaryCore(gtaPath) != 0)
+                        throw new InvalidDataException(
+                            "Only the verified White Smoke canary can be promoted.");
+                    promotedFromWhiteCanary = true;
+                    originalLanguage = currentLanguage;
+                    originalHud = currentHud;
+                    EnsureMergedSmokeEntryBackups(gtaPath, original,
+                        originalAnimations, originalLanguage, originalHud);
+                }
+                else
+                {
+                    original = current;
+                    originalAnimations = currentAnimations;
+                    originalLanguage = currentLanguage;
+                    originalHud = currentHud;
+                    EnsureMergedSmokeEntryBackups(
+                        gtaPath, original, originalAnimations,
+                        originalLanguage, originalHud);
+                    CreateMergedSmokeArchiveSnapshot(
+                        Path.Combine(gtaPath, "mods", "update", "update.rpf"),
+                        gtaPath);
+                }
+
+                ReloadGtaEncryptionKeys(gtaPath);
+                ValidateMergedSmokeArchiveSnapshot(
+                    gtaPath, original, originalAnimations, originalLanguage,
+                    originalHud);
+                byte[] merged = BuildMergedSmokeWeaponMeta(
+                    original, ColoredSmokeWeapons.Length);
+                byte[] mergedAnimations =
+                    BuildMergedSmokeWeaponAnimationsMeta(
+                        originalAnimations, ColoredSmokeWeapons.Length);
+                byte[] mergedLanguage =
+                    BuildMergedSmokeLanguageArchive(
+                        gtaPath, originalLanguage);
+                byte[] mergedHud = BuildMergedSmokeHudArchive(
+                    gtaPath, originalHud);
+                ValidateMergedSmokeWeaponMeta(original, merged,
+                    ColoredSmokeWeapons.Length);
+                ValidateMergedSmokeWeaponAnimationsMeta(
+                    originalAnimations, mergedAnimations,
+                    ColoredSmokeWeapons.Length);
+                writesStarted = true;
+                InstallArchiveEntries(rpf,
+                    new Dictionary<string, byte[]>(
+                        StringComparer.OrdinalIgnoreCase)
+                    {
+                        { BaseWeaponsMetaPath, merged },
+                        { BaseWeaponAnimationsMetaPath, mergedAnimations },
+                        { BaseAmericanLanguageArchivePath, mergedLanguage },
+                        { BaseScaleformGenericArchivePath, mergedHud },
+                    });
+
+                RpfFile reopened = OpenModsUpdateRpf(
+                    gtaPath, out errorCode, "update.rpf", false);
+                if (reopened == null)
+                    throw new InvalidDataException(
+                        $"Could not reopen modified update.rpf (error {errorCode}).");
+                byte[] installed = ExtractRequiredEntry(
+                    reopened, BaseWeaponsMetaPath);
+                byte[] installedAnimations = ExtractRequiredEntry(
+                    reopened, BaseWeaponAnimationsMetaPath);
+                byte[] installedLanguage = ExtractRequiredEntry(
+                    reopened, BaseAmericanLanguageArchivePath);
+                byte[] installedHud = ExtractRequiredEntry(
+                    reopened, BaseScaleformGenericArchivePath);
+                ValidateMergedSmokeWeaponMeta(original, installed,
+                    ColoredSmokeWeapons.Length);
+                ValidateMergedSmokeWeaponAnimationsMeta(
+                    originalAnimations, installedAnimations,
+                    ColoredSmokeWeapons.Length);
+                if (!installed.SequenceEqual(merged))
+                    throw new InvalidDataException(
+                        "Installed weapons.meta differs from the verified seven-color payload.");
+                if (!installedAnimations.SequenceEqual(mergedAnimations))
+                    throw new InvalidDataException(
+                        "Installed weaponanimations.meta differs from the verified seven-color payload.");
+                if (!installedLanguage.SequenceEqual(mergedLanguage))
+                    throw new InvalidDataException(
+                        "Installed American language archive differs from the verified smoke-label payload.");
+                if (!installedHud.SequenceEqual(mergedHud))
+                    throw new InvalidDataException(
+                        "Installed Scaleform HUD archive differs from the verified BZ Gas icon-alias payload.");
+                WriteMergedSmokeFullMarker(gtaPath, original, installed,
+                    originalAnimations, installedAnimations,
+                    originalLanguage, installedLanguage,
+                    originalHud, installedHud,
+                    ColoredSmokeWeapons.Length, "full_pending",
+                    promotedFromWhiteCanary);
+                Console.WriteLine(
+                    "Installed seven independent colored smoke weapons and " +
+                    "their stock-cloned animations and native wheel labels " +
+                    "with BZ Gas wheel-icon aliases inside existing base " +
+                    "archives; no DLC pack was added.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                if (writesStarted)
+                    RestoreMergedSmokeArchiveSnapshot(gtaPath);
+                string marker = GetMergedSmokeCanaryMarkerPath(gtaPath);
+                if (File.Exists(marker)) File.Delete(marker);
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 99;
+            }
+        }
+
+        static int VerifyMergedSmokeCanary(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe verify-merged-smoke-canary <gta_path>");
+                return 1;
+            }
+            return VerifyMergedSmokeCanaryCore(
+                Path.GetFullPath(args[1]));
+        }
+
+        static int VerifyMergedSmokeWeapons(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe verify-merged-smoke-weapons <gta_path>");
+                return 1;
+            }
+            return VerifyMergedSmokeWeaponsCore(
+                Path.GetFullPath(args[1]));
+        }
+
+        static int RemoveMergedSmokeCanary(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe remove-merged-smoke-canary <gta_path>");
+                return 1;
+            }
+            string gtaPath = Path.GetFullPath(args[1]);
+            if (IsGtaProcessRunning())
+            {
+                Console.Error.WriteLine(
+                    "ERROR: Close GTA V before removing the merged smoke canary.");
+                return 11;
+            }
+            string marker = GetMergedSmokeCanaryMarkerPath(gtaPath);
+            string backup = GetMergedSmokeEntryBackupPath(gtaPath);
+            string animationBackup =
+                GetMergedSmokeAnimationBackupPath(gtaPath);
+            string languageBackup =
+                GetMergedSmokeLanguageBackupPath(gtaPath);
+            string hudBackup =
+                GetMergedSmokeHudBackupPath(gtaPath);
+            if (!File.Exists(marker))
+            {
+                Console.WriteLine("Merged smoke canary is not installed.");
+                return 0;
+            }
+            if (!File.Exists(backup) || !File.Exists(animationBackup))
+            {
+                Console.Error.WriteLine(
+                    "ERROR: Original smoke metadata backup is missing: " +
+                    $"{backup}, {animationBackup}");
+                return 12;
+            }
+            try
+            {
+                byte[] original = File.ReadAllBytes(backup);
+                byte[] originalAnimations =
+                    File.ReadAllBytes(animationBackup);
+                byte[] originalLanguage = File.Exists(languageBackup)
+                    ? File.ReadAllBytes(languageBackup) : null;
+                byte[] originalHud = File.Exists(hudBackup)
+                    ? File.ReadAllBytes(hudBackup) : null;
+                ValidateBaseWeaponsMeta(original);
+                XDocument animationDoc = XDocument.Parse(
+                    Encoding.UTF8.GetString(originalAnimations)
+                        .TrimStart('\uFEFF'));
+                if (animationDoc.Root?.Name.LocalName !=
+                        "CWeaponAnimationsSets")
+                    throw new InvalidDataException(
+                        "Original weaponanimations.meta backup is invalid.");
+                RpfFile rpf = OpenModsUpdateRpf(
+                    gtaPath, out int errorCode);
+                if (rpf == null) return errorCode;
+                ReloadGtaEncryptionKeys(gtaPath);
+                var originals = new Dictionary<string, byte[]>(
+                    StringComparer.OrdinalIgnoreCase)
+                    {
+                        { BaseWeaponsMetaPath, original },
+                        { BaseWeaponAnimationsMetaPath, originalAnimations },
+                    };
+                if (originalLanguage != null)
+                {
+                    originals.Add(BaseAmericanLanguageArchivePath,
+                        originalLanguage);
+                }
+                if (originalHud != null)
+                {
+                    originals.Add(BaseScaleformGenericArchivePath,
+                        originalHud);
+                }
+                InstallArchiveEntries(rpf, originals);
+                RpfFile reopened = OpenModsUpdateRpf(
+                    gtaPath, out errorCode, "update.rpf", false);
+                if (reopened == null) return errorCode;
+                byte[] restored = ExtractRequiredEntry(
+                    reopened, BaseWeaponsMetaPath);
+                byte[] restoredAnimations = ExtractRequiredEntry(
+                    reopened, BaseWeaponAnimationsMetaPath);
+                byte[] restoredLanguage = originalLanguage == null ? null :
+                    ExtractRequiredEntry(reopened,
+                        BaseAmericanLanguageArchivePath);
+                byte[] restoredHud = originalHud == null ? null :
+                    ExtractRequiredEntry(reopened,
+                        BaseScaleformGenericArchivePath);
+                if (!restored.SequenceEqual(original))
+                    throw new InvalidDataException(
+                        "Restored weapons.meta does not match its original backup.");
+                if (!restoredAnimations.SequenceEqual(originalAnimations))
+                    throw new InvalidDataException(
+                        "Restored weaponanimations.meta does not match its original backup.");
+                if (originalLanguage != null &&
+                    !restoredLanguage.SequenceEqual(originalLanguage))
+                    throw new InvalidDataException(
+                        "Restored American language archive does not match its original backup.");
+                if (originalHud != null &&
+                    !restoredHud.SequenceEqual(originalHud))
+                    throw new InvalidDataException(
+                        "Restored Scaleform HUD archive does not match its original backup.");
+                if (File.Exists(marker)) File.Delete(marker);
+                Console.WriteLine(
+                    "Removed merged smoke data and restored every exact base " +
+                    "weapon, animation, language, and HUD backup that was installed.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                if (RestoreMergedSmokeArchiveSnapshot(gtaPath) &&
+                    File.Exists(marker))
+                    File.Delete(marker);
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 99;
+            }
+        }
+
+        private static byte[] BuildMergedSmokeWeaponMeta(
+            byte[] source, int smokeCount)
+        {
+            if (smokeCount < 1 || smokeCount > ColoredSmokeWeapons.Length)
+                throw new ArgumentOutOfRangeException(nameof(smokeCount));
+            ValidateBaseWeaponsMeta(source);
+            XDocument doc = XDocument.Parse(
+                Encoding.UTF8.GetString(source).TrimStart('\uFEFF'));
+            XElement root = doc.Root;
+            XElement sourceAmmo = root.Descendants("Item").FirstOrDefault(
+                item => item.Element("Name")?.Value ==
+                    "AMMO_SMOKEGRENADE");
+            XElement sourceWeapon = root.Descendants("Item").FirstOrDefault(
+                item => item.Element("Name")?.Value ==
+                    "WEAPON_SMOKEGRENADE");
+            XElement[] navigationGroups = root.Element("SlotNavigateOrder")?
+                .Elements("Item").ToArray() ?? Array.Empty<XElement>();
+            XElement bestSlots = root.Element("SlotBestOrder")?
+                .Element("WeaponSlots");
+            XElement infos = root.Element("Infos");
+            XElement ammoInfos = infos?.Elements("Item")
+                .Select(item => item.Element("Infos"))
+                .FirstOrDefault(group => group?.Elements("Item").Any(
+                    item => item.Element("Name")?.Value ==
+                        "AMMO_SMOKEGRENADE") == true);
+            XElement weaponInfos = infos?.Elements("Item")
+                .Select(item => item.Element("Infos"))
+                .FirstOrDefault(group => group?.Elements("Item").Any(
+                    item => item.Element("Name")?.Value ==
+                        "WEAPON_SMOKEGRENADE") == true);
+            if (sourceAmmo == null || sourceWeapon == null ||
+                navigationGroups.Length != 2 || bestSlots == null ||
+                ammoInfos == null || weaponInfos == null)
+                throw new InvalidDataException(
+                    "Base weapons.meta does not match the current Enhanced weapon schema.");
+
+            for (int index = 0; index < smokeCount; index++)
+            {
+                ColoredSmokeWeaponSpec spec = ColoredSmokeWeapons[index];
+                XElement NavigationSlot() => new XElement("Item",
+                    new XElement("OrderNumber",
+                        new XAttribute("value", 451 + index)),
+                    new XElement("Entry", spec.SlotName));
+                foreach (XElement group in navigationGroups)
+                    group.Element("WeaponSlots").Add(NavigationSlot());
+                bestSlots.Add(new XElement("Item",
+                    new XElement("OrderNumber",
+                        new XAttribute("value", 401 + index)),
+                    new XElement("Entry", spec.SlotName)));
+                ammoInfos.Add(CloneColoredSmokeAmmo(sourceAmmo, spec));
+                weaponInfos.Add(CloneColoredSmokeWeapon(
+                    sourceWeapon, spec));
+            }
+            doc.Declaration = new XDeclaration("1.0", "UTF-8", null);
+            return Encoding.UTF8.GetBytes(doc.Declaration + "\n\n" + doc);
+        }
+
+        private static void ValidateBaseWeaponsMeta(byte[] data)
+        {
+            if (data == null || data.Length == 0)
+                throw new InvalidDataException("Base weapons.meta is empty.");
+            XDocument doc = XDocument.Parse(
+                Encoding.UTF8.GetString(data).TrimStart('\uFEFF'));
+            if (doc.Root?.Name.LocalName != "CWeaponInfoBlob" ||
+                doc.Root.Element("SlotNavigateOrder") == null ||
+                doc.Root.Element("SlotBestOrder") == null ||
+                doc.Root.Element("Infos") == null ||
+                doc.Descendants("Name").Count(element =>
+                    element.Value == "AMMO_SMOKEGRENADE") != 1 ||
+                doc.Descendants("Name").Count(element =>
+                    element.Value == "WEAPON_SMOKEGRENADE") != 1)
+                throw new InvalidDataException(
+                    "Base weapons.meta failed structural validation.");
+            if (ContainsAllin1SmokeDefinitions(data))
+                throw new InvalidDataException(
+                    "Base weapons.meta already contains ALLIN1 smoke definitions.");
+        }
+
+        private static bool ContainsAllin1SmokeDefinitions(byte[] data)
+        {
+            string text = Encoding.UTF8.GetString(data ?? Array.Empty<byte>());
+            return text.IndexOf("WEAPON_ALLIN1_SMOKE_",
+                       StringComparison.Ordinal) >= 0 ||
+                text.IndexOf("AMMO_ALLIN1_SMOKE_",
+                       StringComparison.Ordinal) >= 0 ||
+                text.IndexOf("SLOT_ALLIN1_SMOKE_",
+                       StringComparison.Ordinal) >= 0;
+        }
+
+        private static int GetMergedSmokeDefinitionCount(byte[] data)
+        {
+            XDocument doc = XDocument.Parse(
+                Encoding.UTF8.GetString(data).TrimStart('\uFEFF'));
+            int count = 0;
+            bool gapSeen = false;
+            foreach (ColoredSmokeWeaponSpec spec in ColoredSmokeWeapons)
+            {
+                bool present = doc.Descendants("Item").Any(item =>
+                    item.Element("Name")?.Value == spec.WeaponName);
+                if (present && gapSeen)
+                    throw new InvalidDataException(
+                        "Merged smoke definitions are not a contiguous color set.");
+                if (present) count++;
+                else gapSeen = true;
+            }
+            if (count < 1)
+                throw new InvalidDataException(
+                    "No complete merged smoke definitions were found.");
+            return count;
+        }
+
+        private static void ValidateMergedSmokeWeaponMeta(
+            byte[] original, byte[] candidate, int smokeCount)
+        {
+            ValidateBaseWeaponsMeta(original);
+            XDocument originalDoc = XDocument.Parse(
+                Encoding.UTF8.GetString(original).TrimStart('\uFEFF'));
+            XDocument candidateDoc = XDocument.Parse(
+                Encoding.UTF8.GetString(candidate).TrimStart('\uFEFF'));
+            if (candidateDoc.Root?.Name.LocalName != "CWeaponInfoBlob")
+                throw new InvalidDataException(
+                    "Merged weapons.meta root is invalid.");
+
+            for (int index = 0; index < ColoredSmokeWeapons.Length; index++)
+            {
+                ColoredSmokeWeaponSpec spec = ColoredSmokeWeapons[index];
+                int expected = index < smokeCount ? 1 : 0;
+                int ammoCount = candidateDoc.Descendants("Item").Count(
+                    item => item.Element("Name")?.Value == spec.AmmoName);
+                int weaponCount = candidateDoc.Descendants("Item").Count(
+                    item => item.Element("Name")?.Value == spec.WeaponName);
+                int slotCount = candidateDoc.Descendants("Item").Count(
+                    item => item.Element("Entry")?.Value == spec.SlotName);
+                if (ammoCount != expected || weaponCount != expected ||
+                    slotCount != expected * 3)
+                    throw new InvalidDataException(
+                        $"Merged smoke definition count is invalid for {spec.Color}.");
+                if (expected == 0) continue;
+                XElement ammo = candidateDoc.Descendants("Item")
+                    .Single(item => item.Element("Name")?.Value ==
+                        spec.AmmoName);
+                XElement weapon = candidateDoc.Descendants("Item")
+                    .Single(item => item.Element("Name")?.Value ==
+                        spec.WeaponName);
+                if ((ammo.Element("AmmoFlags")?.Value ?? "").Contains(
+                        "AddSmokeOnExplosion") ||
+                    ammo.Element("Explosion")?.Element("Default")?.Value !=
+                        "DONTCARE" ||
+                    weapon.Element("AmmoInfo")?.Attribute("ref")?.Value !=
+                        spec.AmmoName ||
+                    weapon.Element("HumanNameHash")?.Value !=
+                        spec.HumanNameLabel ||
+                    weapon.Element("StatName")?.Value !=
+                        "A1SM" + spec.Color.ToUpperInvariant())
+                    throw new InvalidDataException(
+                        $"Merged smoke isolation is invalid for {spec.Color}.");
+                foreach (string maxName in new[] { "AmmoMax", "AmmoMax50",
+                    "AmmoMax100", "AmmoMaxMP", "AmmoMax50MP",
+                    "AmmoMax100MP" })
+                    if (ammo.Element(maxName)?.Attribute("value")?.Value != "5")
+                        throw new InvalidDataException(
+                            $"Merged smoke ammo cap is invalid for {spec.Color}: {maxName}.");
+                int[] orders = candidateDoc.Descendants("Item")
+                    .Where(item => item.Element("Entry")?.Value ==
+                        spec.SlotName)
+                    .Select(item => int.Parse(item.Element("OrderNumber")
+                        .Attribute("value").Value)).ToArray();
+                if (orders.Count(value => value == 451 + index) != 2 ||
+                    orders.Count(value => value == 401 + index) != 1)
+                    throw new InvalidDataException(
+                        $"Merged weapon-wheel order is invalid for {spec.Color}.");
+            }
+
+            var stripped = new XDocument(candidateDoc);
+            foreach (XElement item in stripped.Descendants("Item").ToArray())
+            {
+                string name = item.Element("Name")?.Value ?? "";
+                string entry = item.Element("Entry")?.Value ?? "";
+                if (name.StartsWith("AMMO_ALLIN1_SMOKE_",
+                        StringComparison.Ordinal) ||
+                    name.StartsWith("WEAPON_ALLIN1_SMOKE_",
+                        StringComparison.Ordinal) ||
+                    entry.StartsWith("SLOT_ALLIN1_SMOKE_",
+                        StringComparison.Ordinal))
+                    item.Remove();
+            }
+            if (!XNode.DeepEquals(originalDoc.Root, stripped.Root))
+                throw new InvalidDataException(
+                    "Merged canary changed data outside its appended smoke definitions.");
+        }
+
+        private static byte[] BuildMergedSmokeWeaponAnimationsMeta(
+            byte[] source, int smokeCount)
+        {
+            if (smokeCount < 1 || smokeCount > ColoredSmokeWeapons.Length)
+                throw new ArgumentOutOfRangeException(nameof(smokeCount));
+            XDocument doc = XDocument.Parse(
+                Encoding.UTF8.GetString(source).TrimStart('\uFEFF'));
+            if (doc.Root?.Name.LocalName != "CWeaponAnimationsSets")
+                throw new InvalidDataException(
+                    "Base weaponanimations.meta root is invalid.");
+            XElement[] groups = doc.Descendants("WeaponAnimations")
+                .Where(group => group.Elements("Item").Any(item =>
+                    item.Attribute("key")?.Value == "WEAPON_SMOKEGRENADE"))
+                .ToArray();
+            if (groups.Length == 0)
+                throw new InvalidDataException(
+                    "No stock smoke-grenade animation mappings were found.");
+            if (doc.Descendants("Item").Any(item =>
+                    (item.Attribute("key")?.Value ?? "").StartsWith(
+                        "WEAPON_ALLIN1_SMOKE_", StringComparison.Ordinal)))
+                throw new InvalidDataException(
+                    "Base weaponanimations.meta already contains ALLIN1 mappings.");
+
+            foreach (XElement group in groups)
+            {
+                XElement[] templates = group.Elements("Item").Where(item =>
+                    item.Attribute("key")?.Value == "WEAPON_SMOKEGRENADE")
+                    .ToArray();
+                if (templates.Length != 1)
+                    throw new InvalidDataException(
+                        "Stock smoke animation mapping is duplicated within a set.");
+                XElement insertionPoint = templates[0];
+                for (int index = 0; index < smokeCount; index++)
+                {
+                    var clone = new XElement(templates[0]);
+                    clone.SetAttributeValue(
+                        "key", ColoredSmokeWeapons[index].WeaponName);
+                    insertionPoint.AddAfterSelf(clone);
+                    insertionPoint = clone;
+                }
+            }
+            return Encoding.UTF8.GetBytes(doc.Declaration + "\n" + doc);
+        }
+
+        private static void ValidateMergedSmokeWeaponAnimationsMeta(
+            byte[] original, byte[] candidate, int smokeCount)
+        {
+            XDocument originalDoc = XDocument.Parse(
+                Encoding.UTF8.GetString(original).TrimStart('\uFEFF'));
+            XDocument candidateDoc = XDocument.Parse(
+                Encoding.UTF8.GetString(candidate).TrimStart('\uFEFF'));
+            if (originalDoc.Root?.Name.LocalName != "CWeaponAnimationsSets" ||
+                candidateDoc.Root?.Name.LocalName != "CWeaponAnimationsSets")
+                throw new InvalidDataException(
+                    "Smoke animation metadata root is invalid.");
+
+            XElement[] originalGroups = originalDoc.Descendants(
+                    "WeaponAnimations")
+                .Where(group => group.Elements("Item").Any(item =>
+                    item.Attribute("key")?.Value == "WEAPON_SMOKEGRENADE"))
+                .ToArray();
+            XElement[] candidateGroups = candidateDoc.Descendants(
+                    "WeaponAnimations")
+                .Where(group => group.Elements("Item").Any(item =>
+                    item.Attribute("key")?.Value == "WEAPON_SMOKEGRENADE"))
+                .ToArray();
+            if (originalGroups.Length == 0 ||
+                candidateGroups.Length != originalGroups.Length)
+                throw new InvalidDataException(
+                    "Smoke animation-set coverage changed unexpectedly.");
+
+            for (int groupIndex = 0;
+                groupIndex < originalGroups.Length; groupIndex++)
+            {
+                XElement template = originalGroups[groupIndex]
+                    .Elements("Item").Single(item =>
+                        item.Attribute("key")?.Value ==
+                            "WEAPON_SMOKEGRENADE");
+                XElement candidateGroup = candidateGroups[groupIndex];
+                for (int index = 0;
+                    index < ColoredSmokeWeapons.Length; index++)
+                {
+                    ColoredSmokeWeaponSpec spec = ColoredSmokeWeapons[index];
+                    int expected = index < smokeCount ? 1 : 0;
+                    XElement[] matches = candidateGroup.Elements("Item")
+                        .Where(item => item.Attribute("key")?.Value ==
+                            spec.WeaponName).ToArray();
+                    if (matches.Length != expected)
+                        throw new InvalidDataException(
+                            $"Animation mapping count is invalid for {spec.Color} " +
+                            $"smoke in set {groupIndex}.");
+                    if (expected == 0) continue;
+                    var normalized = new XElement(matches[0]);
+                    normalized.SetAttributeValue(
+                        "key", "WEAPON_SMOKEGRENADE");
+                    if (!XNode.DeepEquals(template, normalized))
+                        throw new InvalidDataException(
+                            $"Animation mapping differs from stock smoke for " +
+                            $"{spec.Color} in set {groupIndex}.");
+                }
+            }
+
+            var stripped = new XDocument(candidateDoc);
+            foreach (XElement item in stripped.Descendants("Item").ToArray())
+                if ((item.Attribute("key")?.Value ?? "").StartsWith(
+                        "WEAPON_ALLIN1_SMOKE_", StringComparison.Ordinal))
+                    item.Remove();
+            if (!XNode.DeepEquals(originalDoc.Root, stripped.Root))
+                throw new InvalidDataException(
+                    "Merged animation canary changed data outside appended smoke mappings.");
+        }
+
+        private static int VerifyMergedSmokeCanaryCore(string gtaPath)
+        {
+            try
+            {
+                string backup = GetMergedSmokeEntryBackupPath(gtaPath);
+                string animationBackup =
+                    GetMergedSmokeAnimationBackupPath(gtaPath);
+                string marker = GetMergedSmokeCanaryMarkerPath(gtaPath);
+                if (!File.Exists(backup) || !File.Exists(animationBackup) ||
+                    !File.Exists(marker))
+                {
+                    Console.Error.WriteLine(
+                        "ERROR: Merged smoke canary backup or marker is missing.");
+                    return 12;
+                }
+                byte[] original = File.ReadAllBytes(backup);
+                byte[] originalAnimations = File.ReadAllBytes(animationBackup);
+                RpfFile rpf = OpenModsUpdateRpf(
+                    gtaPath, out int errorCode, "update.rpf", false);
+                if (rpf == null) return errorCode;
+                byte[] installed = ExtractRequiredEntry(
+                    rpf, BaseWeaponsMetaPath);
+                byte[] installedAnimations = ExtractRequiredEntry(
+                    rpf, BaseWeaponAnimationsMetaPath);
+                ValidateMergedSmokeWeaponMeta(original, installed, 1);
+                ValidateMergedSmokeWeaponAnimationsMeta(
+                    originalAnimations, installedAnimations, 1);
+                string json = File.ReadAllText(marker);
+                foreach (string expected in new[]
+                {
+                    "\"canary_state\": \"pending\"",
+                    Sha256(original), Sha256(installed),
+                    Sha256(originalAnimations), Sha256(installedAnimations),
+                    ColoredSmokeWeapons[0].WeaponName,
+                })
+                    if (json.IndexOf(expected,
+                            StringComparison.OrdinalIgnoreCase) < 0)
+                        throw new InvalidDataException(
+                            $"Merged smoke canary marker is stale: {expected}");
+                Console.WriteLine(
+                    "Verified one White Smoke definition and all stock-cloned " +
+                    "animation mappings inside the existing base metadata.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 9;
+            }
+        }
+
+        private static int VerifyMergedSmokeWeaponsCore(string gtaPath)
+        {
+            try
+            {
+                string backup = GetMergedSmokeEntryBackupPath(gtaPath);
+                string animationBackup =
+                    GetMergedSmokeAnimationBackupPath(gtaPath);
+                string languageBackup =
+                    GetMergedSmokeLanguageBackupPath(gtaPath);
+                string hudBackup =
+                    GetMergedSmokeHudBackupPath(gtaPath);
+                string marker = GetMergedSmokeCanaryMarkerPath(gtaPath);
+                if (!File.Exists(backup) || !File.Exists(animationBackup) ||
+                    !File.Exists(languageBackup) || !File.Exists(hudBackup) ||
+                    !File.Exists(marker))
+                    throw new InvalidDataException(
+                        "Merged smoke backup or marker is missing.");
+                byte[] original = File.ReadAllBytes(backup);
+                byte[] originalAnimations = File.ReadAllBytes(animationBackup);
+                byte[] originalLanguage = File.ReadAllBytes(languageBackup);
+                byte[] originalHud = File.ReadAllBytes(hudBackup);
+                RpfFile rpf = OpenModsUpdateRpf(
+                    gtaPath, out int errorCode, "update.rpf", false);
+                if (rpf == null) return errorCode;
+                ReloadGtaEncryptionKeys(gtaPath);
+                // OpenModsUpdateRpf loads the Enhanced encryption keys used by
+                // the stock-format rollback snapshot before we scan it.
+                ValidateMergedSmokeArchiveSnapshot(
+                    gtaPath, original, originalAnimations, originalLanguage,
+                    originalHud);
+                byte[] installed = ExtractRequiredEntry(
+                    rpf, BaseWeaponsMetaPath);
+                byte[] installedAnimations = ExtractRequiredEntry(
+                    rpf, BaseWeaponAnimationsMetaPath);
+                byte[] installedLanguage = ExtractRequiredEntry(
+                    rpf, BaseAmericanLanguageArchivePath);
+                byte[] installedHud = ExtractRequiredEntry(
+                    rpf, BaseScaleformGenericArchivePath);
+                ValidateMergedSmokeWeaponMeta(original, installed,
+                    ColoredSmokeWeapons.Length);
+                ValidateMergedSmokeWeaponAnimationsMeta(
+                    originalAnimations, installedAnimations,
+                    ColoredSmokeWeapons.Length);
+                byte[] expectedLanguage = BuildMergedSmokeLanguageArchive(
+                    gtaPath, originalLanguage);
+                if (!installedLanguage.SequenceEqual(expectedLanguage))
+                    throw new InvalidDataException(
+                        "Installed smoke wheel labels differ from the verified language payload.");
+                byte[] expectedHud = BuildMergedSmokeHudArchive(
+                    gtaPath, originalHud);
+                if (!installedHud.SequenceEqual(expectedHud))
+                    throw new InvalidDataException(
+                        "Installed smoke wheel icons differ from the verified BZ Gas HUD-alias payload.");
+                string json = File.ReadAllText(marker);
+                foreach (string expected in new[]
+                {
+                    "\"canary_state\": \"full_pending\"",
+                    $"\"weapon_count\": {ColoredSmokeWeapons.Length}",
+                    Sha256(original), Sha256(installed),
+                    Sha256(originalAnimations), Sha256(installedAnimations),
+                    Sha256(originalLanguage), Sha256(installedLanguage),
+                    Sha256(originalHud), Sha256(installedHud),
+                }.Concat(ColoredSmokeWeapons.Select(spec => spec.WeaponName)))
+                    if (json.IndexOf(expected,
+                            StringComparison.OrdinalIgnoreCase) < 0)
+                        throw new InvalidDataException(
+                            $"Merged smoke marker is stale: {expected}");
+                Console.WriteLine(
+                    "Verified seven colored smoke definitions, all stock-cloned " +
+                    "animation mappings, native wheel labels, BZ Gas icon " +
+                    "routing, and their rollback snapshot.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 9;
+            }
+        }
+
+        private static void EnsureMergedSmokeEntryBackups(
+            string gtaPath, byte[] original, byte[] originalAnimations)
+        {
+            ValidateBaseWeaponsMeta(original);
+            XDocument animationDoc = XDocument.Parse(
+                Encoding.UTF8.GetString(originalAnimations)
+                    .TrimStart('\uFEFF'));
+            if (animationDoc.Root?.Name.LocalName != "CWeaponAnimationsSets")
+                throw new InvalidDataException(
+                    "Base weaponanimations.meta backup is invalid.");
+            string directory = GetMergedSmokeBackupDirectory(gtaPath);
+            Directory.CreateDirectory(directory);
+            string path = GetMergedSmokeEntryBackupPath(gtaPath);
+            string animationPath =
+                GetMergedSmokeAnimationBackupPath(gtaPath);
+            WriteAtomicFileReplacing(path, original);
+            WriteAtomicFileReplacing(animationPath, originalAnimations);
+            File.WriteAllText(Path.Combine(directory, "manifest.txt"),
+                $"{BaseWeaponsMetaPath}\t{original.Length}\t{Sha256(original)}\n" +
+                $"{BaseWeaponAnimationsMetaPath}\t{originalAnimations.Length}\t" +
+                $"{Sha256(originalAnimations)}\n",
+                new UTF8Encoding(false));
+            Console.WriteLine(
+                $"Saved exact base weapon metadata backups: {path}, {animationPath}");
+        }
+
+        private static void EnsureMergedSmokeEntryBackups(
+            string gtaPath, byte[] original, byte[] originalAnimations,
+            byte[] originalLanguage)
+        {
+            EnsureMergedSmokeEntryBackups(
+                gtaPath, original, originalAnimations);
+            if (originalLanguage == null || originalLanguage.Length < 32)
+                throw new InvalidDataException(
+                    "Base American language archive backup is invalid.");
+            string languagePath =
+                GetMergedSmokeLanguageBackupPath(gtaPath);
+            WriteAtomicFileReplacing(languagePath, originalLanguage);
+            File.WriteAllText(Path.Combine(
+                    GetMergedSmokeBackupDirectory(gtaPath), "manifest.txt"),
+                $"{BaseWeaponsMetaPath}\t{original.Length}\t{Sha256(original)}\n" +
+                $"{BaseWeaponAnimationsMetaPath}\t{originalAnimations.Length}\t" +
+                    $"{Sha256(originalAnimations)}\n" +
+                $"{BaseAmericanLanguageArchivePath}\t{originalLanguage.Length}\t" +
+                    $"{Sha256(originalLanguage)}\n",
+                new UTF8Encoding(false));
+            Console.WriteLine(
+                $"Saved exact base American language backup: {languagePath}");
+        }
+
+        private static void EnsureMergedSmokeEntryBackups(
+            string gtaPath, byte[] original, byte[] originalAnimations,
+            byte[] originalLanguage, byte[] originalHud)
+        {
+            EnsureMergedSmokeEntryBackups(gtaPath, original,
+                originalAnimations, originalLanguage);
+            if (originalHud == null || originalHud.Length < 32)
+                throw new InvalidDataException(
+                    "Base Scaleform HUD archive backup is invalid.");
+            string hudPath = GetMergedSmokeHudBackupPath(gtaPath);
+            WriteAtomicFileReplacing(hudPath, originalHud);
+            File.WriteAllText(Path.Combine(
+                    GetMergedSmokeBackupDirectory(gtaPath), "manifest.txt"),
+                $"{BaseWeaponsMetaPath}\t{original.Length}\t{Sha256(original)}\n" +
+                $"{BaseWeaponAnimationsMetaPath}\t{originalAnimations.Length}\t" +
+                    $"{Sha256(originalAnimations)}\n" +
+                $"{BaseAmericanLanguageArchivePath}\t{originalLanguage.Length}\t" +
+                    $"{Sha256(originalLanguage)}\n" +
+                $"{BaseScaleformGenericArchivePath}\t{originalHud.Length}\t" +
+                    $"{Sha256(originalHud)}\n",
+                new UTF8Encoding(false));
+            Console.WriteLine(
+                $"Saved exact base Scaleform HUD backup: {hudPath}");
+        }
+
+        private static void CreateMergedSmokeArchiveSnapshot(
+            string modsRpf, string gtaPath)
+        {
+            string backup = GetMergedSmokeArchiveBackupPath(gtaPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(backup));
+            long sourceLength = new FileInfo(modsRpf).Length;
+            var drive = new DriveInfo(Path.GetPathRoot(backup));
+            if (drive.AvailableFreeSpace < sourceLength + 268435456L)
+                throw new IOException(
+                    "Not enough free disk space for the merged-smoke archive snapshot.");
+            string temporary = backup + ".tmp";
+            if (File.Exists(temporary)) File.Delete(temporary);
+            try
+            {
+                File.Copy(modsRpf, temporary, true);
+                if (new FileInfo(temporary).Length != sourceLength)
+                    throw new IOException(
+                        "Merged-smoke archive snapshot failed size verification.");
+                if (File.Exists(backup)) File.Delete(backup);
+                File.Move(temporary, backup);
+            }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+            }
+            Console.WriteLine($"Created pre-merge archive snapshot: {backup}");
+        }
+
+        private static void ValidateMergedSmokeArchiveSnapshot(
+            string gtaPath, byte[] expectedWeaponsMeta,
+            byte[] expectedWeaponAnimationsMeta)
+        {
+            string backup = GetMergedSmokeArchiveBackupPath(gtaPath);
+            if (!File.Exists(backup))
+                throw new InvalidDataException(
+                    $"Merged-smoke archive snapshot is missing: {backup}");
+            var snapshot = new RpfFile(backup, backup);
+            snapshot.ScanStructure(null, error => Console.Error.WriteLine(
+                $"Snapshot RPF scan warning: {error}"));
+            byte[] archived = ExtractRequiredEntry(
+                snapshot, BaseWeaponsMetaPath);
+            byte[] archivedAnimations = ExtractRequiredEntry(
+                snapshot, BaseWeaponAnimationsMetaPath);
+            if (!archived.SequenceEqual(expectedWeaponsMeta))
+                throw new InvalidDataException(
+                    "Rollback snapshot does not contain the exact original weapons.meta.");
+            if (!archivedAnimations.SequenceEqual(
+                    expectedWeaponAnimationsMeta))
+                throw new InvalidDataException(
+                    "Rollback snapshot does not contain the exact original weaponanimations.meta.");
+            Console.WriteLine(
+                "Verified rollback snapshot against both original weapon metadata hashes.");
+        }
+
+        private static void ValidateMergedSmokeArchiveSnapshot(
+            string gtaPath, byte[] expectedWeaponsMeta,
+            byte[] expectedWeaponAnimationsMeta,
+            byte[] expectedLanguageArchive)
+        {
+            ValidateMergedSmokeArchiveSnapshot(gtaPath,
+                expectedWeaponsMeta, expectedWeaponAnimationsMeta);
+            string backup = GetMergedSmokeArchiveBackupPath(gtaPath);
+            var snapshot = new RpfFile(backup, backup);
+            snapshot.ScanStructure(null, error => Console.Error.WriteLine(
+                $"Snapshot language RPF scan warning: {error}"));
+            byte[] archivedLanguage = ExtractRequiredEntry(
+                snapshot, BaseAmericanLanguageArchivePath);
+            if (!archivedLanguage.SequenceEqual(expectedLanguageArchive))
+                throw new InvalidDataException(
+                    "Rollback snapshot does not contain the exact original American language archive.");
+            Console.WriteLine(
+                "Verified rollback snapshot against the original language archive hash.");
+        }
+
+        private static void ValidateMergedSmokeArchiveSnapshot(
+            string gtaPath, byte[] expectedWeaponsMeta,
+            byte[] expectedWeaponAnimationsMeta,
+            byte[] expectedLanguageArchive, byte[] expectedHudArchive)
+        {
+            ValidateMergedSmokeArchiveSnapshot(gtaPath,
+                expectedWeaponsMeta, expectedWeaponAnimationsMeta,
+                expectedLanguageArchive);
+            string backup = GetMergedSmokeArchiveBackupPath(gtaPath);
+            var snapshot = new RpfFile(backup, backup);
+            snapshot.ScanStructure(null, error => Console.Error.WriteLine(
+                $"Snapshot HUD RPF scan warning: {error}"));
+            byte[] archivedHud = ExtractRequiredEntry(
+                snapshot, BaseScaleformGenericArchivePath);
+            if (!archivedHud.SequenceEqual(expectedHudArchive))
+                throw new InvalidDataException(
+                    "Rollback snapshot does not contain the exact original Scaleform HUD archive.");
+            Console.WriteLine(
+                "Verified rollback snapshot against the original Scaleform HUD archive hash.");
+        }
+
+        private static void WriteAtomicFileReplacing(string path, byte[] data)
+        {
+            string temporary = path + ".tmp";
+            if (File.Exists(temporary)) File.Delete(temporary);
+            try
+            {
+                File.WriteAllBytes(temporary, data);
+                if (File.Exists(path)) File.Replace(temporary, path, null);
+                else File.Move(temporary, path);
+            }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+            }
+        }
+
+        private static bool RestoreMergedSmokeArchiveSnapshot(string gtaPath)
+        {
+            string target = Path.Combine(
+                gtaPath, "mods", "update", "update.rpf");
+            string backup = GetMergedSmokeArchiveBackupPath(gtaPath);
+            if (!File.Exists(backup))
+            {
+                Console.Error.WriteLine(
+                    $"MISSING MERGED-SMOKE ARCHIVE SNAPSHOT: {backup}");
+                return false;
+            }
+            File.Copy(backup, target, true);
+            Console.Error.WriteLine(
+                $"Restored pre-merge archive snapshot: {target}");
+            return true;
+        }
+
+        private static void WriteMergedSmokeCanaryMarker(
+            string gtaPath, byte[] original, byte[] installed,
+            byte[] originalAnimations, byte[] installedAnimations,
+            int weaponCount, string canaryState, bool whiteCanaryPassed)
+        {
+            string marker = GetMergedSmokeCanaryMarkerPath(gtaPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(marker));
+            string weapons = string.Join(",\n    ",
+                ColoredSmokeWeapons.Take(weaponCount).Select(spec =>
+                    $"\"{spec.WeaponName}\""));
+            File.WriteAllText(marker,
+                "{\n" +
+                "  \"schema\": 3,\n" +
+                "  \"canary_state\": \"" + canaryState + "\",\n" +
+                "  \"mode\": \"base_weapons_meta_merge\",\n" +
+                "  \"weapon_count\": " + weaponCount + ",\n" +
+                "  \"white_canary_passed\": " +
+                    (whiteCanaryPassed ? "true" : "false") + ",\n" +
+                "  \"weapons\": [\n    " + weapons + "\n  ],\n" +
+                "  \"original_sha256\": \"" + Sha256(original) + "\",\n" +
+                "  \"installed_sha256\": \"" + Sha256(installed) + "\",\n" +
+                "  \"original_animations_sha256\": \"" +
+                    Sha256(originalAnimations) + "\",\n" +
+                "  \"installed_animations_sha256\": \"" +
+                    Sha256(installedAnimations) + "\"\n" +
+                "}\n", new UTF8Encoding(false));
+        }
+
+        private static void WriteMergedSmokeFullMarker(
+            string gtaPath, byte[] original, byte[] installed,
+            byte[] originalAnimations, byte[] installedAnimations,
+            byte[] originalLanguage, byte[] installedLanguage,
+            byte[] originalHud, byte[] installedHud,
+            int weaponCount, string canaryState, bool whiteCanaryPassed)
+        {
+            string marker = GetMergedSmokeCanaryMarkerPath(gtaPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(marker));
+            string weapons = string.Join(",\n    ",
+                ColoredSmokeWeapons.Take(weaponCount).Select(spec =>
+                    $"\"{spec.WeaponName}\""));
+            File.WriteAllText(marker,
+                "{\n" +
+                "  \"schema\": 5,\n" +
+                "  \"canary_state\": \"" + canaryState + "\",\n" +
+                "  \"mode\": \"base_weapon_animation_language_merge\",\n" +
+                "  \"weapon_count\": " + weaponCount + ",\n" +
+                "  \"white_canary_passed\": " +
+                    (whiteCanaryPassed ? "true" : "false") + ",\n" +
+                "  \"weapon_wheel_labels\": true,\n" +
+                "  \"bz_gas_icon_reused\": true,\n" +
+                "  \"weapons\": [\n    " + weapons + "\n  ],\n" +
+                "  \"original_sha256\": \"" + Sha256(original) + "\",\n" +
+                "  \"installed_sha256\": \"" + Sha256(installed) + "\",\n" +
+                "  \"original_animations_sha256\": \"" +
+                    Sha256(originalAnimations) + "\",\n" +
+                "  \"installed_animations_sha256\": \"" +
+                    Sha256(installedAnimations) + "\",\n" +
+                "  \"original_language_sha256\": \"" +
+                    Sha256(originalLanguage) + "\",\n" +
+                "  \"installed_language_sha256\": \"" +
+                    Sha256(installedLanguage) + "\",\n" +
+                "  \"original_hud_sha256\": \"" +
+                    Sha256(originalHud) + "\",\n" +
+                "  \"installed_hud_sha256\": \"" +
+                    Sha256(installedHud) + "\"\n" +
+                "}\n", new UTF8Encoding(false));
+        }
+
+        private static string GetMergedSmokeBackupDirectory(string gtaPath)
+        {
+            return Path.Combine(gtaPath, "scripts", "ALLIN1_backups",
+                "smoke_weapon_merge");
+        }
+
+        private static string GetMergedSmokeEntryBackupPath(string gtaPath)
+        {
+            return Path.Combine(GetMergedSmokeBackupDirectory(gtaPath),
+                "weapons.meta");
+        }
+
+        private static string GetMergedSmokeAnimationBackupPath(string gtaPath)
+        {
+            return Path.Combine(GetMergedSmokeBackupDirectory(gtaPath),
+                "weaponanimations.meta");
+        }
+
+        private static string GetMergedSmokeLanguageBackupPath(string gtaPath)
+        {
+            return Path.Combine(GetMergedSmokeBackupDirectory(gtaPath),
+                "american_rel.rpf");
+        }
+
+        private static string GetMergedSmokeHudBackupPath(string gtaPath)
+        {
+            return Path.Combine(GetMergedSmokeBackupDirectory(gtaPath),
+                "scaleform_generic.rpf");
+        }
+
+        private static string GetMergedSmokeArchiveBackupPath(string gtaPath)
+        {
+            return Path.Combine(GetMergedSmokeBackupDirectory(gtaPath),
+                "update.rpf.pre-merge.bak");
+        }
+
+        private static string GetMergedSmokeCanaryMarkerPath(string gtaPath)
+        {
+            return Path.Combine(gtaPath, "scripts",
+                MergedSmokeCanaryMarkerName);
+        }
+
+        private static byte[] BuildColoredSmokeWeaponMeta(byte[] source)
+        {
+            XDocument sourceDoc = XDocument.Parse(
+                Encoding.UTF8.GetString(source).TrimStart('\uFEFF'));
+            XElement sourceAmmo = sourceDoc.Descendants("Item").FirstOrDefault(
+                item => string.Equals(item.Element("Name")?.Value,
+                    "AMMO_SMOKEGRENADE", StringComparison.Ordinal));
+            XElement sourceWeapon = sourceDoc.Descendants("Item").FirstOrDefault(
+                item => string.Equals(item.Element("Name")?.Value,
+                    "WEAPON_SMOKEGRENADE", StringComparison.Ordinal));
+            if (sourceAmmo == null || sourceWeapon == null)
+                throw new InvalidDataException(
+                    "Current weapons.meta does not contain the smoke grenade templates.");
+
+            // Current Enhanced data uses navigation orders through 450 and
+            // best-order values through 400. Continue those sequences rather
+            // than using extreme values that the native loader may treat as
+            // bounded indices.
+            XElement[] navigationSlots = ColoredSmokeWeapons.Select((spec, index) =>
+                new XElement("Item",
+                    new XElement("OrderNumber",
+                        new XAttribute("value", 451 + index)),
+                    new XElement("Entry", spec.SlotName))).ToArray();
+            XElement[] bestSlots = ColoredSmokeWeapons.Select((spec, index) =>
+                new XElement("Item",
+                    new XElement("OrderNumber",
+                        new XAttribute("value", 401 + index)),
+                    new XElement("Entry", spec.SlotName))).ToArray();
+            XElement SlotGroup() => new XElement("Item",
+                new XElement("WeaponSlots",
+                    navigationSlots.Select(item => new XElement(item))));
+            var doc = new XDocument(
+                new XDeclaration("1.0", "UTF-8", null),
+                new XElement("CWeaponInfoBlob",
+                    new XElement("SlotNavigateOrder",
+                        SlotGroup(), SlotGroup()),
+                    new XElement("SlotBestOrder",
+                        new XElement("WeaponSlots",
+                            bestSlots.Select(item => new XElement(item)))),
+                    new XElement("TintSpecValues"),
+                    new XElement("FiringPatternAliases"),
+                    new XElement("UpperBodyFixupExpressionData"),
+                    new XElement("AimingInfos"),
+                    new XElement("Infos",
+                        new XElement("Item", new XElement("Infos",
+                            ColoredSmokeWeapons.Select(spec =>
+                                CloneColoredSmokeAmmo(sourceAmmo, spec)))),
+                        new XElement("Item", new XElement("Infos",
+                            ColoredSmokeWeapons.Select(spec =>
+                                CloneColoredSmokeWeapon(sourceWeapon, spec)))),
+                        new XElement("Item", new XElement("Infos"))),
+                    new XElement("VehicleWeaponInfos"),
+                    new XElement("Name", "DLC - ALLIN1 Colored Smoke")));
+            return Encoding.UTF8.GetBytes(doc.Declaration + "\n" + doc);
+        }
+
+        private static XElement CloneColoredSmokeAmmo(
+            XElement template, ColoredSmokeWeaponSpec spec)
+        {
+            var item = new XElement(template);
+            SetElementValue(item, "Name", spec.AmmoName);
+            foreach (string name in new[] { "AmmoMax", "AmmoMax50",
+                "AmmoMax100", "AmmoMaxMP", "AmmoMax50MP",
+                "AmmoMax100MP" })
+                item.Element(name)?.SetAttributeValue("value", "5");
+            SetElementValue(item, "AmmoFlags", "Fuse FixedAfterExplosion");
+            foreach (string name in new[] { "LifeTime", "FromVehicleLifeTime",
+                "LifeTimeAfterImpact", "ExplosionTime" })
+                item.Element(name)?.SetAttributeValue("value", "30.000000");
+            XElement explosion = item.Element("Explosion");
+            if (explosion != null)
+                foreach (XElement value in explosion.Elements())
+                    value.Value = "DONTCARE";
+            SetElementValue(item, "TrailFx", "");
+            SetElementValue(item, "PrimedFx", "");
+            return item;
+        }
+
+        private static XElement CloneColoredSmokeWeapon(
+            XElement template, ColoredSmokeWeaponSpec spec)
+        {
+            var item = new XElement(template);
+            SetElementValue(item, "Name", spec.WeaponName);
+            SetElementValue(item, "Slot", spec.SlotName);
+            item.Element("AmmoInfo")?.SetAttributeValue("ref", spec.AmmoName);
+            SetElementValue(item, "HumanNameHash", spec.HumanNameLabel);
+            SetElementValue(item, "StatName",
+                "A1SM" + spec.Color.ToUpperInvariant());
+            SetElementValue(item, "PickupHash", "");
+            SetElementValue(item, "MPPickupHash", "");
+            return item;
+        }
+
+        private static void SetElementValue(
+            XElement parent, string name, string value)
+        {
+            XElement element = parent.Element(name);
+            if (element == null)
+            {
+                element = new XElement(name);
+                parent.Add(element);
+            }
+            element.Value = value ?? "";
+        }
+
+        private static byte[] BuildColoredSmokeGxt2()
+        {
+            var entries = new List<string>();
+            foreach (ColoredSmokeWeaponSpec spec in ColoredSmokeWeapons)
+            {
+                void Add(string label, string value)
+                {
+                    entries.Add(
+                        $"0x{JenkHash.GenHash(label.ToLowerInvariant()):X8} = " +
+                        value);
+                }
+                Add(spec.HumanNameLabel, spec.DisplayName);
+                Add(spec.DescriptionLabel,
+                    $"Deploys a dense {spec.Color} smoke screen after settling.");
+                Add(spec.TooltipLabel,
+                    "Throw to mark or conceal an area.");
+                Add(spec.UppercaseLabel,
+                    spec.DisplayName.ToUpperInvariant());
+            }
+            string text = string.Join("\n", entries);
+            var gxt = Gxt2File.FromText(text);
+            return gxt.Save();
+        }
+
+        private static byte[] BuildMergedSmokeLanguageArchive(
+            string gtaPath, byte[] source)
+        {
+            string input = Path.Combine(Path.GetTempPath(),
+                $"allin1-smoke-lang-input-{Guid.NewGuid():N}.rpf");
+            string output = Path.Combine(Path.GetTempPath(),
+                $"allin1-smoke-lang-output-{Guid.NewGuid():N}.rpf");
+            try
+            {
+                File.WriteAllBytes(input, source);
+                string executable = Environment.ProcessPath;
+                if (string.IsNullOrEmpty(executable))
+                    throw new InvalidOperationException(
+                        "Could not locate the RPF patcher process.");
+                var start = new ProcessStartInfo
+                {
+                    FileName = executable,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                };
+                if (Path.GetFileNameWithoutExtension(executable).Equals(
+                        "dotnet", StringComparison.OrdinalIgnoreCase))
+                    start.ArgumentList.Add(
+                        System.Reflection.Assembly.GetExecutingAssembly()
+                            .Location);
+                start.ArgumentList.Add("merge-smoke-language-worker");
+                start.ArgumentList.Add(gtaPath);
+                start.ArgumentList.Add(input);
+                start.ArgumentList.Add(output);
+                using (Process process = Process.Start(start))
+                {
+                    string stdout = process.StandardOutput.ReadToEnd();
+                    string stderr = process.StandardError.ReadToEnd();
+                    process.WaitForExit();
+                    if (!string.IsNullOrWhiteSpace(stdout))
+                        Console.Write(stdout);
+                    if (process.ExitCode != 0 || !File.Exists(output))
+                        throw new InvalidDataException(
+                            "Isolated language merge failed: " +
+                            (string.IsNullOrWhiteSpace(stderr)
+                                ? $"exit {process.ExitCode}" : stderr.Trim()));
+                }
+                return File.ReadAllBytes(output);
+            }
+            finally
+            {
+                if (File.Exists(input)) File.Delete(input);
+                if (File.Exists(output)) File.Delete(output);
+            }
+        }
+
+        private static int MergeSmokeLanguageWorker(string[] args)
+        {
+            if (args.Length < 4)
+            {
+                Console.Error.WriteLine(
+                    "Usage: merge-smoke-language-worker <gta_path> <input_rpf> <output_rpf>");
+                return 1;
+            }
+            try
+            {
+                ReloadGtaEncryptionKeys(Path.GetFullPath(args[1]));
+                byte[] source = File.ReadAllBytes(args[2]);
+                byte[] result =
+                    BuildMergedSmokeLanguageArchiveInProcess(source);
+                WriteAtomicFileReplacing(args[3], result);
+                Console.WriteLine(
+                    $"Built isolated smoke wheel-label archive ({result.Length:N0} bytes, " +
+                    $"sha256={Sha256(result)})." );
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 9;
+            }
+        }
+
+        private static byte[] BuildMergedSmokeLanguageArchiveInProcess(
+            byte[] source)
+        {
+            string directory = Path.Combine(Path.GetTempPath(),
+                $"allin1-smoke-base-lang-{Guid.NewGuid():N}");
+            string temporary = Path.Combine(directory, "american_rel.rpf");
+            try
+            {
+                Directory.CreateDirectory(directory);
+                File.WriteAllBytes(temporary, source);
+                var archive = new RpfFile(temporary, temporary);
+                archive.ScanStructure(null, error => Console.Error.WriteLine(
+                    $"Base language RPF warning: {error}"));
+                RpfFile.EnsureValidEncryption(archive, null, true);
+                archive = new RpfFile(temporary, temporary);
+                archive.ScanStructure(null, error => Console.Error.WriteLine(
+                    $"Open language RPF warning: {error}"));
+                RpfFileEntry entry = FindFileRecursive(
+                    archive, "global.gxt2");
+                if (entry == null)
+                    throw new InvalidDataException(
+                        "Base American language archive has no global.gxt2.");
+                var current = new Gxt2File();
+                current.Load(entry.File.ExtractFile(entry), entry);
+                var lines = new List<string> { current.ToText().TrimEnd() };
+                foreach (ColoredSmokeWeaponSpec spec in ColoredSmokeWeapons)
+                    lines.Add(
+                        $"0x{JenkHash.GenHash(spec.HumanNameLabel.ToLowerInvariant()):X8} = " +
+                        spec.DisplayName);
+                byte[] merged = Gxt2File.FromText(
+                    string.Join("\n", lines)).Save();
+                RpfFile.CreateFile(entry.Parent, entry.Name, merged, true);
+                byte[] result = File.ReadAllBytes(temporary);
+                ValidateMergedSmokeLanguageArchive(source, result);
+                return result;
+            }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+                if (Directory.Exists(directory)) Directory.Delete(directory);
+            }
+        }
+
+        private static byte[] BuildMergedSmokeHudArchive(
+            string gtaPath, byte[] source)
+        {
+            string input = Path.Combine(Path.GetTempPath(),
+                $"allin1-smoke-hud-input-{Guid.NewGuid():N}.rpf");
+            string output = Path.Combine(Path.GetTempPath(),
+                $"allin1-smoke-hud-output-{Guid.NewGuid():N}.rpf");
+            try
+            {
+                File.WriteAllBytes(input, source);
+                string executable = Environment.ProcessPath;
+                if (string.IsNullOrEmpty(executable))
+                    throw new InvalidOperationException(
+                        "Could not locate the RPF patcher process.");
+                var start = new ProcessStartInfo
+                {
+                    FileName = executable,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                };
+                if (Path.GetFileNameWithoutExtension(executable).Equals(
+                        "dotnet", StringComparison.OrdinalIgnoreCase))
+                    start.ArgumentList.Add(
+                        System.Reflection.Assembly.GetExecutingAssembly()
+                            .Location);
+                start.ArgumentList.Add("merge-smoke-hud-worker");
+                start.ArgumentList.Add(gtaPath);
+                start.ArgumentList.Add(input);
+                start.ArgumentList.Add(output);
+                using (Process process = Process.Start(start))
+                {
+                    string stdout = process.StandardOutput.ReadToEnd();
+                    string stderr = process.StandardError.ReadToEnd();
+                    process.WaitForExit();
+                    if (!string.IsNullOrWhiteSpace(stdout))
+                        Console.Write(stdout);
+                    if (process.ExitCode != 0 || !File.Exists(output))
+                        throw new InvalidDataException(
+                            "Isolated HUD icon merge failed: " +
+                            (string.IsNullOrWhiteSpace(stderr)
+                                ? $"exit {process.ExitCode}" : stderr.Trim()));
+                }
+                return File.ReadAllBytes(output);
+            }
+            finally
+            {
+                if (File.Exists(input)) File.Delete(input);
+                if (File.Exists(output)) File.Delete(output);
+            }
+        }
+
+        private static int MergeSmokeHudWorker(string[] args)
+        {
+            if (args.Length < 4)
+            {
+                Console.Error.WriteLine(
+                    "Usage: merge-smoke-hud-worker <gta_path> <input_rpf> <output_rpf>");
+                return 1;
+            }
+            try
+            {
+                ReloadGtaEncryptionKeys(Path.GetFullPath(args[1]));
+                byte[] source = File.ReadAllBytes(args[2]);
+                byte[] result = BuildMergedSmokeHudArchiveInProcess(source);
+                WriteAtomicFileReplacing(args[3], result);
+                Console.WriteLine(
+                    $"Built isolated BZ Gas wheel-icon archive ({result.Length:N0} bytes, " +
+                    $"sha256={Sha256(result)}).");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 9;
+            }
+        }
+
+        private static byte[] BuildMergedSmokeHudArchiveInProcess(
+            byte[] source)
+        {
+            string directory = Path.Combine(Path.GetTempPath(),
+                $"allin1-smoke-base-hud-{Guid.NewGuid():N}");
+            string temporary = Path.Combine(directory,
+                "scaleform_generic.rpf");
+            try
+            {
+                Directory.CreateDirectory(directory);
+                File.WriteAllBytes(temporary, source);
+                var archive = new RpfFile(temporary, temporary);
+                archive.ScanStructure(null, error => Console.Error.WriteLine(
+                    $"Base Scaleform RPF warning: {error}"));
+                RpfFile.EnsureValidEncryption(archive, null, true);
+                archive = new RpfFile(temporary, temporary);
+                archive.ScanStructure(null, error => Console.Error.WriteLine(
+                    $"Open Scaleform RPF warning: {error}"));
+                RpfFileEntry entry = FindFileRecursive(archive, "hud.gfx");
+                if (entry == null)
+                    throw new InvalidDataException(
+                        "Base Scaleform archive has no hud.gfx.");
+                byte[] originalHud = entry.File.ExtractFile(entry);
+                byte[] patchedHud = PatchSmokeHudGfx(originalHud);
+                RpfFile.CreateFile(entry.Parent, entry.Name, patchedHud, true);
+                byte[] result = File.ReadAllBytes(temporary);
+
+                archive = new RpfFile(temporary, temporary);
+                archive.ScanStructure(null, error => Console.Error.WriteLine(
+                    $"Patched Scaleform RPF warning: {error}"));
+                RpfFileEntry installedEntry = FindFileRecursive(
+                    archive, "hud.gfx");
+                byte[] installedHud = installedEntry?.File.ExtractFile(
+                    installedEntry);
+                if (installedHud == null ||
+                    !installedHud.SequenceEqual(patchedHud))
+                    throw new InvalidDataException(
+                        "Patched Scaleform archive did not retain the verified hud.gfx payload.");
+                ValidateSmokeHudGfx(originalHud, installedHud);
+                return result;
+            }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+                if (Directory.Exists(directory)) Directory.Delete(directory);
+            }
+        }
+
+        private static Dictionary<uint, string> ReadGxtEntries(
+            byte[] languageArchive)
+        {
+            string directory = Path.Combine(Path.GetTempPath(),
+                $"allin1-smoke-read-lang-{Guid.NewGuid():N}");
+            string temporary = Path.Combine(directory, "american_rel.rpf");
+            try
+            {
+                Directory.CreateDirectory(directory);
+                File.WriteAllBytes(temporary, languageArchive);
+                var archive = new RpfFile(temporary, temporary);
+                archive.ScanStructure(null, error => Console.Error.WriteLine(
+                    $"Language verification RPF warning: {error}"));
+                RpfFileEntry entry = FindFileRecursive(
+                    archive, "global.gxt2");
+                if (entry == null)
+                    throw new InvalidDataException(
+                        "Language archive has no global.gxt2.");
+                var gxt = new Gxt2File();
+                gxt.Load(entry.File.ExtractFile(entry), entry);
+                var result = new Dictionary<uint, string>();
+                foreach (string line in gxt.ToText().Split(
+                    new[] { "\r\n", "\n" },
+                    StringSplitOptions.RemoveEmptyEntries))
+                {
+                    Match match = Regex.Match(line,
+                        @"^0x([0-9A-Fa-f]{8})\s*=\s?(.*)$");
+                    if (!match.Success) continue;
+                    result[Convert.ToUInt32(match.Groups[1].Value, 16)] =
+                        match.Groups[2].Value;
+                }
+                return result;
+            }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+                if (Directory.Exists(directory)) Directory.Delete(directory);
+            }
+        }
+
+        private static void ValidateMergedSmokeLanguageArchive(
+            byte[] original, byte[] candidate)
+        {
+            Dictionary<uint, string> before = ReadGxtEntries(original);
+            Dictionary<uint, string> after = ReadGxtEntries(candidate);
+            foreach (KeyValuePair<uint, string> entry in before)
+                if (!after.TryGetValue(entry.Key, out string value) ||
+                    !string.Equals(value, entry.Value,
+                        StringComparison.Ordinal))
+                    throw new InvalidDataException(
+                        $"Merged language archive changed stock label 0x{entry.Key:X8}.");
+            foreach (ColoredSmokeWeaponSpec spec in ColoredSmokeWeapons)
+            {
+                uint hash = JenkHash.GenHash(
+                    spec.HumanNameLabel.ToLowerInvariant());
+                if (!after.TryGetValue(hash, out string value) ||
+                    !string.Equals(value, spec.DisplayName,
+                        StringComparison.Ordinal))
+                    throw new InvalidDataException(
+                        $"Merged language archive is missing {spec.DisplayName}.");
+            }
+            int expected = before.Keys.Union(ColoredSmokeWeapons.Select(spec =>
+                JenkHash.GenHash(spec.HumanNameLabel.ToLowerInvariant()))).Count();
+            if (after.Count != expected)
+                throw new InvalidDataException(
+                    "Merged language archive contains unexpected label changes.");
+        }
+
+        private static string[] SmokeHudAliasLabels()
+        {
+            return ColoredSmokeWeapons.Select(spec =>
+                "INT" + unchecked((int)JenkHash.GenHash(
+                    spec.WeaponName.ToLowerInvariant())).ToString(
+                        System.Globalization.CultureInfo.InvariantCulture))
+                .ToArray();
+        }
+
+        private static byte[] PatchSmokeHudGfx(byte[] source)
+        {
+            Dictionary<string, int> before = ReadGfxFrameLabels(source);
+            const string bzGasLabel = "INT-1600701090";
+            int bzGasFrames = before.TryGetValue(
+                bzGasLabel, out int count) ? count : 0;
+            if (bzGasFrames != 2)
+                throw new InvalidDataException(
+                    $"Expected two stock BZ Gas HUD frames; found {bzGasFrames}.");
+            foreach (string alias in SmokeHudAliasLabels())
+                if (before.ContainsKey(alias))
+                    throw new InvalidDataException(
+                        $"Smoke HUD alias already exists: {alias}");
+            byte[] candidate = RewriteSmokeHudGfx(source, true);
+            ValidateSmokeHudGfx(source, candidate);
+            return candidate;
+        }
+
+        private static void ValidateSmokeHudGfx(
+            byte[] original, byte[] candidate)
+        {
+            Dictionary<string, int> before = ReadGfxFrameLabels(original);
+            Dictionary<string, int> after = ReadGfxFrameLabels(candidate);
+            const string bzGasLabel = "INT-1600701090";
+            int expected = before.TryGetValue(
+                bzGasLabel, out int count) ? count : 0;
+            if (expected != 2 ||
+                !after.TryGetValue(bzGasLabel, out int installedBz) ||
+                installedBz != expected)
+                throw new InvalidDataException(
+                    "The patched HUD did not preserve both BZ Gas frames.");
+            foreach (string alias in SmokeHudAliasLabels())
+                if (!after.TryGetValue(alias, out int aliases) ||
+                    aliases != expected)
+                    throw new InvalidDataException(
+                        $"The patched HUD does not map {alias} to both BZ Gas frames.");
+            byte[] stripped = RewriteSmokeHudGfx(candidate, false);
+            if (!stripped.SequenceEqual(original))
+                throw new InvalidDataException(
+                    "The smoke HUD patch changed data outside its BZ Gas frame aliases.");
+        }
+
+        private static byte[] RewriteSmokeHudGfx(byte[] source, bool add)
+        {
+            int firstTag = GetGfxFirstTagOffset(source);
+            byte[] body = RewriteGfxTagStream(
+                source, firstTag, source.Length - firstTag, add);
+            var result = new byte[firstTag + body.Length];
+            Buffer.BlockCopy(source, 0, result, 0, firstTag);
+            Buffer.BlockCopy(body, 0, result, firstTag, body.Length);
+            WriteUInt32(result, 4, unchecked((uint)result.Length));
+            return result;
+        }
+
+        private static byte[] RewriteGfxTagStream(
+            byte[] source, int offset, int length, bool add)
+        {
+            string[] aliases = SmokeHudAliasLabels();
+            var aliasSet = new HashSet<string>(
+                aliases, StringComparer.Ordinal);
+            const string bzGasLabel = "INT-1600701090";
+            using (var output = new MemoryStream(length + 512))
+            {
+                int position = offset;
+                int end = checked(offset + length);
+                while (position < end)
+                {
+                    if (position + 2 > end)
+                        throw new InvalidDataException(
+                            "Truncated GFX tag header.");
+                    ushort rawHeader = ReadUInt16(source, position);
+                    position += 2;
+                    int code = rawHeader >> 6;
+                    int shortLength = rawHeader & 0x3F;
+                    bool usedLongHeader = shortLength == 0x3F;
+                    int payloadLength;
+                    if (usedLongHeader)
+                    {
+                        if (position + 4 > end)
+                            throw new InvalidDataException(
+                                "Truncated long GFX tag header.");
+                        payloadLength = checked((int)ReadUInt32(
+                            source, position));
+                        position += 4;
+                    }
+                    else
+                    {
+                        payloadLength = shortLength;
+                    }
+                    if (payloadLength < 0 ||
+                        position + payloadLength > end)
+                        throw new InvalidDataException(
+                            "GFX tag payload exceeds its containing stream.");
+                    var payload = new byte[payloadLength];
+                    Buffer.BlockCopy(source, position, payload, 0,
+                        payloadLength);
+                    position += payloadLength;
+                    if (code == 39)
+                    {
+                        if (payload.Length < 4)
+                            throw new InvalidDataException(
+                                "Truncated DefineSprite GFX tag.");
+                        byte[] nested = RewriteGfxTagStream(
+                            payload, 4, payload.Length - 4, add);
+                        var rebuilt = new byte[4 + nested.Length];
+                        Buffer.BlockCopy(payload, 0, rebuilt, 0, 4);
+                        Buffer.BlockCopy(nested, 0, rebuilt, 4,
+                            nested.Length);
+                        payload = rebuilt;
+                    }
+                    string label = code == 43
+                        ? ReadGfxFrameLabel(payload) : null;
+                    if (!add && label != null && aliasSet.Contains(label))
+                        continue;
+                    WriteGfxTag(output, code, payload, usedLongHeader);
+                    if (add && string.Equals(label, bzGasLabel,
+                            StringComparison.Ordinal))
+                        foreach (string alias in aliases)
+                            WriteGfxTag(output, 43,
+                                Encoding.ASCII.GetBytes(alias + "\0\0"),
+                                true);
+                }
+                return output.ToArray();
+            }
+        }
+
+        private static Dictionary<string, int> ReadGfxFrameLabels(
+            byte[] source)
+        {
+            int firstTag = GetGfxFirstTagOffset(source);
+            var result = new Dictionary<string, int>(
+                StringComparer.Ordinal);
+            ReadGfxFrameLabelsFromStream(source, firstTag,
+                source.Length - firstTag, result);
+            return result;
+        }
+
+        private static void ReadGfxFrameLabelsFromStream(
+            byte[] source, int offset, int length,
+            Dictionary<string, int> result)
+        {
+            int position = offset;
+            int end = checked(offset + length);
+            while (position < end)
+            {
+                if (position + 2 > end)
+                    throw new InvalidDataException(
+                        "Truncated GFX tag header during validation.");
+                ushort rawHeader = ReadUInt16(source, position);
+                position += 2;
+                int code = rawHeader >> 6;
+                int payloadLength = rawHeader & 0x3F;
+                if (payloadLength == 0x3F)
+                {
+                    if (position + 4 > end)
+                        throw new InvalidDataException(
+                            "Truncated long GFX tag header during validation.");
+                    payloadLength = checked((int)ReadUInt32(
+                        source, position));
+                    position += 4;
+                }
+                if (payloadLength < 0 ||
+                    position + payloadLength > end)
+                    throw new InvalidDataException(
+                        "GFX validation tag exceeds its containing stream.");
+                if (code == 39)
+                {
+                    if (payloadLength < 4)
+                        throw new InvalidDataException(
+                            "Truncated DefineSprite during GFX validation.");
+                    ReadGfxFrameLabelsFromStream(source,
+                        position + 4, payloadLength - 4, result);
+                }
+                else if (code == 43)
+                {
+                    var payload = new byte[payloadLength];
+                    Buffer.BlockCopy(source, position, payload, 0,
+                        payloadLength);
+                    string label = ReadGfxFrameLabel(payload);
+                    if (!string.IsNullOrEmpty(label))
+                        result[label] = result.TryGetValue(
+                            label, out int existing) ? existing + 1 : 1;
+                }
+                position += payloadLength;
+            }
+        }
+
+        private static int GetGfxFirstTagOffset(byte[] source)
+        {
+            if (source == null || source.Length < 13 ||
+                source[0] != (byte)'G' || source[1] != (byte)'F' ||
+                source[2] != (byte)'X')
+                throw new InvalidDataException(
+                    "HUD payload is not an uncompressed Scaleform GFX file.");
+            uint declaredLength = ReadUInt32(source, 4);
+            if (declaredLength != source.Length)
+                throw new InvalidDataException(
+                    "HUD GFX declared length does not match its payload.");
+            int coordinateBits = source[8] >> 3;
+            int rectBytes = checked((5 + coordinateBits * 4 + 7) / 8);
+            int firstTag = checked(8 + rectBytes + 4);
+            if (firstTag > source.Length)
+                throw new InvalidDataException(
+                    "HUD GFX header is truncated.");
+            return firstTag;
+        }
+
+        private static string ReadGfxFrameLabel(byte[] payload)
+        {
+            int end = Array.IndexOf(payload, (byte)0);
+            if (end < 0) end = payload.Length;
+            return Encoding.ASCII.GetString(payload, 0, end);
+        }
+
+        private static void WriteGfxTag(Stream output, int code,
+            byte[] payload, bool preferLongHeader)
+        {
+            bool useLong = preferLongHeader || payload.Length >= 0x3F;
+            ushort header = checked((ushort)((code << 6) |
+                (useLong ? 0x3F : payload.Length)));
+            var headerBytes = new byte[useLong ? 6 : 2];
+            WriteUInt16(headerBytes, 0, header);
+            if (useLong)
+                WriteUInt32(headerBytes, 2,
+                    unchecked((uint)payload.Length));
+            output.Write(headerBytes, 0, headerBytes.Length);
+            output.Write(payload, 0, payload.Length);
+        }
+
+        private static ushort ReadUInt16(byte[] data, int offset)
+        {
+            return unchecked((ushort)(data[offset] |
+                data[offset + 1] << 8));
+        }
+
+        private static uint ReadUInt32(byte[] data, int offset)
+        {
+            return unchecked((uint)(data[offset] |
+                data[offset + 1] << 8 |
+                data[offset + 2] << 16 |
+                data[offset + 3] << 24));
+        }
+
+        private static void WriteUInt16(byte[] data, int offset,
+            ushort value)
+        {
+            data[offset] = unchecked((byte)value);
+            data[offset + 1] = unchecked((byte)(value >> 8));
+        }
+
+        private static void WriteUInt32(byte[] data, int offset,
+            uint value)
+        {
+            data[offset] = unchecked((byte)value);
+            data[offset + 1] = unchecked((byte)(value >> 8));
+            data[offset + 2] = unchecked((byte)(value >> 16));
+            data[offset + 3] = unchecked((byte)(value >> 24));
+        }
+
+        private static string BuildColoredSmokeShopMeta()
+        {
+            XElement ShopItem(ColoredSmokeWeaponSpec spec) =>
+                new XElement("Item",
+                    new XElement("lockHash", spec.LockHash),
+                    new XElement("nameHash", spec.WeaponName),
+                    new XElement("cost", new XAttribute("value", "750")),
+                    new XElement("ammoCost", new XAttribute("value", "150")),
+                    new XElement("textLabel", spec.HumanNameLabel),
+                    new XElement("weaponDesc", spec.DescriptionLabel),
+                    new XElement("weaponTT", spec.TooltipLabel),
+                    new XElement("weaponUppercase", spec.UppercaseLabel),
+                    new XElement("id", new XAttribute("value", "32")),
+                    new XElement("weaponComponents"));
+            var doc = new XDocument(
+                new XDeclaration("1.0", "UTF-8", null),
+                new XElement("WeaponShopItemArray",
+                    new XElement("weaponShopItems",
+                        ColoredSmokeWeapons.Select(ShopItem))));
+            return doc.Declaration + "\n" + doc;
+        }
+
+        private static string BuildColoredSmokeContentXml()
+        {
+            const string weaponPath =
+                "dlc_allin1_smokeCRC:/common/data/ai/weaponAllin1Smoke.meta";
+            const string shopPath =
+                "dlc_allin1_smokeCRC:/common/data/shop_weapon.meta";
+            const string textPath =
+                "dlc_allin1_smoke:/common/data/dlctext.meta";
+            XElement DataFile(string path, string type, bool persistent) =>
+                new XElement("Item",
+                new XElement("filename", path),
+                new XElement("fileType", type),
+                new XElement("overlay", new XAttribute("value", "false")),
+                new XElement("disabled", new XAttribute("value", "true")),
+                new XElement("persistent", new XAttribute("value",
+                    persistent ? "true" : "false")));
+            var doc = new XDocument(
+                new XDeclaration("1.0", "UTF-8", null),
+                new XElement("CDataFileMgr__ContentsOfDataFileXml",
+                    new XElement("disabledFiles"),
+                    new XElement("includedXmlFiles"),
+                    new XElement("includedDataFiles"),
+                    new XElement("dataFiles",
+                        DataFile(weaponPath, "WEAPONINFO_FILE", false),
+                        DataFile(shopPath,
+                            "WEAPON_SHOP_INFO_METADATA_FILE", false),
+                        DataFile(textPath, "TEXTFILE_METAFILE", true)),
+                    new XElement("contentChangeSets",
+                        new XElement("Item",
+                            new XElement("changeSetName",
+                                "ALLIN1_SMOKE_AUTOGEN"),
+                            new XElement("mapChangeSetData"),
+                            new XElement("filesToInvalidate"),
+                            new XElement("filesToDisable"),
+                            new XElement("filesToEnable",
+                                new XElement("Item", weaponPath),
+                                new XElement("Item", shopPath),
+                                new XElement("Item", textPath)),
+                            new XElement("txdToLoad"),
+                            new XElement("txdToUnload"),
+                            new XElement("residentResources"),
+                            new XElement("unregisterResources"),
+                            new XElement("requiresLoadingScreen",
+                                new XAttribute("value", "false")))),
+                    new XElement("patchFiles")));
+            return doc.Declaration + "\n" + doc;
+        }
+
+        private static string BuildColoredSmokeSetupXml()
+        {
+            var doc = new XDocument(
+                new XDeclaration("1.0", "UTF-8", null),
+                new XElement("SSetupData",
+                    new XElement("deviceName", "dlc_allin1_smoke"),
+                    new XElement("datFile", "content.xml"),
+                    new XElement("timeStamp", "18/08/2026 00:00:00"),
+                    new XElement("nameHash", "allin1_smoke"),
+                    // SSetupData is positional in the game data loader. These
+                    // empty/default nodes are present in Rockstar DLCs and in
+                    // ALLIN1's known-working map and preview packs.
+                    new XElement("contentChangeSets"),
+                    new XElement("contentChangeSetGroups",
+                        new XElement("Item",
+                            new XElement("NameHash", "GROUP_STARTUP"),
+                            new XElement("ContentChangeSets",
+                                new XElement("Item",
+                                    "ALLIN1_SMOKE_AUTOGEN")))),
+                    new XElement("startupScript"),
+                    new XElement("scriptCallstackSize",
+                        new XAttribute("value", "0")),
+                    new XElement("type", "EXTRACONTENT_COMPAT_PACK"),
+                    // The current Enhanced sequence ends at 57
+                    // (mp2026_01_G9EC). Load immediately after stock content.
+                    new XElement("order", new XAttribute("value", "58")),
+                    new XElement("minorOrder", new XAttribute("value", "0")),
+                    new XElement("isLevelPack",
+                        new XAttribute("value", "false")),
+                    new XElement("dependencyPackHash"),
+                    new XElement("requiredVersion")));
+            doc.Root.Add(new XElement("subPackCount",
+                new XAttribute("value", "0")));
+            return doc.Declaration + "\n" + doc;
+        }
+
+        private static string BuildColoredSmokeTextMeta()
+        {
+            return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                "<CExtraTextMetaFile>\n" +
+                "  <hasGlobalTextFile value=\"true\"/>\n" +
+                "  <hasAdditionalText value=\"true\"/>\n" +
+                "  <isTitleUpdate value=\"false\"/>\n" +
+                "</CExtraTextMetaFile>\n";
+        }
+
+        private static int VerifyColoredSmokeDlc(string archive)
+        {
+            if (!File.Exists(archive))
+            {
+                Console.Error.WriteLine(
+                    $"ERROR: Colored smoke DLC is missing: {archive}");
+                return 4;
+            }
+            try
+            {
+                var rpf = new RpfFile(archive, archive);
+                rpf.ScanStructure(null, error => Console.Error.WriteLine(
+                    $"RPF scan warning: {error}"));
+                RpfFileEntry weaponEntry = FindRelativeEntry(
+                    rpf, "common/data/ai/weaponAllin1Smoke.meta");
+                RpfFileEntry shopEntry = FindRelativeEntry(
+                    rpf, "common/data/shop_weapon.meta");
+                RpfFileEntry textMeta = FindRelativeEntry(
+                    rpf, "common/data/dlctext.meta");
+                RpfFileEntry languageEntry = FindRelativeEntry(
+                    rpf, "x64/data/lang/americandlc.rpf");
+                RpfFileEntry contentEntry = FindFileRecursive(
+                    rpf, "content.xml");
+                RpfFileEntry setupEntry = FindFileRecursive(
+                    rpf, "setup2.xml");
+                if (weaponEntry == null || shopEntry == null ||
+                    textMeta == null ||
+                    languageEntry == null ||
+                    contentEntry == null || setupEntry == null)
+                    throw new InvalidDataException(
+                        "Colored smoke DLC is missing required metadata.");
+
+                string setupText = Encoding.UTF8.GetString(
+                    setupEntry.File.ExtractFile(setupEntry)).TrimStart('\uFEFF');
+                XDocument setupDoc = XDocument.Parse(setupText);
+                XElement setup = setupDoc.Root;
+                string[] requiredSetupNodes =
+                {
+                    "deviceName", "datFile", "timeStamp", "nameHash",
+                    "contentChangeSets", "contentChangeSetGroups",
+                    "startupScript", "scriptCallstackSize", "type", "order",
+                    "minorOrder", "isLevelPack", "dependencyPackHash",
+                    "requiredVersion", "subPackCount",
+                };
+                if (setup == null || setup.Name.LocalName != "SSetupData" ||
+                    !setup.Elements().Select(element => element.Name.LocalName)
+                        .SequenceEqual(requiredSetupNodes))
+                    throw new InvalidDataException(
+                        "Colored smoke setup2.xml does not match the required positional SSetupData schema.");
+                string startupChangeSet = setup.Element(
+                        "contentChangeSetGroups")?.Descendants("ContentChangeSets")
+                    .SelectMany(element => element.Elements("Item"))
+                    .Select(element => element.Value?.Trim())
+                    .FirstOrDefault(value => value == "ALLIN1_SMOKE_AUTOGEN");
+                if (startupChangeSet == null ||
+                    setup.Element("deviceName")?.Value != "dlc_allin1_smoke" ||
+                    setup.Element("type")?.Value != "EXTRACONTENT_COMPAT_PACK" ||
+                    setup.Element("order")?.Attribute("value")?.Value != "58" ||
+                    setup.Element("minorOrder")?.Attribute("value")?.Value != "0" ||
+                    setup.Element("isLevelPack")?.Attribute("value")?.Value != "false" ||
+                    setup.Element("subPackCount")?.Attribute("value")?.Value != "0")
+                    throw new InvalidDataException(
+                        "Colored smoke setup2.xml startup registration is invalid.");
+
+                string contentText = Encoding.UTF8.GetString(
+                    contentEntry.File.ExtractFile(contentEntry)).TrimStart('\uFEFF');
+                XDocument contentDoc = XDocument.Parse(contentText);
+                string[] requiredContentNodes =
+                {
+                    "disabledFiles", "includedXmlFiles", "includedDataFiles",
+                    "dataFiles", "contentChangeSets", "patchFiles",
+                };
+                if (contentDoc.Root == null ||
+                    contentDoc.Root.Name.LocalName !=
+                        "CDataFileMgr__ContentsOfDataFileXml" ||
+                    !contentDoc.Root.Elements()
+                        .Select(element => element.Name.LocalName)
+                        .SequenceEqual(requiredContentNodes))
+                    throw new InvalidDataException(
+                        "Colored smoke content.xml does not match the required positional root schema.");
+                XElement changeSet = contentDoc.Descendants("Item")
+                    .FirstOrDefault(element =>
+                        element.Element("changeSetName")?.Value ==
+                            "ALLIN1_SMOKE_AUTOGEN");
+                string[] requiredChangeSetNodes =
+                {
+                    "changeSetName", "mapChangeSetData",
+                    "filesToInvalidate", "filesToDisable", "filesToEnable",
+                    "txdToLoad", "txdToUnload", "residentResources",
+                    "unregisterResources", "requiresLoadingScreen",
+                };
+                if (changeSet == null ||
+                    !changeSet.Elements()
+                        .Select(element => element.Name.LocalName)
+                        .SequenceEqual(requiredChangeSetNodes) ||
+                    changeSet.Element("requiresLoadingScreen")?
+                        .Attribute("value")?.Value != "false")
+                    throw new InvalidDataException(
+                        "Colored smoke content.xml change set does not match " +
+                        "the current positional schema.");
+                string weaponPath =
+                    "dlc_allin1_smokeCRC:/common/data/ai/weaponAllin1Smoke.meta";
+                string shopPath =
+                    "dlc_allin1_smokeCRC:/common/data/shop_weapon.meta";
+                XElement weaponRegistration = contentDoc.Descendants("dataFiles")
+                    .Elements("Item").FirstOrDefault(item =>
+                        item.Element("filename")?.Value == weaponPath);
+                XElement shopRegistration = contentDoc.Descendants("dataFiles")
+                    .Elements("Item").FirstOrDefault(item =>
+                        item.Element("filename")?.Value == shopPath);
+                XElement textRegistration = contentDoc.Descendants("dataFiles")
+                    .Elements("Item").FirstOrDefault(item =>
+                        item.Element("filename")?.Value ==
+                            "dlc_allin1_smoke:/common/data/dlctext.meta");
+                if (weaponRegistration?.Element("fileType")?.Value !=
+                        "WEAPONINFO_FILE" ||
+                    shopRegistration?.Element("fileType")?.Value !=
+                        "WEAPON_SHOP_INFO_METADATA_FILE" ||
+                    textRegistration?.Element("persistent")?
+                        .Attribute("value")?.Value != "true" ||
+                    !changeSet.Element("filesToEnable").Elements("Item")
+                        .Any(item => item.Value == weaponPath) ||
+                    !changeSet.Element("filesToEnable").Elements("Item")
+                        .Any(item => item.Value == shopPath))
+                    throw new InvalidDataException(
+                        "Colored smoke content.xml CRC/text registration is invalid.");
+
+                string shopText = Encoding.UTF8.GetString(
+                    shopEntry.File.ExtractFile(shopEntry)).TrimStart('\uFEFF');
+                XDocument shopDoc = XDocument.Parse(shopText);
+                XElement[] shopItems = shopDoc.Root?
+                    .Element("weaponShopItems")?.Elements("Item").ToArray()
+                    ?? Array.Empty<XElement>();
+                if (shopDoc.Root?.Name.LocalName != "WeaponShopItemArray" ||
+                    shopItems.Length != ColoredSmokeWeapons.Length ||
+                    shopItems.Select(item => item.Element("nameHash")?.Value)
+                        .Distinct(StringComparer.Ordinal).Count() !=
+                            ColoredSmokeWeapons.Length)
+                    throw new InvalidDataException(
+                        "Colored smoke shop metadata is missing or duplicated.");
+                foreach (ColoredSmokeWeaponSpec spec in ColoredSmokeWeapons)
+                {
+                    XElement item = shopItems.SingleOrDefault(candidate =>
+                        candidate.Element("nameHash")?.Value == spec.WeaponName);
+                    string[] requiredShopNodes =
+                    {
+                        "lockHash", "nameHash", "cost", "ammoCost",
+                        "textLabel", "weaponDesc", "weaponTT",
+                        "weaponUppercase", "id", "weaponComponents",
+                    };
+                    if (item == null ||
+                        !item.Elements().Select(element =>
+                            element.Name.LocalName).SequenceEqual(
+                                requiredShopNodes) ||
+                        item.Element("lockHash")?.Value != spec.LockHash ||
+                        item.Element("textLabel")?.Value !=
+                            spec.HumanNameLabel ||
+                        item.Element("weaponDesc")?.Value !=
+                            spec.DescriptionLabel ||
+                        item.Element("weaponTT")?.Value !=
+                            spec.TooltipLabel ||
+                        item.Element("weaponUppercase")?.Value !=
+                            spec.UppercaseLabel ||
+                        item.Element("cost")?.Attribute("value")?.Value !=
+                            "750" ||
+                        item.Element("ammoCost")?.Attribute("value")?.Value !=
+                            "150" ||
+                        item.Element("id")?.Attribute("value")?.Value != "32" ||
+                        item.Element("weaponComponents")?.HasElements == true)
+                        throw new InvalidDataException(
+                            $"Invalid shop registration for {spec.Color} smoke.");
+                }
+
+                string textMetaText = Encoding.UTF8.GetString(
+                    textMeta.File.ExtractFile(textMeta)).TrimStart('\uFEFF');
+                XDocument textMetaDoc = XDocument.Parse(textMetaText);
+                if (textMetaDoc.Root?.Name.LocalName != "CExtraTextMetaFile" ||
+                    textMetaDoc.Root.Element("hasGlobalTextFile")?
+                        .Attribute("value")?.Value != "true" ||
+                    textMetaDoc.Root.Element("hasAdditionalText")?
+                        .Attribute("value")?.Value != "true" ||
+                    textMetaDoc.Root.Element("isTitleUpdate")?
+                        .Attribute("value")?.Value != "false")
+                    throw new InvalidDataException(
+                        "Colored smoke dlctext.meta does not match the current text schema.");
+
+                string weaponText = Encoding.UTF8.GetString(
+                    weaponEntry.File.ExtractFile(weaponEntry)).TrimStart('\uFEFF');
+                XDocument weaponDoc = XDocument.Parse(weaponText);
+                int[] navigationOrders = weaponDoc.Root?
+                    .Element("SlotNavigateOrder")?
+                    .Elements("Item").FirstOrDefault()?
+                    .Descendants("OrderNumber")
+                    .Select(element => int.TryParse(
+                        element.Attribute("value")?.Value, out int value)
+                        ? value : -1)
+                    .ToArray() ?? Array.Empty<int>();
+                int[] bestOrders = weaponDoc.Root?.Element("SlotBestOrder")?
+                    .Descendants("OrderNumber")
+                    .Select(element => int.TryParse(
+                        element.Attribute("value")?.Value, out int value)
+                        ? value : -1)
+                    .ToArray() ?? Array.Empty<int>();
+                if (!navigationOrders.SequenceEqual(
+                        Enumerable.Range(451, ColoredSmokeWeapons.Length)) ||
+                    !bestOrders.SequenceEqual(
+                        Enumerable.Range(401, ColoredSmokeWeapons.Length)))
+                    throw new InvalidDataException(
+                        "Colored smoke weapon-wheel ordering is unsafe or incomplete.");
+                foreach (ColoredSmokeWeaponSpec spec in ColoredSmokeWeapons)
+                {
+                    XElement ammo = weaponDoc.Descendants("Item").FirstOrDefault(
+                        item => item.Element("Name")?.Value == spec.AmmoName);
+                    XElement weapon = weaponDoc.Descendants("Item").FirstOrDefault(
+                        item => item.Element("Name")?.Value == spec.WeaponName);
+                    if (ammo == null || weapon == null)
+                        throw new InvalidDataException(
+                            $"Missing colored smoke definition: {spec.Color}");
+                    if ((ammo.Element("AmmoFlags")?.Value ?? "").Contains(
+                            "AddSmokeOnExplosion") ||
+                        !string.IsNullOrEmpty(ammo.Element("TrailFx")?.Value) ||
+                        !string.IsNullOrEmpty(ammo.Element("PrimedFx")?.Value) ||
+                        ammo.Element("Explosion")?.Element("Default")?.Value !=
+                            "DONTCARE")
+                        throw new InvalidDataException(
+                            $"Native smoke was not isolated for {spec.Color}.");
+                    if (weapon.Element("AmmoInfo")?.Attribute("ref")?.Value !=
+                            spec.AmmoName)
+                        throw new InvalidDataException(
+                            $"Ammo pool is not independent for {spec.Color}.");
+                }
+
+                string tempInner = Path.Combine(Path.GetTempPath(),
+                    $"allin1-smoke-lang-{Guid.NewGuid():N}.rpf");
+                try
+                {
+                    File.WriteAllBytes(tempInner,
+                        languageEntry.File.ExtractFile(languageEntry));
+                    var inner = new RpfFile(tempInner, tempInner);
+                    inner.ScanStructure(null, error => Console.Error.WriteLine(
+                        $"Language RPF warning: {error}"));
+                    RpfFileEntry gxtEntry = FindFileRecursive(inner, "global.gxt2");
+                    if (gxtEntry == null)
+                        throw new InvalidDataException(
+                            "Colored smoke language file is missing.");
+                    var gxt = new Gxt2File();
+                    gxt.Load(gxtEntry.File.ExtractFile(gxtEntry), gxtEntry);
+                    string labels = gxt.ToText();
+                    foreach (ColoredSmokeWeaponSpec spec in ColoredSmokeWeapons)
+                    {
+                        string[] expectedText =
+                        {
+                            spec.DisplayName,
+                            $"Deploys a dense {spec.Color} smoke screen after settling.",
+                            "Throw to mark or conceal an area.",
+                            spec.DisplayName.ToUpperInvariant(),
+                        };
+                        foreach (string expected in expectedText)
+                            if (labels.IndexOf("= " + expected,
+                                    StringComparison.Ordinal) < 0)
+                            throw new InvalidDataException(
+                                $"Missing smoke text label: {expected}");
+                    }
+                }
+                finally
+                {
+                    if (File.Exists(tempInner)) File.Delete(tempInner);
+                }
+                Console.WriteLine(
+                    "Verified seven registered colored smoke weapons, shop " +
+                    "records, ammo pools, labels, and isolated projectiles.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 7;
+            }
+        }
+
+        private static void WriteColoredSmokeMarker(
+            string gtaPath, string archive)
+        {
+            string marker = GetColoredSmokeMarkerPath(gtaPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(marker));
+            string weapons = string.Join(",\n    ", ColoredSmokeWeapons.Select(
+                spec => $"\"{spec.WeaponName}\""));
+            File.WriteAllText(marker,
+                "{\n" +
+                "  \"schema\": 2,\n" +
+                "  \"pack_id\": \"allin1_smoke\",\n" +
+                "  \"canary_state\": \"pending\",\n" +
+                "  \"archive_sha256\": \"" +
+                    Sha256(File.ReadAllBytes(archive)) + "\",\n" +
+                "  \"native_tear_gas_unchanged\": true,\n" +
+                "  \"native_smoke_vfx_disabled_per_projectile\": true,\n" +
+                "  \"weapons\": [\n    " + weapons + "\n  ]\n" +
+                "}\n", new UTF8Encoding(false));
+        }
+
+        private static string GetColoredSmokeMarkerPath(string gtaPath)
+        {
+            return Path.Combine(gtaPath, "scripts",
+                "ALLIN1_colored_smoke_weapons.json");
+        }
+
+        private static void RestoreColoredSmokeDestination(
+            string destination, string backup)
+        {
+            if (File.Exists(backup)) File.Copy(backup, destination, true);
+            else if (File.Exists(destination)) File.Delete(destination);
+        }
+
         // ================================================================
         //  patch / unpatch: Modify dlclist.xml inside mods/update.rpf
         // ================================================================
 
-        static int PatchCommand(string command, string[] args)
+        static int PatchCommand(
+            string command, string[] args, bool allowManifestOwnedPack = false)
         {
             string gtaPath = args[1];
 
             try
             {
+                string[] requested = args.Skip(2).ToArray();
+                if (allowManifestOwnedPack && requested.Length == 0)
+                {
+                    Console.Error.WriteLine(
+                        "ERROR: Managed DLC registration requires a pack name.");
+                    return 2;
+                }
+                if (allowManifestOwnedPack && command == "patch")
+                {
+                    foreach (string pack in requested)
+                    {
+                        ValidateManagedDlcPackName(pack);
+                        string payload = Path.Combine(
+                            gtaPath, "mods", "update", "x64", "dlcpacks",
+                            pack, "dlc.rpf");
+                        if (!File.Exists(payload))
+                        {
+                            Console.Error.WriteLine(
+                                $"ERROR: Refusing to register '{pack}'; payload " +
+                                $"does not exist at {payload}");
+                            return 4;
+                        }
+                    }
+                }
+
                 var rpf = OpenModsUpdateRpf(gtaPath, out int err);
                 if (rpf == null) return err;
 
@@ -2353,9 +6426,11 @@ namespace RpfPatcher
                 // --- Patch or unpatch ---
                 bool modified;
                 if (command == "patch")
-                    modified = PatchDlcList(paths, args.Skip(2).ToArray());
+                    modified = PatchDlcList(
+                        paths, requested, allowManifestOwnedPack);
                 else
-                    modified = UnpatchDlcList(paths);
+                    modified = UnpatchDlcList(
+                        paths, requested, allowManifestOwnedPack);
 
                 if (!modified)
                 {
@@ -2389,12 +6464,17 @@ namespace RpfPatcher
             }
         }
 
-        private static bool PatchDlcList(XElement paths, string[] requested)
+        private static void ValidateManagedDlcPackName(string pack)
         {
-            string[] packs = requested != null && requested.Length > 0
-                ? requested
-                : new[] { "allin1_previews" };
-            foreach (string pack in packs)
+            if (string.IsNullOrWhiteSpace(pack) ||
+                !Regex.IsMatch(pack, "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"))
+                throw new ArgumentException(
+                    $"Invalid manifest-owned DLC pack name: {pack}");
+        }
+
+        private static string DlcEntry(string pack, bool allowManifestOwnedPack)
+        {
+            if (!allowManifestOwnedPack)
             {
                 if (!OwnedDlcEntries.ContainsKey(pack))
                 {
@@ -2402,12 +6482,23 @@ namespace RpfPatcher
                         $"ERROR: Refusing to register unowned DLC pack '{pack}'.");
                     throw new ArgumentException($"Unknown ALLIN1 DLC pack: {pack}");
                 }
+                return OwnedDlcEntries[pack];
             }
+            ValidateManagedDlcPackName(pack);
+            return $"dlcpacks:/{pack}/";
+        }
+
+        private static bool PatchDlcList(
+            XElement paths, string[] requested, bool allowManifestOwnedPack = false)
+        {
+            string[] packs = requested != null && requested.Length > 0
+                ? requested
+                : new[] { "allin1_previews" };
 
             bool modified = false;
             foreach (string pack in packs.Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                string entry = OwnedDlcEntries[pack];
+                string entry = DlcEntry(pack, allowManifestOwnedPack);
                 bool exists = paths.Elements("Item").Any(item =>
                     string.Equals(
                         item.Value?.Trim().TrimEnd('/'),
@@ -2447,14 +6538,25 @@ namespace RpfPatcher
             return null;
         }
 
-        private static bool UnpatchDlcList(XElement paths)
+        private static bool UnpatchDlcList(
+            XElement paths, string[] requested,
+            bool allowManifestOwnedPack = false)
         {
+            string[] packs = requested != null && requested.Length > 0
+                ? requested : OwnedDlcEntries.Keys.ToArray();
+            packs = packs.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var entries = packs.ToDictionary(
+                pack => pack,
+                pack => DlcEntry(pack, allowManifestOwnedPack),
+                StringComparer.OrdinalIgnoreCase);
             bool removed = false;
             var toRemove = paths.Elements("Item")
                 .Where(item =>
                 {
                     string text = item.Value?.Trim().TrimEnd('/').ToLower() ?? "";
-                    return OwnedDlcEntries.Keys.Any(name => text.Contains(name));
+                    return packs.Any(name => string.Equals(
+                        text, entries[name].TrimEnd('/').ToLower(),
+                        StringComparison.OrdinalIgnoreCase));
                 })
                 .ToList();
 
@@ -2465,9 +6567,9 @@ namespace RpfPatcher
             }
 
             if (removed)
-                Console.WriteLine("Removed ALLIN1-owned DLC entries from dlclist.xml.");
+                Console.WriteLine("Removed managed DLC entries from dlclist.xml.");
             else
-                Console.WriteLine("No ALLIN1-owned DLC entries found in dlclist.xml.");
+                Console.WriteLine("No requested managed DLC entries found in dlclist.xml.");
 
             return removed;
         }

@@ -7,6 +7,7 @@ description = "Template for an OpenRPF-compatible archive."
 editions = ["legacy", "enhanced"]
 dependencies = ["openrpf"]
 conflicts = []
+dlc_packs = ["example"]
 
 [[files]]
 source = "payload/dlc.rpf"

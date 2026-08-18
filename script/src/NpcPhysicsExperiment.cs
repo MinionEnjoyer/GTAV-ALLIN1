@@ -27,7 +27,7 @@ namespace ALLIN1
     internal enum AerialSupportRole
     {
         Recon,
-        Cas,
+        Casevac,
     }
 
     internal static class NpcPhysicsExperimentPolicy
@@ -48,6 +48,36 @@ namespace ALLIN1
         internal const int AerialOrbitStallMinimumAgeMs = 18000;
         internal const int AerialOrbitNoProgressMs = 12000;
         internal const float AerialOrbitProgressDistance = 5f;
+        internal const int DedicatedCasevacSpawnCooldownMs = 20000;
+        internal const float DedicatedCasevacDespawnDistance = 220f;
+
+        internal static bool ShouldSpawnDedicatedCasevac(
+            bool enabled, bool missionActive, bool cutsceneActive,
+            int wantedLevel, bool casualtyWaiting,
+            bool casevacAlreadyActive, int spawnCooldownRemainingMs)
+        {
+            return enabled && !missionActive && !cutsceneActive &&
+                wantedLevel > 0 && casualtyWaiting &&
+                !casevacAlreadyActive &&
+                spawnCooldownRemainingMs <= 0;
+        }
+
+        internal static bool CanBatchCasevacCasualty(
+            bool awaitingCasevac, bool alreadyAssigned,
+            bool freeSeat, float landingPointDistance)
+        {
+            return awaitingCasevac && !alreadyAssigned && freeSeat &&
+                landingPointDistance <= 18f;
+        }
+
+        internal static bool ShouldDespawnDedicatedCasevac(
+            bool dedicatedCasevac, bool departing,
+            float distanceFromScene, int departureElapsedMs)
+        {
+            return dedicatedCasevac && departing &&
+                (distanceFromScene >= DedicatedCasevacDespawnDistance ||
+                 departureElapsedMs >= 15000);
+        }
 
         internal static bool HasFreshVitalityLoss(
             int previousHealth, int previousArmor,
@@ -183,6 +213,17 @@ namespace ALLIN1
             int minimumRecovery = currentHealth + 20;
             int stableFloor = (int)Math.Ceiling(maxHealth * 0.58f);
             return Math.Min(maxHealth, Math.Max(minimumRecovery, stableFloor));
+        }
+
+        internal static int ResolveStabilizedHoldingHealth(
+            int stabilizedHealth, int currentHealth,
+            bool directDamageObserved)
+        {
+            if (currentHealth <= 0 || stabilizedHealth <= 0)
+                return currentHealth;
+            if (directDamageObserved)
+                return Math.Min(stabilizedHealth, currentHealth);
+            return stabilizedHealth;
         }
 
         internal static bool IsRappelTaskActive(int taskStatus)
@@ -350,18 +391,6 @@ namespace ALLIN1
                 airborne && lawCrew && hostileToPlayer && hasLineOfSight;
         }
 
-        internal static AerialSupportRole SelectAerialSupportRole(
-            bool groundFireSupportRequested, bool playerAggressive,
-            bool freshVisualIntel, bool casClaimedByOtherAircraft,
-            bool casevacActive)
-        {
-            return groundFireSupportRequested && !playerAggressive &&
-                freshVisualIntel && !casClaimedByOtherAircraft &&
-                !casevacActive
-                ? AerialSupportRole.Cas
-                : AerialSupportRole.Recon;
-        }
-
         internal static string ClassifyUnreactedVitalityLoss(
             bool isHuman, bool isPlayer, bool isMissionEntity,
             bool isPersistent, bool isInVehicle, bool isAlive,
@@ -484,7 +513,6 @@ namespace ALLIN1
         private const int AerialMissionRefreshMs = 3500;
         private const int AerialIntelRelayIntervalMs = 1250;
         private const int AerialContactMemoryMs = 20000;
-        private const int AerialCasIntelFreshnessMs = 2500;
         private const int PlayerAggressionMemoryMs = 12000;
         private const int CohesionSmokeCoverDelayMs = 2700;
         private const float UnsafeReconOrbitRadius = 112f;
@@ -495,7 +523,9 @@ namespace ALLIN1
         private const int RappelInsertionApproachTimeoutMs = 24000;
         private const int RappelInsertionCompletionTimeoutMs = 14000;
         private const int AerialDeferralLogIntervalMs = 5000;
-        private const int AerialCasDepartureDurationMs = 12000;
+        private const int DedicatedCasevacModelLoadTimeoutMs = 2000;
+        private const float DedicatedCasevacSpawnDistance = 135f;
+        private const float DedicatedCasevacSpawnHeight = 65f;
         private const float AerialSupportRadius = 165f;
         private const float AerialOrbitRadius = 58f;
         private const float AerialOrbitHeight = 42f;
@@ -505,6 +535,7 @@ namespace ALLIN1
         private const int CasevacMissionRefreshMs = 3200;
         private const int CasevacBoardingTimeoutMs = 9000;
         private const int CasevacDepartureDurationMs = 10000;
+        private const int StabilizationCorrectionLogIntervalMs = 1500;
         private const float LiveBodyRelaxation = 25f;
         private const float LethalBodyRelaxation = 70f;
         private static readonly int[] ObservationDelaysMs = { 200, 1000, 3000 };
@@ -565,6 +596,7 @@ namespace ALLIN1
         private int _lastCohesionDiscoveryAt;
         private int _lastAerialSupportScanAt;
         private int _playerAggressiveUntilAt;
+        private int _nextDedicatedCasevacSpawnAt;
         private long _scans;
         private long _candidates;
         private long _newStates;
@@ -619,11 +651,13 @@ namespace ALLIN1
         private long _aerialReconLegStalls;
         private long _aerialReconControlRelinquished;
         private long _aerialReconReleases;
-        private long _aerialCasAssignments;
-        private long _aerialCasCommands;
-        private long _aerialCasReleases;
         private long _aerialRoleSwitches;
-        private long _aerialCasDepartures;
+        private long _dedicatedCasevacSpawnAttempts;
+        private long _dedicatedCasevacSpawns;
+        private long _dedicatedCasevacSpawnFailures;
+        private long _dedicatedCasevacBatchAssignments;
+        private long _dedicatedCasevacPassengersLoaded;
+        private long _dedicatedCasevacDespawns;
         private long _handDisarms;
         private long _weaponRecoverySearches;
         private long _weaponRecoveryCommands;
@@ -636,6 +670,9 @@ namespace ALLIN1
         private long _casevacCompletions;
         private long _casevacFailures;
         private long _casevacDeferrals;
+        private long _stabilizedPassiveLossPrevented;
+        private long _stabilizedHealingPrevented;
+        private long _stabilizedDamageAccepted;
 
         private sealed class WeaponRecoveryOption
         {
@@ -685,6 +722,9 @@ namespace ALLIN1
             internal int ApproachDeferredUntilAt;
             internal int LastCasevacDeferralAt;
             internal string LastCasevacDeferralReason;
+            internal int StabilizedHoldingHealth;
+            internal int StabilizationDirectDamageAt;
+            internal int LastStabilizationCorrectionLogAt;
         }
 
         private sealed class RappelCrewLockState
@@ -731,10 +771,9 @@ namespace ALLIN1
                 new Dictionary<int, Ped>();
             internal int CasevacCasualtyHandle;
             internal int CasevacDepartingUntilAt;
+            internal int CasevacDepartureStartedAt;
             internal Vector3 CasevacDepartureTarget;
-            internal bool CasDeparting;
-            internal int CasDepartureStartedAt;
-            internal Vector3 CasDepartureTarget;
+            internal bool DedicatedCasevac;
             internal bool RappelInsertionActive;
             internal bool RappelReleaseAuthorized;
             internal bool RappelInsertionRooftop;
@@ -874,6 +913,48 @@ namespace ALLIN1
             catch (Exception ex)
             {
                 ClientLog.Error("NPC-PHYSICS", "ReadBooleanSetting", ex);
+                PhysicsExperimentLog.Error("configuration_read_failed", ex,
+                    new Dictionary<string, object> { { "key", requestedKey } });
+            }
+            return defaultValue;
+        }
+
+        internal static string ReadStringSetting(string requestedKey,
+            string defaultValue)
+        {
+            if (!File.Exists(ConfigPath)) return defaultValue;
+            try
+            {
+                string section = "";
+                foreach (string rawLine in File.ReadAllLines(ConfigPath))
+                {
+                    string line = rawLine.Trim();
+                    if (line.Length == 0 || line.StartsWith("#")) continue;
+                    if (line.StartsWith("[") && line.EndsWith("]"))
+                    {
+                        section = line.Substring(1, line.Length - 2)
+                            .Trim().ToLowerInvariant();
+                        continue;
+                    }
+                    if (section != "script") continue;
+                    int equals = line.IndexOf('=');
+                    if (equals < 0) continue;
+                    string key = line.Substring(0, equals).Trim()
+                        .ToLowerInvariant();
+                    if (key != requestedKey) continue;
+                    string value = line.Substring(equals + 1).Trim();
+                    int comment = value.IndexOf('#');
+                    if (comment >= 0)
+                        value = value.Substring(0, comment).Trim();
+                    if (value.Length >= 2 && value[0] == '"' &&
+                        value[value.Length - 1] == '"')
+                        value = value.Substring(1, value.Length - 2);
+                    return value.Length == 0 ? defaultValue : value;
+                }
+            }
+            catch (Exception ex)
+            {
+                ClientLog.Error("NPC-PHYSICS", "ReadStringSetting", ex);
                 PhysicsExperimentLog.Error("configuration_read_failed", ex,
                     new Dictionary<string, object> { { "key", requestedKey } });
             }
@@ -1054,6 +1135,9 @@ namespace ALLIN1
                     handle);
                 bool nearExplosion = !weaponDamage && freshVitalityLoss &&
                     WasNearExplosion(ped.Position);
+                if (freshVitalityLoss)
+                    RecordStabilizationDamageEvidence(
+                        ped, weaponDamage, onFire, nearExplosion, now);
                 bool environmentReaction = !weaponDamage &&
                     NpcPhysicsExperimentPolicy.ShouldReactToEnvironmentalDamage(
                         _enabled, safeAmbient, state.WasAlive, inVehicle,
@@ -1520,15 +1604,11 @@ namespace ALLIN1
             Vehicle[] nearby = World.GetNearbyVehicles(
                 player, AerialSupportRadius, new Model[0]);
             var eligibleHandles = new HashSet<int>();
-            bool fireSupportRequested =
-                PoliceTacticsCoordinator.TryGetAerialFireSupportRequest(
-                    out int supportSquadId);
             if (Function.Call<bool>(Hash.IS_PED_SHOOTING, player.Handle))
                 _playerAggressiveUntilAt = unchecked(now +
                     PlayerAggressionMemoryMs);
             bool playerAggressive = unchecked(
                 _playerAggressiveUntilAt - now) > 0;
-            bool casClaimed = HasAerialRole(AerialSupportRole.Cas);
             foreach (Vehicle helicopter in nearby)
             {
                 if (helicopter == null || !helicopter.Exists() ||
@@ -1553,6 +1633,11 @@ namespace ALLIN1
                     helicopter.Position, player.Position);
                 _aerialSupportStates.TryGetValue(
                     helicopter.Handle, out AerialSupportState existingState);
+                if (existingState != null && existingState.DedicatedCasevac)
+                {
+                    eligibleHandles.Add(helicopter.Handle);
+                    continue;
+                }
                 if (lawCrew && hostile)
                     CancelUnsafeRappelTasks(helicopter, pilot,
                         playerAggressive, distanceToPlayer, now,
@@ -1620,43 +1705,19 @@ namespace ALLIN1
 
                 state.Helicopter = helicopter;
                 state.Pilot = pilot;
-                bool casevacActive = state.CasevacCasualtyHandle != 0 ||
-                    unchecked(state.CasevacDepartingUntilAt - now) > 0;
-                bool freshVisualIntel = lineOfSight || unchecked(
-                    now - state.LastVisualContactAt) <=
-                    AerialCasIntelFreshnessMs;
-                if (state.Role == AerialSupportRole.Recon)
-                {
-                    AerialSupportRole desiredRole =
-                        NpcPhysicsExperimentPolicy.SelectAerialSupportRole(
-                            fireSupportRequested, playerAggressive,
-                            freshVisualIntel, casClaimed, casevacActive);
-                    if (desiredRole == AerialSupportRole.Cas)
-                    {
-                        ChangeAerialSupportRole(state, desiredRole, now,
-                            "ground_assault_requested");
-                        casClaimed = true;
-                    }
-                }
-                else if (!state.CasDeparting &&
-                    (!fireSupportRequested || playerAggressive ||
-                     !freshVisualIntel))
-                {
-                    BeginAerialCasDeparture(state, player, now,
-                        playerAggressive ? "player_aggressive" :
-                        !freshVisualIntel ? "intel_stale" :
-                        "ground_assault_ended");
-                }
-                if (state.Role == AerialSupportRole.Cas)
-                    UpdateAerialCasState(state, player, lineOfSight,
-                        supportSquadId, now);
-                else
-                    UpdateAerialReconState(state, player,
-                        lineOfSight, playerAggressive, now);
+                // Ambient law helicopters remain recon/transport aircraft.
+                // Casualty evacuation uses its own script-spawned helicopter.
+                if (state.Role != AerialSupportRole.Recon)
+                    ChangeAerialSupportRole(state,
+                        AerialSupportRole.Recon, now,
+                        "ambient_aircraft_reserved_for_recon");
+                UpdateAerialReconState(state, player,
+                    lineOfSight, playerAggressive, now);
             }
 
             PruneRappelDepartureLocks(now);
             TryAssignCasevacRequest(player, now);
+            UpdateDedicatedCasevacSupport(player, now, eligibleHandles);
             var assigned = new List<int>(_aerialSupportStates.Keys);
             foreach (int handle in assigned)
             {
@@ -1667,12 +1728,192 @@ namespace ALLIN1
                     ReleaseAerialSupport(handle, "aircraft_unavailable");
                     continue;
                 }
+                if (state.DedicatedCasevac) continue;
                 bool casevacActive = state.CasevacCasualtyHandle != 0 ||
                     unchecked(state.CasevacDepartingUntilAt - now) > 0;
                 if (!casevacActive && unchecked(
                         now - state.LastVisualContactAt) >
                     AerialContactMemoryMs)
                     ReleaseAerialSupport(handle, "visual_contact_expired");
+            }
+        }
+
+        private bool TrySpawnDedicatedCasevac(
+            CohesionResponse response, Ped player, int now)
+        {
+            _dedicatedCasevacSpawnAttempts++;
+            _nextDedicatedCasevacSpawnAt = unchecked(now +
+                NpcPhysicsExperimentPolicy.DedicatedCasevacSpawnCooldownMs);
+            var helicopterModel = new Model("polmav");
+            var pilotModel = new Model("s_m_y_pilot_01");
+            Vehicle helicopter = null;
+            var createdCrew = new List<Ped>();
+            try
+            {
+                helicopterModel.Request(DedicatedCasevacModelLoadTimeoutMs);
+                pilotModel.Request(DedicatedCasevacModelLoadTimeoutMs);
+                DateTime deadline = DateTime.UtcNow.AddMilliseconds(
+                    DedicatedCasevacModelLoadTimeoutMs);
+                while ((!helicopterModel.IsLoaded || !pilotModel.IsLoaded) &&
+                    DateTime.UtcNow <= deadline)
+                    Script.Wait(0);
+                if (!helicopterModel.IsLoaded || !pilotModel.IsLoaded)
+                    throw new InvalidOperationException(
+                        "dedicated CASEVAC model load timed out");
+
+                Vector3 outward = NormalizeHorizontalVector(
+                    response.CasevacLandingPoint - player.Position,
+                    player.ForwardVector * -1f);
+                Vector3 spawn = response.CasevacLandingPoint +
+                    outward * DedicatedCasevacSpawnDistance +
+                    new Vector3(0f, 0f, DedicatedCasevacSpawnHeight);
+                float ground = World.GetGroundHeight(spawn);
+                if (ground > 0f)
+                    spawn.Z = Math.Max(spawn.Z,
+                        ground + DedicatedCasevacSpawnHeight);
+                Vector3 towardLanding = NormalizeHorizontalVector(
+                    response.CasevacLandingPoint - spawn,
+                    player.ForwardVector);
+                float heading = (float)(Math.Atan2(
+                    -towardLanding.X, towardLanding.Y) * 180.0 / Math.PI);
+                helicopter = World.CreateVehicle(
+                    helicopterModel, spawn, heading);
+                if (helicopter == null || !helicopter.Exists())
+                    throw new InvalidOperationException(
+                        "dedicated CASEVAC helicopter creation failed");
+                helicopter.IsPersistent = true;
+                Function.Call(Hash.SET_VEHICLE_ENGINE_ON,
+                    helicopter.Handle, true, true, false);
+                Function.Call(Hash.SET_HELI_BLADES_FULL_SPEED,
+                    helicopter.Handle);
+
+                Ped pilot = Function.Call<Ped>(
+                    Hash.CREATE_PED_INSIDE_VEHICLE,
+                    helicopter.Handle, 26, pilotModel.Hash,
+                    -1, true, true);
+                if (pilot == null || !pilot.Exists())
+                    throw new InvalidOperationException(
+                        "dedicated CASEVAC pilot creation failed");
+                createdCrew.Add(pilot);
+                ConfigureDedicatedCasevacPilot(pilot);
+
+                var state = new AerialSupportState
+                {
+                    Helicopter = helicopter,
+                    Pilot = pilot,
+                    Role = AerialSupportRole.Casevac,
+                    DedicatedCasevac = true,
+                    CasevacCasualtyHandle = response.Casualty.Handle,
+                    LastKnownPlayerPosition = player.Position,
+                    AssignedAt = now,
+                    LastVisualContactAt = now,
+                    LastIntelRelayAt = int.MinValue / 2,
+                    LastMissionCommandAt = int.MinValue / 2,
+                    LastMissionProgressAt = now,
+                };
+                _aerialSupportStates.Add(helicopter.Handle, state);
+                response.CasevacHelicopterHandle = helicopter.Handle;
+                response.LastCasevacDeferralAt = 0;
+                response.LastCasevacDeferralReason = null;
+                _casevacAssignments++;
+                _dedicatedCasevacSpawns++;
+                PhysicsExperimentLog.Info("dedicated_casevac_spawned",
+                    AerialSupportFields(state, now,
+                        new Dictionary<string, object>
+                        {
+                            { "casualty", response.Casualty.Handle },
+                            { "collection_squad",
+                                response.CollectionSquadId },
+                            { "model", "polmav" },
+                            { "passenger_capacity",
+                                Function.Call<int>(Hash.
+                                    GET_VEHICLE_MAX_NUMBER_OF_PASSENGERS,
+                                    helicopter.Handle) },
+                            { "spawn_x", spawn.X },
+                            { "spawn_y", spawn.Y },
+                            { "spawn_z", spawn.Z },
+                            { "landing_x",
+                                response.CasevacLandingPoint.X },
+                            { "landing_y",
+                                response.CasevacLandingPoint.Y },
+                            { "landing_z",
+                                response.CasevacLandingPoint.Z },
+                        }));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _dedicatedCasevacSpawnFailures++;
+                _nextDedicatedCasevacSpawnAt = unchecked(now + 10000);
+                PhysicsExperimentLog.Error(
+                    "dedicated_casevac_spawn_failed", ex,
+                    new Dictionary<string, object>
+                    {
+                        { "casualty", response?.Casualty?.Handle ?? 0 },
+                        { "crew_created", createdCrew.Count },
+                    });
+                DeleteDedicatedCasevacEntities(helicopter, createdCrew);
+                return false;
+            }
+            finally
+            {
+                helicopterModel.MarkAsNoLongerNeeded();
+                pilotModel.MarkAsNoLongerNeeded();
+            }
+        }
+
+        private static void ConfigureDedicatedCasevacPilot(Ped pilot)
+        {
+            pilot.IsPersistent = true;
+            Function.Call(Hash.SET_PED_RELATIONSHIP_GROUP_HASH,
+                pilot.Handle, CopRelationshipGroupHash);
+            Function.Call(Hash.REMOVE_ALL_PED_WEAPONS,
+                pilot.Handle, true);
+            Function.Call(Hash.SET_PED_KEEP_TASK, pilot.Handle, true);
+            Function.Call(Hash.SET_PED_COMBAT_ATTRIBUTES,
+                pilot.Handle, 3, false); // never leave the aircraft
+            Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS,
+                pilot.Handle, true);
+        }
+
+        private void UpdateDedicatedCasevacSupport(
+            Ped player, int now, HashSet<int> eligibleHandles)
+        {
+            var handles = new List<int>(_aerialSupportStates.Keys);
+            foreach (int handle in handles)
+            {
+                if (!_aerialSupportStates.TryGetValue(handle,
+                        out AerialSupportState state) ||
+                    !state.DedicatedCasevac) continue;
+                if (state.Helicopter == null ||
+                    !state.Helicopter.Exists() ||
+                    !state.Helicopter.IsDriveable ||
+                    state.Pilot == null || !state.Pilot.Exists() ||
+                    state.Pilot.IsDead)
+                {
+                    ReleaseAerialSupport(handle,
+                        "dedicated_casevac_aircraft_unavailable");
+                    continue;
+                }
+                eligibleHandles.Add(handle);
+                UpdateAerialCasevac(state, player, now);
+            }
+        }
+
+        private static void DeleteDedicatedCasevacEntities(
+            Vehicle helicopter, IEnumerable<Ped> crew)
+        {
+            if (crew != null)
+                foreach (Ped member in crew)
+                    if (member != null && member.Exists())
+                    {
+                        member.IsPersistent = true;
+                        member.Delete();
+                    }
+            if (helicopter != null && helicopter.Exists())
+            {
+                helicopter.IsPersistent = true;
+                helicopter.Delete();
             }
         }
 
@@ -2498,103 +2739,11 @@ namespace ALLIN1
             state.LastMissionCommandAt = int.MinValue / 2;
         }
 
-        private void UpdateAerialCasState(
-            AerialSupportState state, Ped player,
-            bool lineOfSight, int supportSquadId, int now)
-        {
-            if (state.CasDeparting)
-            {
-                foreach (Ped crew in state.Helicopter.Occupants)
-                    if (crew != null && crew.Exists() && !crew.IsDead &&
-                        crew.Handle != state.Pilot.Handle)
-                        Function.Call(Hash.SET_PED_SHOOT_RATE,
-                            crew.Handle, 0);
-                float departureDistance = HorizontalDistance2D(
-                    state.Helicopter.Position, player.Position);
-                if (departureDistance >= AerialSupportRadius || unchecked(
-                        now - state.CasDepartureStartedAt) >=
-                    AerialCasDepartureDurationMs)
-                {
-                    ReleaseAerialSupport(state.Helicopter.Handle,
-                        "cas_sortie_departed");
-                    return;
-                }
-                if (unchecked(now - state.LastMissionCommandAt) <
-                    AerialMissionRefreshMs) return;
-                Vector3 exit = state.CasDepartureTarget;
-                Function.Call(Hash.TASK_HELI_MISSION,
-                    state.Pilot.Handle, state.Helicopter.Handle,
-                    0, 0, exit.X, exit.Y, exit.Z,
-                    4, 45f, 35f, -1f, 55, 80, -1f, 0);
-                state.LastMissionCommandAt = now;
-                PhysicsExperimentLog.Info(
-                    "aerial_cas_departure_commanded",
-                    AerialSupportFields(state, now, null));
-                return;
-            }
-            if (lineOfSight)
-            {
-                state.LastKnownPlayerPosition = player.Position;
-                state.LastVisualContactAt = now;
-            }
-            foreach (Ped crew in state.Helicopter.Occupants)
-                if (crew != null && crew.Exists() && !crew.IsDead &&
-                    crew.Handle != state.Pilot.Handle)
-                    Function.Call(Hash.SET_PED_SHOOT_RATE,
-                        crew.Handle, 45);
-            if (unchecked(now - state.LastMissionCommandAt) <
-                AerialMissionRefreshMs) return;
-            Function.Call(Hash.TASK_HELI_CHASE,
-                state.Pilot.Handle, player.Handle, 0f, 0f, 18f);
-            state.LastMissionCommandAt = now;
-            _aerialCasCommands++;
-            PhysicsExperimentLog.Info("aerial_cas_attack_commanded",
-                AerialSupportFields(state, now,
-                    new Dictionary<string, object>
-                    {
-                        { "line_of_sight", lineOfSight },
-                        { "support_squad", supportSquadId },
-                        { "target_x", state.LastKnownPlayerPosition.X },
-                        { "target_y", state.LastKnownPlayerPosition.Y },
-                        { "target_z", state.LastKnownPlayerPosition.Z },
-                    }));
-        }
-
-        private void BeginAerialCasDeparture(
-            AerialSupportState state, Ped player, int now, string reason)
-        {
-            Vector3 away = NormalizeHorizontalVector(
-                state.Helicopter.Position - player.Position,
-                state.Helicopter.ForwardVector);
-            state.CasDeparting = true;
-            state.CasDepartureStartedAt = now;
-            state.CasDepartureTarget = state.Helicopter.Position +
-                away * 190f + new Vector3(0f, 0f, 65f);
-            state.LastMissionCommandAt = int.MinValue / 2;
-            _aerialCasDepartures++;
-            PhysicsExperimentLog.Info("aerial_cas_departing",
-                AerialSupportFields(state, now,
-                    new Dictionary<string, object>
-                    {
-                        { "reason", reason },
-                        { "departure_x", state.CasDepartureTarget.X },
-                        { "departure_y", state.CasDepartureTarget.Y },
-                        { "departure_z", state.CasDepartureTarget.Z },
-                    }));
-        }
-
         private void ChangeAerialSupportRole(
             AerialSupportState state, AerialSupportRole role,
             int now, string reason)
         {
             AerialSupportRole previous = state.Role;
-            if (role == AerialSupportRole.Cas)
-            {
-                foreach (Ped crew in state.ReducedFireCrew.Values)
-                    RestoreAerialCrewMemberFire(crew);
-                state.ReducedFireCrew.Clear();
-                _aerialCasAssignments++;
-            }
             state.Role = role;
             state.LastMissionCommandAt = int.MinValue / 2;
             state.HasMissionTarget = false;
@@ -2631,90 +2780,49 @@ namespace ALLIN1
                     continue;
                 }
 
-                AerialSupportState best = null;
-                float bestDistance = float.MaxValue;
-                int reconAircraft = 0;
-                int insertionBusy = 0;
-                int freeSeatAircraft = 0;
-                int blockedLandingAircraft = 0;
-                foreach (AerialSupportState state in
-                    _aerialSupportStates.Values)
+                bool active = HasAerialRole(AerialSupportRole.Casevac);
+                int cooldownRemaining = Math.Max(0, unchecked(
+                    _nextDedicatedCasevacSpawnAt - now));
+                if (!NpcPhysicsExperimentPolicy.ShouldSpawnDedicatedCasevac(
+                        _enhancedPoliceAi, Game.IsMissionActive,
+                        Game.IsCutsceneActive, Game.Player.WantedLevel,
+                        true, active, cooldownRemaining))
                 {
-                    if (state.Role != AerialSupportRole.Recon ||
-                        state.CasevacCasualtyHandle != 0 ||
-                        unchecked(state.CasevacDepartingUntilAt - now) > 0 ||
-                        state.Helicopter == null ||
-                        !state.Helicopter.Exists())
-                        continue;
-                    reconAircraft++;
-                    if (state.RappelInsertionActive)
-                    {
-                        insertionBusy++;
-                        continue;
-                    }
-                    if (FindFreeCasevacSeat(state.Helicopter) < 0)
-                        continue;
-                    freeSeatAircraft++;
-                    bool landingBlocked = false;
-                    foreach (Vehicle nearby in World.GetNearbyVehicles(
-                        response.CasevacLandingPoint, 7f, new Model[0]))
-                    {
-                        if (nearby == null || !nearby.Exists() ||
-                            nearby.Handle == state.Helicopter.Handle) continue;
-                        landingBlocked = true;
-                        break;
-                    }
-                    if (landingBlocked)
-                    {
-                        blockedLandingAircraft++;
-                        continue;
-                    }
-                    float distance = state.Helicopter.Position.DistanceTo(
-                        response.CasevacLandingPoint);
-                    if (distance >= bestDistance) continue;
-                    best = state;
-                    bestDistance = distance;
-                }
-                if (best == null)
-                {
-                    string reason = reconAircraft == 0
-                        ? "no_recon_aircraft" :
-                        insertionBusy == reconAircraft
-                        ? "insertion_active" :
-                        freeSeatAircraft == 0
-                        ? "no_free_seat" :
-                        blockedLandingAircraft >= freeSeatAircraft
-                        ? "landing_blocked" : "no_available_aircraft";
+                    string reason = active
+                        ? "dedicated_casevac_active"
+                        : cooldownRemaining > 0
+                        ? "dedicated_casevac_cooldown"
+                        : "dedicated_casevac_disabled";
                     LogCasevacDeferral(response, now, reason,
-                        reconAircraft);
+                        active ? 1 : 0);
                     continue;
                 }
-
-                best.CasevacCasualtyHandle = response.Casualty.Handle;
-                best.LastMissionCommandAt = int.MinValue / 2;
-                response.CasevacHelicopterHandle = best.Helicopter.Handle;
-                response.LastCasevacDeferralAt = 0;
-                response.LastCasevacDeferralReason = null;
-                _casevacAssignments++;
-                PhysicsExperimentLog.Info("aerial_casevac_assigned",
-                    CohesionFields(response, now,
-                        new Dictionary<string, object>
-                        {
-                            { "helicopter_distance", bestDistance },
-                            { "landing_x",
-                                response.CasevacLandingPoint.X },
-                            { "landing_y",
-                                response.CasevacLandingPoint.Y },
-                            { "landing_z",
-                                response.CasevacLandingPoint.Z },
-                        }));
+                if (IsCasevacLandingBlocked(
+                        response.CasevacLandingPoint, 0))
+                {
+                    LogCasevacDeferral(response, now,
+                        "landing_blocked", 0);
+                    continue;
+                }
+                TrySpawnDedicatedCasevac(response, player, now);
                 return;
             }
         }
 
+        private static bool IsCasevacLandingBlocked(
+            Vector3 landingPoint, int ignoredVehicleHandle)
+        {
+            foreach (Vehicle nearby in World.GetNearbyVehicles(
+                landingPoint, 7f, new Model[0]))
+                if (nearby != null && nearby.Exists() &&
+                    nearby.Handle != ignoredVehicleHandle)
+                    return true;
+            return false;
+        }
+
         private void LogCasevacDeferral(
             CohesionResponse response, int now, string reason,
-            int reconAircraft)
+            int dedicatedAircraft)
         {
             bool sameReason = string.Equals(
                 response.LastCasevacDeferralReason, reason,
@@ -2730,7 +2838,8 @@ namespace ALLIN1
                     new Dictionary<string, object>
                     {
                         { "reason", reason },
-                        { "recon_aircraft", reconAircraft },
+                        { "dedicated_casevac_aircraft",
+                            dedicatedAircraft },
                         { "landing_x", response.CasevacLandingPoint.X },
                         { "landing_y", response.CasevacLandingPoint.Y },
                         { "landing_z", response.CasevacLandingPoint.Z },
@@ -2740,6 +2849,44 @@ namespace ALLIN1
         private void UpdateAerialCasevac(
             AerialSupportState state, Ped player, int now)
         {
+            if (state.DedicatedCasevac &&
+                state.CasevacDepartureStartedAt != 0)
+            {
+                float distanceFromScene = HorizontalDistance2D(
+                    state.Helicopter.Position, player.Position);
+                int departureElapsed = unchecked(
+                    now - state.CasevacDepartureStartedAt);
+                if (NpcPhysicsExperimentPolicy.
+                        ShouldDespawnDedicatedCasevac(
+                            true, true, distanceFromScene,
+                            departureElapsed))
+                {
+                    ReleaseAerialSupport(state.Helicopter.Handle,
+                        "dedicated_casevac_flyout_complete");
+                    return;
+                }
+                if (unchecked(now - state.LastMissionCommandAt) >=
+                    CasevacMissionRefreshMs)
+                {
+                    Vector3 target = state.CasevacDepartureTarget;
+                    Function.Call(Hash.TASK_HELI_MISSION,
+                        state.Pilot.Handle, state.Helicopter.Handle,
+                        0, 0, target.X, target.Y, target.Z,
+                        4, 40f, 30f, -1f, 70, 40, 75f, 5120);
+                    state.LastMissionCommandAt = now;
+                    PhysicsExperimentLog.Info(
+                        "dedicated_casevac_flyout_commanded",
+                        AerialSupportFields(state, now,
+                            new Dictionary<string, object>
+                            {
+                                { "distance_from_scene",
+                                    distanceFromScene },
+                                { "departure_elapsed_ms",
+                                    departureElapsed },
+                            }));
+                }
+                return;
+            }
             if (unchecked(state.CasevacDepartingUntilAt - now) > 0)
             {
                 if (unchecked(now - state.LastMissionCommandAt) >=
@@ -2778,33 +2925,37 @@ namespace ALLIN1
                         state.Helicopter.Handle;
                 if (boarded)
                 {
-                    Vector3 away = NormalizeHorizontalVector(
-                        response.CasevacLandingPoint - player.Position,
-                        state.Helicopter.ForwardVector);
-                    state.CasevacDepartureTarget =
-                        response.CasevacLandingPoint + away * 145f +
-                        new Vector3(0f, 0f, 65f);
-                    state.CasevacDepartingUntilAt = unchecked(now +
-                        CasevacDepartureDurationMs);
-                    state.LastMissionCommandAt = int.MinValue / 2;
                     int casualtyHandle = response.Casualty.Handle;
+                    Vector3 completedLanding =
+                        response.CasevacLandingPoint;
+                    Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS,
+                        response.Casualty.Handle, true);
+                    Function.Call(Hash.SET_PED_KEEP_TASK,
+                        response.Casualty.Handle, true);
+                    Function.Call(Hash.SET_PED_COMBAT_ATTRIBUTES,
+                        response.Casualty.Handle, 3, false);
                     CompleteCasevacResponse(response, now);
                     state.CasevacCasualtyHandle = 0;
                     _casevacBoardings++;
                     _casevacCompletions++;
-                    PhysicsExperimentLog.Info(
-                        "aerial_casevac_departing",
-                        AerialSupportFields(state, now,
-                            new Dictionary<string, object>
-                            {
-                                { "casualty", casualtyHandle },
-                                { "departure_x",
-                                    state.CasevacDepartureTarget.X },
-                                { "departure_y",
-                                    state.CasevacDepartureTarget.Y },
-                                { "departure_z",
-                                    state.CasevacDepartureTarget.Z },
-                            }));
+                    if (state.DedicatedCasevac)
+                        _dedicatedCasevacPassengersLoaded++;
+                    if (state.DedicatedCasevac &&
+                        TryAssignNextCasevacPassenger(
+                            state, completedLanding, now))
+                    {
+                        PhysicsExperimentLog.Info(
+                            "dedicated_casevac_passenger_loaded",
+                            AerialSupportFields(state, now,
+                                new Dictionary<string, object>
+                                {
+                                    { "casualty", casualtyHandle },
+                                    { "additional_pickup_assigned", true },
+                                }));
+                        return;
+                    }
+                    BeginCasevacDeparture(state, completedLanding,
+                        player, now, "casualties_loaded");
                 }
                 return;
             }
@@ -2859,14 +3010,86 @@ namespace ALLIN1
                     }));
         }
 
+        private bool TryAssignNextCasevacPassenger(
+            AerialSupportState state, Vector3 completedLanding, int now)
+        {
+            int freeSeat = FindFreeCasevacSeat(state.Helicopter);
+            foreach (CohesionResponse candidate in
+                _cohesionResponses.Values)
+            {
+                bool awaiting = candidate != null &&
+                    candidate.Phase == CohesionPhase.AwaitCasevac;
+                bool assigned = candidate != null &&
+                    candidate.CasevacHelicopterHandle != 0;
+                float landingDistance = candidate == null
+                    ? float.MaxValue : HorizontalDistance2D(
+                        candidate.CasevacLandingPoint, completedLanding);
+                if (!NpcPhysicsExperimentPolicy.CanBatchCasevacCasualty(
+                        awaiting, assigned, freeSeat >= 0,
+                        landingDistance) ||
+                    candidate.Casualty == null ||
+                    !candidate.Casualty.Exists() ||
+                    candidate.Casualty.IsDead)
+                    continue;
+                state.CasevacCasualtyHandle =
+                    candidate.Casualty.Handle;
+                state.LastMissionCommandAt = int.MinValue / 2;
+                candidate.CasevacHelicopterHandle =
+                    state.Helicopter.Handle;
+                candidate.LastCasevacDeferralAt = 0;
+                candidate.LastCasevacDeferralReason = null;
+                _casevacAssignments++;
+                _dedicatedCasevacBatchAssignments++;
+                PhysicsExperimentLog.Info(
+                    "dedicated_casevac_batch_assigned",
+                    CohesionFields(candidate, now,
+                        new Dictionary<string, object>
+                        {
+                            { "seat", freeSeat },
+                            { "landing_point_distance",
+                                landingDistance },
+                        }));
+                return true;
+            }
+            return false;
+        }
+
+        private void BeginCasevacDeparture(
+            AerialSupportState state, Vector3 landingPoint,
+            Ped player, int now, string reason)
+        {
+            Vector3 away = NormalizeHorizontalVector(
+                landingPoint - player.Position,
+                state.Helicopter.ForwardVector);
+            state.CasevacDepartureTarget = landingPoint + away * 190f +
+                new Vector3(0f, 0f, 65f);
+            state.CasevacDepartureStartedAt = now;
+            state.CasevacDepartingUntilAt = unchecked(now + 15000);
+            state.LastMissionCommandAt = int.MinValue / 2;
+            PhysicsExperimentLog.Info(
+                state.DedicatedCasevac
+                    ? "dedicated_casevac_departing"
+                    : "aerial_casevac_departing",
+                AerialSupportFields(state, now,
+                    new Dictionary<string, object>
+                    {
+                        { "reason", reason },
+                        { "departure_x", state.CasevacDepartureTarget.X },
+                        { "departure_y", state.CasevacDepartureTarget.Y },
+                        { "departure_z", state.CasevacDepartureTarget.Z },
+                    }));
+        }
+
         private void AbortCasevac(
             CohesionResponse response, int now, string reason)
         {
+            AerialSupportState failedState = null;
             if (response.CasevacHelicopterHandle != 0 &&
                 _aerialSupportStates.TryGetValue(
                     response.CasevacHelicopterHandle,
                     out AerialSupportState state))
             {
+                failedState = state;
                 state.CasevacCasualtyHandle = 0;
                 state.LastMissionCommandAt = int.MinValue / 2;
             }
@@ -2879,6 +3102,13 @@ namespace ALLIN1
             PhysicsExperimentLog.Warn("aerial_casevac_aborted",
                 CohesionFields(response, now,
                     new Dictionary<string, object> { { "reason", reason } }));
+            if (failedState != null && failedState.DedicatedCasevac &&
+                failedState.Helicopter != null &&
+                failedState.Helicopter.Exists())
+                BeginCasevacDeparture(failedState,
+                    response.CasevacLandingPoint,
+                    Game.Player.Character, now,
+                    "pickup_aborted_" + reason);
         }
 
         private void CompleteCasevacResponse(
@@ -3003,6 +3233,12 @@ namespace ALLIN1
                             { "reason", reason },
                         }));
             }
+            var ownedCrew = new List<Ped>();
+            if (state.DedicatedCasevac && state.Helicopter != null &&
+                state.Helicopter.Exists())
+                foreach (Ped crew in state.Helicopter.Occupants)
+                    if (crew != null && crew.Exists())
+                        ownedCrew.Add(crew);
             foreach (Ped crew in state.ReducedFireCrew.Values)
                 RestoreAerialCrewMemberFire(crew);
             state.ReducedFireCrew.Clear();
@@ -3010,22 +3246,26 @@ namespace ALLIN1
                 foreach (Ped crew in state.Helicopter.Occupants)
                     if (crew != null)
                         RestoreRappelDepartureLock(crew.Handle);
-            if (state.Role == AerialSupportRole.Cas &&
-                state.Helicopter != null && state.Helicopter.Exists())
-                foreach (Ped crew in state.Helicopter.Occupants)
-                    RestoreAerialCrewMemberFire(crew);
             _aerialSupportStates.Remove(helicopterHandle);
-            if (state.Role == AerialSupportRole.Cas)
-                _aerialCasReleases++;
-            else
+            if (state.Role == AerialSupportRole.Recon)
                 _aerialReconReleases++;
-            PhysicsExperimentLog.Info(state.Role == AerialSupportRole.Cas
-                    ? "aerial_cas_released" : "aerial_recon_released",
+            PhysicsExperimentLog.Info(state.DedicatedCasevac
+                    ? "dedicated_casevac_despawned"
+                    : "aerial_recon_released",
                 AerialSupportFields(state, Game.GameTime,
                     new Dictionary<string, object>
                     {
                         { "reason", reason },
+                        { "owned_occupants", ownedCrew.Count },
+                        { "evacuated_passengers",
+                            Math.Max(0, ownedCrew.Count - 1) },
                     }));
+            if (state.DedicatedCasevac)
+            {
+                _dedicatedCasevacDespawns++;
+                DeleteDedicatedCasevacEntities(
+                    state.Helicopter, ownedCrew);
+            }
         }
 
         private static void RestoreAerialCrewMemberFire(Ped crew)
@@ -3045,6 +3285,8 @@ namespace ALLIN1
             fields["helicopter"] = state?.Helicopter?.Handle ?? 0;
             fields["pilot"] = state?.Pilot?.Handle ?? 0;
             fields["role"] = state?.Role.ToString() ?? "None";
+            fields["dedicated_casevac"] = state != null &&
+                state.DedicatedCasevac;
             fields["reduced_fire_crew"] =
                 state?.ReducedFireCrew.Count ?? 0;
             fields["assigned_elapsed_ms"] = state == null
@@ -3053,10 +3295,16 @@ namespace ALLIN1
                 ? 0 : unchecked(now - state.LastVisualContactAt);
             fields["casevac_casualty"] =
                 state?.CasevacCasualtyHandle ?? 0;
+            fields["casevac_passengers_aboard"] = state == null ||
+                state.Helicopter == null || !state.Helicopter.Exists()
+                ? 0 : Math.Max(0,
+                    state.Helicopter.Occupants.Length - 1);
             fields["casevac_departing"] = state != null &&
-                unchecked(state.CasevacDepartingUntilAt - now) > 0;
-            fields["cas_departing"] = state != null &&
-                state.CasDeparting;
+                (unchecked(state.CasevacDepartingUntilAt - now) > 0 ||
+                 state.CasevacDepartureStartedAt != 0);
+            fields["casevac_departure_elapsed_ms"] = state == null ||
+                state.CasevacDepartureStartedAt == 0 ? 0 : unchecked(
+                    now - state.CasevacDepartureStartedAt);
             fields["recon_control_relinquished"] = state != null &&
                 state.ReconControlRelinquished;
             fields["has_mission_target"] = state != null &&
@@ -3405,6 +3653,9 @@ namespace ALLIN1
                         casualtyHandle, invalidReason);
                     continue;
                 }
+                if (response.Phase == CohesionPhase.AwaitCasevac ||
+                    response.Phase == CohesionPhase.BoardingCasevac)
+                    MaintainStabilizedCasualty(response, now);
                 int responseTimeout = response.HasCollectionPoint
                     ? CollectionResponseTimeoutMs
                     : CohesionResponseTimeoutMs;
@@ -3501,6 +3752,13 @@ namespace ALLIN1
                     {
                         response.Phase = CohesionPhase.AwaitCasevac;
                         response.PhaseStartedAt = now;
+                        response.StabilizedHoldingHealth =
+                            response.Casualty.Health;
+                        response.StabilizationDirectDamageAt = 0;
+                        Function.Call(Hash.CLEAR_ENTITY_LAST_DAMAGE_ENTITY,
+                            response.Casualty.Handle);
+                        Function.Call(Hash.CLEAR_ENTITY_LAST_WEAPON_DAMAGE,
+                            response.Casualty.Handle);
                         response.Casualty.Task.StandStill(30000);
                         response.Rescuer.Task.StandStill(30000);
                         _collectionArrivals++;
@@ -3511,6 +3769,8 @@ namespace ALLIN1
                                 {
                                     { "collection_distance",
                                         collectionDistance },
+                                    { "stabilized_holding_health",
+                                        response.StabilizedHoldingHealth },
                                 }));
                     }
                     else if (unchecked(now - response.PhaseStartedAt) >=
@@ -3534,6 +3794,101 @@ namespace ALLIN1
                     AbortCasevac(response, now, "boarding_timeout");
                 }
             }
+        }
+
+        private void RecordStabilizationDamageEvidence(
+            Ped casualty, bool weaponDamage, bool onFire,
+            bool nearExplosion, int now)
+        {
+            if (casualty == null || !casualty.Exists() ||
+                !_cohesionResponses.TryGetValue(casualty.Handle,
+                    out CohesionResponse response) ||
+                (response.Phase != CohesionPhase.AwaitCasevac &&
+                 response.Phase != CohesionPhase.BoardingCasevac))
+                return;
+            if (weaponDamage || onFire || nearExplosion ||
+                HasDirectStabilizationDamageEvidence(casualty))
+                response.StabilizationDirectDamageAt = now;
+        }
+
+        private void MaintainStabilizedCasualty(
+            CohesionResponse response, int now)
+        {
+            Ped casualty = response?.Casualty;
+            if (casualty == null || !casualty.Exists() ||
+                casualty.IsDead || casualty.Health <= 0) return;
+            int observedHealth = casualty.Health;
+            if (response.StabilizedHoldingHealth <= 0)
+                response.StabilizedHoldingHealth = observedHealth;
+            int previousHoldingHealth =
+                response.StabilizedHoldingHealth;
+            bool healthDropped = observedHealth < previousHoldingHealth;
+            bool directDamage = healthDropped &&
+                (response.StabilizationDirectDamageAt == now ||
+                 HasDirectStabilizationDamageEvidence(casualty));
+            int resolvedHealth = NpcPhysicsExperimentPolicy.
+                ResolveStabilizedHoldingHealth(
+                    previousHoldingHealth, observedHealth,
+                    directDamage);
+            string result = null;
+            if (directDamage && observedHealth < previousHoldingHealth)
+            {
+                response.StabilizedHoldingHealth = observedHealth;
+                _stabilizedDamageAccepted++;
+                result = "direct_damage_accepted";
+                Function.Call(Hash.CLEAR_ENTITY_LAST_DAMAGE_ENTITY,
+                    casualty.Handle);
+                Function.Call(Hash.CLEAR_ENTITY_LAST_WEAPON_DAMAGE,
+                    casualty.Handle);
+            }
+            else if (observedHealth < previousHoldingHealth)
+            {
+                casualty.Health = resolvedHealth;
+                _stabilizedPassiveLossPrevented++;
+                result = "passive_loss_prevented";
+            }
+            else if (observedHealth > previousHoldingHealth)
+            {
+                casualty.Health = resolvedHealth;
+                _stabilizedHealingPrevented++;
+                result = "healing_prevented";
+            }
+            if (result == null) return;
+            bool logDue = response.LastStabilizationCorrectionLogAt == 0 ||
+                unchecked(now - response.LastStabilizationCorrectionLogAt) >=
+                    StabilizationCorrectionLogIntervalMs;
+            if (!logDue) return;
+            response.LastStabilizationCorrectionLogAt = now;
+            PhysicsExperimentLog.Info(
+                "casualty_stabilized_health_held",
+                CohesionFields(response, now,
+                    new Dictionary<string, object>
+                    {
+                        { "result", result },
+                        { "observed_health", observedHealth },
+                        { "previous_holding_health",
+                            previousHoldingHealth },
+                        { "resolved_health", resolvedHealth },
+                        { "direct_damage", directDamage },
+                    }));
+        }
+
+        private static bool HasDirectStabilizationDamageEvidence(
+            Ped casualty)
+        {
+            return casualty.HasBeenDamagedByAnyWeapon() ||
+                casualty.HasBeenDamagedByAnyMeleeWeapon() ||
+                Function.Call<bool>(
+                    Hash.HAS_ENTITY_BEEN_DAMAGED_BY_ANY_PED,
+                    casualty.Handle) ||
+                Function.Call<bool>(
+                    Hash.HAS_ENTITY_BEEN_DAMAGED_BY_ANY_VEHICLE,
+                    casualty.Handle) ||
+                Function.Call<bool>(
+                    Hash.HAS_ENTITY_BEEN_DAMAGED_BY_ANY_OBJECT,
+                    casualty.Handle) ||
+                Function.Call<bool>(Hash.IS_ENTITY_ON_FIRE,
+                    casualty.Handle);
         }
 
         private bool CohesionEntitiesRemainValid(
@@ -3696,6 +4051,13 @@ namespace ALLIN1
             {
                 casevacState.CasevacCasualtyHandle = 0;
                 casevacState.LastMissionCommandAt = int.MinValue / 2;
+                if (casevacState.DedicatedCasevac &&
+                    casevacState.Helicopter != null &&
+                    casevacState.Helicopter.Exists())
+                    BeginCasevacDeparture(casevacState,
+                        response.CasevacLandingPoint,
+                        Game.Player.Character, Game.GameTime,
+                        "casualty_unavailable_" + reason);
             }
             RestoreCohesionCoverer(response);
             _cohesionResponses.Remove(casualtyHandle);
@@ -3733,6 +4095,10 @@ namespace ALLIN1
                 response?.CasevacHelicopterHandle ?? 0;
             fields["smoke_deployed"] =
                 response != null && response.SmokeDeployed;
+            fields["stabilized_holding_health"] =
+                response?.StabilizedHoldingHealth ?? 0;
+            fields["stabilization_direct_damage_at"] =
+                response?.StabilizationDirectDamageAt ?? 0;
             fields["approach_deferred_remaining_ms"] = response == null
                 ? 0 : Math.Max(0, unchecked(
                     response.ApproachDeferredUntilAt - now));
@@ -4770,8 +5136,8 @@ namespace ALLIN1
                         _safeRappelPlanDeferrals },
                     { "aerial_recon_active",
                         CountAerialRole(AerialSupportRole.Recon) },
-                    { "aerial_cas_active",
-                        CountAerialRole(AerialSupportRole.Cas) },
+                    { "dedicated_casevac_active",
+                        CountAerialRole(AerialSupportRole.Casevac) },
                     { "aerial_recon_assignments",
                         _aerialReconAssignments },
                     { "aerial_intel_relays", _aerialIntelRelays },
@@ -4783,11 +5149,21 @@ namespace ALLIN1
                     { "aerial_recon_control_relinquished",
                         _aerialReconControlRelinquished },
                     { "aerial_recon_releases", _aerialReconReleases },
-                    { "aerial_cas_assignments", _aerialCasAssignments },
-                    { "aerial_cas_commands", _aerialCasCommands },
-                    { "aerial_cas_releases", _aerialCasReleases },
                     { "aerial_role_switches", _aerialRoleSwitches },
-                    { "aerial_cas_departures", _aerialCasDepartures },
+                    { "dedicated_casevac_spawn_attempts",
+                        _dedicatedCasevacSpawnAttempts },
+                    { "dedicated_casevac_spawns",
+                        _dedicatedCasevacSpawns },
+                    { "dedicated_casevac_spawn_failures",
+                        _dedicatedCasevacSpawnFailures },
+                    { "dedicated_casevac_batch_assignments",
+                        _dedicatedCasevacBatchAssignments },
+                    { "dedicated_casevac_passengers_loaded",
+                        _dedicatedCasevacPassengersLoaded },
+                    { "dedicated_casevac_despawns",
+                        _dedicatedCasevacDespawns },
+                    { "dedicated_casevac_spawn_cooldown_ms", Math.Max(0,
+                        unchecked(_nextDedicatedCasevacSpawnAt - now)) },
                     { "hand_disarms", _handDisarms },
                     { "weapon_recovery_searches",
                         _weaponRecoverySearches },
@@ -4804,6 +5180,12 @@ namespace ALLIN1
                     { "casevac_completions", _casevacCompletions },
                     { "casevac_failures", _casevacFailures },
                     { "casevac_deferrals", _casevacDeferrals },
+                    { "stabilized_passive_loss_prevented",
+                        _stabilizedPassiveLossPrevented },
+                    { "stabilized_healing_prevented",
+                        _stabilizedHealingPrevented },
+                    { "stabilized_damage_accepted",
+                        _stabilizedDamageAccepted },
                     { "excluded_player", _excludedPlayer },
                     { "excluded_non_human", _excludedNonHuman },
                     { "excluded_mission", _excludedMission },

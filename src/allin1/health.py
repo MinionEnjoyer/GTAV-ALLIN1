@@ -3,11 +3,25 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
+import json
+import os
 import struct
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from allin1.versioning import read_installed_version
+
+
+QUARANTINED_RPF_PACKS = {
+    "allin1_smoke": (
+        "This experimental pack caused repeatable Story Mode startup hangs. "
+        "Run Install / Repair to remove it before launching."
+    ),
+}
+COLORED_SMOKE_PACK_ID = "allin1_smoke"
+COLORED_SMOKE_CANARY_MARKER = "ALLIN1_colored_smoke_weapons.json"
 
 
 @dataclass(frozen=True)
@@ -73,6 +87,73 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _canary_marker_path(gta_path: Path) -> Path:
+    return gta_path / "scripts" / COLORED_SMOKE_CANARY_MARKER
+
+
+def _read_canary_marker(gta_path: Path) -> dict | None:
+    marker = _canary_marker_path(gta_path)
+    try:
+        payload = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def is_rpf_canary_authorized(
+    gta_path: Path, pack_id: str, archive: Path,
+) -> bool:
+    """Allow only the exact, unattempted smoke canary built by RpfPatcher."""
+    if pack_id != COLORED_SMOKE_PACK_ID or not archive.is_file():
+        return False
+    marker = _read_canary_marker(gta_path)
+    if marker is None:
+        return False
+    expected = marker.get("archive_sha256")
+    if not isinstance(expected, str) or len(expected) != 64:
+        return False
+    try:
+        actual = sha256_file(archive)
+    except OSError:
+        return False
+    return (
+        marker.get("schema") == 2
+        and marker.get("pack_id") == pack_id
+        and marker.get("canary_state") == "pending"
+        and hmac.compare_digest(actual.lower(), expected.lower())
+    )
+
+
+def consume_rpf_canary(gta_path: Path, pack_id: str) -> bool:
+    """Atomically consume a pending canary after the launcher hands off GTA."""
+    archive = (
+        gta_path / "mods" / "update" / "x64" / "dlcpacks" /
+        pack_id / "dlc.rpf"
+    )
+    if not is_rpf_canary_authorized(gta_path, pack_id, archive):
+        return False
+    marker_path = _canary_marker_path(gta_path)
+    marker = _read_canary_marker(gta_path)
+    if marker is None:
+        return False
+    marker["canary_state"] = "attempted"
+    marker["attempted_at_utc"] = datetime.now(timezone.utc).isoformat()
+    temporary = marker_path.with_name(marker_path.name + ".tmp")
+    try:
+        temporary.write_text(
+            json.dumps(marker, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary, marker_path)
+    except OSError:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return False
+    return True
 
 
 def scan_installation(gta_path: Path, *, expected_hashes: dict[str, str] | None = None) -> HealthReport:
@@ -144,6 +225,33 @@ def scan_installation(gta_path: Path, *, expected_hashes: dict[str, str] | None 
                 "The ALLIN1 standalone map DLC is incomplete; run Install / Repair.",
                 str(maps_dir),
             ))
+    dlcpacks = gta_path / "mods/update/x64/dlcpacks"
+    for pack_id, reason in QUARANTINED_RPF_PACKS.items():
+        pack = dlcpacks / pack_id
+        archive = pack / "dlc.rpf"
+        if archive.is_file():
+            if is_rpf_canary_authorized(gta_path, pack_id, archive):
+                issues.append(HealthIssue(
+                    "rpf_pack_canary", "info",
+                    "A hash-verified colored-smoke canary is authorized for "
+                    "one Story Mode launch.", str(archive),
+                ))
+            else:
+                issues.append(HealthIssue(
+                    "rpf_pack_quarantined", "error",
+                    f"Quarantined RPF pack is still installed: {pack_id}. {reason}",
+                    str(archive),
+                ))
+    if dlcpacks.is_dir():
+        for pack in sorted(dlcpacks.glob("allin1_*")):
+            if not pack.is_dir() or pack.name in QUARANTINED_RPF_PACKS:
+                continue
+            archive = pack / "dlc.rpf"
+            if not archive.is_file() or archive.stat().st_size == 0:
+                issues.append(HealthIssue(
+                    "rpf_pack_incomplete", "error",
+                    f"ALLIN1 RPF pack is incomplete: {pack.name}.", str(pack),
+                ))
     archive_names = ("update.rpf", "update2.rpf") if edition == "enhanced" else ("update.rpf",)
     for archive_name in archive_names:
         mods_update = gta_path / "mods/update" / archive_name

@@ -1,4 +1,4 @@
-# GTA V ALLIN1 — Comprehensive Documentation
+# ALLIN1 Launcher Documentation
 
 GTA V ALLIN1 is a mod installer that ports 461 GTA Online DLC vehicles, 100+ weapons, and gear into GTA V single-player Story Mode. It includes a traffic spawner, an in-game shop (GBAY), a personal garage system, and a vehicle seat selector.
 
@@ -55,8 +55,9 @@ ScriptHookV and ScriptHookVDotNet must be installed into the GTA V root director
 
 1. Place `ScriptHookV.dll` and `ScriptHookVDotNet.asi` in your GTA V root directory
 2. Run `install.bat`
-3. The installer auto-detects your GTA V path (Steam, Epic, Rockstar Launcher, registry)
-4. If auto-detection fails, enter the path manually when prompted
+3. The installer auto-detects a GTA V path (Steam, Epic, Rockstar Launcher, registry)
+4. Configure independent **Legacy folder** and **Enhanced folder** paths when either or both
+   editions are installed, then choose the active target
 5. Launch GTA V — press **F9** to open GBAY
 
 ### What the Installer Does
@@ -83,12 +84,66 @@ Run `uninstall.bat` to remove all ALLIN1 files, unpatch `dlclist.xml`, and clean
 Run `update.bat` to open the latest verified GitHub Release. Extract the new ZIP into a fresh
 folder and run `install.bat`; repair preserves the installed configuration and garage saves.
 
-The desktop manager also has an **About** page with the project goal, creator
+The desktop tool also has an **About** page with the project goal, creator
 credit, support link, and an explicit **Check for updates** action backed by
 GitHub Releases. Update checks are never performed silently. Each successful
 install writes `scripts/ALLIN1.version`, allowing the manager to distinguish
 its own version from the deployed mod client. The in-game GBAY About and
 Diagnostics pages display the C# assembly version as well.
+
+The player-facing launcher now uses a focused **Packages** workspace. Developer
+inspection and authoring tools open in the independent sibling **ALLIN1 SDK**
+application, which has its own repository, package namespace, version, test
+suite, state directory, CLI/GUI entry points, and CodeWalker/RPF helper build.
+
+The standalone SDK includes a read-only package/native asset viewer. It
+inventories loose DLC folders and OIV/ZIP/RAR/7z files without installation,
+previews common images and authored text, parses bounded GTA binary headers,
+converts supported YTD/YDR/YDD/YFT/YBN/YMAP/YTYP/YMT/GXT2 resources to
+CodeWalker XML, renders texture-dictionary contact sheets, and exports a JSON
+inventory. Native conversion falls back across Legacy and Enhanced resource
+decoders when a package's edition is unresolved.
+
+**Open RPF explorer** indexes a loose archive and all readable nested RPFs into
+a versioned machine-readable model. Search and filters cover archive path,
+entry path, kind, and extension. The inspector exposes logical/stored sizes,
+offsets, compression and encryption state, resource versions, system/graphics
+page sizes and flags, and name hashes. Exact nested entries can be extracted for
+native preview. Export writes both JSON and CSV. **Plan replacement** records the
+target, payload hash, edition, required backup/verification/rollback, and mods
+copy warnings but deliberately performs no write.
+
+The **Add-on Content SDK** package index combines the bundled examples with
+remembered external `addon.json` manifests, local `mods/catalog` manifests, and
+installed-package receipts discovered under every configured Legacy and Enhanced
+root. The index records references to external package sources rather than copying
+third-party payloads. If an installed package's original `mod.toml` is no longer
+available, the viewer reconstructs a minimal package/file/archive graph from its
+receipt so the installed state remains inspectable.
+
+The SDK's **Package intelligence** row adds three read-only authoring tools:
+
+- **Preview OIV recipe** parses `assembly.xml`, displays its ordered file,
+  archive, delete, text, XML, PSO, and defragmentation actions, and writes a
+  Markdown/JSON operation plan. A managed export is enabled only when all
+  operations are safe file additions or exact writes to one existing RPF;
+  nested/new archives, deletes, wildcard edits, XPath/PSO merges, unsafe paths,
+  missing payloads, and unknown commands remain blocked.
+- **DLC inventory** reads the configured edition's live `dlclist.xml` through
+  the pinned RPF helper and compares it with stock and modded `dlcpacks` plus
+  ALLIN1 receipts. It reports duplicates, stale registrations, incomplete or
+  unregistered payloads, and ownership without making repairs automatically.
+- **Compile vehicle data** joins visible vehicle, handling, variation, tuning,
+  model, texture, text-label, and DLC-registration evidence. It writes JSON,
+  CSV, XLSX, Markdown, and a dedicated unresolved CSV; opaque RPF/GXT2/REL/AWC
+  content is never treated as proof that a link exists.
+
+Package rows show an edition tag derived from the author manifest and package
+layout: **Legacy**, **Enhanced**, **Legacy + Enhanced**, or **Unresolved**.
+Install actions select only a compatible configured root. This permits parallel
+Legacy and Enhanced installations without copying a package into the wrong game.
+Unresolved importer drafts remain review-only until an author selects supported
+editions.
 
 Updates can be packaged with a `checksums.json` manifest and applied through
 `allin1 apply-update`. Every declared file is SHA-256 verified in a staging
@@ -122,6 +177,9 @@ Configuration is stored in `config.toml` (copied to `scripts/ALLIN1.toml` during
 | Key | Default | Description |
 |-----|---------|-------------|
 | `gta_path` | `"auto"` | GTA V installation path. Set to `"auto"` for auto-detection. |
+| `gta_legacy_path` | `"auto"` | Independent GTA V Legacy root; may coexist with Enhanced. |
+| `gta_enhanced_path` | `"auto"` | Independent GTA V Enhanced root; may coexist with Legacy. |
+| `target_edition` | `"auto"` | Active launcher target: `auto`, `legacy`, or `enhanced`. |
 | `free_mode` | `false` | Deprecated compatibility alias for `script.gbay_free_mode`. |
 | `backup` | `true` | Create backups of original game files before modifying. |
 
@@ -163,6 +221,7 @@ Available classes: `compacts`, `coupes`, `sedans`, `suvs`, `muscle`, `sports`, `
 | `enhanced_police_ai` | `true` | Coordinate open-world police squads into synchronized stack/rush assaults or defensive firing lines. Mission AI is excluded. |
 | `gta_iv_npc_physics` | `false` | Experimental GTA IV-style Euphoria reactions for nearby ambient human NPCs. Excludes the player, mission/persistent peds, animals, and vehicle occupants. |
 | `gta_iv_npc_physics_debug` | `true` | Write rotating JSON-line diagnostics to `scripts/ALLIN1_npc_physics.log`, including configuration resolution when the experiment is disabled. |
+| `enhanced_smoke_effects` | `true` | Install isolated smoke tuning plus seven generated M18 smoke weapon/ammo entries with independent weapon-wheel selection. Native Tear Gas remains untouched. |
 | `controller_enabled` | `true` | Enable the shared ALLIN1 controller input layer. |
 | `controller_open_gbay` / `controller_open_gbay_modifier` | `FrontendRdown` / `FrontendLb` | Open GBAY with the configured action chord (LB+R3 by default). |
 | `controller_night_vision` / `controller_night_vision_modifier` | `FrontendLeft` / `FrontendLb` | Toggle purchased night vision (LB+D-pad left by default). |
@@ -508,6 +567,19 @@ allin1 [--config PATH] [--verbose] COMMAND
 | `import-previews SOURCE [--kind vehicle\|weapon\|equipment]` | Validate and import screenshots captured in-game. |
 | `verify-preview-artifacts DIRECTORY` | Verify built YTD dictionary coverage. |
 | `analyze-client-log LOG --edition EDITION` | Produce a machine-readable smoke report from an in-game session. |
+| `sdk list` | List the add-on integration examples bundled with the desktop SDK viewer. |
+| `sdk import-package SOURCE [-o ADDON_JSON]` | Safely inventory a loose DLC folder or OIV/ZIP/RAR/7z and generate a review-only SDK manifest draft with weapon and vehicle links. |
+| `sdk audit-folder FOLDER -o REPORT [--draft-dir DIR]` | Batch-classify mixed plug-in, shader, replacement, vehicle, weapon, and RPF packages; report every review blocker and incomplete browser download. |
+| `sdk oiv-plan SOURCE -o REPORT [--managed-package DIR]` | Preview an OIV recipe and optionally export a validated managed package when every operation is translatable. |
+| `sdk dlc-inventory GTA_PATH -o REPORT` | Compare DLC folders, live registrations, and receipt ownership without writing to the game. |
+| `sdk compile-vehicle-data SOURCE -o DIRECTORY` | Compile linked vehicle metadata and export JSON/CSV/XLSX/Markdown plus unresolved references. |
+| `sdk inspect-rpf ARCHIVE [--gta-path PATH] [-o REPORT]` | Read a loose RPF with the detected Legacy/Enhanced keys and write its inventory without modifying it. |
+| `sdk index-rpf ARCHIVE --gta-path PATH -o INDEX.json` | Export a structured root/nested RPF index as JSON and CSV. |
+| `sdk extract-rpf-entry ARCHIVE ENTRY --archive-path NESTED -o FILE` | Extract one exact root or nested entry without changing the archive. |
+| `sdk plan-rpf-replacement ARCHIVE ENTRY PAYLOAD --archive-path NESTED -o PLAN.json` | Write a checksummed safety plan only; perform no archive write. |
+| `sdk inspect-package-rpfs SOURCE -o DIRECTORY [--gta-path PATH]` | Temporarily stream packaged RPF members, inspect first-level nested archives and resource versions, and write reports without installing anything. |
+| `sdk validate ADDON_JSON` | Resolve required fields, source files, HUD hashes, and cross-file references without changing the game. |
+| `sdk link ADDON_JSON -o REPORT.md` | Export the resolved integration graph and ordered install plan. |
 
 ### Advanced client diagnostics
 
@@ -727,11 +799,23 @@ Textures are loaded on demand per page and pre-fetched one page ahead. Unused di
 | `verify-ytd <gta_path> <ytd_folder>` | Verify all expected YTDs after injection |
 | `remove-ytd <gta_path> <prefix>` | Remove injected YTDs |
 | `inspect <gta_path> <rpf_path>` | Dump RPF structure for debugging |
+| `index-json <gta_path> <rpf_path> <output_json>` | Write a structured root/nested archive and entry index for the desktop explorer |
+| `extract-virtual-entry <gta_path> <rpf_path> <archive_path> <entry_path> <output>` | Extract one exact entry from a root or nested virtual archive |
+| `asset-xml <input_asset> <output_xml> <asset_folder> [legacy\|gen9]` | Convert a supported native RAGE asset to CodeWalker XML and referenced visual assets |
+| `extract-entry <gta_path> <rpf_path> <entry> <output>` | Extract one exact archive entry for review or verification |
+| `replace-entry <gta_path> <rpf_path> <entry> <payload>` | Replace or add one exact entry in a writable `mods` archive |
+| `delete-entry <gta_path> <rpf_path> <entry>` | Remove one exact entry from a writable `mods` archive |
 | `audit-seats <gta_path> <output_json> [output_cs]` | Extract every base-game and DLC vehicle layout, seat role, occupant-access door, and hatch; also emit Markdown and an optional C# lookup |
 | `validate-euphoria <payload_folder_or_archive>` | Validate the audited E.R.O. 1.9.4 tuning payload without touching game files |
 | `install-euphoria <gta_path> <payload> [--allow-enhanced]` | Transactionally install E.R.O. tuning into OpenRPF `mods` copies, with complete-archive rollback snapshots and post-write verification |
 | `verify-euphoria <gta_path> <payload>` | Read-only verification of all four installed tuning entries and the install marker |
 | `remove-euphoria <gta_path>` | Restore every archive from the pre-install rollback snapshots |
+| `pso-to-xml <input_pso> <output_xml>` | Read-only conversion of a compiled PSO/YMT for inspection |
+| `inspect-pso <input_pso>` | Dump live PSO block and schema offsets without rebuilding it |
+| `build-smoke-tuning <input_ymt> <input_dat> <output_folder>` | Build and verify isolated smoke-grenade files from the current game-version inputs |
+| `install-smoke-tuning <gta_path>` | Back up `mods/update/update.rpf`, patch only `EXP_TAG_SMOKEGRENADE` and `EXP_VFXTAG_SMOKE_GRENADE`, and verify the result |
+| `verify-smoke-tuning <gta_path>` | Read-only validation of the installed smoke-grenade fields, VFX scale, and marker hashes |
+| `remove-smoke-tuning <gta_path>` | Restore only the two original smoke entries, preserving unrelated later RPF changes |
 
 ---
 

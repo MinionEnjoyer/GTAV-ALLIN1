@@ -14,6 +14,16 @@ namespace ALLIN1
         DefensiveLine,
     }
 
+    internal enum PoliceCombatRole
+    {
+        PassiveHold,
+        Containment,
+        DefensiveLine,
+        Support,
+        Assault,
+        Rescue,
+    }
+
     internal static class PoliceTacticsPolicy
     {
         internal const int MinimumSquadSize = 3;
@@ -23,6 +33,45 @@ namespace ALLIN1
         internal const int FiringLineMinimumWaitMs = 1400;
         internal const int FiringLineMaximumWaitMs = 9000;
         internal const int WithdrawalSupportMaximumMs = 4200;
+
+        internal static int CombatMovementForRole(PoliceCombatRole role)
+        {
+            return role == PoliceCombatRole.Assault ? 2 : 1;
+        }
+
+        internal static int CombatRangeForRole(PoliceCombatRole role)
+        {
+            switch (role)
+            {
+                case PoliceCombatRole.Assault:
+                    return 1; // CR_MEDIUM, 7-30m
+                case PoliceCombatRole.Support:
+                    return 2; // CR_FAR, 15-40m
+                default:
+                    return 3; // CR_VERY_FAR, 22-45m
+            }
+        }
+
+        internal static bool MaintainsMinimumDistance(
+            PoliceCombatRole role)
+        {
+            return role != PoliceCombatRole.Assault;
+        }
+
+        internal static bool AllowsNativeAdvance(PoliceCombatRole role)
+        {
+            return role == PoliceCombatRole.Assault;
+        }
+
+        internal static bool CanDismountDynamicContainment(
+            float distanceToPlayer, float vehicleSpeed,
+            bool approachTimedOut)
+        {
+            float minimumRange = approachTimedOut ? 38f : 42f;
+            float maximumSpeed = approachTimedOut ? 10f : 6f;
+            return distanceToPlayer >= minimumRange &&
+                distanceToPlayer <= 68f && vehicleSpeed <= maximumSpeed;
+        }
 
         internal static bool CanCoordinate(
             bool enabled, bool missionActive, bool cutsceneActive,
@@ -171,6 +220,7 @@ namespace ALLIN1
                 movingOfficersArrived >= movingOfficers ||
                 elapsedMs >= WithdrawalSupportMaximumMs;
         }
+
     }
 
     public sealed class PoliceTacticsCoordinator : Script
@@ -222,8 +272,10 @@ namespace ALLIN1
             Game.GenerateHash("SCRIPT_TASK_RAPPEL_FROM_HELI");
         private static readonly int BurstFirePatternHash =
             Game.GenerateHash("FIRING_PATTERN_BURST_FIRE");
-        private static readonly int ProtectiveSmokeWeaponHash =
-            Game.GenerateHash("WEAPON_SMOKEGRENADE");
+        private static readonly int ProtectiveWhiteSmokeWeaponHash =
+            Game.GenerateHash("WEAPON_ALLIN1_SMOKE_WHITE");
+        private static readonly int ProtectiveOrangeSmokeWeaponHash =
+            Game.GenerateHash("WEAPON_ALLIN1_SMOKE_ORANGE");
 
         private readonly Dictionary<int, TacticalSquad> _squads =
             new Dictionary<int, TacticalSquad>();
@@ -269,6 +321,8 @@ namespace ALLIN1
         private long _withdrawalsCompleted;
         private long _withdrawalCoverBounds;
         private long _protectiveSmokesDeployed;
+        private long _combatProfileTransitions;
+        private long _vehicleBlockCommands;
         private long _exceptions;
 
         private enum SquadPhase
@@ -296,6 +350,9 @@ namespace ALLIN1
             internal int PhaseStartedAt;
             internal int LastCommandAt;
             internal int Retargets;
+            internal bool DynamicBlock;
+            internal readonly Dictionary<int, int> PreviousCombatRanges =
+                new Dictionary<int, int>();
         }
 
         private sealed class TacticalMember
@@ -303,8 +360,10 @@ namespace ALLIN1
             internal Ped Ped;
             internal Vector3 Slot;
             internal int PreviousCombatMovement = 2;
+            internal int PreviousCombatRange = 1;
             internal int LastCommandAt;
             internal bool Support;
+            internal PoliceCombatRole? CombatRole;
             internal int CoverRequestedAt;
             internal int CoverAttempts;
             internal bool CoverAcquired;
@@ -315,6 +374,7 @@ namespace ALLIN1
         {
             internal Ped Ped;
             internal int PreviousCombatMovement;
+            internal int PreviousCombatRange;
             internal int LastCommandAt;
         }
 
@@ -323,6 +383,7 @@ namespace ALLIN1
             internal Ped Thrower;
             internal int PreviousWeaponHash;
             internal int PreviousSmokeAmmo;
+            internal int SmokeWeaponHash;
             internal bool PreviouslyOwnedSmoke;
             internal int CleanupAt;
         }
@@ -551,6 +612,8 @@ namespace ALLIN1
                     Slot = ResolveSafePosition(desired),
                     PreviousCombatMovement = Function.Call<int>(
                         Hash.GET_PED_COMBAT_MOVEMENT, officer.Handle),
+                    PreviousCombatRange = Function.Call<int>(
+                        Hash.GET_PED_COMBAT_RANGE, officer.Handle),
                     LastCommandAt = int.MinValue / 2,
                 };
                 squad.Members.Add(member);
@@ -583,16 +646,29 @@ namespace ALLIN1
                     Ped = officer,
                     PreviousCombatMovement = Function.Call<int>(
                         Hash.GET_PED_COMBAT_MOVEMENT, officer.Handle),
+                    PreviousCombatRange = Function.Call<int>(
+                        Hash.GET_PED_COMBAT_RANGE, officer.Handle),
                     LastCommandAt = int.MinValue / 2,
                 };
                 _passiveHolds.Add(officer.Handle, hold);
+                ApplyCombatProfile(officer, PoliceCombatRole.PassiveHold);
+                _combatProfileTransitions++;
+                PhysicsExperimentLog.Info(
+                    "police_combat_profile_applied",
+                    new Dictionary<string, object>
+                    {
+                        { "ped", officer.Handle },
+                        { "profile", PoliceCombatRole.PassiveHold.ToString() },
+                        { "combat_movement", 1 },
+                        { "combat_range", 3 },
+                        { "reason", "unassigned_perimeter_hold" },
+                    });
             }
             if (unchecked(now - hold.LastCommandAt) <
                     PassiveHoldRefreshMs)
                 return;
             Vector3 anchor = officer.Position;
-            Function.Call(Hash.SET_PED_COMBAT_MOVEMENT,
-                officer.Handle, 1);
+            ApplyCombatProfile(officer, PoliceCombatRole.PassiveHold);
             Function.Call(Hash.SET_PED_SPHERE_DEFENSIVE_AREA,
                 officer.Handle, anchor.X, anchor.Y, anchor.Z,
                 6f, false, false);
@@ -628,8 +704,9 @@ namespace ALLIN1
             Function.Call(Hash.REMOVE_PED_DEFENSIVE_AREA,
                 officer.Handle, false);
             if (restoreMovement)
-                Function.Call(Hash.SET_PED_COMBAT_MOVEMENT,
-                    officer.Handle, hold.PreviousCombatMovement);
+                RestoreCombatProfile(officer,
+                    hold.PreviousCombatMovement,
+                    hold.PreviousCombatRange);
         }
 
         private void ReleaseAllPassiveHolds(bool restoreMovement)
@@ -673,8 +750,12 @@ namespace ALLIN1
                     int elapsed = unchecked(now - state.PhaseStartedAt);
                     bool timedOut = elapsed >=
                         VehicleContainmentApproachTimeoutMs;
-                    if (PoliceTacticsPolicy.CanDismountContainment(
-                            distance, threatDistance, timedOut))
+                    bool canDismount = state.DynamicBlock
+                        ? PoliceTacticsPolicy.CanDismountDynamicContainment(
+                            threatDistance, vehicle.Speed, timedOut)
+                        : PoliceTacticsPolicy.CanDismountContainment(
+                            distance, threatDistance, timedOut);
+                    if (canDismount)
                     {
                         BeginVehicleDismount(state, player, now,
                             timedOut ? "safe_timeout_hold" :
@@ -695,7 +776,7 @@ namespace ALLIN1
                     }
                     if (unchecked(now - state.LastCommandAt) >=
                         VehicleContainmentCommandRefreshMs)
-                        CommandContainmentVehicle(state, now);
+                        CommandContainmentVehicle(state, player, now);
                     continue;
                 }
 
@@ -712,7 +793,14 @@ namespace ALLIN1
 
                 _containmentVehicles.Remove(handle);
                 foreach (Ped officer in state.Officers)
+                {
                     if (officer != null) _assignedPeds.Remove(officer.Handle);
+                    if (officer != null && officer.Exists() &&
+                        state.PreviousCombatRanges.TryGetValue(
+                            officer.Handle, out int previousRange))
+                        Function.Call(Hash.SET_PED_COMBAT_RANGE,
+                            officer.Handle, previousRange);
+                }
                 if (dismounted.Count >= PoliceTacticsPolicy.MinimumSquadSize &&
                     _squads.Count < MaximumActiveSquads)
                 {
@@ -793,10 +881,19 @@ namespace ALLIN1
                 foreach (Ped officer in officers)
                 {
                     state.Officers.Add(officer);
+                    state.PreviousCombatRanges[officer.Handle] =
+                        Function.Call<int>(Hash.GET_PED_COMBAT_RANGE,
+                            officer.Handle);
                     _assignedPeds.Add(officer.Handle);
                 }
                 _containmentVehicles.Add(vehicle.Handle, state);
-                CommandContainmentVehicle(state, now);
+                foreach (Ped officer in state.Officers)
+                    ApplyCombatProfile(officer,
+                        officer.Handle == driver.Handle
+                        ? PoliceCombatRole.Containment
+                        : PoliceCombatRole.Support);
+                _combatProfileTransitions += state.Officers.Count;
+                CommandContainmentVehicle(state, player, now);
                 _containmentVehiclesStaged++;
                 PhysicsExperimentLog.Info(
                     "police_vehicle_containment_staged",
@@ -827,13 +924,31 @@ namespace ALLIN1
             officers.Add(officer);
         }
 
-        private static void CommandContainmentVehicle(
-            VehicleContainment state, int now)
+        private void CommandContainmentVehicle(
+            VehicleContainment state, Ped player, int now)
         {
-            state.Driver.Task.StartVehicleMission(
-                state.Vehicle, state.Target, (VehicleMissionType)4,
-                18f, VehicleDrivingFlags.DrivingModeAvoidVehicles,
-                5f, 18f, false);
+            Vehicle targetVehicle = player != null && player.Exists()
+                ? player.CurrentVehicle : null;
+            state.DynamicBlock = targetVehicle != null &&
+                targetVehicle.Exists();
+            Function.Call(Hash.SET_PED_COMBAT_ATTRIBUTES,
+                state.Driver.Handle, 84, state.DynamicBlock);
+            if (state.DynamicBlock)
+            {
+                Function.Call(Hash.TASK_VEHICLE_MISSION,
+                    state.Driver.Handle, state.Vehicle.Handle,
+                    targetVehicle.Handle, 3, 18f,
+                    (int)VehicleDrivingFlags.DrivingModeAvoidVehicles,
+                    48f, 24f, false);
+                _vehicleBlockCommands++;
+            }
+            else
+            {
+                state.Driver.Task.StartVehicleMission(
+                    state.Vehicle, state.Target, (VehicleMissionType)4,
+                    18f, VehicleDrivingFlags.DrivingModeAvoidVehicles,
+                    5f, 18f, false);
+            }
             state.LastCommandAt = now;
         }
 
@@ -846,7 +961,7 @@ namespace ALLIN1
                 state.Vehicle, player,
                 state.Retargets + _containmentVehicles.Count);
             state.PhaseStartedAt = now;
-            CommandContainmentVehicle(state, now);
+            CommandContainmentVehicle(state, player, now);
             PhysicsExperimentLog.Info(
                 "police_vehicle_containment_retargeted",
                 new Dictionary<string, object>
@@ -890,6 +1005,8 @@ namespace ALLIN1
             VehicleContainment state, Ped player, int now, string reason)
         {
             Vehicle vehicle = state.Vehicle;
+            Function.Call(Hash.SET_PED_COMBAT_ATTRIBUTES,
+                state.Driver.Handle, 84, false);
             Function.Call(Hash.SET_VEHICLE_FORWARD_SPEED,
                 vehicle.Handle, 0f);
             Function.Call(Hash.SET_VEHICLE_HANDBRAKE,
@@ -903,8 +1020,12 @@ namespace ALLIN1
             foreach (Ped officer in state.Officers)
                 if (officer != null && officer.Exists() &&
                     !officer.IsDead && officer.IsInVehicle())
+                {
+                    ApplyCombatProfile(officer,
+                        PoliceCombatRole.DefensiveLine);
                     Function.Call(Hash.TASK_LEAVE_VEHICLE,
                         officer.Handle, vehicle.Handle, 0);
+                }
             state.Phase = VehicleContainmentPhase.Dismounting;
             state.PhaseStartedAt = now;
             PhysicsExperimentLog.Info(
@@ -936,6 +1057,11 @@ namespace ALLIN1
             {
                 if (officer == null) continue;
                 _assignedPeds.Remove(officer.Handle);
+                if (officer.Exists() && !officer.IsDead &&
+                    state.PreviousCombatRanges.TryGetValue(
+                        officer.Handle, out int previousRange))
+                    Function.Call(Hash.SET_PED_COMBAT_RANGE,
+                        officer.Handle, previousRange);
                 if (defensiveExit && officer.Exists() && !officer.IsDead &&
                     !officer.IsInVehicle() && player != null &&
                     player.Exists())
@@ -946,6 +1072,9 @@ namespace ALLIN1
                 !defensiveExit)
                 Function.Call(Hash.SET_VEHICLE_HANDBRAKE,
                     state.Vehicle.Handle, false);
+            if (state.Driver != null && state.Driver.Exists())
+                Function.Call(Hash.SET_PED_COMBAT_ATTRIBUTES,
+                    state.Driver.Handle, 84, false);
             _containmentVehicleFailures++;
             PhysicsExperimentLog.Warn(
                 "police_vehicle_containment_released",
@@ -1007,12 +1136,16 @@ namespace ALLIN1
                 _smokeDeployments.ContainsKey(thrower.Handle))
                 return false;
 
+            int smokeWeaponHash = casualtyExtraction
+                ? ProtectiveOrangeSmokeWeaponHash
+                : ProtectiveWhiteSmokeWeaponHash;
+
             bool previouslyOwned = Function.Call<bool>(
                 Hash.HAS_PED_GOT_WEAPON, thrower.Handle,
-                ProtectiveSmokeWeaponHash, false);
+                smokeWeaponHash, false);
             int previousSmokeAmmo = previouslyOwned
                 ? Function.Call<int>(Hash.GET_AMMO_IN_PED_WEAPON,
-                    thrower.Handle, ProtectiveSmokeWeaponHash) : 0;
+                    thrower.Handle, smokeWeaponHash) : 0;
             int previousWeapon = Function.Call<int>(
                 Hash.GET_SELECTED_PED_WEAPON, thrower.Handle);
             Vector3 direction = NormalizeHorizontal(
@@ -1022,8 +1155,10 @@ namespace ALLIN1
             Vector3 target = ResolveSafePosition(
                 protectedPosition + direction * screenDepth);
             Function.Call(Hash.GIVE_WEAPON_TO_PED,
-                thrower.Handle, ProtectiveSmokeWeaponHash,
+                thrower.Handle, smokeWeaponHash,
                 1, false, true);
+            EnhancedSmokeController.ExpectThrownSmoke(
+                thrower.Handle, reason, now);
             Function.Call(Hash.TASK_THROW_PROJECTILE,
                 thrower.Handle, target.X, target.Y, target.Z,
                 -1, false);
@@ -1032,6 +1167,7 @@ namespace ALLIN1
                 Thrower = thrower,
                 PreviousWeaponHash = previousWeapon,
                 PreviousSmokeAmmo = previousSmokeAmmo,
+                SmokeWeaponHash = smokeWeaponHash,
                 PreviouslyOwnedSmoke = previouslyOwned,
                 CleanupAt = unchecked(now + ProtectiveSmokeCleanupMs),
             };
@@ -1049,6 +1185,8 @@ namespace ALLIN1
                     { "target_x", target.X },
                     { "target_y", target.Y },
                     { "target_z", target.Z },
+                    { "smoke_weapon_hash", smokeWeaponHash },
+                    { "settlement_required", true },
                 });
             return true;
         }
@@ -1074,10 +1212,11 @@ namespace ALLIN1
             if (thrower == null || !thrower.Exists() || thrower.IsDead) return;
             if (deployment.PreviouslyOwnedSmoke)
                 Function.Call(Hash.SET_PED_AMMO, thrower.Handle,
-                    ProtectiveSmokeWeaponHash, deployment.PreviousSmokeAmmo);
+                    deployment.SmokeWeaponHash,
+                    deployment.PreviousSmokeAmmo);
             else
                 Function.Call(Hash.REMOVE_WEAPON_FROM_PED,
-                    thrower.Handle, ProtectiveSmokeWeaponHash);
+                    thrower.Handle, deployment.SmokeWeaponHash);
             if (deployment.PreviousWeaponHash != 0)
                 Function.Call(Hash.SET_CURRENT_PED_WEAPON,
                     thrower.Handle, deployment.PreviousWeaponHash, true);
@@ -1302,8 +1441,7 @@ namespace ALLIN1
             if (member.Ped == null || !member.Ped.Exists() ||
                 member.Ped.IsDead) return;
             Vector3 slot = member.Slot;
-            Function.Call(Hash.SET_PED_COMBAT_MOVEMENT,
-                member.Ped.Handle, 1);
+            ApplyCombatProfile(member.Ped, PoliceCombatRole.DefensiveLine);
             Function.Call(Hash.SET_PED_SPHERE_DEFENSIVE_AREA,
                 member.Ped.Handle, slot.X, slot.Y, slot.Z,
                 6f, false, false);
@@ -1319,8 +1457,7 @@ namespace ALLIN1
             if (member.Ped == null || !member.Ped.Exists() ||
                 member.Ped.IsDead) return;
             Vector3 anchor = member.Ped.Position;
-            Function.Call(Hash.SET_PED_COMBAT_MOVEMENT,
-                member.Ped.Handle, 1);
+            ApplyCombatProfile(member.Ped, PoliceCombatRole.Support);
             Function.Call(Hash.SET_PED_SPHERE_DEFENSIVE_AREA,
                 member.Ped.Handle, anchor.X, anchor.Y, anchor.Z,
                 4f, false, false);
@@ -1379,12 +1516,16 @@ namespace ALLIN1
             }
         }
 
-        private static void CommandMemberToFormation(
+        private void CommandMemberToFormation(
             TacticalMember member, TacticalSquad squad,
             Ped player, int now)
         {
-            Function.Call(Hash.SET_PED_COMBAT_MOVEMENT,
-                member.Ped.Handle, 1);
+            PoliceCombatRole role =
+                squad.Tactic == PoliceTactic.DefensiveLine
+                ? PoliceCombatRole.DefensiveLine
+                : PoliceCombatRole.Support;
+            ApplyMemberCombatProfile(member, role, squad, now,
+                "formation_assignment");
             Vector3 slot = member.Slot;
             Function.Call(Hash.SET_PED_SPHERE_DEFENSIVE_AREA,
                 member.Ped.Handle, slot.X, slot.Y, slot.Z,
@@ -1424,8 +1565,9 @@ namespace ALLIN1
                 member.Support = i >= assaultCount;
                 if (member.Support)
                 {
-                    Function.Call(Hash.SET_PED_COMBAT_MOVEMENT,
-                        member.Ped.Handle, 1);
+                    ApplyMemberCombatProfile(member,
+                        PoliceCombatRole.Support, squad, now,
+                        "rush_fire_support");
                     Function.Call(Hash.TASK_SEEK_COVER_FROM_PED,
                         member.Ped.Handle, player.Handle, 5000, false);
                     continue;
@@ -1435,8 +1577,9 @@ namespace ALLIN1
                     squad.AwayFromPlayer * 8f +
                     squad.FormationRight * lateral;
                 closePosition = ResolveSafePosition(closePosition);
-                Function.Call(Hash.SET_PED_COMBAT_MOVEMENT,
-                    member.Ped.Handle, 2);
+                ApplyMemberCombatProfile(member,
+                    PoliceCombatRole.Assault, squad, now,
+                    "coordinated_rush");
                 Function.Call(Hash.TASK_GO_TO_COORD_WHILE_AIMING_AT_ENTITY,
                     member.Ped.Handle,
                     closePosition.X, closePosition.Y, closePosition.Z,
@@ -1468,8 +1611,10 @@ namespace ALLIN1
                 squad.CloseCombatEngaged = true;
                 foreach (TacticalMember member in squad.Members)
                 {
-                    Function.Call(Hash.SET_PED_COMBAT_MOVEMENT,
-                        member.Ped.Handle, member.Support ? 1 : 2);
+                    ApplyMemberCombatProfile(member,
+                        member.Support ? PoliceCombatRole.Support :
+                        PoliceCombatRole.Assault,
+                        squad, now, "close_combat_transition");
                     if (member.Support)
                     {
                         Function.Call(Hash.TASK_SEEK_COVER_FROM_PED,
@@ -1514,7 +1659,7 @@ namespace ALLIN1
                     }));
         }
 
-        private static void ConfigureDefensiveLineFormation(
+        private void ConfigureDefensiveLineFormation(
             TacticalSquad squad, Ped player, int now)
         {
             Vector3 centroid = Vector3.Zero;
@@ -1591,11 +1736,12 @@ namespace ALLIN1
             foreach (TacticalMember member in squad.Members)
             {
                 Vector3 slot = member.Slot;
+                ApplyMemberCombatProfile(member,
+                    PoliceCombatRole.DefensiveLine, squad, now,
+                    "firing_line_established");
                 Function.Call(Hash.SET_PED_SPHERE_DEFENSIVE_AREA,
                     member.Ped.Handle,
                     slot.X, slot.Y, slot.Z, 4.5f, false, false);
-                Function.Call(Hash.SET_PED_COMBAT_MOVEMENT,
-                    member.Ped.Handle, 1);
                 CommandMemberToSlotCover(member, player, now);
             }
             PhysicsExperimentLog.Info("police_firing_line_established",
@@ -1691,13 +1837,14 @@ namespace ALLIN1
             _coverRequests++;
         }
 
-        private static void CommandExposedMemberToRearwardHold(
+        private void CommandExposedMemberToRearwardHold(
             TacticalMember member, TacticalSquad squad,
             Ped player, int now)
         {
             Vector3 slot = member.Slot;
-            Function.Call(Hash.SET_PED_COMBAT_MOVEMENT,
-                member.Ped.Handle, 1);
+            ApplyMemberCombatProfile(member,
+                PoliceCombatRole.DefensiveLine, squad, now,
+                "exposed_rearward_hold");
             Function.Call(Hash.SET_PED_SPHERE_DEFENSIVE_AREA,
                 member.Ped.Handle, slot.X, slot.Y, slot.Z,
                 5f, false, false);
@@ -1726,8 +1873,9 @@ namespace ALLIN1
                     member.Ped.IsDead) continue;
                 member.Slot = ResolveSafePosition(member.Ped.Position);
                 centroid += member.Slot;
-                Function.Call(Hash.SET_PED_COMBAT_MOVEMENT,
-                    member.Ped.Handle, 1);
+                ApplyMemberCombatProfile(member,
+                    PoliceCombatRole.DefensiveLine, squad, now,
+                    "degraded_cover_hold");
                 Function.Call(Hash.SET_PED_SPHERE_DEFENSIVE_AREA,
                     member.Ped.Handle, member.Slot.X, member.Slot.Y,
                     member.Slot.Z, 5f, false, false);
@@ -1852,6 +2000,103 @@ namespace ALLIN1
                 height, ped.Velocity.Z, upright);
         }
 
+        private static void ApplyCombatProfile(
+            Ped ped, PoliceCombatRole role)
+        {
+            if (ped == null || !ped.Exists() || ped.IsDead) return;
+            bool advance = PoliceTacticsPolicy.AllowsNativeAdvance(role);
+            bool maintainDistance =
+                PoliceTacticsPolicy.MaintainsMinimumDistance(role);
+            Function.Call(Hash.SET_PED_COMBAT_MOVEMENT, ped.Handle,
+                PoliceTacticsPolicy.CombatMovementForRole(role));
+            Function.Call(Hash.SET_PED_COMBAT_RANGE, ped.Handle,
+                PoliceTacticsPolicy.CombatRangeForRole(role));
+            SetCombatAttribute(ped, 0, true);   // use cover
+            SetCombatAttribute(ped, 4, true);   // dynamic strafe decisions
+            SetCombatAttribute(ped, 13, advance); // aggressive advance
+            SetCombatAttribute(ped, 22,
+                role == PoliceCombatRole.Rescue); // drag injured allies
+            SetCombatAttribute(ped, 23, true);  // require LOS to shoot
+            SetCombatAttribute(ped, 28, advance); // frustrated advance
+            SetCombatAttribute(ped, 29, !advance); // stage before cover search
+            SetCombatAttribute(ped, 31, maintainDistance);
+            SetCombatAttribute(ped, 42, advance); // flank only on assault
+            SetCombatAttribute(ped, 43, advance); // advance if cover fails
+            SetCombatAttribute(ped, 44, true);  // defensive while in cover
+            SetCombatAttribute(ped, 47, !advance); // defensive tactical points
+            SetCombatAttribute(ped, 50, advance); // charge
+            SetCombatAttribute(ped, 54, true);  // choose best safe weapon
+            SetCombatAttribute(ped, 60, false); // smoke is squad-coordinated
+            SetCombatAttribute(ped, 71, advance); // leave area only on push
+            SetCombatAttribute(ped, 73, true);  // clear-LOS tactical points
+        }
+
+        private static void RestoreCombatProfile(
+            Ped ped, int combatMovement, int combatRange)
+        {
+            if (ped == null || !ped.Exists() || ped.IsDead) return;
+            Function.Call(Hash.SET_PED_COMBAT_MOVEMENT,
+                ped.Handle, combatMovement);
+            Function.Call(Hash.SET_PED_COMBAT_RANGE,
+                ped.Handle, combatRange);
+            // Restore the native open-world law profile after our bounded
+            // assignment. Values that only exist for the experiment are
+            // cleared; the normal advance options are handed back to GTA.
+            SetCombatAttribute(ped, 0, true);
+            SetCombatAttribute(ped, 4, true);
+            SetCombatAttribute(ped, 13, true);
+            SetCombatAttribute(ped, 22, false);
+            SetCombatAttribute(ped, 23, false);
+            SetCombatAttribute(ped, 28, true);
+            SetCombatAttribute(ped, 29, false);
+            SetCombatAttribute(ped, 31, false);
+            SetCombatAttribute(ped, 42, true);
+            SetCombatAttribute(ped, 43, true);
+            SetCombatAttribute(ped, 44, true);
+            SetCombatAttribute(ped, 47, false);
+            SetCombatAttribute(ped, 50, true);
+            SetCombatAttribute(ped, 54, true);
+            SetCombatAttribute(ped, 60, false);
+            SetCombatAttribute(ped, 71, true);
+            SetCombatAttribute(ped, 73, false);
+        }
+
+        private static void SetCombatAttribute(
+            Ped ped, int attribute, bool enabled)
+        {
+            Function.Call(Hash.SET_PED_COMBAT_ATTRIBUTES,
+                ped.Handle, attribute, enabled);
+        }
+
+        private void ApplyMemberCombatProfile(
+            TacticalMember member, PoliceCombatRole role,
+            TacticalSquad squad, int now, string reason)
+        {
+            if (member == null || member.Ped == null ||
+                !member.Ped.Exists() || member.Ped.IsDead) return;
+            bool changed = !member.CombatRole.HasValue ||
+                member.CombatRole.Value != role;
+            ApplyCombatProfile(member.Ped, role);
+            member.CombatRole = role;
+            if (!changed) return;
+            _combatProfileTransitions++;
+            PhysicsExperimentLog.Info("police_combat_profile_applied",
+                MemberFields(squad, member, now,
+                    new Dictionary<string, object>
+                    {
+                        { "profile", role.ToString() },
+                        { "combat_movement",
+                            PoliceTacticsPolicy.CombatMovementForRole(role) },
+                        { "combat_range",
+                            PoliceTacticsPolicy.CombatRangeForRole(role) },
+                        { "maintain_minimum_distance",
+                            PoliceTacticsPolicy.MaintainsMinimumDistance(role) },
+                        { "native_advance",
+                            PoliceTacticsPolicy.AllowsNativeAdvance(role) },
+                        { "reason", reason },
+                    }));
+        }
+
         private void ReleaseAllSquads(
             Ped player, string reason, int now)
         {
@@ -1892,8 +2137,8 @@ namespace ALLIN1
             if (ped == null || !ped.Exists() || ped.IsDead) return;
             Function.Call(Hash.REMOVE_PED_DEFENSIVE_AREA,
                 ped.Handle, false);
-            Function.Call(Hash.SET_PED_COMBAT_MOVEMENT,
-                ped.Handle, member.PreviousCombatMovement);
+            RestoreCombatProfile(ped, member.PreviousCombatMovement,
+                member.PreviousCombatRange);
             if (resumeCombat && player != null && player.Exists() &&
                 !player.IsDead && Game.Player.WantedLevel >= 2 &&
                 !IsPhysicallyDown(ped))
@@ -1902,8 +2147,7 @@ namespace ALLIN1
                 // that native causes the visible one-at-a-time rush. Give the
                 // officer a bounded defensive transition before vanilla AI
                 // resumes naturally.
-                Function.Call(Hash.SET_PED_COMBAT_MOVEMENT,
-                    ped.Handle, 1);
+                ApplyCombatProfile(ped, PoliceCombatRole.PassiveHold);
                 Function.Call(Hash.TASK_SEEK_COVER_FROM_PED,
                     ped.Handle, player.Handle, 7000, false);
             }
@@ -2104,23 +2348,6 @@ namespace ALLIN1
                 current._assignedPeds.Contains(handle);
         }
 
-        internal static bool TryGetAerialFireSupportRequest(
-            out int squadId)
-        {
-            squadId = 0;
-            PoliceTacticsCoordinator current = _current;
-            if (current == null || !current._enabled) return false;
-            foreach (TacticalSquad squad in current._squads.Values)
-            {
-                if (squad.Phase != SquadPhase.Rushing ||
-                    squad.Members.Count < PoliceTacticsPolicy.RushSquadSize)
-                    continue;
-                squadId = squad.Id;
-                return true;
-            }
-            return false;
-        }
-
         private void WriteHeartbeat(int now)
         {
             PhysicsExperimentLog.Info("police_tactics_heartbeat",
@@ -2150,6 +2377,10 @@ namespace ALLIN1
                         _containmentVehicleLinesFormed },
                     { "containment_vehicle_failures",
                         _containmentVehicleFailures },
+                    { "combat_profile_transitions",
+                        _combatProfileTransitions },
+                    { "vehicle_block_commands",
+                        _vehicleBlockCommands },
                     { "passive_holds_active", _passiveHolds.Count },
                     { "passive_hold_commands", _passiveHoldCommands },
                     { "withdrawals_started", _withdrawalsStarted },

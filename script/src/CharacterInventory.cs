@@ -21,6 +21,10 @@ namespace ALLIN1
         private static readonly Dictionary<string, int> WeaponHashes = BuildWeaponHashes();
         private static DateTime _lastWrite;
         private static bool _stateDirty;
+        private static int _lastSmokeWeaponAvailability = -1;
+        private static int _lastSmokeWeaponRegistration = -1;
+        private static readonly Dictionary<int, string> SmokeSyncStates =
+            new Dictionary<int, string>();
         private string _lastCharacter = "";
         private int _lastPedHandle;
         private bool _restorePending;
@@ -31,7 +35,7 @@ namespace ALLIN1
 
         public sealed class Inventory
         {
-            public int schema_version { get; set; } = 8;
+            public int schema_version { get; set; } = 10;
             public List<string> weapons { get; set; } = new List<string>();
             public Dictionary<string, int> weapon_ammo { get; set; } =
                 new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -40,6 +44,9 @@ namespace ALLIN1
             public List<string> gear { get; set; } = new List<string>();
             public List<string> equipped_gear { get; set; } = new List<string>();
             public List<string> properties { get; set; } = new List<string>();
+            public Dictionary<string, int> smoke_grenades { get; set; } =
+                new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public string active_smoke_color { get; set; } = "white";
             public bool managed { get; set; }
             public Outfit outfit { get; set; } = new Outfit();
             public Progress progress { get; set; } = new Progress();
@@ -261,11 +268,13 @@ namespace ALLIN1
             bool hasSavedWeapons = inventory.weapons.Count > 0;
             bool hasSavedCustomizations =
                 inventory.weapon_customizations.Count > 0;
+            bool hasSavedSmoke = SmokeTotalInMemory(inventory) > 0;
             if (!inventory.managed && !(inventory.outfit?.managed ?? false) &&
                 !(inventory.progress?.managed ?? false) &&
                 inventory.equipped_gear.Count == 0 && !hasSavedWeapons &&
-                !hasSavedCustomizations) return;
+                !hasSavedCustomizations && !hasSavedSmoke) return;
             Ped ped = Game.Player.Character;
+            CleanupInvalidSavedWeapons(character, ped, inventory);
             var owned = new HashSet<string>(inventory.weapons ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
             foreach (var entry in WeaponHashes)
             {
@@ -284,6 +293,7 @@ namespace ALLIN1
                 else if (inventory.managed)
                     Function.Call(Hash.REMOVE_WEAPON_FROM_PED, ped.Handle, hash);
             }
+            ApplySmokeInventory(ped, inventory);
             // Story/base-game weapons may be customized through GBAY without
             // having been purchased through GBAY. Reapply those saved upgrades
             // when the character loads without granting the weapon itself.
@@ -479,6 +489,322 @@ namespace ALLIN1
                 inventory.weapon_ammo[item] = Math.Max(0, ammo);
                 StageStateLocked(character, "weapon_ammo_purchase", item);
             }
+        }
+
+        internal static int GetSmokeQuantity(string color)
+        {
+            string character = CurrentCharacter();
+            if (character.Length == 0) return 0;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character,
+                        out Inventory inventory)) return 0;
+                NormalizeInventory(inventory);
+                string normalized = SmokeGrenadeCatalog.NormalizeColor(color);
+                return inventory.smoke_grenades.TryGetValue(
+                    normalized, out int quantity) ? quantity : 0;
+            }
+        }
+
+        internal static int GetSmokeTotal()
+        {
+            string character = CurrentCharacter();
+            if (character.Length == 0) return 0;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character,
+                        out Inventory inventory)) return 0;
+                NormalizeInventory(inventory);
+                return SmokeTotalInMemory(inventory);
+            }
+        }
+
+        internal static string GetActiveSmokeColor()
+        {
+            string character = CurrentCharacter();
+            if (character.Length == 0) return "white";
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character,
+                        out Inventory inventory)) return "white";
+                NormalizeInventory(inventory);
+                return ResolveActiveSmokeColorInMemory(inventory);
+            }
+        }
+
+        internal static int RecordSmokePurchase(
+            string color, int quantity)
+        {
+            string character = CurrentCharacter();
+            if (character.Length == 0 || quantity <= 0) return 0;
+            int added;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory))
+                    _state[character] = inventory = new Inventory();
+                NormalizeInventory(inventory);
+                added = AddSmokeInMemory(inventory, color, quantity);
+                if (added <= 0) return 0;
+                inventory.active_smoke_color =
+                    SmokeGrenadeCatalog.NormalizeColor(color);
+                StageStateLocked(character, "smoke_purchase",
+                    inventory.active_smoke_color);
+                ApplySmokeInventory(Game.Player.Character, inventory);
+                if (SmokeGrenadeCatalog.TryGetByColor(
+                        inventory.active_smoke_color,
+                        out SmokeGrenadeProduct product))
+                {
+                    Ped ped = Game.Player.Character;
+                    int weaponHash = Game.GenerateHash(product.WeaponName);
+                    bool owned = ped != null && ped.Exists() &&
+                        Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON,
+                            ped.Handle, weaponHash, false);
+                    int actualAmmo = owned ? Function.Call<int>(
+                        Hash.GET_AMMO_IN_PED_WEAPON,
+                        ped.Handle, weaponHash) : 0;
+                    if (!owned || actualAmmo <= 0)
+                    {
+                        RemoveSmokeInMemory(inventory,
+                            product.ColorName, added);
+                        ApplySmokeInventory(ped, inventory);
+                        ClientLog.Warn("Character",
+                            "colored_smoke_purchase_grant_failed",
+                            new Dictionary<string, object>
+                            {
+                                { "color", product.ColorName },
+                                { "weapon", product.WeaponName },
+                                { "weapon_hash", weaponHash },
+                                { "owned_after_grant", owned },
+                                { "ammo_after_grant", actualAmmo },
+                                { "inventory_rolled_back", true },
+                            });
+                        return 0;
+                    }
+                }
+            }
+            return added;
+        }
+
+        internal static bool TryEquipSmokeColor(
+            string color, out int selectedWeaponHash)
+        {
+            selectedWeaponHash = 0;
+            if (!SmokeGrenadeCatalog.TryGetByColor(color,
+                    out SmokeGrenadeProduct product)) return false;
+            string character = CurrentCharacter();
+            Ped ped = Game.Player.Character;
+            if (character.Length == 0 || ped == null || !ped.Exists())
+                return false;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character,
+                        out Inventory inventory)) return false;
+                NormalizeInventory(inventory);
+                ApplySmokeInventory(ped, inventory);
+                int weaponHash = Game.GenerateHash(product.WeaponName);
+                bool owned = Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON,
+                    ped.Handle, weaponHash, false);
+                int ammo = owned ? Function.Call<int>(
+                    Hash.GET_AMMO_IN_PED_WEAPON,
+                    ped.Handle, weaponHash) : 0;
+                if (owned && ammo > 0)
+                    Function.Call(Hash.SET_CURRENT_PED_WEAPON,
+                        ped.Handle, weaponHash, true);
+                selectedWeaponHash = Function.Call<int>(
+                    Hash.GET_SELECTED_PED_WEAPON, ped.Handle);
+                bool equipped = owned && ammo > 0 &&
+                    selectedWeaponHash == weaponHash;
+                ClientLog.Info("Character",
+                    "colored_smoke_equip_attempt",
+                    new Dictionary<string, object>
+                    {
+                        { "color", product.ColorName },
+                        { "weapon", product.WeaponName },
+                        { "weapon_hash", weaponHash },
+                        { "owned", owned },
+                        { "ammo", ammo },
+                        { "selected_weapon_hash", selectedWeaponHash },
+                        { "equipped", equipped },
+                    });
+                return equipped;
+            }
+        }
+
+        internal static bool TryConsumeActiveSmoke(
+            out string color, out int remaining)
+        {
+            color = "white";
+            remaining = 0;
+            string character = CurrentCharacter();
+            if (character.Length == 0) return false;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character,
+                        out Inventory inventory)) return false;
+                NormalizeInventory(inventory);
+                if (!TryConsumeSmokeInMemory(inventory, out color))
+                    return false;
+                remaining = SmokeTotalInMemory(inventory);
+                StageStateLocked(character, "smoke_consumed", color);
+                return true;
+            }
+        }
+
+        internal static bool TryConsumeSmokeColor(
+            string requestedColor, out int remaining)
+        {
+            remaining = 0;
+            string character = CurrentCharacter();
+            if (character.Length == 0) return false;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character,
+                        out Inventory inventory)) return false;
+                NormalizeInventory(inventory);
+                if (!TryConsumeSmokeColorInMemory(
+                        inventory, requestedColor, out string color,
+                        out remaining))
+                    return false;
+                StageStateLocked(character, "smoke_consumed", color);
+                return true;
+            }
+        }
+
+        internal static bool TryConsumeSmokeColorInMemory(
+            Inventory inventory, string requestedColor,
+            out string color, out int remaining)
+        {
+            color = SmokeGrenadeCatalog.NormalizeColor(requestedColor);
+            remaining = 0;
+            if (inventory == null) return false;
+            NormalizeSmokeInventoryInMemory(inventory);
+            if (!inventory.smoke_grenades.TryGetValue(
+                    color, out int quantity) || quantity <= 0)
+                return false;
+            remaining = quantity - 1;
+            if (remaining == 0) inventory.smoke_grenades.Remove(color);
+            else inventory.smoke_grenades[color] = remaining;
+            return true;
+        }
+
+        internal static string CycleActiveSmokeColor()
+        {
+            string character = CurrentCharacter();
+            if (character.Length == 0) return "white";
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character,
+                        out Inventory inventory)) return "white";
+                NormalizeInventory(inventory);
+                string previous = ResolveActiveSmokeColorInMemory(inventory);
+                string selected = CycleSmokeColorInMemory(inventory);
+                if (!string.Equals(previous, selected,
+                        StringComparison.OrdinalIgnoreCase))
+                    StageStateLocked(character, "smoke_color_selected",
+                        selected);
+                return selected;
+            }
+        }
+
+        internal static void SyncSmokeWeaponNow(Ped ped)
+        {
+            string character = CurrentCharacter();
+            if (character.Length == 0 || ped == null || !ped.Exists()) return;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character,
+                        out Inventory inventory)) return;
+                NormalizeInventory(inventory);
+                ApplySmokeInventory(ped, inventory);
+            }
+        }
+
+        internal static int AddSmokeInMemory(
+            Inventory inventory, string color, int quantity)
+        {
+            if (inventory == null || quantity <= 0) return 0;
+            NormalizeSmokeInventoryInMemory(inventory);
+            string normalized = SmokeGrenadeCatalog.NormalizeColor(color);
+            int current = inventory.smoke_grenades.TryGetValue(
+                normalized, out int stored) ? Math.Max(0, stored) : 0;
+            int added = Math.Min(quantity,
+                SmokeGrenadeCatalog.MaximumPerColor - Math.Min(
+                    SmokeGrenadeCatalog.MaximumPerColor, current));
+            if (added <= 0) return 0;
+            inventory.smoke_grenades[normalized] = current + added;
+            inventory.active_smoke_color = normalized;
+            return added;
+        }
+
+        internal static int RemoveSmokeInMemory(
+            Inventory inventory, string color, int quantity)
+        {
+            if (inventory == null || quantity <= 0) return 0;
+            NormalizeSmokeInventoryInMemory(inventory);
+            string normalized = SmokeGrenadeCatalog.NormalizeColor(color);
+            if (!inventory.smoke_grenades.TryGetValue(
+                    normalized, out int stored) || stored <= 0) return 0;
+            int removed = Math.Min(quantity, stored);
+            int remaining = stored - removed;
+            if (remaining <= 0) inventory.smoke_grenades.Remove(normalized);
+            else inventory.smoke_grenades[normalized] = remaining;
+            ResolveActiveSmokeColorInMemory(inventory);
+            return removed;
+        }
+
+        internal static bool TryConsumeSmokeInMemory(
+            Inventory inventory, out string color)
+        {
+            color = "white";
+            if (inventory == null) return false;
+            NormalizeSmokeInventoryInMemory(inventory);
+            string selected = ResolveActiveSmokeColorInMemory(inventory);
+            if (!inventory.smoke_grenades.TryGetValue(
+                    selected, out int quantity) || quantity <= 0)
+                return false;
+            color = selected;
+            if (quantity == 1) inventory.smoke_grenades.Remove(selected);
+            else inventory.smoke_grenades[selected] = quantity - 1;
+            ResolveActiveSmokeColorInMemory(inventory);
+            return true;
+        }
+
+        internal static string CycleSmokeColorInMemory(Inventory inventory)
+        {
+            if (inventory == null) return "white";
+            NormalizeSmokeInventoryInMemory(inventory);
+            string current = ResolveActiveSmokeColorInMemory(inventory);
+            int start = -1;
+            for (int index = 0;
+                index < SmokeGrenadeCatalog.Products.Length; index++)
+                if (string.Equals(
+                        SmokeGrenadeCatalog.Products[index].ColorName,
+                        current, StringComparison.OrdinalIgnoreCase))
+                    start = index;
+            for (int step = 1;
+                step <= SmokeGrenadeCatalog.Products.Length; step++)
+            {
+                int index = (start + step) %
+                    SmokeGrenadeCatalog.Products.Length;
+                string candidate =
+                    SmokeGrenadeCatalog.Products[index].ColorName;
+                if (!inventory.smoke_grenades.TryGetValue(
+                        candidate, out int quantity) || quantity <= 0)
+                    continue;
+                inventory.active_smoke_color = candidate;
+                return candidate;
+            }
+            inventory.active_smoke_color = "white";
+            return "white";
+        }
+
+        internal static int SmokeTotalInMemory(Inventory inventory)
+        {
+            if (inventory?.smoke_grenades == null) return 0;
+            long total = 0;
+            foreach (int quantity in inventory.smoke_grenades.Values)
+                total += Math.Max(0, quantity);
+            return total >= int.MaxValue ? int.MaxValue : (int)total;
         }
 
         internal static bool IsWeaponComponentOwned(string weapon, int componentHash)
@@ -860,6 +1186,302 @@ namespace ALLIN1
             return changed;
         }
 
+        internal static List<string> RemoveInvalidWeaponsInMemory(
+            Inventory inventory, Func<string, bool> isValid)
+        {
+            var removed = new List<string>();
+            if (inventory == null || inventory.weapons == null ||
+                isValid == null) return removed;
+            foreach (string weapon in new List<string>(inventory.weapons))
+            {
+                bool valid = !string.IsNullOrWhiteSpace(weapon) &&
+                    isValid(weapon);
+                if (valid) continue;
+                inventory.weapons.RemoveAll(value => string.Equals(
+                    value, weapon, StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrEmpty(weapon))
+                {
+                    inventory.weapon_ammo?.Remove(weapon);
+                    inventory.weapon_customizations?.Remove(weapon);
+                }
+                string removedName = weapon ?? "";
+                if (!ContainsIgnoreCase(removed, removedName))
+                    removed.Add(removedName);
+            }
+            return removed;
+        }
+
+        private static void CleanupInvalidSavedWeapons(
+            string character, Ped ped, Inventory inventory)
+        {
+            List<string> removed = RemoveInvalidWeaponsInMemory(
+                inventory, weapon => Function.Call<bool>(
+                    Hash.IS_WEAPON_VALID, GetWeaponHash(weapon)));
+            if (removed.Count == 0) return;
+            foreach (string weapon in removed)
+            {
+                if (string.IsNullOrWhiteSpace(weapon)) continue;
+                Function.Call(Hash.REMOVE_WEAPON_FROM_PED,
+                    ped.Handle, GetWeaponHash(weapon));
+            }
+            StageStateLocked(character, "invalid_weapons_cleaned",
+                string.Join(",", removed));
+            ClientLog.Warn("Character", "invalid_managed_weapons_cleaned",
+                new Dictionary<string, object>
+                {
+                    { "character", character },
+                    { "count", removed.Count },
+                    { "weapons", string.Join(",", removed) },
+                    { "removed_from_runtime", true },
+                    { "persistence", "next_story_save" },
+                });
+            GTA.UI.Screen.ShowSubtitle(
+                $"~y~ALLIN1 removed {removed.Count} invalid weapon" +
+                (removed.Count == 1 ? "." : "s."), 3500);
+        }
+
+        private static void ApplySmokeInventory(Ped ped, Inventory inventory)
+        {
+            if (ped == null || !ped.Exists() || inventory == null) return;
+            int availableWeapons =
+                SmokeGrenadeCatalog.AvailableCustomWeaponCount();
+            int registeredWeapons =
+                SmokeGrenadeCatalog.RegisteredCustomWeaponCount(
+                    out int totalDlcWeapons,
+                    out string catalogFailure);
+            bool smokeWeaponsUsable =
+                availableWeapons == SmokeGrenadeCatalog.Products.Length;
+            if (!smokeWeaponsUsable)
+            {
+                int removedRuntimeWeapons = 0;
+                foreach (SmokeGrenadeProduct product in
+                    SmokeGrenadeCatalog.Products)
+                {
+                    int weaponHash = Game.GenerateHash(product.WeaponName);
+                    if (!Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON,
+                            ped.Handle, weaponHash, false))
+                        continue;
+                    Function.Call(Hash.REMOVE_WEAPON_FROM_PED,
+                        ped.Handle, weaponHash);
+                    removedRuntimeWeapons++;
+                }
+                if (_lastSmokeWeaponAvailability != availableWeapons ||
+                    _lastSmokeWeaponRegistration != registeredWeapons)
+                {
+                    ClientLog.Warn("Character",
+                        "colored_smoke_weapon_pack_unavailable",
+                        new Dictionary<string, object>
+                        {
+                            { "valid_weapon_definitions", availableWeapons },
+                            { "required_weapon_definitions",
+                                SmokeGrenadeCatalog.Products.Length },
+                            { "registered_weapon_definitions",
+                                registeredWeapons },
+                            { "registration_required", false },
+                            { "total_dlc_weapons", totalDlcWeapons },
+                            { "dlc_catalog_failure", catalogFailure },
+                            { "removed_runtime_weapons",
+                                removedRuntimeWeapons },
+                            { "staged_smoke_stock_preserved", true },
+                            { "native_smoke_preserved", true },
+                            { "inventory_mutated", false },
+                        });
+                    _lastSmokeWeaponAvailability = availableWeapons;
+                    _lastSmokeWeaponRegistration = registeredWeapons;
+                }
+                return;
+            }
+            if (_lastSmokeWeaponAvailability != availableWeapons ||
+                _lastSmokeWeaponRegistration != registeredWeapons)
+            {
+                ClientLog.Info("Character",
+                    "colored_smoke_weapon_pack_available",
+                    new Dictionary<string, object>
+                    {
+                        { "valid_weapon_definitions", availableWeapons },
+                        { "registered_weapon_definitions",
+                            registeredWeapons },
+                        { "registration_mode", registeredWeapons ==
+                            SmokeGrenadeCatalog.Products.Length
+                                ? "dlc_catalog" : "base_weapon_info" },
+                        { "registration_required", false },
+                        { "total_dlc_weapons", totalDlcWeapons },
+                        { "dlc_catalog_failure", catalogFailure },
+                        { "inventory_sync_enabled", true },
+                    });
+                _lastSmokeWeaponAvailability = availableWeapons;
+                _lastSmokeWeaponRegistration = registeredWeapons;
+            }
+            foreach (SmokeGrenadeProduct product in
+                SmokeGrenadeCatalog.Products)
+            {
+                int desiredAmmo = inventory.smoke_grenades.TryGetValue(
+                    product.ColorName, out int stored)
+                    ? Math.Max(0, stored) : 0;
+                int weaponHash = Game.GenerateHash(product.WeaponName);
+                bool owned = Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON,
+                    ped.Handle, weaponHash, false);
+                bool grantAttempted = false;
+                if (desiredAmmo <= 0)
+                {
+                    if (owned)
+                        Function.Call(Hash.REMOVE_WEAPON_FROM_PED,
+                            ped.Handle, weaponHash);
+                    bool ownedAfterRemoval = Function.Call<bool>(
+                        Hash.HAS_PED_GOT_WEAPON,
+                        ped.Handle, weaponHash, false);
+                    int ammoAfterRemoval = ownedAfterRemoval
+                        ? Function.Call<int>(Hash.GET_AMMO_IN_PED_WEAPON,
+                            ped.Handle, weaponHash) : 0;
+                    LogSmokeSyncState(ped, product, desiredAmmo,
+                        owned, ownedAfterRemoval, ammoAfterRemoval, false);
+                    continue;
+                }
+                var output = new OutputArgument();
+                if (Function.Call<bool>(Hash.GET_MAX_AMMO,
+                        ped.Handle, weaponHash, output))
+                {
+                    int maximum = output.GetResult<int>();
+                    if (maximum > 0)
+                        desiredAmmo = Math.Min(desiredAmmo, maximum);
+                }
+                if (!owned)
+                {
+                    grantAttempted = true;
+                    // Add-on throwables are most reliable when GTA receives a
+                    // real loaded round with the initial grant. Reconcile the
+                    // full per-color stock immediately afterward without
+                    // forcing every restored color into the player's hand.
+                    ped.Weapons.Give((WeaponHash)(uint)weaponHash,
+                        1, false, true);
+                }
+                int currentAmmo = Function.Call<int>(
+                    Hash.GET_AMMO_IN_PED_WEAPON,
+                    ped.Handle, weaponHash);
+                if (currentAmmo != desiredAmmo)
+                    Function.Call(Hash.SET_PED_AMMO,
+                        ped.Handle, weaponHash, desiredAmmo);
+                bool ownedAfter = Function.Call<bool>(
+                    Hash.HAS_PED_GOT_WEAPON,
+                    ped.Handle, weaponHash, false);
+                int ammoAfter = Function.Call<int>(
+                    Hash.GET_AMMO_IN_PED_WEAPON,
+                    ped.Handle, weaponHash);
+                LogSmokeSyncState(ped, product, desiredAmmo,
+                    owned, ownedAfter, ammoAfter, grantAttempted);
+            }
+
+            int legacyHash = Game.GenerateHash(
+                SmokeGrenadeCatalog.NativeWeaponName);
+            if (Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON,
+                    ped.Handle, legacyHash, false))
+                Function.Call(Hash.REMOVE_WEAPON_FROM_PED,
+                    ped.Handle, legacyHash);
+        }
+
+        private static void LogSmokeSyncState(
+            Ped ped, SmokeGrenadeProduct product, int desiredAmmo,
+            bool ownedBefore, bool ownedAfter, int ammoAfter,
+            bool grantAttempted)
+        {
+            int weaponHash = Game.GenerateHash(product.WeaponName);
+            int selectedHash = Function.Call<int>(
+                Hash.GET_SELECTED_PED_WEAPON, ped.Handle);
+            string fingerprint = desiredAmmo + ":" + ownedAfter + ":" +
+                ammoAfter + ":" + selectedHash;
+            if (SmokeSyncStates.TryGetValue(weaponHash,
+                    out string previous) && previous == fingerprint) return;
+            SmokeSyncStates[weaponHash] = fingerprint;
+            var fields = new Dictionary<string, object>
+            {
+                { "color", product.ColorName },
+                { "weapon", product.WeaponName },
+                { "weapon_hash", weaponHash },
+                { "desired_ammo", desiredAmmo },
+                { "owned_before", ownedBefore },
+                { "grant_attempted", grantAttempted },
+                { "grant_loaded_round", grantAttempted },
+                { "owned_after", ownedAfter },
+                { "ammo_after", ammoAfter },
+                { "selected_weapon_hash", selectedHash },
+                { "sync_succeeded", desiredAmmo <= 0 ||
+                    (ownedAfter && ammoAfter == desiredAmmo) },
+            };
+            if (desiredAmmo > 0 && (!ownedAfter || ammoAfter <= 0))
+                ClientLog.Warn("Character",
+                    "colored_smoke_weapon_sync_failed", fields);
+            else
+                ClientLog.Info("Character",
+                    "colored_smoke_weapon_sync", fields);
+        }
+
+        private static string ResolveActiveSmokeColorInMemory(
+            Inventory inventory)
+        {
+            string selected = SmokeGrenadeCatalog.NormalizeColor(
+                inventory.active_smoke_color);
+            if (inventory.smoke_grenades.TryGetValue(
+                    selected, out int quantity) && quantity > 0)
+            {
+                inventory.active_smoke_color = selected;
+                return selected;
+            }
+            foreach (SmokeGrenadeProduct product in
+                SmokeGrenadeCatalog.Products)
+            {
+                if (!inventory.smoke_grenades.TryGetValue(
+                        product.ColorName, out quantity) || quantity <= 0)
+                    continue;
+                inventory.active_smoke_color = product.ColorName;
+                return product.ColorName;
+            }
+            inventory.active_smoke_color = "white";
+            return "white";
+        }
+
+        private static bool NormalizeSmokeInventoryInMemory(
+            Inventory inventory)
+        {
+            bool changed = false;
+            if (inventory.smoke_grenades == null)
+            {
+                inventory.smoke_grenades =
+                    new Dictionary<string, int>(
+                        StringComparer.OrdinalIgnoreCase);
+                changed = true;
+            }
+            var normalized = new Dictionary<string, int>(
+                StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, int> entry in
+                inventory.smoke_grenades)
+            {
+                if (!SmokeGrenadeCatalog.IsSupportedColor(entry.Key) ||
+                    entry.Value <= 0)
+                {
+                    changed = true;
+                    continue;
+                }
+                string color = SmokeGrenadeCatalog.NormalizeColor(entry.Key);
+                int quantity = Math.Min(
+                    SmokeGrenadeCatalog.MaximumPerColor, entry.Value);
+                if (quantity != entry.Value ||
+                    !string.Equals(color, entry.Key,
+                        StringComparison.Ordinal)) changed = true;
+                normalized[color] = normalized.TryGetValue(
+                    color, out int existing)
+                    ? Math.Min(SmokeGrenadeCatalog.MaximumPerColor,
+                        existing + quantity) : quantity;
+            }
+            if (normalized.Count != inventory.smoke_grenades.Count)
+                changed = true;
+            inventory.smoke_grenades = normalized;
+            string before = inventory.active_smoke_color;
+            string resolved = ResolveActiveSmokeColorInMemory(inventory);
+            if (!string.Equals(before, resolved,
+                    StringComparison.Ordinal)) changed = true;
+            return changed;
+        }
+
         private static bool NormalizeInventory(Inventory inventory)
         {
             bool changed = false;
@@ -870,6 +1492,29 @@ namespace ALLIN1
                 inventory.properties = new List<string>();
                 changed = true;
             }
+
+            // Schema 10 uses the game's dedicated smoke-grenade weapon as the
+            // runtime carrier. Native WEAPON_BZGAS remains ordinary Tear Gas.
+            // Preserve older smoke-grenade ammo as white stock.
+            if (inventory.schema_version < 10 &&
+                ContainsIgnoreCase(inventory.weapons,
+                    SmokeGrenadeCatalog.NativeWeaponName))
+            {
+                int legacyAmmo = 0;
+                if (inventory.weapon_ammo != null)
+                    inventory.weapon_ammo.TryGetValue(
+                        SmokeGrenadeCatalog.NativeWeaponName,
+                        out legacyAmmo);
+                inventory.weapons.RemoveAll(value => string.Equals(
+                    value, SmokeGrenadeCatalog.NativeWeaponName,
+                    StringComparison.OrdinalIgnoreCase));
+                inventory.weapon_ammo?.Remove(
+                    SmokeGrenadeCatalog.NativeWeaponName);
+                if (legacyAmmo > 0)
+                    AddSmokeInMemory(inventory, "white", legacyAmmo);
+                changed = true;
+            }
+            changed |= NormalizeSmokeInventoryInMemory(inventory);
 
             if (inventory.schema_version < 4 || inventory.equipped_gear == null)
             {
@@ -1011,9 +1656,9 @@ namespace ALLIN1
             inventory.gear.RemoveAll(item =>
                 !ContainsIgnoreCase(inventory.equipped_gear, item));
             if (inventory.gear.Count != ownedBefore) changed = true;
-            if (inventory.schema_version != 8)
+            if (inventory.schema_version != 10)
             {
-                inventory.schema_version = 8;
+                inventory.schema_version = 10;
                 changed = true;
             }
             return changed;

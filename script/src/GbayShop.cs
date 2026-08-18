@@ -471,6 +471,11 @@ namespace ALLIN1
         internal WeaponPurchaseQuote GetWeaponPurchaseQuote(
             string weaponName, int unitPrice)
         {
+            if (SmokeGrenadeCatalog.TryGetProduct(
+                    weaponName, out SmokeGrenadeProduct smoke))
+                return WeaponPurchasePolicy.Quote(
+                    smoke.UnitPrice, "Throwables",
+                    smoke.BundleQuantity, _freeMode);
             Ped player = Game.Player.Character;
             Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
             string category = WeaponList.CategoryNames.ContainsKey(weaponName)
@@ -484,6 +489,11 @@ namespace ALLIN1
 
         internal void ExecuteGiveWeapon(string weaponName, int unitPrice)
         {
+            if (SmokeGrenadeCatalog.IsProduct(weaponName))
+            {
+                ExecuteGiveSmokeGrenades(weaponName);
+                return;
+            }
             Ped player = Game.Player.Character;
             Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
 
@@ -573,6 +583,102 @@ namespace ALLIN1
                 + $"quantity={chargedQuantity}, total=${totalPrice}");
             CharacterInventory.RecordOwned(weaponName, false);
             GbayPreferences.RecordWeapon(weaponName);
+        }
+
+        internal void ExecuteGiveSmokeGrenades(string productId)
+        {
+            if (!SmokeGrenadeCatalog.TryGetProduct(
+                    productId, out SmokeGrenadeProduct product))
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~This smoke colour is unavailable.", 3000);
+                return;
+            }
+            int availableWeapons =
+                SmokeGrenadeCatalog.AvailableCustomWeaponCount();
+            int registeredWeapons =
+                SmokeGrenadeCatalog.RegisteredCustomWeaponCount(
+                    out int totalDlcWeapons,
+                    out string catalogFailure);
+            if (availableWeapons != SmokeGrenadeCatalog.Products.Length)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Colored smoke weapons are temporarily unavailable. " +
+                    "Your inventory was not charged.", 4500);
+                ClientLog.Warn("GBAY", "smoke_purchase_pack_unavailable",
+                    new Dictionary<string, object>
+                    {
+                        { "product", productId },
+                        { "valid_weapon_definitions", availableWeapons },
+                        { "required_weapon_definitions",
+                            SmokeGrenadeCatalog.Products.Length },
+                        { "registered_weapon_definitions",
+                            registeredWeapons },
+                        { "registration_required", false },
+                        { "total_dlc_weapons", totalDlcWeapons },
+                        { "dlc_catalog_failure", catalogFailure },
+                        { "charged", false },
+                    });
+                return;
+            }
+            WeaponPurchaseQuote quote = GetWeaponPurchaseQuote(
+                productId, product.UnitPrice);
+            if (quote.Status != WeaponPurchaseStatus.Available ||
+                quote.Quantity <= 0)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Smoke quantity is unavailable.", 3000);
+                return;
+            }
+            if (!_freeMode && quote.TotalPrice > 0 &&
+                Game.Player.Money < quote.TotalPrice)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Insufficient funds.", 3000);
+                return;
+            }
+
+            int added = CharacterInventory.RecordSmokePurchase(
+                product.ColorName, quote.Quantity);
+            if (added <= 0)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~Smoke purchase could not be added.", 3000);
+                return;
+            }
+            int charged = WeaponPurchasePolicy.PriceActualQuantity(
+                quote, added, _freeMode);
+            if (!_freeMode && charged > 0)
+                Game.Player.Money -= charged;
+            int stock = CharacterInventory.GetSmokeQuantity(
+                product.ColorName);
+            bool equipped = CharacterInventory.TryEquipSmokeColor(
+                product.ColorName, out int selectedWeaponHash);
+            GTA.UI.Screen.ShowSubtitle(
+                charged > 0
+                    ? $"~g~{product.DisplayName}~w~ purchased " +
+                        $"({added} x ${quote.UnitPrice:N0}) for " +
+                        $"~g~${charged:N0}~w~. " +
+                        (equipped ? "Equipped." :
+                            "Added to the weapon wheel.")
+                    : $"~g~{product.DisplayName}~w~ added to the weapon wheel" +
+                        (equipped ? " and equipped." : "."),
+                3000);
+            GbayPreferences.RecordWeapon(productId);
+            ClientLog.Info("GBAY", "smoke_grenade_purchase_staged",
+                new Dictionary<string, object>
+                {
+                    { "product", productId },
+                    { "color", product.ColorName },
+                    { "quantity", added },
+                    { "stock", stock },
+                    { "unit_price", quote.UnitPrice },
+                    { "total_price", charged },
+                    { "equip_requested", true },
+                    { "equipped", equipped },
+                    { "selected_weapon_hash", selectedWeaponHash },
+                    { "persistence", "next_story_save" },
+                });
         }
 
         /// <summary>

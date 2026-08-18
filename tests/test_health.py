@@ -1,8 +1,9 @@
 import hashlib
+import json
 import os
 import struct
 
-from allin1.health import scan_installation, sha256_file
+from allin1.health import consume_rpf_canary, scan_installation, sha256_file
 
 
 def _write_pe(path, *, size=4096):
@@ -115,3 +116,73 @@ def test_health_ignores_allin1_backup_copies(tmp_path):
 
     report = scan_installation(tmp_path)
     assert "duplicate_mod" not in {issue.code for issue in report.issues}
+
+
+def test_health_blocks_quarantined_and_incomplete_allin1_rpf_packs(tmp_path):
+    _game(tmp_path, enhanced=True)
+    dlcpacks = tmp_path / "mods/update/x64/dlcpacks"
+    smoke = dlcpacks / "allin1_smoke"
+    broken = dlcpacks / "allin1_future"
+    smoke.mkdir(parents=True)
+    (smoke / "dlc.rpf").write_bytes(b"readable-but-runtime-unsafe")
+    broken.mkdir()
+
+    report = scan_installation(tmp_path)
+
+    codes = {issue.code for issue in report.issues}
+    assert {"rpf_pack_quarantined", "rpf_pack_incomplete"} <= codes
+    assert report.launch_safe is False
+
+
+def test_health_allows_exact_smoke_canary_once(tmp_path):
+    _game(tmp_path, enhanced=True)
+    archive = (
+        tmp_path / "mods/update/x64/dlcpacks/allin1_smoke/dlc.rpf"
+    )
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(b"schema-correct-canary")
+    marker_path = tmp_path / "scripts/ALLIN1_colored_smoke_weapons.json"
+    marker_path.write_text(json.dumps({
+        "schema": 2,
+        "pack_id": "allin1_smoke",
+        "canary_state": "pending",
+        "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+    }))
+
+    pending = scan_installation(tmp_path)
+    pending_codes = {issue.code for issue in pending.issues}
+    assert "rpf_pack_canary" in pending_codes
+    assert "rpf_pack_quarantined" not in pending_codes
+    assert pending.launch_safe is True
+
+    assert consume_rpf_canary(tmp_path, "allin1_smoke") is True
+    consumed = json.loads(marker_path.read_text())
+    assert consumed["canary_state"] == "attempted"
+    attempted = scan_installation(tmp_path)
+    assert "rpf_pack_quarantined" in {
+        issue.code for issue in attempted.issues
+    }
+    assert attempted.launch_safe is False
+
+
+def test_health_rejects_smoke_canary_hash_mismatch(tmp_path):
+    _game(tmp_path, enhanced=True)
+    archive = (
+        tmp_path / "mods/update/x64/dlcpacks/allin1_smoke/dlc.rpf"
+    )
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(b"actual")
+    (tmp_path / "scripts/ALLIN1_colored_smoke_weapons.json").write_text(
+        json.dumps({
+            "schema": 2,
+            "pack_id": "allin1_smoke",
+            "canary_state": "pending",
+            "archive_sha256": hashlib.sha256(b"different").hexdigest(),
+        })
+    )
+
+    report = scan_installation(tmp_path)
+    assert "rpf_pack_quarantined" in {
+        issue.code for issue in report.issues
+    }
+    assert report.launch_safe is False

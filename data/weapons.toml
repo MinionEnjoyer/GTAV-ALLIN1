@@ -619,7 +619,7 @@ purchase_quantity = 25
 
 [[weapons]]
 name = "WEAPON_BZGAS"
-label = "BZ Gas"
+label = "Tear Gas"
 category = "throwables"
 price = 150
 purchase_quantity = 25
@@ -668,7 +668,9 @@ purchase_quantity = 1
 
 [[weapons]]
 name = "WEAPON_SMOKEGRENADE"
-label = "Tear Gas"
+# This dedicated native smoke carrier is represented by the seven synthetic
+# per-colour GBAY products; the raw row is hidden from the purchase browser.
+label = "ALLIN1 Smoke Grenade"
 category = "throwables"
 price = 150
 purchase_quantity = 25

@@ -1587,6 +1587,9 @@ def test_physics_experiment_has_observable_runtime_and_safe_archive_tooling():
     assert 'command == "validate-euphoria"' in patcher
     assert "createModsCopy" in patcher
     assert "IsGtaProcessRunning()" in patcher
+    assert "RPF post-conversion scan returned no entries" in patcher
+    assert "RPF reopened:" in patcher
+    assert "Archive-relative entry is ambiguous" in patcher
     install = patcher[patcher.index("static int InstallEuphoria"):
                       patcher.index("static int VerifyEuphoria")]
     assert install.index("EnsureEuphoriaBackup") < install.index(
@@ -1594,11 +1597,121 @@ def test_physics_experiment_has_observable_runtime_and_safe_archive_tooling():
     )
     assert "TryRollbackEuphoriaInstall" in install
     assert "VerifyEuphoriaMarker" in patcher
+    assert 'command == "install-smoke-tuning"' in patcher
+    assert 'command == "verify-smoke-tuning"' in patcher
+    assert 'command == "remove-smoke-tuning"' in patcher
+    assert 'command == "install-colored-smoke-weapons"' in patcher
+    assert 'command == "build-colored-smoke-weapons"' in patcher
+    assert 'command == "verify-colored-smoke-weapons"' in patcher
+    assert 'command == "remove-colored-smoke-weapons"' in patcher
+    assert 'command == "build-merged-smoke-canary"' in patcher
+    assert 'command == "install-merged-smoke-canary"' in patcher
+    assert 'command == "verify-merged-smoke-canary"' in patcher
+    assert 'command == "remove-merged-smoke-canary"' in patcher
+    assert 'command == "build-merged-smoke-weapons"' in patcher
+    assert 'command == "install-merged-smoke-weapons"' in patcher
+    assert 'command == "verify-merged-smoke-weapons"' in patcher
+    assert 'command == "remove-merged-smoke-weapons"' in patcher
+    assert "base_weapons_meta_merge" in patcher
+    assert 'ValidateMergedSmokeWeaponMeta(current, installed, 1)' in patcher
+    assert "BuildMergedSmokeWeaponAnimationsMeta" in patcher
+    assert "ValidateMergedSmokeWeaponAnimationsMeta" in patcher
+    assert "BaseWeaponAnimationsMetaPath" in patcher
+    assert '"WEAPON_SMOKEGRENADE"' in patcher
+    assert 'clone.SetAttributeValue(\n                        "key", ColoredSmokeWeapons[index].WeaponName)' in patcher
+    assert "ValidateMergedSmokeArchiveSnapshot(\n                    gtaPath, original, originalAnimations, originalLanguage," in patcher
+    assert "BaseAmericanLanguageArchivePath" in patcher
+    assert "BuildMergedSmokeLanguageArchive" in patcher
+    assert "BaseScaleformGenericArchivePath" in patcher
+    assert "BuildMergedSmokeHudArchive" in patcher
+    assert "PatchSmokeHudGfx" in patcher
+    assert 'const string bzGasLabel = "INT-1600701090"' in patcher
+    assert 'SetElementValue(item, "StatName",' in patcher
+    assert '"A1SM" + spec.Color.ToUpperInvariant())' in patcher
+    assert 'SetAttributeValue("value", "5")' in patcher
+    assert "installed_animations_sha256" in patcher
+    assert '"full_pending"' in patcher
+    assert 'CreateMergedSmokeArchiveSnapshot(modsRpf, gtaPath)' in patcher
+    assert 'RestoreMergedSmokeArchiveSnapshot(gtaPath)' in patcher
+    assert '{ "allin1_smoke", "dlcpacks:/allin1_smoke/" }' in patcher
+    assert 'WeaponName = "WEAPON_ALLIN1_SMOKE_" + suffix' in patcher
+    assert 'AmmoName = "AMMO_ALLIN1_SMOKE_" + suffix' in patcher
+    assert 'Gxt2File.FromText' in patcher
+    assert 'new XAttribute("value", 451 + index)' in patcher
+    assert 'new XAttribute("value", 401 + index)' in patcher
+    assert 'new XAttribute("value", "58")' in patcher
+    assert 'new XAttribute("value", "0")' in patcher
+    assert '"dlc_allin1_smokeCRC:/common/data/ai/weaponAllin1Smoke.meta"' in patcher
+    assert '"dlc_allin1_smokeCRC:/common/data/shop_weapon.meta"' in patcher
+    assert '"WEAPON_SHOP_INFO_METADATA_FILE"' in patcher
+    assert 'BuildColoredSmokeShopMeta()' in patcher
+    assert 'new XElement("nameHash", spec.WeaponName)' in patcher
+    assert 'shopItems.Length != ColoredSmokeWeapons.Length' in patcher
+    assert '"Invalid shop registration for {spec.Color} smoke."' in patcher
+    assert '"contentChangeSets", "contentChangeSetGroups"' in patcher
+    assert '"startupScript", "scriptCallstackSize", "type", "order"' in patcher
+    assert '"minorOrder", "isLevelPack", "dependencyPackHash"' in patcher
+    assert '"Colored smoke setup2.xml does not match the required positional SSetupData schema."' in patcher
+    assert 'SmokeExplosionTag = "EXP_TAG_SMOKEGRENADE"' in patcher
+    assert 'SmokeVfxTag = "EXP_VFXTAG_SMOKE_GRENADE"' in patcher
+    assert '"bAppliesContinuousDamage", false' in patcher
+    assert '"bNoOcclusion", true' in patcher
+    assert "Do not call PsoFile.Save here" in patcher
+    assert 'SmokeExplosionFxPath' in patcher
+    smoke = patcher[patcher.index("static int InstallSmokeTuning"):
+                    patcher.index("static int VerifySmokeTuning")]
+    assert smoke.index("EnsureSmokeBackup") < smoke.index(
+        "writesStarted = true"
+    )
+    assert "RestoreSmokeBackup" in smoke
     remove = patcher[patcher.index("static int RemoveEuphoria"):
                      patcher.index("static bool TryLoadEuphoriaPayload")]
     assert remove.index("restore.Add") < remove.index(
         "File.Copy(backup, target, true)"
     )
+
+
+def test_enhanced_smoke_uses_independent_weapons_and_grounded_deployment():
+    controller = (ROOT / "script/src/EnhancedSmokeController.cs").read_text()
+    inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()
+    catalog = (ROOT / "script/src/SmokeGrenadeCatalog.cs").read_text()
+
+    assert "Control.Reload" not in controller
+    assert "ALLIN1_colored_smoke_merged_canary.json" in controller
+    assert "0x32CA01C3UL" not in controller
+    assert "RegisterWeaponWheelLabels" not in controller
+    assert "colored_smoke_weapon_sync_failed" in inventory
+    assert "colored_smoke_purchase_grant_failed" in inventory
+    assert "colored_smoke_equip_attempt" in inventory
+    assert "SET_CURRENT_PED_WEAPON" in inventory
+    assert "TryGetByWeaponHash" in controller
+    assert "TryConsumeSmokeColor" in controller
+    assert "!isInAir && hasCollided" in controller
+    assert '"enhanced_smoke_projectile_motion"' in controller
+    assert '"enhanced_smoke_projectile_settled"' in controller
+    assert '"enhanced_smoke_projectile_expired_unsettled"' in controller
+    assert "SET_PARTICLE_FX_NON_LOOPED_COLOUR" in controller
+    assert controller.index("SET_PARTICLE_FX_NON_LOOPED_COLOUR") < controller.index(
+        "START_PARTICLE_FX_NON_LOOPED_AT_COORD"
+    )
+    assert "ShouldUsePrimaryLoop" in controller
+    assert "CanUseNativeFallback" in controller
+    assert "WEAPON_ALLIN1_SMOKE_" in catalog
+    assert "AMMO_ALLIN1_SMOKE_" in catalog
+    assert "GET_NUM_DLC_WEAPONS" in catalog
+    assert "GET_DLC_WEAPON_DATA" in catalog
+    assert "DlcWeaponHashOffset = 8" in catalog
+    assert "1, false, true" in inventory
+    assert '"registered_custom_weapon_types"' in controller
+    assert "RemoveInvalidWeaponsInMemory" in inventory
+    assert '"invalid_managed_weapons_cleaned"' in inventory
+    assert '"staged_smoke_stock_preserved"' in inventory
+    assert '"registration_mode", registeredWeapons ==' in inventory
+    assert '"registration_required", false' in inventory
+    assert "availableWeapons == SmokeGrenadeCatalog.Products.Length" in inventory
+    assert "TryConsumeSmokeColorInMemory" in inventory
+    assert "Hash.REMOVE_WEAPON_FROM_PED" in inventory
+    assert "SmokeGrenadeCatalog.NativeWeaponName" in inventory
 
 
 def test_windows_toolchain_ci_is_cached_bounded_and_non_mutating():
@@ -1619,6 +1732,15 @@ def test_windows_toolchain_ci_is_cached_bounded_and_non_mutating():
     assert '$RpfPublishDir = Join-Path $TempDir "rpfpatcher_publish"' in tools_script
     assert '-o $RpfPublishDir' in tools_script
     assert '-o $RpfPatcherDir' not in tools_script
+
+
+def test_rpf_toolchain_pins_enhanced_aware_codewalker_authoring_core():
+    tools_script = (ROOT / "runtools.ps1").read_text(encoding="utf-8")
+    modules = (ROOT / ".gitmodules").read_text(encoding="utf-8")
+    assert "https://github.com/crxhvrd/CodeWalkerProjects.git" in tools_script
+    assert "0bf552913d96da9ad1f266eb5c7d6d75b96c89f2" in tools_script
+    assert "checkout --detach $CwCommit" in tools_script
+    assert "https://github.com/crxhvrd/CodeWalkerProjects.git" in modules
 
 
 def test_launcher_uses_gui_entry_point_without_console_window():

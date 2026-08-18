@@ -73,7 +73,7 @@ def test_deploy_script_copies_binaries_and_config(tmp_path, monkeypatch):
     assert (scripts / "LemonUI.SHVDN3.dll").read_bytes() == b"ui"
     assert (scripts / "ALLIN1.toml").exists()
     assert (scripts / "ALLIN1_vehicle_grounding.json").exists()
-    assert (scripts / "ALLIN1.version").read_text().strip() == "0.4.7"
+    assert (scripts / "ALLIN1.version").read_text().strip() == "0.4.8"
     assert not (scripts / "ALLIN1.ini").exists()
 
 
@@ -429,3 +429,214 @@ def test_atomic_copy_restores_previous_file_on_replace_failure(tmp_path, monkeyp
         installer._copy_atomic(source, destination)
     assert destination.read_bytes() == b"old"
     monkeypatch.setattr(installer.Path, "replace", original_replace)
+
+
+def test_install_colored_smoke_weapons_invokes_owned_dlc_command(tmp_path, monkeypatch):
+    tools = tmp_path / "tools"
+    patcher = tools / "RpfPatcher" / "RpfPatcher.exe"
+    patcher.parent.mkdir(parents=True)
+    patcher.touch()
+    game = _game(tmp_path)
+    result = installer.InstallResult(game)
+    run = Mock(return_value=Mock(returncode=0, stdout="verified", stderr=""))
+    monkeypatch.setattr(installer, "_TOOLS_DIR", tools)
+    monkeypatch.setattr(installer, "run_hidden", run)
+
+    assert installer._install_colored_smoke_weapons(game, result) is True
+    run.assert_called_once_with(
+        [str(patcher), "install-colored-smoke-weapons", str(game)],
+        capture_output=True, text=True, timeout=600,
+    )
+    assert result.warnings == []
+
+
+def test_install_colored_smoke_weapons_reports_patcher_failure(tmp_path, monkeypatch):
+    tools = tmp_path / "tools"
+    patcher = tools / "RpfPatcher" / "RpfPatcher.exe"
+    patcher.parent.mkdir(parents=True)
+    patcher.touch()
+    game = _game(tmp_path)
+    result = installer.InstallResult(game)
+    monkeypatch.setattr(installer, "_TOOLS_DIR", tools)
+    monkeypatch.setattr(installer, "run_hidden", Mock(return_value=Mock(
+        returncode=3, stdout="", stderr="metadata mismatch",
+    )))
+
+    assert installer._install_colored_smoke_weapons(game, result) is False
+    assert result.warnings == [
+        "Colored smoke weapon installation failed: metadata mismatch"
+    ]
+
+
+def test_colored_smoke_removal_does_not_depend_on_marker(tmp_path, monkeypatch):
+    tools = tmp_path / "tools"
+    patcher = tools / "RpfPatcher" / "RpfPatcher.exe"
+    patcher.parent.mkdir(parents=True)
+    patcher.touch()
+    game = _game(tmp_path)
+    archive = game / "mods/update/x64/dlcpacks/allin1_smoke/dlc.rpf"
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(b"unsafe")
+    run = Mock(return_value=Mock(returncode=0, stdout="removed", stderr=""))
+    monkeypatch.setattr(installer, "_TOOLS_DIR", tools)
+    monkeypatch.setattr(installer, "run_hidden", run)
+
+    installer._remove_colored_smoke_weapons(game)
+
+    run.assert_called_once_with(
+        [str(patcher), "remove-colored-smoke-weapons", str(game)],
+        capture_output=True, text=True, timeout=600,
+    )
+
+
+def test_merged_smoke_canary_removal_is_marker_gated(tmp_path, monkeypatch):
+    tools = tmp_path / "tools"
+    patcher = tools / "RpfPatcher" / "RpfPatcher.exe"
+    patcher.parent.mkdir(parents=True)
+    patcher.touch()
+    game = _game(tmp_path)
+    run = Mock(return_value=Mock(returncode=0, stdout="restored", stderr=""))
+    monkeypatch.setattr(installer, "_TOOLS_DIR", tools)
+    monkeypatch.setattr(installer, "run_hidden", run)
+
+    installer._remove_merged_smoke_canary(game)
+    run.assert_not_called()
+
+    marker = game / "scripts/ALLIN1_colored_smoke_merged_canary.json"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("{}")
+    installer._remove_merged_smoke_canary(game)
+
+    run.assert_called_once_with(
+        [str(patcher), "remove-merged-smoke-canary", str(game)],
+        capture_output=True, text=True, timeout=600,
+    )
+
+
+def test_rpf_quarantine_marker_is_atomic_and_diagnostic(tmp_path):
+    game = _game(tmp_path)
+
+    installer._write_rpf_quarantine(game)
+
+    marker = json.loads(
+        (game / "scripts/ALLIN1_rpf_quarantine.json").read_text()
+    )
+    smoke = marker["packs"]["allin1_smoke"]
+    assert marker["schema"] == 1
+    assert smoke["state"] == "quarantined"
+    assert "Story Mode startup hangs" in smoke["reason"]
+
+
+def test_smoke_tuning_installer_reports_missing_failure_exception_and_success(
+    tmp_path, monkeypatch,
+):
+    tools = tmp_path / "tools"
+    game = _game(tmp_path)
+    result = installer.InstallResult(game)
+    monkeypatch.setattr(installer, "_TOOLS_DIR", tools)
+
+    assert installer._install_smoke_tuning(game, result) is False
+    assert "RpfPatcher.exe missing" in result.warnings[-1]
+
+    patcher = tools / "RpfPatcher" / "RpfPatcher.exe"
+    patcher.parent.mkdir(parents=True)
+    patcher.touch()
+    monkeypatch.setattr(installer, "run_hidden", Mock(return_value=Mock(
+        returncode=0, stdout="merged\nverified", stderr="",
+    )))
+    assert installer._install_smoke_tuning(game, result) is True
+
+    monkeypatch.setattr(installer, "run_hidden", Mock(return_value=Mock(
+        returncode=4, stdout="", stderr="",
+    )))
+    assert installer._install_smoke_tuning(game, result) is False
+    assert result.warnings[-1].endswith("exit code 4")
+
+    monkeypatch.setattr(installer, "run_hidden", Mock(side_effect=OSError("locked")))
+    assert installer._install_smoke_tuning(game, result) is False
+    assert result.warnings[-1].endswith("locked")
+
+
+def test_smoke_tuning_removal_is_gated_and_handles_all_tool_results(
+    tmp_path, monkeypatch,
+):
+    tools = tmp_path / "tools"
+    game = _game(tmp_path)
+    run = Mock()
+    monkeypatch.setattr(installer, "_TOOLS_DIR", tools)
+    monkeypatch.setattr(installer, "run_hidden", run)
+
+    installer._remove_smoke_tuning(game)
+    run.assert_not_called()
+
+    marker = game / "scripts" / "ALLIN1_smoke_tuning.json"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("{}")
+    installer._remove_smoke_tuning(game)
+    run.assert_not_called()
+
+    patcher = tools / "RpfPatcher" / "RpfPatcher.exe"
+    patcher.parent.mkdir(parents=True)
+    patcher.touch()
+    run.return_value = Mock(returncode=0, stdout="", stderr="")
+    installer._remove_smoke_tuning(game)
+    assert run.call_count == 1
+
+    run.return_value = Mock(returncode=5, stdout="", stderr="restore failed")
+    installer._remove_smoke_tuning(game)
+    assert run.call_count == 2
+
+    run.side_effect = OSError("busy")
+    installer._remove_smoke_tuning(game)
+    assert run.call_count == 3
+
+
+def test_colored_smoke_helpers_cover_missing_tool_and_exception_paths(
+    tmp_path, monkeypatch,
+):
+    tools = tmp_path / "tools"
+    game = _game(tmp_path)
+    result = installer.InstallResult(game)
+    monkeypatch.setattr(installer, "_TOOLS_DIR", tools)
+
+    assert installer._install_colored_smoke_weapons(game, result) is False
+    assert "independent colored smoke weapons were skipped" in result.warnings[-1]
+
+    patcher = tools / "RpfPatcher" / "RpfPatcher.exe"
+    patcher.parent.mkdir(parents=True)
+    patcher.touch()
+    monkeypatch.setattr(installer, "run_hidden", Mock(side_effect=OSError("denied")))
+    assert installer._install_colored_smoke_weapons(game, result) is False
+    assert result.warnings[-1].endswith("denied")
+
+    archive = game / "mods/update/x64/dlcpacks/allin1_smoke/dlc.rpf"
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(b"unsafe")
+    patcher.unlink()
+    installer._remove_colored_smoke_weapons(game)
+
+    patcher.touch()
+    installer._remove_colored_smoke_weapons(game)
+
+
+def test_merged_smoke_removal_handles_missing_tool_failure_and_exception(
+    tmp_path, monkeypatch,
+):
+    tools = tmp_path / "tools"
+    game = _game(tmp_path)
+    marker = game / "scripts" / "ALLIN1_colored_smoke_merged_canary.json"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("{}")
+    monkeypatch.setattr(installer, "_TOOLS_DIR", tools)
+
+    installer._remove_merged_smoke_canary(game)
+
+    patcher = tools / "RpfPatcher" / "RpfPatcher.exe"
+    patcher.parent.mkdir(parents=True)
+    patcher.touch()
+    run = Mock(return_value=Mock(returncode=7, stdout="", stderr="bad restore"))
+    monkeypatch.setattr(installer, "run_hidden", run)
+    installer._remove_merged_smoke_canary(game)
+
+    run.side_effect = OSError("busy")
+    installer._remove_merged_smoke_canary(game)
