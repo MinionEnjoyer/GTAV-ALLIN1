@@ -23,19 +23,27 @@ from allin1.sdk_manager import (
 )
 
 
-class SdkManagerDialog(tk.Toplevel):
-    """Install and maintain the SDK without adding controls to gameplay pages."""
+class SdkManagerDialog(ttk.Frame):
+    """Install and maintain the SDK inside the launcher workspace shell."""
 
-    def __init__(self, parent, *, install_root: Path | None = None) -> None:
-        super().__init__(parent)
+    def __init__(
+        self, parent, *, install_root: Path | None = None,
+        embedded: bool = False,
+    ) -> None:
+        self._window: tk.Toplevel | None = None
+        host = parent
+        if not embedded:
+            self._window = tk.Toplevel(parent)
+            self._window.title("ALLIN1 SDK — Developer Tools")
+            self._window.geometry("760x520")
+            self._window.minsize(640, 440)
+            self._window.transient(parent.winfo_toplevel())
+            host = self._window
+        super().__init__(host)
+        self.pack(fill="both", expand=True)
         self.install_root = (install_root or default_sdk_root()).resolve()
         self.release: SdkRelease | None = None
         self.busy = False
-        self.title("ALLIN1 SDK — Developer Tools")
-        self.geometry("720x475")
-        self.minsize(640, 440)
-        self.transient(parent)
-
         self.installed_text = tk.StringVar()
         self.latest_text = tk.StringVar(value="Checking the public SDK release…")
         self.detail_text = tk.StringVar(
@@ -102,7 +110,10 @@ class SdkManagerDialog(tk.Toplevel):
             secondary, text="View public repository",
             command=lambda: webbrowser.open(SDK_REPOSITORY_URL),
         ).pack(side="left", padx=(8, 0))
-        ttk.Button(secondary, text="Close", command=self.destroy).pack(side="right")
+        if self._window is not None:
+            ttk.Button(
+                secondary, text="Close", command=self._window.destroy,
+            ).pack(side="right")
 
     def _refresh_local(self) -> None:
         status = read_sdk_status(self.install_root)

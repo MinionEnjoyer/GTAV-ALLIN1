@@ -55,7 +55,7 @@ If the ALLIN1 Launcher and SDK are useful to you, project support is available t
   skill levels, weapons, gear, garage saves, outfit components, props, and named outfit presets.
 - **Desktop control center** — detect the game edition, configure gameplay and accessibility
   options, install or repair the mod, run health checks, export redacted diagnostics, manage
-  profiles, and launch GTA V.
+  profiles, and launch GTA V from one persistent launcher window.
 - **Local mod packages** — install, update, enable, disable, and uninstall user-supplied ASI,
   ScriptHookVDotNet, RPF, and config/data packages through validated `mod.toml` manifests,
   including transactional `dlclist.xml` registration for explicitly owned add-on packs.
@@ -133,14 +133,20 @@ launch argument required for Story Mode scripting.
 
 ## Desktop manager
 
-The launcher is the main configuration surface. Its pages cover:
+The launcher is the main player-facing configuration surface. Setup, Gameplay,
+Input, Packages, Characters, SDK Manager, Activity, and Help Center are persistent
+workspaces inside one launcher window. The standalone SDK uses one separate
+developer window for Integration, Native Assets, RPF Explorer, SDK Console, and
+Help Center. Routine navigation no longer opens a collection of independent tool
+windows; only file selection, confirmation, and blocking progress remain modal.
+
+The launcher workspaces cover:
 
 - core gameplay, traffic, keybind, performance, and accessibility settings;
 - installation status, dependency and RPF-loader health, updates, and rollback-aware repair;
 - per-character skills, money, garages, inventories, outfits, and presets;
 - local third-party mod packages with dependency, conflict, edition, and checksum validation;
-- a read-only add-on SDK linker/viewer with field explanations, built-in examples, imported
-  drafts, and installed-package reconstruction;
+- managed SDK installation, update, repair, removal, and launch;
 - redacted support bundles and runtime log inspection.
 
 Named profiles can preserve different combinations of traffic, GBAY, input, and accessibility
@@ -212,11 +218,12 @@ published SHA-256 and every file in the archive before atomically installing it 
 `%LOCALAPPDATA%\ALLIN1\SDK`; Python is not required. The same panel opens, updates, repairs, or
 uninstalls the managed application without touching either GTA V directory.
 
-The launcher opens the SDK as a
-separate process; the SDK has its own `allin1_sdk` namespace, version, tests, CLI/GUI entry
+The launcher opens or focuses the SDK as a single separate process; both apps
+prevent duplicate main windows. The SDK has its own `allin1_sdk` namespace, version, tests, CLI/GUI entry
 points, user state, CodeWalker submodule, and RPF helper build. Package importing and lifecycle
 management remain in the launcher, while integration linking, native asset inspection, RPF
-exploration, OIV auditing, DLC inventory, and vehicle-data compilation belong to the SDK.
+exploration, OIV auditing, DLC inventory, vehicle-data compilation, and the structured local
+AI-agent command API belong to the SDK.
 
 ## Tech stack
 

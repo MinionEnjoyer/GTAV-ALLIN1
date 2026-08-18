@@ -36,6 +36,7 @@ from allin1.profiles import ProfileStore
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
 WINDOWS_APP_ID = "MinionEnjoyer.GTAVALLIN1.Launcher"
+_INSTANCE_MUTEX: int | None = None
 
 
 @dataclass(frozen=True)
@@ -106,6 +107,57 @@ def _register_windows_app() -> None:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(WINDOWS_APP_ID)
 
 
+def _focus_existing_window(title_prefix: str) -> bool:
+    """Restore and focus an existing ALLIN1 shell on Windows."""
+    if os.name != "nt":
+        return False
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    matches: list[int] = []
+    callback_type = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+    @callback_type
+    def visit(hwnd, _lparam):
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length and user32.IsWindowVisible(hwnd):
+            buffer = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buffer, length + 1)
+            if buffer.value.startswith(title_prefix):
+                matches.append(int(hwnd))
+                return False
+        return True
+
+    user32.EnumWindows(visit, 0)
+    if not matches:
+        return False
+    user32.ShowWindow(matches[0], 9)  # SW_RESTORE
+    user32.SetForegroundWindow(matches[0])
+    return True
+
+
+def _claim_single_instance() -> bool:
+    """Keep launcher operations in one persistent main window."""
+    global _INSTANCE_MUTEX
+    if os.name != "nt":
+        return True
+    import ctypes
+
+    kernel32 = ctypes.windll.kernel32
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    handle = kernel32.CreateMutexW(
+        None, False, "Local\\MinionEnjoyer.GTAVALLIN1.Launcher",
+    )
+    if not handle:
+        return True
+    if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        kernel32.CloseHandle(handle)
+        _focus_existing_window("ALLIN1 Launcher")
+        return False
+    _INSTANCE_MUTEX = int(handle)
+    return True
+
+
 class QueueLogHandler(logging.Handler):
     def __init__(self, messages: queue.Queue[tuple[str, object]]) -> None:
         super().__init__()
@@ -163,6 +215,9 @@ class ManagerWindow:
         self.sdk_manifests: dict[str, AddonManifest] = {}
         self.sdk_install_root = default_sdk_root()
         self.sdk_manager_dialog: SdkManagerDialog | None = None
+        self.character_workspace: CharacterCustomizationDialog | None = None
+        self.character_workspace_path: Path | None = None
+        self.help_workspace: HelpCenterDialog | None = None
         self.installed_mod_ids: set[str] = set()
         self.mod_action_buttons: list[tk.Widget] = []
         self.current_status: InstallationStatus | None = None
@@ -320,7 +375,7 @@ class ManagerWindow:
         self.game_menu.add_command(label="Health Check…", command=self.run_health_check)
         self.game_menu.add_separator()
         self.game_menu.add_command(
-            label="Characters & garages…", command=self.customize_characters,
+            label="Characters & garages", command=self.customize_characters,
         )
         self.game_menu.add_command(label="Create diagnostics…", command=self.create_diagnostics)
         self.game_menu.add_separator()
@@ -329,7 +384,7 @@ class ManagerWindow:
 
         sdk_menu = tk.Menu(menu, tearoff=False)
         sdk_menu.add_command(label="Open ALLIN1 SDK…", command=self.open_addon_sdk)
-        sdk_menu.add_command(label="Install / Manage SDK…", command=self.manage_addon_sdk)
+        sdk_menu.add_command(label="Install / Manage SDK", command=self.manage_addon_sdk)
         sdk_menu.add_separator()
         sdk_menu.add_command(
             label="SDK Help", command=lambda: self.open_help_center("sdk"),
@@ -343,7 +398,10 @@ class ManagerWindow:
             ("gameplay", "Gameplay"),
             ("input", "Input"),
             ("mods", "Packages"),
+            ("characters", "Characters"),
+            ("sdk", "SDK Manager"),
             ("activity", "Activity"),
+            ("help", "Help Center"),
         ), start=1):
             view_menu.add_command(
                 label=label, accelerator=f"Ctrl+{index}",
@@ -365,6 +423,10 @@ class ManagerWindow:
         pages = getattr(self, "workspace_pages", {})
         if key not in pages:
             return
+        if key == "characters":
+            self._ensure_character_workspace()
+        elif key == "sdk":
+            self._ensure_sdk_workspace()
         pages[key].tkraise()
         self.current_workspace = key
         for name, button in self.workspace_buttons.items():
@@ -430,37 +492,54 @@ class ManagerWindow:
         outer = ttk.Frame(self.root, padding=(16, 14, 16, 12))
         outer.pack(fill="both", expand=True)
 
-        banner = tk.Frame(outer, background=dark_green, padx=16, pady=9)
+        banner = tk.Frame(outer, background=dark_green, padx=16, pady=10)
         banner.pack(fill="x", pady=(0, 12))
         try:
             with Image.open(ASSET_DIR / "ALLIN1.png") as source:
                 logo = source.convert("RGBA")
-                logo.thumbnail((68, 44), Image.Resampling.LANCZOS)
+                logo.thumbnail((145, 82), Image.Resampling.LANCZOS)
             self._banner_logo = ImageTk.PhotoImage(logo)
             tk.Label(banner, image=self._banner_logo, background=dark_green,
-                     borderwidth=0).pack(side="left", padx=(0, 12))
+                     borderwidth=0).pack(side="left", padx=(0, 16))
         except (OSError, tk.TclError):
             self._banner_logo = None
 
         banner_text = tk.Frame(banner, background=dark_green)
-        banner_text.pack(side="left", fill="y")
+        banner_text.pack(side="left", fill="x", expand=True)
         tk.Label(banner_text, text="ALLIN1 · GTA V LAUNCHER", background=dark_green,
-                 foreground="white", font=("Segoe UI Semibold", 17)).pack(anchor="w")
+                 foreground="white", font=("Segoe UI Semibold", 20)).pack(anchor="w")
         tk.Label(
             banner_text,
-            text="Install · Configure · Launch · Recover",
-            background=dark_green, foreground="#d2ead9", font=("Segoe UI", 9),
-        ).pack(anchor="w", pady=(2, 0))
+            text=(
+                "Player workspace for setup, gameplay, packages, characters, "
+                "diagnostics, recovery, and Story Mode launch."
+            ),
+            background=dark_green, foreground="#d2ead9", font=("Segoe UI", 10),
+        ).pack(anchor="w", pady=(3, 0))
+
+        banner_actions = tk.Frame(banner, background=dark_green)
+        banner_actions.pack(side="right", padx=(18, 4), fill="y")
         tk.Label(
-            banner,
+            banner_actions,
             text=f"v{__version__}",
             background="#176b36",
             foreground="white",
             font=("Segoe UI Semibold", 10),
             padx=12,
             pady=5,
-        ).pack(side="right", anchor="n")
-
+        ).pack(anchor="e")
+        support = tk.Label(
+            banner_actions, text="Support ALLIN1 ↗", background=dark_green,
+            foreground="#f3fff6", cursor="hand2",
+            font=("Segoe UI Semibold", 10, "underline"),
+        )
+        support.pack(anchor="e", pady=(10, 0))
+        support.bind(
+            "<Button-1>",
+            lambda _event: webbrowser.open(
+                "https://buymeacoffee.com/minionenjoyer"
+            ),
+        )
         shell = ttk.Frame(outer)
         shell.pack(fill="both", expand=True)
         sidebar = ttk.Frame(shell, style="Surface.TFrame", padding=(8, 12))
@@ -478,21 +557,33 @@ class ManagerWindow:
         gameplay_view = ScrollableFrame(workspace, body_bg)
         controls_view = ScrollableFrame(workspace, body_bg)
         mods_view = ScrollableFrame(workspace, body_bg)
+        characters = ttk.Frame(workspace)
+        sdk = ttk.Frame(workspace)
         activity = ttk.Frame(workspace, padding=14)
+        help_page = ttk.Frame(workspace)
         self.workspace_pages = {
             "setup": home_view,
             "gameplay": gameplay_view,
             "input": controls_view,
             "mods": mods_view,
+            "characters": characters,
+            "sdk": sdk,
             "activity": activity,
+            "help": help_page,
         }
+        self.characters_page = characters
+        self.sdk_page = sdk
+        self.help_page = help_page
         self.workspace_buttons: dict[str, ttk.Button] = {}
         for key, label in (
             ("setup", "Setup"),
             ("gameplay", "Gameplay"),
             ("input", "Input"),
             ("mods", "Packages"),
+            ("characters", "Characters"),
+            ("sdk", "SDK Manager"),
             ("activity", "Activity"),
+            ("help", "Help Center"),
         ):
             page = self.workspace_pages[key]
             page.grid(row=0, column=0, sticky="nsew")
@@ -503,17 +594,15 @@ class ManagerWindow:
             )
             button.pack(fill="x", pady=1)
             self.workspace_buttons[key] = button
-        ttk.Separator(sidebar).pack(fill="x", padx=8, pady=(14, 8))
-        ttk.Button(
-            sidebar, text="Help center  F1", style="Nav.TButton",
-            command=self.open_help_center, width=18,
-        ).pack(fill="x")
         for index, key in enumerate(self.workspace_pages):
             self.root.bind(
                 f"<Control-Key-{index + 1}>",
                 lambda _event, selected=key: self._select_workspace(selected),
             )
         self.current_workspace = "setup"
+        self.help_workspace = HelpCenterDialog(
+            help_page, initial_topic="getting-started", embedded=True,
+        )
         self._select_workspace("setup")
         home = home_view.content
         gameplay = gameplay_view.content
@@ -844,6 +933,10 @@ class ManagerWindow:
                   wraplength=830).pack(anchor="w")
         ttk.Label(state, textvariable=self.version_text, justify="left",
                   foreground="#3f6659").pack(anchor="w", pady=(5, 0))
+        self.update_button = ttk.Button(
+            state, text="Check for updates", command=self.check_for_updates,
+        )
+        self.update_button.pack(anchor="w", pady=(10, 0))
 
         activity_toolbar = ttk.Frame(activity)
         activity_toolbar.pack(fill="x", pady=(0, 10))
@@ -1314,63 +1407,41 @@ class ManagerWindow:
             self._set_actions(True)
 
     def show_about(self) -> None:
-        dialog = tk.Toplevel(self.root)
-        dialog.title("About ALLIN1 Launcher")
-        dialog.geometry("590x420")
-        dialog.resizable(False, False)
-        body = ttk.Frame(dialog, padding=22)
-        body.pack(fill="both", expand=True)
-        ttk.Label(
-            body, text="ALLIN1 Launcher",
-            font=("Segoe UI Semibold", 20),
-        ).pack(anchor="w")
-        ttk.Label(
-            body, text=f"Desktop tool and Story Mode client version {__version__}",
-            foreground="#52635c",
-        ).pack(anchor="w", pady=(2, 16))
-        ttk.Label(
-            body,
-            text=("Install and manage ALLIN1's Story Mode expansion, inspect local "
-                  "mod packages, validate add-on content, browse package assets, and "
-                  "recover changes through one safety-focused desktop tool."),
-            wraplength=510, justify="left",
-        ).pack(anchor="w")
-        ttk.Label(body, text="Created and maintained by MinionEnjoyer.").pack(anchor="w", pady=(20, 4))
-        link = ttk.Label(body, text="Support ALLIN1 on Buy Me a Coffee ↗",
-                         foreground="#087f5b", cursor="hand2")
-        link.pack(anchor="w")
-        link.bind("<Button-1>", lambda _event: webbrowser.open(
-            "https://buymeacoffee.com/minionenjoyer"))
-        update_status = tk.StringVar(value="Release status has not been checked.")
-        ttk.Label(body, textvariable=update_status, wraplength=510).pack(anchor="w", pady=(22, 8))
+        self.open_help_center("about")
 
-        def check() -> None:
-            update_status.set("Checking GitHub Releases…")
-            button.configure(state="disabled")
+    def check_for_updates(self) -> None:
+        """Check releases from the persistent Setup workspace."""
+        self.version_text.set(f"Manager {__version__} · checking latest release…")
+        self.update_button.configure(state="disabled")
 
-            def worker() -> None:
-                try:
-                    release = fetch_latest_release(__version__)
-                    self.messages.put(("release", (release, update_status, button)))
-                except Exception as exc:
-                    self.messages.put(("release_error", (exc, update_status, button)))
+        def worker() -> None:
+            try:
+                release = fetch_latest_release(__version__)
+                self.messages.put((
+                    "release", (release, self.version_text, self.update_button),
+                ))
+            except Exception as exc:
+                self.messages.put((
+                    "release_error", (exc, self.version_text, self.update_button),
+                ))
 
-            threading.Thread(target=worker, daemon=True).start()
-
-        button = ttk.Button(body, text="Check for updates", command=check)
-        button.pack(anchor="w")
+        threading.Thread(target=worker, daemon=True).start()
 
     def open_help_center(self, topic: str | None = None) -> None:
-        """Open task help, defaulting to the user's current work zone."""
+        """Navigate to embedded task help without creating another window."""
         if topic is None:
             topic = {
                 "setup": "getting-started",
                 "gameplay": "gameplay",
                 "input": "input",
                 "mods": "packages",
+                "characters": "characters",
+                "sdk": "sdk",
                 "activity": "troubleshooting",
             }.get(getattr(self, "current_workspace", "setup"), "getting-started")
-        HelpCenterDialog(self.root, initial_topic=topic)
+        self._select_workspace("help")
+        if self.help_workspace is not None:
+            self.help_workspace.show_topic(topic)
 
     def install(self) -> None:
         config = self._current_config()
@@ -1441,14 +1512,50 @@ class ManagerWindow:
         self._run("Uninstalling", lambda: self.manager.uninstall(config))
 
     def customize_characters(self) -> None:
+        self._select_workspace("characters")
+
+    def _ensure_character_workspace(self) -> None:
         gta_path = self.manager.resolve_path(self._current_config())
-        if gta_path is None:
-            messagebox.showerror("Game not found", "Select a GTA V installation first.")
+        if gta_path is not None and (
+            self.character_workspace is not None
+            and self.character_workspace_path == gta_path.resolve()
+            and self.character_workspace.winfo_exists()
+        ):
             return
-        CharacterCustomizationDialog(self.root, self.manager.project_root,
-                                     gta_path / "scripts", self.config)
+        for child in self.characters_page.winfo_children():
+            child.destroy()
+        self.character_workspace = None
+        self.character_workspace_path = None
+        if gta_path is None:
+            empty = ttk.Frame(self.characters_page, padding=24)
+            empty.pack(fill="both", expand=True)
+            ttk.Label(
+                empty, text="Characters & saved content", style="PageTitle.TLabel",
+            ).pack(anchor="w")
+            ttk.Label(
+                empty,
+                text=("Select a valid GTA V installation in Setup before editing "
+                      "character progress, garages, weapons, or outfits."),
+                wraplength=760, justify="left", foreground="#52635c",
+            ).pack(anchor="w", pady=(5, 16))
+            ttk.Button(
+                empty, text="Go to Setup", style="Accent.TButton",
+                command=lambda: self._select_workspace("setup"),
+            ).pack(anchor="w")
+            return
+        self.character_workspace = CharacterCustomizationDialog(
+            self.characters_page, self.manager.project_root,
+            gta_path / "scripts", self.config, embedded=True,
+        )
+        self.character_workspace_path = gta_path.resolve()
 
     def open_addon_sdk(self) -> None:
+        # A real launcher shell focuses the existing SDK. Keeping this tied to
+        # the initialized Tk owner also makes the launch resolver deterministic
+        # for headless callers and contract tests.
+        if hasattr(self, "root") and _focus_existing_window("ALLIN1 SDK"):
+            self._append_log("Focused the existing ALLIN1 SDK workspace.")
+            return
         managed = read_sdk_status(
             getattr(self, "sdk_install_root", default_sdk_root())
         )
@@ -1483,17 +1590,18 @@ class ManagerWindow:
         self._append_log(f"Opened standalone ALLIN1 SDK from {working_directory}.")
 
     def manage_addon_sdk(self) -> None:
-        existing = getattr(self, "sdk_manager_dialog", None)
-        try:
-            if existing is not None and existing.winfo_exists():
-                existing.lift()
-                existing.focus_force()
-                return
-        except tk.TclError:
-            pass
+        self._select_workspace("sdk")
+
+    def _ensure_sdk_workspace(self) -> None:
+        existing = self.sdk_manager_dialog
+        if existing is not None and existing.winfo_exists():
+            return
+        for child in self.sdk_page.winfo_children():
+            child.destroy()
         self.sdk_manager_dialog = SdkManagerDialog(
-            self.root,
+            self.sdk_page,
             install_root=getattr(self, "sdk_install_root", default_sdk_root()),
+            embedded=True,
         )
 
     def open_asset_viewer(self) -> None:
@@ -1723,6 +1831,8 @@ class ManagerWindow:
 def main() -> None:
     setup_logging(PROJECT_ROOT)
     _register_windows_app()
+    if not _claim_single_instance():
+        return
     root = tk.Tk()
     ManagerWindow(root, ModManager(PROJECT_ROOT))
     root.mainloop()

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import tkinter as tk
 from tkinter import ttk
 
+from allin1 import __version__
+
 
 @dataclass(frozen=True)
 class HelpTopic:
@@ -66,6 +68,14 @@ Controller shortcut actions may combine a modifier with an action button. Menu n
         ("controls", "keys", "gamepad", "bindings", "filter"),
     ),
     HelpTopic(
+        "characters", "Configuration", "Characters and saved content",
+        "Manage garages, loadouts, story progress, traffic tuning, and outfits.",
+        """The Characters workspace operates on the scripts folder belonging to the active GTA V installation. Choose the correct Legacy or Enhanced target in Setup first.
+
+Garage, loadout, progress, and outfit changes update ALLIN1's managed save data. GBAY purchases still become permanent only when the character saves the game. Use the repair and export controls before experimenting with a valuable save.""",
+        ("garage", "weapons", "gear", "money", "outfit", "save"),
+    ),
+    HelpTopic(
         "packages", "Mods & SDK", "Package library",
         "Import, inspect, install, enable, disable, and remove optional content.",
         """Use Add package to import supported content. Select a package in the library, then use Package actions for installation and lifecycle commands.
@@ -114,8 +124,18 @@ Never manually delete a partially installed package before collecting diagnostic
 
 For installation and startup failures, run Health Check and create a diagnostics bundle. For in-game behavior, reproduce the issue once with only the relevant diagnostic setting enabled, then retain the newest ScriptHookVDotNet and ALLIN1 logs.
 
-Keyboard shortcuts: Ctrl+1–5 changes workspaces, Ctrl+S saves, Ctrl+L launches, F5 refreshes, and F1 opens this help center.""",
+Keyboard shortcuts: Ctrl+1–8 changes workspaces, Ctrl+S saves, Ctrl+L launches, F5 refreshes, and F1 opens this embedded help workspace.""",
         ("logs", "crash", "hang", "diagnostics", "shortcuts", "fatal"),
+    ),
+    HelpTopic(
+        "about", "About", "About ALLIN1",
+        "Version, project scope, support, and release information.",
+        f"""ALLIN1 Launcher {__version__}
+
+ALLIN1 is a GTA V Story Mode launcher, gameplay expansion, package manager, and safety-focused companion to the standalone ALLIN1 SDK. The launcher owns installation, configuration, package lifecycle, profiles, diagnostics, and game launch. The SDK owns add-on linking, archive inspection, native assets, and developer automation.
+
+Created and maintained by MinionEnjoyer. Use the Check for updates action in Setup for current release status. Project support: https://buymeacoffee.com/minionenjoyer""",
+        ("version", "credits", "support", "updates", "release"),
     ),
 )
 
@@ -146,21 +166,31 @@ def search_help_topics(query: str) -> tuple[HelpTopic, ...]:
     ))
 
 
-class HelpCenterDialog(tk.Toplevel):
-    """Searchable help center shared by the launcher and inspection tools."""
+class HelpCenterDialog(ttk.Frame):
+    """Searchable help center that embeds in the launcher shell."""
 
-    def __init__(self, parent: tk.Misc, initial_topic: str | None = None) -> None:
-        super().__init__(parent)
+    def __init__(
+        self, parent: tk.Misc, initial_topic: str | None = None,
+        *, embedded: bool = False,
+    ) -> None:
+        self._window: tk.Toplevel | None = None
+        host = parent
+        if not embedded:
+            self._window = tk.Toplevel(parent)
+            self._window.title("ALLIN1 Help Center")
+            self._window.geometry("1040x700")
+            self._window.minsize(780, 540)
+            self._window.transient(parent.winfo_toplevel())
+            host = self._window
+        super().__init__(host)
+        self.pack(fill="both", expand=True)
         self.initial_topic = initial_topic
         self.visible_topics: tuple[HelpTopic, ...] = ()
         self.topic_items: dict[str, HelpTopic] = {}
-        self.title("ALLIN1 Help Center")
-        self.geometry("1040x700")
-        self.minsize(780, 540)
-        self.transient(parent)
         self._build()
         self._populate()
-        self.bind("<Escape>", lambda _event: self.destroy())
+        if self._window is not None:
+            self.bind("<Escape>", lambda _event: self._window.destroy())
 
     def _build(self) -> None:
         outer = ttk.Frame(self, padding=20)
@@ -259,6 +289,12 @@ class HelpCenterDialog(tk.Toplevel):
         self.results.selection_set(selected_index)
         self.results.see(selected_index)
         self._show_topic(self.visible_topics[selected_index])
+
+    def show_topic(self, key: str) -> None:
+        """Navigate an existing embedded help center to a known article."""
+        self.initial_topic = key
+        self.query.set("")
+        self._populate()
 
     def _select_topic(self, _event: object | None = None) -> None:
         selection = self.results.curselection()

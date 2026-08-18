@@ -24,11 +24,24 @@ GEAR = {
 ARMOR_GEAR = {item for item in GEAR if item.startswith("ARMOR_")}
 
 
-class CharacterCustomizationDialog(tk.Toplevel):
-    def __init__(self, parent, project_root: Path, scripts: Path, config: Config) -> None:
-        super().__init__(parent)
-        self.title("Character Customization")
-        self.geometry("800x600")
+class CharacterCustomizationDialog(ttk.Frame):
+    """Character editor that can live in the launcher or a compatibility window."""
+
+    def __init__(
+        self, parent, project_root: Path, scripts: Path, config: Config,
+        *, embedded: bool = False,
+    ) -> None:
+        self._window: tk.Toplevel | None = None
+        host = parent
+        if not embedded:
+            self._window = tk.Toplevel(parent)
+            self._window.title("Character Customization")
+            self._window.geometry("900x680")
+            self._window.minsize(800, 600)
+            self._window.transient(parent.winfo_toplevel())
+            host = self._window
+        super().__init__(host, padding=(16, 14))
+        self.pack(fill="both", expand=True)
         self.config_data = config
         database = VehicleDatabase.load(project_root / "data" / "vehicles.toml")
         self.models = sorted(vehicle.model for vehicle in database)
@@ -42,7 +55,18 @@ class CharacterCustomizationDialog(tk.Toplevel):
             self.garages = {character: [] for character in CHARACTERS}
         self.loadouts = self.loadout_store.load()
         self.character = tk.StringVar(value=CHARACTERS[0])
-        tabs = ttk.Notebook(self); tabs.pack(fill="both", expand=True, padx=10, pady=10)
+        ttk.Label(
+            self, text="Characters & saved content", style="PageTitle.TLabel",
+            font=("Segoe UI Semibold", 17), foreground="#173d32",
+        ).pack(anchor="w")
+        ttk.Label(
+            self,
+            text=("Manage character progress, garages, weapons, gear, traffic tuning, "
+                  "and outfit presets without leaving the launcher."),
+            foreground="#52635c", wraplength=960, justify="left",
+        ).pack(anchor="w", pady=(3, 12))
+        tabs = ttk.Notebook(self)
+        tabs.pack(fill="both", expand=True)
         self._traffic_tab(tabs)
         self._garage_tab(tabs)
         self._inventory_tab(tabs)
