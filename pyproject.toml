@@ -50,7 +50,8 @@ omit = [
     "src/allin1/addon_sdk_ui.py",
       "src/allin1/asset_viewer.py",
       "src/allin1/rpf_explorer.py",
-      "src/allin1/help_center.py",
+    "src/allin1/help_center.py",
+    "src/allin1/sdk_installer_ui.py",
   ]
 
 [tool.setuptools.packages.find]

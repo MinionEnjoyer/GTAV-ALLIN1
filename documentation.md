@@ -96,6 +96,15 @@ inspection and authoring tools open in the independent sibling **ALLIN1 SDK**
 application, which has its own repository, package namespace, version, test
 suite, state directory, CLI/GUI entry points, and CodeWalker/RPF helper build.
 
+Use **SDK → Install / Manage SDK** for the standalone developer application.
+Managed releases install per-user under `%LOCALAPPDATA%\ALLIN1\SDK` and never
+write to a GTA V directory. The launcher requires the exact `win-x64` release
+asset, validates its separately published SHA-256, verifies the archive's
+internal checksum manifest and product/version metadata, and swaps the complete
+application directory transactionally. The panel also supports offline release
+packages, repair, update, open, and uninstall. A failed verification or update
+leaves the previous working SDK intact.
+
 The standalone SDK includes a read-only package/native asset viewer. It
 inventories loose DLC folders and OIV/ZIP/RAR/7z files without installation,
 previews common images and authored text, parses bounded GTA binary headers,

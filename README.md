@@ -206,7 +206,13 @@ ship or download arbitrary third-party mods through this interface.
 ## Standalone ALLIN1 SDK
 
 Developer tooling now lives in the independent sibling
-[ALLIN1-SDK](../ALLIN1-SDK/README.md) repository. The launcher opens that application as a
+[ALLIN1-SDK](https://github.com/MinionEnjoyer/ALLIN1-SDK) repository. Open **SDK → Install /
+Manage SDK** to download its public, self-contained Windows release. The launcher verifies the
+published SHA-256 and every file in the archive before atomically installing it under
+`%LOCALAPPDATA%\ALLIN1\SDK`; Python is not required. The same panel opens, updates, repairs, or
+uninstalls the managed application without touching either GTA V directory.
+
+The launcher opens the SDK as a
 separate process; the SDK has its own `allin1_sdk` namespace, version, tests, CLI/GUI entry
 points, user state, CodeWalker submodule, and RPF helper build. Package importing and lifecycle
 management remain in the launcher, while integration linking, native asset inspection, RPF

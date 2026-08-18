@@ -151,6 +151,7 @@ def test_launcher_opens_sdk_as_an_external_application(tmp_path, monkeypatch):
     window = ManagerWindow.__new__(ManagerWindow)
     window.manager = SimpleNamespace(project_root=tmp_path / "ALLIN1")
     window._append_log = Mock()
+    window.sdk_install_root = tmp_path / "managed" / "SDK"
     executable = tmp_path / "bin" / "allin1-sdk-gui.exe"
     executable.parent.mkdir()
     executable.write_bytes(b"sdk")
@@ -168,14 +169,34 @@ def test_launcher_opens_sdk_as_an_external_application(tmp_path, monkeypatch):
 def test_launcher_explains_when_standalone_sdk_is_missing(tmp_path, monkeypatch):
     window = ManagerWindow.__new__(ManagerWindow)
     window.manager = SimpleNamespace(project_root=tmp_path / "ALLIN1")
-    shown = Mock()
+    window.sdk_install_root = tmp_path / "managed" / "SDK"
+    window.manage_addon_sdk = Mock()
     monkeypatch.setattr("allin1.gui.shutil.which", lambda _name: None)
-    monkeypatch.setattr("allin1.gui.messagebox.showerror", shown)
 
     window.open_addon_sdk()
 
-    shown.assert_called_once()
-    assert "standalone ALLIN1 SDK" in shown.call_args.args[1]
+    window.manage_addon_sdk.assert_called_once_with()
+
+
+def test_launcher_prefers_managed_sdk_installation(tmp_path, monkeypatch):
+    window = ManagerWindow.__new__(ManagerWindow)
+    window.manager = SimpleNamespace(project_root=tmp_path / "ALLIN1")
+    window.sdk_install_root = tmp_path / "local" / "ALLIN1" / "SDK"
+    window._append_log = Mock()
+    executable = window.sdk_install_root / "ALLIN1-SDK.exe"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"MZsdk")
+    (window.sdk_install_root / "release.json").write_text(
+        '{"product":"ALLIN1-SDK","version":"0.4.8"}'
+    )
+    launched = Mock()
+    monkeypatch.setattr("allin1.gui.subprocess.Popen", launched)
+    monkeypatch.setattr("allin1.gui.shutil.which", lambda _name: None)
+
+    window.open_addon_sdk()
+
+    launched.assert_called_once()
+    assert launched.call_args.args[0] == [str(executable)]
 
 
 def test_repair_progress_text_clamps_percentages():

@@ -76,10 +76,12 @@ ALLIN1 validates manifests, records installed files, and backs up replaced files
     HelpTopic(
         "sdk", "Mods & SDK", "Add-on SDK",
         "Trace game-facing fields and audit add-on integration before installation.",
-        """The Add-on SDK links authored package fields to metadata, native UI text, animations, runtime behavior, packaging, and rollback expectations.
+        """Use SDK → Install / Manage SDK to install the optional, self-contained developer application. Managed releases are verified against both their public SHA-256 and internal file manifest, install per-user, and never modify GTA V. The panel can update, repair, open, or uninstall the SDK; Install from package supports the same verified archive while offline.
+
+The Add-on SDK links authored package fields to metadata, native UI text, animations, runtime behavior, packaging, and rollback expectations.
 
 Import a DLC folder or archive, inspect its integration graph, then select nodes and fields for explanations. Package Intelligence contains OIV preview, DLC inventory, and vehicle-data compilation tools.""",
-        ("authoring", "addon", "dlc", "audit", "linker", "developer"),
+        ("authoring", "addon", "dlc", "audit", "linker", "developer", "install", "update"),
     ),
     HelpTopic(
         "asset-viewer", "Inspectors", "Native Asset Viewer",

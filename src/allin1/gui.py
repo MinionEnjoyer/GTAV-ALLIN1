@@ -27,6 +27,8 @@ from allin1.addon_sdk import AddonManifest, AddonSdkCatalog
 from allin1.asset_viewer import AssetViewerDialog
 from allin1.rpf_explorer import RpfExplorerDialog
 from allin1.help_center import HelpCenterDialog
+from allin1.sdk_installer_ui import SdkManagerDialog
+from allin1.sdk_manager import default_sdk_root, read_sdk_status
 from allin1 import __version__
 from allin1.versioning import fetch_latest_release
 from allin1.profiles import ProfileStore
@@ -159,6 +161,8 @@ class ManagerWindow:
         self.mod_manifests: dict[str, ModManifest] = {}
         self.sdk_catalog = AddonSdkCatalog(manager.project_root)
         self.sdk_manifests: dict[str, AddonManifest] = {}
+        self.sdk_install_root = default_sdk_root()
+        self.sdk_manager_dialog: SdkManagerDialog | None = None
         self.installed_mod_ids: set[str] = set()
         self.mod_action_buttons: list[tk.Widget] = []
         self.current_status: InstallationStatus | None = None
@@ -325,6 +329,7 @@ class ManagerWindow:
 
         sdk_menu = tk.Menu(menu, tearoff=False)
         sdk_menu.add_command(label="Open ALLIN1 SDK…", command=self.open_addon_sdk)
+        sdk_menu.add_command(label="Install / Manage SDK…", command=self.manage_addon_sdk)
         sdk_menu.add_separator()
         sdk_menu.add_command(
             label="SDK Help", command=lambda: self.open_help_center("sdk"),
@@ -785,6 +790,7 @@ class ManagerWindow:
         library_menu.add_command(label="Refresh package library", command=self.refresh_mods)
         library_menu.add_separator()
         library_menu.add_command(label="Open ALLIN1 SDK…", command=self.open_addon_sdk)
+        library_menu.add_command(label="Install / Manage SDK…", command=self.manage_addon_sdk)
         library_button = ttk.Menubutton(
             authoring_actions, text="Library options", menu=library_menu,
         )
@@ -1443,10 +1449,16 @@ class ManagerWindow:
                                      gta_path / "scripts", self.config)
 
     def open_addon_sdk(self) -> None:
+        managed = read_sdk_status(
+            getattr(self, "sdk_install_root", default_sdk_root())
+        )
         installed = shutil.which("allin1-sdk-gui")
         sdk_root = self.manager.project_root.parent / "ALLIN1-SDK"
         environment = os.environ.copy()
-        if installed:
+        if managed.healthy and managed.executable is not None:
+            command = [str(managed.executable)]
+            working_directory = managed.root
+        elif installed:
             command = [installed]
             working_directory = Path(installed).parent
         elif (sdk_root / "src" / "allin1_sdk" / "app.py").is_file():
@@ -1456,11 +1468,7 @@ class ManagerWindow:
             existing = environment.get("PYTHONPATH", "")
             environment["PYTHONPATH"] = source + (os.pathsep + existing if existing else "")
         else:
-            messagebox.showerror(
-                "ALLIN1 SDK not found",
-                "Install the standalone ALLIN1 SDK or place its repository beside "
-                "the ALLIN1 Launcher repository.",
-            )
+            self.manage_addon_sdk()
             return
         options: dict[str, object] = {}
         if os.name == "nt":
@@ -1473,6 +1481,20 @@ class ManagerWindow:
             messagebox.showerror("Could not open ALLIN1 SDK", str(exc))
             return
         self._append_log(f"Opened standalone ALLIN1 SDK from {working_directory}.")
+
+    def manage_addon_sdk(self) -> None:
+        existing = getattr(self, "sdk_manager_dialog", None)
+        try:
+            if existing is not None and existing.winfo_exists():
+                existing.lift()
+                existing.focus_force()
+                return
+        except tk.TclError:
+            pass
+        self.sdk_manager_dialog = SdkManagerDialog(
+            self.root,
+            install_root=getattr(self, "sdk_install_root", default_sdk_root()),
+        )
 
     def open_asset_viewer(self) -> None:
         mod_id = self._selected_mod_id()

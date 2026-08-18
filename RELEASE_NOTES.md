@@ -51,6 +51,10 @@ launcher controls used to configure the new systems.
   desktop application. The launcher now hands off to that external process,
   while the SDK owns its linker, importer, native asset viewer, RPF explorer,
   help center, CLI, examples, pinned CodeWalker source, and release lifecycle.
+- Added an optional **Install / Manage SDK** panel backed by public SDK releases.
+  Downloads require a matching win-x64 asset and published SHA-256, then every
+  internal file is verified before an atomic per-user install. Update, repair,
+  offline package install, open, and uninstall remain isolated from GTA V.
 - Reworked the launcher around persistent Setup, Gameplay, Input, Packages,
   and Activity work zones. Application menus and contextual dropdowns replace
   dense button rows; the footer now keeps only game actions, save, and launch.
