@@ -67,6 +67,9 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   return while unrelated story weapons remain.
   Repeat after death/save reload, then switch protagonists twice and confirm the
   weapon is restored only for its purchasing character.
+- Open Customize Weapons and verify the active attachment or finish has a green
+  **EQUIPPED** badge and green row accent, purchased alternatives show **OWNED**,
+  and a fully stocked ammunition row shows **FULL** rather than **EQUIPPED**.
 - Open Gear from the GBAY top menu, visit All/Protection/Equipment, verify all
   12 cards and previews are reachable, and purchase at least one item from each tab.
   Confirm equipped cards say **EQUIPPED**. Press Y and separately click the
@@ -156,6 +159,50 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
 - Allow ALLIN1 traffic to populate, then begin a Story Mode mission. Confirm no
   newly spawned or replacement traffic appears during the mission and no
   previously managed vehicle continues driving without a visible driver.
+- With **Enhanced Police AI** enabled, confirm a firing line is never logged as
+  established without its required majority. Move more than 28 metres and wait
+  through a full line cycle; the element should re-form instead of rushing one
+  at a time. Compare visible cover use with
+  `police_firing_line_cover_acquired`, `cover_failed`, and
+  `police_firing_line_reforming` events.
+- At two or more wanted stars, let a healthy police car with at least three
+  officers approach from beyond 30 metres. Confirm it stages ahead, stops
+  broadside, dismounts together, and produces
+  `police_vehicle_containment_staged`, `dismount_ordered`, and
+  `containment_line_forming` before the officers establish a firing line.
+- Shoot an ambient officer in either hand. Confirm the held weapon drops, the
+  injured arm reaches instead of continuing to point the gun, and any recovery
+  waits until the officer is outside the player's line of fire. Place a better
+  pistol, shotgun, SMG, PDW, or carbine pickup nearby and confirm it can be
+  selected; explosives and heavy weapons must be ignored.
+- Down a living officer near an established firing line. Confirm stabilization
+  routes the casualty and rescuer behind the line. If an eligible recon
+  helicopter has a free seat and the rear landing zone is clear, confirm it
+  lands, boards the casualty, departs, and produces the corresponding CASEVAC
+  events without affecting mission or cutscene helicopters.
+- Trigger an ambient police hot-rope deployment near an established firing
+  line. Confirm the aircraft does not hover over the player or continuously
+  reset its flight task. It must approach a logged
+  `aerial_safe_rappel_planned` rooftop when one is navigable, otherwise use the
+  screened ground point behind the line; release only from a stable hover; and
+  log `aerial_safe_rappel_completed`. If a stabilized casualty is waiting,
+  confirm that same now-empty helicopter accepts CASEVAC before returning to
+  its recon orbit.
+- Repeat without an established firing line. Confirm an intercepted airborne
+  exit logs `aerial_rappel_request_inferred_from_exit`, the officer is reseated,
+  and throttled `aerial_safe_rappel_deferred` events report
+  `no_established_firing_line`. If a recon leg cannot close on its waypoint for
+  18 seconds, confirm one `aerial_recon_leg_stalled` event appears and orbit
+  commands stop until unsafe-perimeter egress is needed.
+- During a fully assembled police rush, confirm only one helicopter switches
+  from recon into a CAS sortie and additional helicopters remain recon. End the
+  ground move, break visual contact, or sustain player fire; the CAS aircraft
+  must log `aerial_cas_departing`, suppress its guns, fly out, and never be
+  selected for CASEVAC during that sortie.
+- In the SMG Mk II customizer, equip each special-ammo magazine, refill it, move
+  to another option, and reopen the workbench. The purchased ammo must remain
+  at the component's capacity and a second refill must report fully stocked
+  rather than charging for the same rounds again.
 - In the Vapid Caracara selector, confirm only Driver, Passenger, and Bed Turret
   are shown. From Driver, press Down once and confirm selection skips the hidden
   rear-seat row and lands on Bed Turret; release the selector key and confirm the

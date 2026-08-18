@@ -22,6 +22,25 @@ namespace ALLIN1
 
     internal static class AmmoRefillPolicy
     {
+        private const int RefillMagazineCount = 10;
+        private const int AbsoluteRefillLimit = 600;
+
+        internal static int ResolveRefillTarget(
+            bool capacityResolved, int nativeMaxAmmo, int maxClipAmmo)
+        {
+            if (!capacityResolved || nativeMaxAmmo <= 0)
+                return nativeMaxAmmo;
+
+            int boundedTarget = AbsoluteRefillLimit;
+            if (maxClipAmmo > 0)
+            {
+                long magazineTarget = (long)maxClipAmmo * RefillMagazineCount;
+                boundedTarget = (int)System.Math.Min(
+                    AbsoluteRefillLimit, magazineTarget);
+            }
+            return System.Math.Min(nativeMaxAmmo, boundedTarget);
+        }
+
         internal static AmmoCapacityResult Evaluate(
             bool capacityResolved, int currentAmmo, int maxAmmo)
         {
@@ -33,6 +52,16 @@ namespace ALLIN1
             return needed <= 0
                 ? new AmmoCapacityResult(AmmoCapacityStatus.FullyStocked, 0)
                 : new AmmoCapacityResult(AmmoCapacityStatus.NeedsRefill, needed);
+        }
+
+        internal static int ClampPreservedAmmo(
+            int ammoBeforeComponents, bool capacityResolved,
+            int maxAmmoAfterComponents)
+        {
+            int preserved = System.Math.Max(0, ammoBeforeComponents);
+            if (!capacityResolved || maxAmmoAfterComponents <= 0)
+                return preserved;
+            return System.Math.Min(preserved, maxAmmoAfterComponents);
         }
     }
 }

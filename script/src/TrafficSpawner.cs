@@ -818,15 +818,21 @@ namespace ALLIN1
                 return false;
             }
 
-            bool clonesReady = TryAssignReplacementSeats(occupants, replacement)
-                && TryCloneOccupants(occupants, replacement);
+            bool cloneSettlementRequired = RequiresCloneSettlement(
+                occupants.Count);
+            bool seatsAssigned = !cloneSettlementRequired ||
+                TryAssignReplacementSeats(occupants, replacement);
+            bool occupantsCloned = seatsAssigned &&
+                (!cloneSettlementRequired ||
+                    TryCloneOccupants(occupants, replacement));
             AmbientOccupant clonedDriver = occupants.Find(
                 occupant => occupant.SourceSeat == -1
                     && occupant.ClonePed != null
                     && IsPedInVehicleSeat(occupant.ClonePed, replacement, -1));
-            if (!clonesReady
-                || !CanCommitReplacement(hadDriver, clonedDriver != null)
-                || !SourceOccupantsUnchanged(occupants, old))
+            bool driverReady = clonedDriver != null;
+            bool commitAllowed = CanCommitReplacement(hadDriver, clonedDriver != null);
+            bool sourceUnchanged = SourceOccupantsUnchanged(occupants, old);
+            if (!occupantsCloned || !commitAllowed || !sourceUnchanged)
             {
                 ClientLog.Warn("Traffic", "replacement_clone_validation_failed",
                     new Dictionary<string, object>
@@ -834,7 +840,14 @@ namespace ALLIN1
                         { "model", newModelName },
                         { "source_handle", old.Handle },
                         { "had_driver", hadDriver },
-                        { "occupants", occupants.Count }
+                        { "occupants", occupants.Count },
+                        { "clone_settlement_required",
+                            cloneSettlementRequired },
+                        { "seats_assigned", seatsAssigned },
+                        { "occupants_cloned", occupantsCloned },
+                        { "driver_ready", driverReady },
+                        { "commit_allowed", commitAllowed },
+                        { "source_unchanged", sourceUnchanged }
                     });
                 CleanupStagedReplacement(occupants, replacement);
                 return false;
@@ -995,6 +1008,8 @@ namespace ALLIN1
         private static bool TryCloneOccupants(
             List<AmbientOccupant> occupants, Vehicle replacement)
         {
+            if (occupants == null) return false;
+            if (!RequiresCloneSettlement(occupants.Count)) return true;
             foreach (AmbientOccupant occupant in occupants)
             {
                 if (occupant.SourcePed == null || !occupant.SourcePed.Exists())
@@ -1021,6 +1036,11 @@ namespace ALLIN1
                     occupant.ClonePed, replacement, occupant.TargetSeat))
                     return false;
             return true;
+        }
+
+        internal static bool RequiresCloneSettlement(int occupantCount)
+        {
+            return occupantCount > 0;
         }
 
         private static bool SourceOccupantsUnchanged(

@@ -1525,6 +1525,12 @@ namespace ALLIN1
             return false;
         }
 
+        internal static bool IsStoryPersonalVehicle(Vehicle vehicle)
+        {
+            return vehicle != null && vehicle.Exists() &&
+                IsPersonalVehicle(vehicle);
+        }
+
         private static string NormalizePlate(string plateText)
         {
             return string.IsNullOrWhiteSpace(plateText)

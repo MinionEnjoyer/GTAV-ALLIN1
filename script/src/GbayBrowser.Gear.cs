@@ -60,10 +60,10 @@ namespace ALLIN1
         private void DrawGearBrowser(FrameInput input)
         {
             float aspect = GbayRenderer.GetAspectRatio();
-            float cardW = CARD_H / aspect;
+            float cardW = CARD_H * CARD_VISUAL_ASPECT / aspect;
             float bgCY = (BROWSER_TOP + BROWSER_BOTTOM) / 2f;
 
-            GbayRenderer.DrawRect(BROWSER_CX, bgCY, BROWSER_W,
+            GbayRenderer.DrawElevatedPanel(BROWSER_CX, bgCY, BROWSER_W,
                 BROWSER_BOTTOM - BROWSER_TOP, GbayRenderer.BodyBg);
             DrawGearHeader();
             DrawGearCategoryTabs(input);
@@ -85,15 +85,15 @@ namespace ALLIN1
         {
             GbayRenderer.DrawRect(BROWSER_CX, HEADER_CY, BROWSER_W, HEADER_H,
                 GbayRenderer.HeaderBg);
+            GbayRenderer.DrawHeaderAccent(
+                BROWSER_CX, HEADER_Y + HEADER_H, BROWSER_W);
             GbayRenderer.DrawGbayWordmark(
                 BROWSER_LEFT + 0.035f, HEADER_Y + 0.010f, 0.43f, true);
             GbayRenderer.DrawTitleBadge(
                 "GEAR", BROWSER_LEFT + 0.16f, HEADER_CY,
                 0.13f, 0.044f, 0.35f);
-            GbayRenderer.DrawText($"${Game.Player.Money:N0}",
-                BROWSER_RIGHT - 0.01f, HEADER_Y + 0.018f, 0.38f,
-                GbayRenderer.HeaderText, GbayRenderer.FONT_CHALET,
-                false, false, true);
+            GbayRenderer.DrawMoneyBadge($"${Game.Player.Money:N0}",
+                BROWSER_RIGHT - 0.01f, HEADER_CY);
         }
 
         private void DrawGearCategoryTabs(FrameInput input)
@@ -170,11 +170,8 @@ namespace ALLIN1
         {
             float cx = left + cardW / 2f;
             float cy = top + CARD_H / 2f;
-            Color bg = selected ? GbayRenderer.CardSelected
-                : hovered ? GbayRenderer.CardHover : GbayRenderer.CardBg;
-            GbayRenderer.DrawBorderedRect(cx, cy, cardW, CARD_H, bg,
-                selected ? FocusBorderColor() : GbayRenderer.CardBorder,
-                selected ? FocusBorderWidth() : 0.002f);
+            GbayRenderer.DrawCatalogCardSurface(
+                cx, cy, cardW, CARD_H, selected, hovered);
 
             float previewH = CARD_H * 0.55f;
             float previewCY = top + previewH / 2f;
@@ -213,14 +210,19 @@ namespace ALLIN1
             float textTop = top + previewH + 0.005f;
             float textLeft = left + 0.008f;
             GbayRenderer.DrawTextFit(card.DisplayName, textLeft,
-                textTop + 0.005f, 0.33f, 0.22f, cardW - 0.016f,
+                textTop + 0.005f, 0.39f, 0.28f, cardW - 0.016f,
                 GbayRenderer.TextDark, GbayRenderer.FONT_CHALET);
             string price = card.Equipped ? "EQUIPPED" : card.Owned ? "OWNED"
                 : card.Price <= 0 ? "FREE" : $"${card.Price:N0}";
-            GbayRenderer.DrawText(price, textLeft, textTop + 0.038f, 0.30f,
-                card.Owned || card.Price <= 0
-                    ? GbayRenderer.TextPriceFree : GbayRenderer.TextPrice,
-                GbayRenderer.FONT_CHALET);
+            Color statusText = card.Equipped ? GbayRenderer.TextWhite
+                : card.Owned || card.Price <= 0
+                    ? GbayRenderer.Success : GbayRenderer.TextPrice;
+            Color statusFill = card.Equipped ? GbayRenderer.HeaderBg
+                : card.Owned || card.Price <= 0
+                    ? GbayRenderer.AccentSoft : GbayRenderer.AccentSoft;
+            GbayRenderer.DrawStatusPill(price,
+                left + cardW - 0.058f, textTop + 0.091f, 0.104f,
+                statusFill, statusText);
         }
 
         private void HandleGearInput(
@@ -281,7 +283,8 @@ namespace ALLIN1
                 }
             }
 
-            if (_gearHoverCard >= 0) _gearSelectedCard = _gearHoverCard;
+            if (_gearHoverCard >= 0 && (input.MouseMoved || input.MouseClick))
+                _gearSelectedCard = _gearHoverCard;
 
             if (input.MouseClick && _gearHoverUnequipCard >= 0)
             {

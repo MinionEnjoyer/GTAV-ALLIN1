@@ -59,7 +59,10 @@ namespace ALLIN1
                     Add(line, "ts", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture));
                     Add(line, "level", level); Add(line, "session", Session);
                     Add(line, "component", component); Add(line, "message", message);
-                    if (fields != null) foreach (var field in fields) Add(line, field.Key, field.Value);
+                    if (fields != null)
+                        foreach (var field in fields)
+                            Add(line, StructuredLogKeyPolicy.Normalize(
+                                field.Key), field.Value);
                     if (ex != null)
                     {
                         Add(line, "exception_type", ex.GetType().FullName);

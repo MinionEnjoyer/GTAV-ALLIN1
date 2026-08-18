@@ -40,6 +40,7 @@ output/
 # Locally built external preview tools
 tools/YTDToolio.exe
 tools/FuckDX.dll
+tools/CodeWalker/
 tools/RpfPatcher/*.dll
 tools/RpfPatcher/*.exe
 tools/RpfPatcher/*.pdb
@@ -50,4 +51,5 @@ tools/RpfPatcher/SharpDX*.dll
 # Local investigation and visual QA scratch data
 .artifacts/
 work/
+.codex_video_*/
 tools/RpfPatcher/strings.txt

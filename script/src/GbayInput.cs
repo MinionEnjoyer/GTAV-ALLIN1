@@ -3,6 +3,7 @@
 // Handles keyboard navigation, mouse position/clicks, and disabling
 // conflicting game controls while the browser is open.
 
+using System;
 using GTA;
 using GTA.Native;
 
@@ -23,6 +24,7 @@ namespace ALLIN1
         internal bool Favorite;
         internal float MouseX;         // 0.0 - 1.0
         internal float MouseY;         // 0.0 - 1.0
+        internal bool MouseMoved;
         internal bool MouseClick;
         internal bool MouseRightClick;
         internal int ScrollDelta;       // -1 = up, +1 = down
@@ -30,6 +32,8 @@ namespace ALLIN1
 
     internal static class GbayInput
     {
+        private static float _lastMouseX = -1f;
+        private static float _lastMouseY = -1f;
 
         /// <summary>
         /// Poll all inputs for this frame. Call once per tick.
@@ -42,6 +46,11 @@ namespace ALLIN1
                 Hash.GET_DISABLED_CONTROL_NORMAL, 0, (int)Control.CursorX);
             input.MouseY = Function.Call<float>(
                 Hash.GET_DISABLED_CONTROL_NORMAL, 0, (int)Control.CursorY);
+            if (_lastMouseX >= 0f && _lastMouseY >= 0f)
+                input.MouseMoved = Math.Abs(input.MouseX - _lastMouseX) > 0.001f ||
+                    Math.Abs(input.MouseY - _lastMouseY) > 0.001f;
+            _lastMouseX = input.MouseX;
+            _lastMouseY = input.MouseY;
 
             input.MouseClick = Function.Call<bool>(
                 Hash.IS_DISABLED_CONTROL_JUST_PRESSED, 0, (int)Control.CursorAccept);

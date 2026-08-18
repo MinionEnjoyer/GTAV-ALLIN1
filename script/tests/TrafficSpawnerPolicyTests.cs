@@ -47,6 +47,17 @@ namespace ALLIN1.Tests
         }
 
         [Theory]
+        [InlineData(0, false)]
+        [InlineData(1, true)]
+        [InlineData(4, true)]
+        public void Empty_replacements_do_not_yield_for_nonexistent_clones(
+            int occupants, bool expected)
+        {
+            Assert.Equal(expected,
+                TrafficSpawner.RequiresCloneSettlement(occupants));
+        }
+
+        [Theory]
         [InlineData(false, 24)]
         [InlineData(true, 12)]
         public void Replacement_scan_work_is_strictly_bounded(

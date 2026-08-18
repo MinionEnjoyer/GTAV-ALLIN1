@@ -187,8 +187,12 @@ class ManagerWindow:
         self.gbay_free_mode = tk.BooleanVar(value=self.config.script.gbay_free_mode)
         self.garages_always_accessible = tk.BooleanVar(
             value=self.config.script.garages_always_accessible)
+        self.enhanced_police_ai = tk.BooleanVar(
+            value=self.config.script.enhanced_police_ai)
         self.gta_iv_npc_physics = tk.BooleanVar(
             value=self.config.script.gta_iv_npc_physics)
+        self.gta_iv_npc_physics_debug = tk.BooleanVar(
+            value=self.config.script.gta_iv_npc_physics_debug)
         self.controller_enabled = tk.BooleanVar(value=self.config.script.controller_enabled)
         for name in (
             "controller_open_gbay", "controller_open_gbay_modifier",
@@ -219,7 +223,9 @@ class ManagerWindow:
             self.safe_mode, self.reduced_motion, self.colorblind_mode, self.ui_scale,
             self.hold_duration_ms, self.gbay_free_mode,
             self.garages_always_accessible,
+            self.enhanced_police_ai,
             self.gta_iv_npc_physics,
+            self.gta_iv_npc_physics_debug,
             self.controller_enabled,
             self.controller_open_gbay, self.controller_open_gbay_modifier,
             self.controller_night_vision, self.controller_night_vision_modifier,
@@ -395,10 +401,15 @@ class ManagerWindow:
         ttk.Checkbutton(options, text="Allow garage entry while wanted",
                         variable=self.garages_always_accessible).grid(
                             row=6, column=1, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(options, text="Enhanced Police AI",
+                        variable=self.enhanced_police_ai).grid(
+                            row=7, column=0, sticky="w", pady=(8, 0))
         ttk.Checkbutton(options, text="Experimental GTA IV-style NPC physics",
                         variable=self.gta_iv_npc_physics).grid(
-                            row=7, column=0, columnspan=2, sticky="w",
-                            pady=(8, 0))
+                            row=7, column=1, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(options, text="Physics experiment diagnostics",
+                        variable=self.gta_iv_npc_physics_debug).grid(
+                            row=8, column=0, sticky="w", pady=(8, 0))
 
         controls = ttk.LabelFrame(controls_page, text="KEYBINDS & VEHICLE FILTERS", padding=14)
         controls.pack(fill="x", pady=(0, 12))
@@ -670,8 +681,12 @@ class ManagerWindow:
         self.config.script.gbay_free_mode = self.gbay_free_mode.get()
         self.config.script.garages_always_accessible = \
             self.garages_always_accessible.get()
+        self.config.script.enhanced_police_ai = \
+            self.enhanced_police_ai.get()
         self.config.script.gta_iv_npc_physics = \
             self.gta_iv_npc_physics.get()
+        self.config.script.gta_iv_npc_physics_debug = \
+            self.gta_iv_npc_physics_debug.get()
         if hasattr(self, "controller_enabled"):
             self.config.script.controller_enabled = self.controller_enabled.get()
         for name in (
@@ -746,8 +761,12 @@ class ManagerWindow:
             self.gbay_free_mode.set(self.config.script.gbay_free_mode)
             self.garages_always_accessible.set(
                 self.config.script.garages_always_accessible)
+            self.enhanced_police_ai.set(
+                self.config.script.enhanced_police_ai)
             self.gta_iv_npc_physics.set(
                 self.config.script.gta_iv_npc_physics)
+            self.gta_iv_npc_physics_debug.set(
+                self.config.script.gta_iv_npc_physics_debug)
             self.controller_enabled.set(self.config.script.controller_enabled)
             for name in (
                 "controller_open_gbay", "controller_open_gbay_modifier",

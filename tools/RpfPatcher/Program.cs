@@ -13,11 +13,17 @@
 //   RpfPatcher.exe inspect      <gta_path> <rpf_path>    — dump RPF structure + XML contents
 //   RpfPatcher.exe extract-entries <gta_path> <rpf_path> <manifest_tsv> <output_root>
 //   RpfPatcher.exe audit-seats  <gta_path> <output_json> [output_cs]
+//   RpfPatcher.exe install-euphoria <gta_path> <payload_folder> [--allow-enhanced]
+//   RpfPatcher.exe verify-euphoria  <gta_path> <payload_folder>
+//   RpfPatcher.exe validate-euphoria <payload_folder_or_archive>
+//   RpfPatcher.exe remove-euphoria  <gta_path>
 
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
 using CodeWalker.Core.Utils;
@@ -57,6 +63,10 @@ namespace RpfPatcher
                     "  RpfPatcher.exe extract-entry <gta_path> <rpf_path> <name> <output>\n" +
                     "  RpfPatcher.exe extract-entries <gta_path> <rpf_path> <manifest_tsv> <output_root>\n" +
                     "  RpfPatcher.exe open-rpfs <gta_path> <manifest_tsv> <output_root>\n" +
+                    "  RpfPatcher.exe install-euphoria <gta_path> <payload_folder_or_archive> [--allow-enhanced]\n" +
+                    "  RpfPatcher.exe verify-euphoria <gta_path> <payload_folder_or_archive>\n" +
+                    "  RpfPatcher.exe validate-euphoria <payload_folder_or_archive>\n" +
+                    "  RpfPatcher.exe remove-euphoria <gta_path>\n" +
                     "  RpfPatcher.exe dump-ytd      <ytd_path> [legacy|gen9]");
                 return 1;
             }
@@ -91,6 +101,14 @@ namespace RpfPatcher
                 return ExtractEntries(args);
             if (command == "open-rpfs")
                 return OpenRpfs(args);
+            if (command == "install-euphoria")
+                return InstallEuphoria(args);
+            if (command == "verify-euphoria")
+                return VerifyEuphoria(args);
+            if (command == "validate-euphoria")
+                return ValidateEuphoria(args);
+            if (command == "remove-euphoria")
+                return RemoveEuphoria(args);
             if (command == "dump-ytd")
                 return DumpYtd(args);
             if (command == "patch" || command == "unpatch")
@@ -110,7 +128,8 @@ namespace RpfPatcher
         /// Returns the opened RpfFile or null on failure (error printed).
         /// </summary>
         static RpfFile OpenModsUpdateRpf(string gtaPath, out int errorCode,
-                                         string archiveName = "update.rpf")
+                                         string archiveName = "update.rpf",
+                                         bool createModsCopy = true)
         {
             errorCode = 0;
 
@@ -151,12 +170,26 @@ namespace RpfPatcher
 
             if (Directory.Exists(modsRpf))
             {
+                if (!createModsCopy)
+                {
+                    Console.Error.WriteLine(
+                        $"ERROR: Expected an RPF file but found a directory: {modsRpf}");
+                    errorCode = 7;
+                    return null;
+                }
                 Console.WriteLine($"Removing stale directory at {modsRpf}...");
                 Directory.Delete(modsRpf, true);
             }
 
             if (!File.Exists(modsRpf))
             {
+                if (!createModsCopy)
+                {
+                    Console.Error.WriteLine(
+                        $"ERROR: Mods archive is not installed: {modsRpf}");
+                    errorCode = 7;
+                    return null;
+                }
                 Console.WriteLine($"Copying update.rpf to mods folder...");
                 Directory.CreateDirectory(modsDir);
                 File.Copy(originalRpf, modsRpf);
@@ -189,9 +222,12 @@ namespace RpfPatcher
 
             Console.WriteLine($"RPF scanned: {rpf.AllEntries.Count} entries");
 
-            Console.WriteLine("Ensuring OPEN encryption...");
-            RpfFile.EnsureValidEncryption(rpf, null, true);
-            Console.WriteLine("Encryption converted to OPEN.");
+            if (createModsCopy)
+            {
+                Console.WriteLine("Ensuring OPEN encryption...");
+                RpfFile.EnsureValidEncryption(rpf, null, true);
+                Console.WriteLine("Encryption converted to OPEN.");
+            }
 
             return rpf;
         }
@@ -1477,6 +1513,632 @@ namespace RpfPatcher
                 Console.Error.WriteLine($"ERROR: Open RPF conversion failed: {ex.Message}");
                 return 99;
             }
+        }
+
+        private const string EroBehavioursSha256 =
+            "884805ff75e2e40b8a27f6909c2bcc2f7f7024687e0288a6f6126f2ec49793b5";
+        private const string EroPhysicsTasksSha256 =
+            "d06f620686ccddbc94e260dfc9a5e0d7aa3e0caa392541009ad6405bd2d0a9a0";
+
+        private sealed class EuphoriaArchiveSpec
+        {
+            internal string Archive;
+            internal Dictionary<string, byte[]> Entries;
+        }
+
+        private sealed class EuphoriaArchiveTarget
+        {
+            internal EuphoriaArchiveSpec Spec;
+            internal RpfFile Rpf;
+            internal string ModsPath;
+        }
+
+        // E.R.O.'s OIV writes both update.rpf and the two base fallback
+        // archives. Installing all four declared entries matters on builds
+        // whose load order ignores one copy. Stock archives are never edited:
+        // only OpenRPF's mods copies are created or changed.
+        static int InstallEuphoria(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe install-euphoria <gta_path> <payload_folder_or_oiv> [--allow-enhanced]");
+                return 1;
+            }
+            string gtaPath = Path.GetFullPath(args[1]);
+            string source = Path.GetFullPath(args[2]);
+            if (IsGtaProcessRunning())
+            {
+                Console.Error.WriteLine(
+                    "ERROR: Close GTA V before installing Euphoria archive tuning.");
+                return 11;
+            }
+            bool enhanced = File.Exists(Path.Combine(gtaPath, "GTA5_Enhanced.exe"));
+            bool allowEnhanced = args.Skip(3).Any(value =>
+                value.Equals("--allow-enhanced", StringComparison.OrdinalIgnoreCase));
+            if (enhanced && !allowEnhanced)
+            {
+                Console.Error.WriteLine(
+                    "ERROR: E.R.O. 1.9.4 targets GTA V Legacy. Enhanced compatibility " +
+                    "is experimental; rerun with --allow-enhanced to acknowledge that risk.");
+                return 8;
+            }
+
+            if (!TryLoadEuphoriaPayload(source, out var payload,
+                    out string sourceLabel, out string payloadError))
+            {
+                Console.Error.WriteLine("ERROR: " + payloadError);
+                return 4;
+            }
+
+            var targets = new List<EuphoriaArchiveTarget>();
+            bool tuningWritesStarted = false;
+            try
+            {
+                EuphoriaArchiveSpec[] specs = BuildEuphoriaArchiveSpecs(payload);
+                foreach (EuphoriaArchiveSpec spec in specs)
+                {
+                    RpfFile rpf = OpenEuphoriaArchive(
+                        gtaPath, spec.Archive, true, out int errorCode);
+                    if (rpf == null) return errorCode;
+                    targets.Add(new EuphoriaArchiveTarget
+                    {
+                        Spec = spec,
+                        Rpf = rpf,
+                        ModsPath = GetModsArchivePath(gtaPath, spec.Archive),
+                    });
+                }
+
+                // Do not write a single tuning entry until every archive can be
+                // opened and every complete pre-install snapshot is available.
+                foreach (EuphoriaArchiveTarget target in targets)
+                    EnsureEuphoriaBackup(target.ModsPath);
+
+                tuningWritesStarted = true;
+                foreach (EuphoriaArchiveTarget target in targets)
+                {
+                    InstallEuphoriaEntries(target.Rpf, target.Spec.Entries);
+                    int verification = VerifyEuphoriaArchive(
+                        target.Rpf, target.Spec.Entries,
+                        "mods/" + target.Spec.Archive);
+                    if (verification != 0)
+                    {
+                        TryRollbackEuphoriaInstall(gtaPath, targets);
+                        return verification;
+                    }
+                }
+                WriteEuphoriaMarker(gtaPath, enhanced, payload, sourceLabel);
+                int markerVerification = VerifyEuphoriaMarker(gtaPath, payload);
+                if (markerVerification != 0)
+                {
+                    TryRollbackEuphoriaInstall(gtaPath, targets);
+                    return markerVerification;
+                }
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                if (tuningWritesStarted)
+                    TryRollbackEuphoriaInstall(gtaPath, targets);
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                Console.Error.WriteLine(ex.StackTrace);
+                return 99;
+            }
+        }
+
+        static int VerifyEuphoria(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe verify-euphoria <gta_path> <payload_folder_or_oiv>");
+                return 1;
+            }
+            string gtaPath = Path.GetFullPath(args[1]);
+            if (!TryLoadEuphoriaPayload(Path.GetFullPath(args[2]),
+                    out var payload, out _, out string payloadError))
+            {
+                Console.Error.WriteLine("ERROR: " + payloadError);
+                return 4;
+            }
+            try
+            {
+                foreach (EuphoriaArchiveSpec spec in
+                    BuildEuphoriaArchiveSpecs(payload))
+                {
+                    RpfFile rpf = OpenEuphoriaArchive(
+                        gtaPath, spec.Archive, false, out int errorCode);
+                    if (rpf == null) return errorCode;
+                    int result = VerifyEuphoriaArchive(
+                        rpf, spec.Entries, "mods/" + spec.Archive);
+                    if (result != 0) return result;
+                }
+                int markerResult = VerifyEuphoriaMarker(gtaPath, payload);
+                if (markerResult != 0) return markerResult;
+                Console.WriteLine("All Euphoria archive tuning entries verified.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 99;
+            }
+        }
+
+        static int ValidateEuphoria(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe validate-euphoria <payload_folder_or_archive>");
+                return 1;
+            }
+            if (!TryLoadEuphoriaPayload(Path.GetFullPath(args[1]),
+                    out var payload, out string sourceLabel,
+                    out string payloadError))
+            {
+                Console.Error.WriteLine("ERROR: " + payloadError);
+                return 4;
+            }
+            Console.WriteLine($"Euphoria payload is valid: {sourceLabel}");
+            Console.WriteLine(
+                $"  behaviours.xml: {payload["behaviours.xml"].Length:N0} bytes");
+            Console.WriteLine(
+                $"  physicstasks.ymt: {payload["physicstasks.ymt"].Length:N0} bytes");
+            return 0;
+        }
+
+        static int RemoveEuphoria(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe remove-euphoria <gta_path>");
+                return 1;
+            }
+            string gtaPath = Path.GetFullPath(args[1]);
+            if (IsGtaProcessRunning())
+            {
+                Console.Error.WriteLine(
+                    "ERROR: Close GTA V before removing Euphoria archive tuning.");
+                return 11;
+            }
+            string[] archives = { "update/update.rpf", "common.rpf", "x64a.rpf" };
+            var restore = new List<KeyValuePair<string, string>>();
+            foreach (string archive in archives)
+            {
+                string target = GetModsArchivePath(gtaPath, archive);
+                string backup = target + ".allin1-euphoria.bak";
+                if (!File.Exists(backup))
+                {
+                    Console.Error.WriteLine($"MISSING ROLLBACK SNAPSHOT: {backup}");
+                    return 10;
+                }
+                restore.Add(new KeyValuePair<string, string>(target, backup));
+            }
+            foreach (KeyValuePair<string, string> item in restore)
+            {
+                string target = item.Key;
+                string backup = item.Value;
+                File.Copy(backup, target, true);
+                Console.WriteLine($"Restored: {target}");
+            }
+            string marker = Path.Combine(gtaPath, "scripts",
+                "ALLIN1_euphoria_tuning.json");
+            if (File.Exists(marker)) File.Delete(marker);
+            Console.WriteLine("Euphoria archive tuning removed; rollback snapshots retained.");
+            return 0;
+        }
+
+        static bool TryLoadEuphoriaPayload(string source,
+            out Dictionary<string, byte[]> payload, out string sourceLabel,
+            out string error)
+        {
+            payload = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+            sourceLabel = source;
+            error = null;
+            try
+            {
+                if (Directory.Exists(source))
+                {
+                    string behaviours = Directory.GetFiles(source,
+                        "behaviours.xml", SearchOption.AllDirectories).FirstOrDefault();
+                    string physics = Directory.GetFiles(source,
+                        "physicstasks.ymt", SearchOption.AllDirectories).FirstOrDefault();
+                    if (behaviours == null || physics == null)
+                    {
+                        error = "Payload directory must contain behaviours.xml and physicstasks.ymt.";
+                        return false;
+                    }
+                    payload["behaviours.xml"] = File.ReadAllBytes(behaviours);
+                    payload["physicstasks.ymt"] = File.ReadAllBytes(physics);
+                }
+                else if (File.Exists(source))
+                {
+                    using (ZipArchive archive = ZipFile.OpenRead(source))
+                    {
+                        if (!TryReadEuphoriaEntries(archive, payload))
+                        {
+                            ZipArchiveEntry oiv = archive.Entries.FirstOrDefault(entry =>
+                                entry.FullName.EndsWith(".oiv",
+                                    StringComparison.OrdinalIgnoreCase) &&
+                                entry.FullName.IndexOf("1.9.4",
+                                    StringComparison.OrdinalIgnoreCase) >= 0)
+                                ?? archive.Entries.FirstOrDefault(entry =>
+                                    entry.FullName.EndsWith(".oiv",
+                                        StringComparison.OrdinalIgnoreCase));
+                            if (oiv == null)
+                            {
+                                error = "Archive contains neither the tuning files nor an OIV package.";
+                                return false;
+                            }
+                            using (var memory = new MemoryStream())
+                            {
+                                using (Stream input = oiv.Open()) input.CopyTo(memory);
+                                memory.Position = 0;
+                                using (var inner = new ZipArchive(memory,
+                                    ZipArchiveMode.Read, false))
+                                    if (!TryReadEuphoriaEntries(inner, payload))
+                                    {
+                                        error = $"OIV payload is missing required tuning files: {oiv.FullName}";
+                                        return false;
+                                    }
+                            }
+                            sourceLabel += "::" + oiv.FullName;
+                        }
+                    }
+                }
+                else
+                {
+                    error = $"Payload source not found: {source}";
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                error = "Could not read Euphoria payload: " + ex.Message;
+                return false;
+            }
+
+            string behavioursHash = Sha256(payload["behaviours.xml"]);
+            string physicsHash = Sha256(payload["physicstasks.ymt"]);
+            if (!behavioursHash.Equals(EroBehavioursSha256,
+                    StringComparison.OrdinalIgnoreCase) ||
+                !physicsHash.Equals(EroPhysicsTasksSha256,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                error = "Payload does not match the audited E.R.O. 1.9.4 tuning files. " +
+                    $"behaviours={behavioursHash}, physicstasks={physicsHash}";
+                return false;
+            }
+            Console.WriteLine($"Validated E.R.O. 1.9.4 payload: {sourceLabel}");
+            return true;
+        }
+
+        static bool TryReadEuphoriaEntries(ZipArchive archive,
+            Dictionary<string, byte[]> payload)
+        {
+            ZipArchiveEntry behaviours = archive.Entries.FirstOrDefault(entry =>
+                entry.FullName.EndsWith("/behaviours.xml",
+                    StringComparison.OrdinalIgnoreCase) ||
+                entry.FullName.Equals("behaviours.xml",
+                    StringComparison.OrdinalIgnoreCase));
+            ZipArchiveEntry physics = archive.Entries.FirstOrDefault(entry =>
+                entry.FullName.EndsWith("/physicstasks.ymt",
+                    StringComparison.OrdinalIgnoreCase) ||
+                entry.FullName.Equals("physicstasks.ymt",
+                    StringComparison.OrdinalIgnoreCase));
+            if (behaviours == null || physics == null) return false;
+            payload["behaviours.xml"] = ReadZipEntry(behaviours);
+            payload["physicstasks.ymt"] = ReadZipEntry(physics);
+            return true;
+        }
+
+        static byte[] ReadZipEntry(ZipArchiveEntry entry)
+        {
+            using (var memory = new MemoryStream())
+            {
+                using (Stream stream = entry.Open()) stream.CopyTo(memory);
+                return memory.ToArray();
+            }
+        }
+
+        static EuphoriaArchiveSpec[] BuildEuphoriaArchiveSpecs(
+            Dictionary<string, byte[]> payload)
+        {
+            byte[] behaviours = payload["behaviours.xml"];
+            byte[] physics = payload["physicstasks.ymt"];
+            return new[]
+            {
+                new EuphoriaArchiveSpec
+                {
+                    Archive = "update/update.rpf",
+                    Entries = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        { "common/data/naturalmotion/behaviours.xml", behaviours },
+                        { "x64/data/tune/physicstasks.ymt", physics },
+                    },
+                },
+                new EuphoriaArchiveSpec
+                {
+                    Archive = "common.rpf",
+                    Entries = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        { "data/naturalmotion/behaviours.xml", behaviours },
+                    },
+                },
+                new EuphoriaArchiveSpec
+                {
+                    Archive = "x64a.rpf",
+                    Entries = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        { "data/tune/physicstasks.ymt", physics },
+                    },
+                },
+            };
+        }
+
+        static RpfFile OpenEuphoriaArchive(string gtaPath,
+            string archive, bool createModsCopy, out int errorCode)
+        {
+            return archive.Equals("update/update.rpf",
+                    StringComparison.OrdinalIgnoreCase)
+                ? OpenModsUpdateRpf(gtaPath, out errorCode, "update.rpf",
+                    createModsCopy)
+                : OpenModsRootRpf(gtaPath, archive, createModsCopy,
+                    out errorCode);
+        }
+
+        static RpfFile OpenModsRootRpf(string gtaPath,
+            string archive, bool createModsCopy, out int errorCode)
+        {
+            errorCode = 0;
+            bool enhanced = File.Exists(Path.Combine(gtaPath,
+                "GTA5_Enhanced.exe"));
+            string exe = enhanced ? "GTA5_Enhanced.exe" : "GTA5.exe";
+            if (!File.Exists(Path.Combine(gtaPath, exe)))
+            {
+                Console.Error.WriteLine($"ERROR: {exe} not found in {gtaPath}");
+                errorCode = 2;
+                return null;
+            }
+            GTA5Keys.LoadFromPath(gtaPath, enhanced, null);
+            if (GTA5Keys.PC_AES_KEY == null)
+            {
+                Console.Error.WriteLine("ERROR: Failed to load encryption keys.");
+                errorCode = 3;
+                return null;
+            }
+            string original = Path.Combine(gtaPath,
+                archive.Replace('/', Path.DirectorySeparatorChar));
+            string mods = GetModsArchivePath(gtaPath, archive);
+            if (!File.Exists(original))
+            {
+                Console.Error.WriteLine($"ERROR: Stock archive not found: {original}");
+                errorCode = 4;
+                return null;
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(mods));
+            if (!File.Exists(mods))
+            {
+                if (!createModsCopy)
+                {
+                    Console.Error.WriteLine(
+                        $"ERROR: Mods archive is not installed: {mods}");
+                    errorCode = 7;
+                    return null;
+                }
+                File.Copy(original, mods, false);
+                Console.WriteLine($"Copied stock archive to mods: {mods}");
+            }
+            else if (File.GetLastWriteTimeUtc(mods).AddSeconds(1) <
+                     File.GetLastWriteTimeUtc(original))
+            {
+                Console.Error.WriteLine(
+                    $"ERROR: Mods archive predates stock archive: {mods}");
+                errorCode = 6;
+                return null;
+            }
+            var rpf = new RpfFile(mods, mods);
+            rpf.ScanStructure(null,
+                warning => Console.Error.WriteLine($"RPF scan warning: {warning}"));
+            if (rpf.AllEntries == null || rpf.AllEntries.Count == 0)
+            {
+                Console.Error.WriteLine($"ERROR: RPF scan returned no entries: {mods}");
+                errorCode = 4;
+                return null;
+            }
+            if (createModsCopy)
+                RpfFile.EnsureValidEncryption(rpf, null, true);
+            Console.WriteLine($"Opened mods archive: {mods} ({rpf.AllEntries.Count} entries)");
+            return rpf;
+        }
+
+        static string GetModsArchivePath(string gtaPath, string archive)
+        {
+            return Path.GetFullPath(Path.Combine(gtaPath, "mods",
+                archive.Replace('/', Path.DirectorySeparatorChar)));
+        }
+
+        static bool IsGtaProcessRunning()
+        {
+            return System.Diagnostics.Process.GetProcessesByName("GTA5").Length > 0 ||
+                System.Diagnostics.Process.GetProcessesByName("GTA5_Enhanced").Length > 0;
+        }
+
+        static void EnsureEuphoriaBackup(string modsRpf)
+        {
+            string backup = modsRpf + ".allin1-euphoria.bak";
+            if (!File.Exists(backup))
+            {
+                File.Copy(modsRpf, backup, false);
+                Console.WriteLine($"Created rollback snapshot: {backup}");
+            }
+            else Console.WriteLine($"Preserving rollback snapshot: {backup}");
+        }
+
+        static void TryRollbackEuphoriaInstall(string gtaPath,
+            IEnumerable<EuphoriaArchiveTarget> targets)
+        {
+            Console.Error.WriteLine(
+                "Installation did not complete; restoring every pre-install snapshot.");
+            foreach (EuphoriaArchiveTarget target in targets)
+            {
+                string backup = target.ModsPath + ".allin1-euphoria.bak";
+                try
+                {
+                    if (!File.Exists(backup))
+                    {
+                        Console.Error.WriteLine(
+                            $"ROLLBACK SNAPSHOT MISSING: {backup}");
+                        continue;
+                    }
+                    File.Copy(backup, target.ModsPath, true);
+                    Console.Error.WriteLine($"Rolled back: {target.ModsPath}");
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine(
+                        $"ROLLBACK FAILED: {target.ModsPath}: {ex.Message}");
+                }
+            }
+            string marker = GetEuphoriaMarkerPath(gtaPath);
+            try
+            {
+                if (File.Exists(marker)) File.Delete(marker);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"ROLLBACK MARKER CLEANUP FAILED: {marker}: {ex.Message}");
+            }
+        }
+
+        static void InstallEuphoriaEntries(RpfFile rpf,
+            Dictionary<string, byte[]> entries)
+        {
+            foreach (KeyValuePair<string, byte[]> item in entries)
+            {
+                string[] parts = item.Key.Split('/');
+                RpfDirectoryEntry directory = rpf.Root;
+                for (int index = 0; index < parts.Length - 1; index++)
+                {
+                    string name = parts[index];
+                    RpfDirectoryEntry existing = directory.Directories?
+                        .FirstOrDefault(entry => entry.Name.Equals(name,
+                            StringComparison.OrdinalIgnoreCase));
+                    directory = existing ?? RpfFile.CreateDirectory(directory, name);
+                }
+                string fileName = parts[parts.Length - 1];
+                RpfFile.CreateFile(directory, fileName, item.Value, true);
+                Console.WriteLine($"  ~ {item.Key} ({item.Value.Length:N0} bytes, " +
+                    $"sha256={Sha256(item.Value)})");
+            }
+        }
+
+        static int VerifyEuphoriaArchive(RpfFile rpf,
+            Dictionary<string, byte[]> payload, string label)
+        {
+            int failures = 0;
+            foreach (KeyValuePair<string, byte[]> item in payload)
+            {
+                RpfFileEntry entry = FindRelativeEntry(rpf, item.Key);
+                byte[] actual = entry?.File.ExtractFile(entry);
+                bool matches = actual != null && actual.SequenceEqual(item.Value);
+                Console.WriteLine($"  {(matches ? "OK" : "FAIL")} {label}/{item.Key}" +
+                    (actual == null ? " (missing)" :
+                    $" ({actual.Length:N0} bytes, sha256={Sha256(actual)})"));
+                if (!matches) failures++;
+            }
+            if (failures > 0)
+            {
+                Console.Error.WriteLine(
+                    $"ERROR: Euphoria payload verification failed for {label} ({failures} entries). ");
+                return 9;
+            }
+            Console.WriteLine($"Euphoria archive tuning verified in {label}.");
+            return 0;
+        }
+
+        static RpfFileEntry FindRelativeEntry(RpfFile rpf, string requested)
+        {
+            string normalized = requested.Replace('\\', '/').TrimStart('/');
+            return rpf.AllEntries?.OfType<RpfFileEntry>().FirstOrDefault(entry =>
+            {
+                string path = entry.Path.Replace('\\', '/');
+                return path.Equals(normalized, StringComparison.OrdinalIgnoreCase) ||
+                    path.EndsWith("/" + normalized,
+                        StringComparison.OrdinalIgnoreCase);
+            });
+        }
+
+        static string Sha256(byte[] data)
+        {
+            using (SHA256 algorithm = SHA256.Create())
+                return BitConverter.ToString(algorithm.ComputeHash(data))
+                    .Replace("-", "").ToLowerInvariant();
+        }
+
+        static void WriteEuphoriaMarker(string gtaPath, bool enhanced,
+            Dictionary<string, byte[]> payload, string source)
+        {
+            string scripts = Path.Combine(gtaPath, "scripts");
+            Directory.CreateDirectory(scripts);
+            string marker = GetEuphoriaMarkerPath(gtaPath);
+            string json = "{\n" +
+                $"  \"installed_utc\": \"{DateTime.UtcNow:o}\",\n" +
+                $"  \"edition\": \"{(enhanced ? "Enhanced" : "Legacy")}\",\n" +
+                "  \"archives\": [\"mods/update/update.rpf\", \"mods/common.rpf\", \"mods/x64a.rpf\"],\n" +
+                $"  \"source\": \"{JsonEscape(source)}\",\n" +
+                $"  \"behaviours_sha256\": \"{Sha256(payload["behaviours.xml"])}\",\n" +
+                $"  \"physicstasks_sha256\": \"{Sha256(payload["physicstasks.ymt"])}\"\n" +
+                "}\n";
+            File.WriteAllText(marker, json, new UTF8Encoding(false));
+            Console.WriteLine($"Wrote archive tuning marker: {marker}");
+        }
+
+        static int VerifyEuphoriaMarker(string gtaPath,
+            Dictionary<string, byte[]> payload)
+        {
+            string marker = GetEuphoriaMarkerPath(gtaPath);
+            if (!File.Exists(marker))
+            {
+                Console.Error.WriteLine(
+                    $"ERROR: Euphoria archive marker is missing: {marker}");
+                return 12;
+            }
+            string json = File.ReadAllText(marker);
+            string[] expected =
+            {
+                "mods/update/update.rpf",
+                "mods/common.rpf",
+                "mods/x64a.rpf",
+                Sha256(payload["behaviours.xml"]),
+                Sha256(payload["physicstasks.ymt"]),
+            };
+            foreach (string value in expected)
+            {
+                if (json.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0)
+                    continue;
+                Console.Error.WriteLine(
+                    $"ERROR: Euphoria archive marker is incomplete: {value}");
+                return 12;
+            }
+            Console.WriteLine($"Euphoria archive marker verified: {marker}");
+            return 0;
+        }
+
+        static string GetEuphoriaMarkerPath(string gtaPath)
+        {
+            return Path.Combine(gtaPath, "scripts",
+                "ALLIN1_euphoria_tuning.json");
+        }
+
+        static string JsonEscape(string value)
+        {
+            return (value ?? "").Replace("\\", "\\\\")
+                .Replace("\"", "\\\"")
+                .Replace("\r", "\\r").Replace("\n", "\\n");
         }
 
         static int DumpYtd(string[] args)

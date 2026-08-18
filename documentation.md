@@ -160,7 +160,9 @@ Available classes: `compacts`, `coupes`, `sedans`, `suvs`, `muscle`, `sports`, `
 | `seat_selector_enabled` | `true` | Enable hold-to-select vehicle seats. |
 | `gbay_free_mode` | `false` | All GBAY purchases are free; vehicle sales have no payout. |
 | `garages_always_accessible` | `false` | Allow garage entry with a wanted level. Mission, vehicle-ownership, and size safety rules still apply. |
-| `gta_iv_npc_physics` | `false` | Experimental runtime-only GTA IV-style Euphoria reactions for nearby ambient human NPCs. Excludes the player, mission/persistent peds, animals, and vehicle occupants. |
+| `enhanced_police_ai` | `true` | Coordinate open-world police squads into synchronized stack/rush assaults or defensive firing lines. Mission AI is excluded. |
+| `gta_iv_npc_physics` | `false` | Experimental GTA IV-style Euphoria reactions for nearby ambient human NPCs. Excludes the player, mission/persistent peds, animals, and vehicle occupants. |
+| `gta_iv_npc_physics_debug` | `true` | Write rotating JSON-line diagnostics to `scripts/ALLIN1_npc_physics.log`, including configuration resolution when the experiment is disabled. |
 | `controller_enabled` | `true` | Enable the shared ALLIN1 controller input layer. |
 | `controller_open_gbay` / `controller_open_gbay_modifier` | `FrontendRdown` / `FrontendLb` | Open GBAY with the configured action chord (LB+R3 by default). |
 | `controller_night_vision` / `controller_night_vision_modifier` | `FrontendLeft` / `FrontendLb` | Toggle purchased night vision (LB+D-pad left by default). |
@@ -265,6 +267,13 @@ change, and the former per-frame GBAY texture-debug overlay has been removed.
 - **Gear** — purchase body armor, parachute, and utility items
 - **My Garage** — choose a garage in the scrollable left pane, then manage and sell its stored vehicles in the right pane
 
+GBAY uses a shared marketplace visual system across every page: elevated panels,
+wide preview cards, persistent controller-focus rails, semantic price/ownership
+badges, visible favorite markers, compact balance fields, consistent footers, and
+actionable empty-search states. The home screen describes each route before it is
+opened, while the weapon workbench keeps its controls in a narrow opaque side
+panel so the staged character and weapon remain unobstructed.
+
 **Vehicle Browser:**
 - 22 category tabs (All, Compacts, Coupes, Sedans, SUVs, Muscle, Sports Classics, Super, Off-Road, Motorcycles, Vans, Boats, Helicopters, Planes, Military, Industrial, Open Wheel, Emergency, Cycles, Service, Special, Weaponized) with scroll arrows
 - 3x3 card grid per page with vehicle preview images, manufacturer, name, and price
@@ -274,10 +283,15 @@ change, and the former per-frame GBAY texture-debug overlay has been removed.
 - Choose a compatible destination garage before confirming the purchase; capacity and size limits are shown for every location
 
 **Weapon Browser:**
+- The GBAY main menu presents **Purchase Weapons** and **Customize Weapons** as adjacent, independent choices so purchasing can never open customization accidentally
 - 11 category tabs (All, Pistols, SMGs, Shotguns, Assault Rifles, Machine Guns, Sniper Rifles, Heavy Weapons, Melee, Throwables, Miscellaneous)
-- Selecting an owned weapon opens its workbench and a camera view of the character holding it
-- The workbench includes ammunition plus every compatible component and tint reported by the installed GTA build, including DLC weapon upgrades
-- Purchased components and finishes can be re-equipped without paying twice; LT/RT rotates the workbench camera and Back returns to the weapon catalog
+- **Purchase Weapons** handles catalog browsing and new weapon purchases; owned catalog entries direct the player back to the dedicated customization route
+- **Customize Weapons** lists owned weapons only, then opens a narrow side-panel workbench with the character and selected weapon prominently staged in front of the camera
+- Weapon customization asks the player to move outdoors when an interior, safehouse, vehicle, or incompatible activity prevents weapons from being equipped
+- The character holds the selected weapon in one persistent shouldered aiming stance; ambient/gesture idles are suppressed and transient component swaps cannot restart the pose while options are browsed
+- The workbench merges the SDK component map, the installed game's live standard and Story Mode DLC component lists, SHVDN's live native-memory component hash catalog, every weapon tint, and all 32 color variants for the equipped Mk II livery
+- Browsing components applies a temporary visual preview and smoothly refocuses the camera toward the relevant attachment area; rapid navigation begins each pan from the currently rendered view, and purchased components and finishes can be re-equipped without paying twice
+- LT/RT rotates the workbench camera and Back returns to the owned-weapons catalog
 - Purchase gives weapon with starter ammo
 
 **Gear Browser:**
@@ -714,6 +728,10 @@ Textures are loaded on demand per page and pre-fetched one page ahead. Unused di
 | `remove-ytd <gta_path> <prefix>` | Remove injected YTDs |
 | `inspect <gta_path> <rpf_path>` | Dump RPF structure for debugging |
 | `audit-seats <gta_path> <output_json> [output_cs]` | Extract every base-game and DLC vehicle layout, seat role, occupant-access door, and hatch; also emit Markdown and an optional C# lookup |
+| `validate-euphoria <payload_folder_or_archive>` | Validate the audited E.R.O. 1.9.4 tuning payload without touching game files |
+| `install-euphoria <gta_path> <payload> [--allow-enhanced]` | Transactionally install E.R.O. tuning into OpenRPF `mods` copies, with complete-archive rollback snapshots and post-write verification |
+| `verify-euphoria <gta_path> <payload>` | Read-only verification of all four installed tuning entries and the install marker |
+| `remove-euphoria <gta_path>` | Restore every archive from the pre-install rollback snapshots |
 
 ---
 

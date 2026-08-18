@@ -27,28 +27,34 @@ namespace ALLIN1
         // ------------------------------------------------------------------ //
 
         // Header / branding
-        internal static readonly Color HeaderBg       = Color.FromArgb(255, 35, 135, 70);
+        internal static readonly Color HeaderBg       = Color.FromArgb(255, 18, 72, 42);
         internal static readonly Color HeaderText     = Color.FromArgb(255, 255, 255, 255);
+        internal static readonly Color Accent         = Color.FromArgb(255, 39, 166, 83);
+        internal static readonly Color AccentBright   = Color.FromArgb(255, 73, 207, 117);
+        internal static readonly Color AccentSoft     = Color.FromArgb(255, 219, 241, 226);
 
         // Tab strip
-        internal static readonly Color TabBg          = Color.FromArgb(255, 38, 145, 72);
+        internal static readonly Color TabBg          = Color.FromArgb(255, 24, 96, 54);
         internal static readonly Color TabActive      = Color.FromArgb(255, 255, 255, 255);
         internal static readonly Color TabInactive    = Color.FromArgb(255, 214, 232, 220);
         internal static readonly Color TabHover       = Color.FromArgb(80, 255, 255, 255);
         internal static readonly Color TabIndicator   = Color.FromArgb(255, 255, 255, 255);
 
         // Body / background
-        internal static readonly Color BodyBg         = Color.FromArgb(250, 239, 244, 241);
-        internal static readonly Color Scrim          = Color.FromArgb(180, 0, 0, 0);
+        internal static readonly Color BodyBg         = Color.FromArgb(252, 237, 241, 238);
+        internal static readonly Color Scrim          = Color.FromArgb(205, 3, 10, 7);
+        internal static readonly Color PanelShadow    = Color.FromArgb(150, 0, 8, 4);
+        internal static readonly Color PageBorder     = Color.FromArgb(255, 94, 112, 102);
+        internal static readonly Color Divider        = Color.FromArgb(255, 202, 213, 207);
 
         // Cards
-        internal static readonly Color CardBg         = Color.FromArgb(250, 255, 255, 255);
-        internal static readonly Color CardHover      = Color.FromArgb(255, 230, 245, 235);
-        internal static readonly Color CardSelected   = Color.FromArgb(255, 218, 240, 226);
+        internal static readonly Color CardBg         = Color.FromArgb(255, 252, 253, 252);
+        internal static readonly Color CardHover      = Color.FromArgb(255, 238, 248, 241);
+        internal static readonly Color CardSelected   = Color.FromArgb(255, 229, 245, 234);
         internal static readonly Color CardTopDefault = Color.FromArgb(255, 220, 230, 225);
         internal static readonly Color CardTopHover   = Color.FromArgb(255, 200, 225, 210);
-        internal static readonly Color CardBorder     = Color.FromArgb(255, 178, 190, 184);
-        internal static readonly Color CardBorderSel  = Color.FromArgb(255, 20, 112, 55);
+        internal static readonly Color CardBorder     = Color.FromArgb(255, 183, 197, 189);
+        internal static readonly Color CardBorderSel  = Color.FromArgb(255, 28, 139, 70);
 
         // Text
         internal static readonly Color TextDark       = Color.FromArgb(255, 30, 30, 35);
@@ -57,17 +63,20 @@ namespace ALLIN1
         internal static readonly Color TextPriceFree  = Color.FromArgb(255, 100, 100, 100);
         internal static readonly Color TextDim        = Color.FromArgb(255, 82, 94, 88);
         internal static readonly Color TextWhite      = Color.FromArgb(255, 255, 255, 255);
+        internal static readonly Color Success        = Color.FromArgb(255, 25, 131, 66);
+        internal static readonly Color Warning        = Color.FromArgb(255, 172, 104, 22);
+        internal static readonly Color Danger         = Color.FromArgb(255, 180, 62, 45);
 
         // Footer
-        internal static readonly Color FooterBg       = Color.FromArgb(255, 225, 233, 228);
+        internal static readonly Color FooterBg       = Color.FromArgb(255, 224, 232, 227);
 
         // Modal overlay
         internal static readonly Color ModalBg        = Color.FromArgb(255, 255, 255, 255);
         internal static readonly Color ModalScrim     = Color.FromArgb(210, 0, 0, 0);
 
         // Buttons
-        internal static readonly Color BtnGreen       = Color.FromArgb(255, 45, 156, 80);
-        internal static readonly Color BtnGreenHover  = Color.FromArgb(255, 35, 135, 65);
+        internal static readonly Color BtnGreen       = Color.FromArgb(255, 39, 166, 83);
+        internal static readonly Color BtnGreenHover  = Color.FromArgb(255, 26, 130, 65);
         internal static readonly Color BtnGray        = Color.FromArgb(255, 160, 170, 165);
         internal static readonly Color BtnGrayHover   = Color.FromArgb(255, 140, 150, 145);
 
@@ -129,6 +138,104 @@ namespace ALLIN1
         {
             DrawRect(x, y, w + bw * 2, h + bw * 2, border);
             DrawRect(x, y, w, h, fill);
+        }
+
+        /// <summary>Shared elevated surface used by full pages and modals.</summary>
+        internal static void DrawElevatedPanel(
+            float x, float y, float w, float h, Color fill)
+        {
+            DrawRect(x + 0.006f, y + 0.009f, w, h, PanelShadow);
+            DrawBorderedRect(x, y, w, h, fill, PageBorder, 0.0015f);
+        }
+
+        /// <summary>
+        /// Consistent catalog-card surface with a restrained shadow and a
+        /// persistent left selection rail. The rail is easier to follow than
+        /// changing the entire card color alone during controller navigation.
+        /// </summary>
+        internal static void DrawCatalogCardSurface(
+            float x, float y, float w, float h, bool selected, bool hovered)
+        {
+            Color fill = selected ? CardSelected : hovered ? CardHover : CardBg;
+            DrawRect(x + 0.003f, y + 0.004f, w, h,
+                Color.FromArgb(70, 2, 18, 9));
+            DrawBorderedRect(x, y, w, h, fill,
+                selected ? CardBorderSel : CardBorder,
+                selected ? 0.003f : 0.0015f);
+            if (selected)
+                DrawRect(x - w * 0.5f + 0.003f, y,
+                    0.006f, h - 0.006f, AccentBright);
+        }
+
+        /// <summary>Thin accent and shadow at the bottom of every header.</summary>
+        internal static void DrawHeaderAccent(
+            float centerX, float bottomY, float width)
+        {
+            DrawRect(centerX, bottomY + 0.002f, width, 0.004f,
+                Color.FromArgb(95, 0, 8, 4));
+            DrawRect(centerX, bottomY, width, 0.003f, AccentBright);
+        }
+
+        /// <summary>Compact two-line player-balance field for page headers.</summary>
+        internal static void DrawMoneyBadge(
+            string amount, float rightEdge, float centerY, float width = 0.14f)
+        {
+            float x = rightEdge - width * 0.5f;
+            DrawBorderedRect(x, centerY, width, 0.047f,
+                Color.FromArgb(62, 255, 255, 255),
+                Color.FromArgb(100, 255, 255, 255), 0.001f);
+            DrawText("BALANCE", x - width * 0.43f,
+                centerY - 0.018f, 0.205f,
+                Color.FromArgb(230, 210, 235, 219), FONT_CONDENSED);
+            DrawTextFit(amount, rightEdge - 0.008f, centerY - 0.010f,
+                0.33f, 0.23f, width - 0.016f, TextWhite,
+                FONT_CHALET, false, false, true);
+        }
+
+        /// <summary>Small semantic label used for prices and ownership state.</summary>
+        internal static void DrawStatusPill(
+            string text, float x, float y, float width, Color fill,
+            Color foreground)
+        {
+            DrawBorderedRect(x, y, width, 0.034f, fill,
+                Color.FromArgb(110, 20, 35, 27), 0.001f);
+            DrawTextFit(text, x, y - 0.012f, 0.29f, 0.21f,
+                width - 0.010f, foreground, FONT_CONDENSED, true);
+        }
+
+        /// <summary>Descriptive home-screen route tile.</summary>
+        internal static void DrawMenuTile(
+            float x, float y, float w, float h, string title,
+            string description, bool selected, bool hovered)
+        {
+            Color fill = selected || hovered ? BtnGreenHover : CardBg;
+            Color titleColor = selected || hovered ? TextWhite : TextDark;
+            Color detailColor = selected || hovered
+                ? Color.FromArgb(235, 222, 242, 229) : TextDim;
+            DrawRect(x + 0.003f, y + 0.004f, w, h,
+                Color.FromArgb(75, 2, 18, 9));
+            DrawBorderedRect(x, y, w, h, fill,
+                selected ? AccentBright : hovered ? CardBorderSel : CardBorder,
+                selected ? 0.003f : 0.0015f);
+            DrawRect(x - w * 0.5f + 0.003f, y, 0.006f,
+                h - 0.006f, selected || hovered ? AccentBright : Accent);
+            float left = x - w * 0.5f + 0.016f;
+            DrawTextFit(title, left, y - h * 0.30f, 0.36f, 0.25f,
+                w - 0.028f, titleColor, FONT_CHALET);
+            DrawTextFit(description, left, y + h * 0.02f, 0.225f, 0.18f,
+                w - 0.028f, detailColor, FONT_CONDENSED);
+        }
+
+        internal static void DrawEmptyState(
+            string title, string detail, float x, float y, float width)
+        {
+            DrawBorderedRect(x, y, width, 0.15f,
+                Color.FromArgb(245, 248, 250, 248), Divider, 0.0015f);
+            DrawRect(x, y - 0.058f, 0.055f, 0.006f, Accent);
+            DrawTextFit(title, x, y - 0.030f, 0.36f, 0.26f,
+                width - 0.04f, TextDark, FONT_CHALET, true);
+            DrawTextFit(detail, x, y + 0.012f, 0.25f, 0.19f,
+                width - 0.05f, TextDim, FONT_CONDENSED, true);
         }
 
         /// <summary>

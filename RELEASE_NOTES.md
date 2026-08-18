@@ -1,3 +1,53 @@
+# GTA V ALLIN1 0.4.7
+
+Version 0.4.7 expands GBAY into a save-safe weapon workbench and develops the
+optional physics experiment into a coordinated police-response layer. It also
+hardens DLC vehicle compatibility, input handling, diagnostics, and the
+launcher controls used to configure the new systems.
+
+## GBAY weapon workbench and interface
+
+- Split **Purchase Weapons** and **Customize Weapons** into adjacent main-menu
+  destinations so buying and modifying a weapon cannot be confused.
+- Added a dedicated, controller-aware customization presentation with weapon
+  attachment and finish catalogs, equipped-state feedback, ammo refills,
+  shouldered preview poses, focused camera transitions, and clean restoration
+  of the player and world when the workbench closes.
+- Kept every GBAY purchase transactional until a real Story Mode save commits
+  the character state, including weapons, attachments, ammunition, and gear.
+- Improved GBAY readability, scrolling, navigation repeat behavior, catalog
+  recovery, preview cleanup, and structured client logging.
+
+## Experimental physics and Enhanced Police AI
+
+- Expanded impact, fall, blast, push, weapon-hit, disarm, and recovery behavior
+  with optional NaturalMotion and archive-level physics tuning.
+- Added coordinated police containment, defensive lines, bounded stack-and-rush
+  tactics, vehicle barriers, withdrawals, smoke cover, casualty collection,
+  stabilization, weapon recovery, and CASEVAC support.
+- Added recon, CAS, and safe hot-rope helicopter roles. Insertions prefer clear
+  rooftops or screened positions behind established firing lines, and stalled
+  scripted flight legs now return control to GTA's ambient aircraft AI.
+- Added comprehensive structured telemetry for physics reactions, tactical
+  decisions, cover failures, rappel interception, insertion planning, aerial
+  mission progress, and CASEVAC deferrals.
+
+## DLC vehicles and launcher
+
+- Applied Story Mode getaway-vehicle suitability rules to DLC vehicles and
+  prevented aircraft and watercraft from entering ordinary car garages.
+- Improved traffic and special-vehicle compatibility for seats, weaponized
+  vehicles, and nonstandard vehicle classes.
+- Added launcher configuration for controller bindings, experimental physics,
+  archive tuning, and **Enhanced Police AI**.
+
+## Release
+
+- Bumped the desktop launcher and in-game assembly together to 0.4.7.
+- Rebuilt and verified the client and automated test suites for the release.
+
+---
+
 # GTA V ALLIN1 0.4.6
 
 Version 0.4.6 is a focused GBAY and garage-packaging hotfix. It corrects the

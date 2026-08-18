@@ -375,6 +375,7 @@ def test_floor_garage_initializes_after_temporary_safe_mode_expires():
 
 def test_gbay_favorites_tabs_and_weapon_previews_are_integrated():
     browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    workbench = (ROOT / "script/src/GbayWeaponCustomization.cs").read_text()
     renderer = (ROOT / "script/src/GbayRenderer.cs").read_text()
     generated = (ROOT / "script/src/WeaponList.cs").read_text()
     assert 'new Category("Favorites",' in browser
@@ -382,6 +383,52 @@ def test_gbay_favorites_tabs_and_weapon_previews_are_integrated():
     assert browser.count("FavoritesOnly") >= 6
     assert "(_vehicleOwnershipFilter + 1) % 3" in browser
     assert "(_weaponOwnershipFilter + 1) % 3" in browser
+    purchase_route = browser.split("activateIdx == 1", 1)[1].split(
+        "activateIdx == 2", 1
+    )[0]
+    assert '_weaponOwnershipFilter = 0;' in purchase_route
+    assert '_weaponSearch = "";' in purchase_route
+    assert "if (_state != BrowserState.WeaponCustomize)" in browser
+    assert "Keep one camera alive for the entire workbench session" in workbench
+    assert "SET_CAM_ACTIVE_WITH_INTERP" not in workbench
+    assert "_weaponCamera.Position = _workbenchCameraPosition" in workbench
+    assert "IS_CAM_RENDERING" in workbench
+    assert '"weapon_camera_render_repaired"' in workbench
+    assert "TASK_AIM_GUN_AT_COORD" not in workbench
+    assert "ped.Task.AimAt(_workbenchAimTarget, -1)" in workbench
+    assert "TASK_PLAY_ANIM" not in workbench
+    assert "CanUseWeaponWorkbenchHere" in workbench
+    assert "GET_INTERIOR_FROM_ENTITY" in workbench
+    assert "GET_NUM_DLC_WEAPONS" in workbench
+    assert "GET_DLC_WEAPON_COMPONENT_DATA" in workbench
+    assert "Marshal.AllocHGlobal" in workbench
+    assert "Marshal.PtrToStructure<RuntimeDlcWeaponData>" in workbench
+    assert "new OutputArgument(\n                    new RuntimeDlcWeaponData())" not in workbench
+    assert "WeaponComponent.GetAllHashes()" in workbench
+    assert "DOES_WEAPON_TAKE_WEAPON_COMPONENT" in workbench
+    assert "SET_PED_CAN_PLAY_AMBIENT_ANIMS" in workbench
+    assert "WORKBENCH_WEAPON_RECOVERY_DELAY_MS" in workbench
+    assert "SET_PED_WEAPON_COMPONENT_TINT_INDEX" in workbench
+    assert "_workbenchAnchorForward" in workbench
+    assert "MaintainWeaponWorkbenchPose" in workbench
+    assert "if (_workbenchCameraAngle > 52f)" in workbench
+    assert "PointWeaponCameraAtFocus" in workbench
+    assert "SetWeaponCameraFocusTarget" in workbench
+    assert "SET_LOCAL_PLAYER_VISIBLE_LOCALLY" in workbench
+    assert 'equipped ? "EQUIPPED" : fullAmmo ? "FULL"' in workbench
+    assert "row.Kind != WorkbenchRowKind.Ammo" in workbench
+    assert "0.005f, rowH - 0.014f, GbayRenderer.Success" in workbench
+    assert "input.MouseMoved" in workbench
+    assert workbench.count("ApplyWeaponCustomizationNow") >= 2
+    inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()
+    assert "hasSavedCustomizations" in inventory
+    assert "internal static bool ApplyWeaponCustomizationNow" in inventory
+    assert "owned_component_tints" in inventory
+    assert "active_component_tints" in inventory
+    assert "GET_PED_WEAPON_COMPONENT_TINT_INDEX" in inventory
+    assert "HAS_PED_GOT_WEAPON_COMPONENT" in inventory.split(
+        "internal static bool ApplyWeaponCustomizationNow", 1
+    )[1]
     assert "DrawWeaponPreviewTexture(" in browser
     assert "DrawWeaponPreviewTexture(" in renderer
     assert "DrawEquipmentPreviewTexture(" in renderer
@@ -519,7 +566,7 @@ def test_gbay_weapons_restore_without_clobbering_story_loadouts():
     assert "GET_AMMO_IN_PED_WEAPON" in inventory
     assert "Hash.SET_PED_AMMO" in inventory
     assert "inventory.weapon_ammo.TryGetValue" in inventory
-    assert "RecordWeaponAmmo(weaponName, maxAmmo)" in (
+    assert "RecordWeaponAmmo(weaponName, refillTarget)" in (
         ROOT / "script/src/GbayShop.cs").read_text()
     customization = (ROOT / "src/allin1/customization.py").read_text()
     assert "LOADOUT_SCHEMA_VERSION = 8" in customization
@@ -873,7 +920,7 @@ def test_gbay_pages_share_back_navigation_and_visible_focus():
 def test_gbay_catalog_is_readable_and_every_listing_is_reachable():
     browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
     renderer = (ROOT / "script/src/GbayRenderer.cs").read_text()
-    assert "DrawGbayHeader(BROWSER_CX, 0.18f, 0.22f, 0.075f)" in browser
+    assert "DrawGbayHeader(BROWSER_CX, 0.145f, 0.22f, 0.075f)" in browser
     assert browser.count("GbayRenderer.DrawLogo(") == 1  # loading-screen PHAT only
     assert "internal static void DrawTextFit(" in renderer
     assert "private void DrawPager(" in browser
@@ -885,20 +932,77 @@ def test_gbay_catalog_is_readable_and_every_listing_is_reachable():
     assert "_weaponTabScrollOffset - (MAX_VISIBLE_TABS - 1)" in browser
     assert "_selectedCard == maxIdx" in browser
     assert "_weaponSelectedCard == maxIdx" in browser
-    assert "private const float CARD_H         = 0.21f" in browser
-    assert "private const float CARD_GAP_Y     = 0.014f" in browser
+    assert "private const int   MAX_VISIBLE_TABS = 6" in browser
+    assert "private const int   GRID_ROWS      = 2" in browser
+    assert "private const int   PAGE_SIZE      = 6" in browser
+    assert "private const float CARD_H         = 0.30f" in browser
+    assert "private const float CARD_GAP_Y     = 0.018f" in browser
+
+
+def test_physics_live_hits_balance_without_standing_ground_writhe():
+    physics = (ROOT / "script/src/NpcPhysicsExperiment.cs").read_text()
+    assert "uprightValue <= 0.55f" in physics
+    assert "relax.Relaxation = relaxation" in physics
+    assert "private const int ScanIntervalMs = 50" in physics
+    assert "private const float LiveBodyRelaxation = 25f" in physics
+    assert "LiveBalanceReinforcementDelayMs = 90" in physics
+    assert '"delayed_live_balance"' in physics
+    assert "balance.LegStiffness = 12f" in physics
+    assert "balance.MaxSteps = 32" in physics
+    assert "balance.MaxBalanceTime = 6.2f" in physics
+
+
+def test_enhanced_police_ai_is_an_independent_launcher_option():
+    config = (ROOT / "src/allin1/config.py").read_text()
+    gui = (ROOT / "src/allin1/gui.py").read_text()
+    example = (ROOT / "config.example.toml").read_text()
+    coordinator = (ROOT / "script/src/PoliceTacticsCoordinator.cs").read_text()
+
+    assert "enhanced_police_ai: bool = True" in config
+    assert 'f"{boolean(self.script.enhanced_police_ai)}\\n"' in config
+    assert 'text="Enhanced Police AI"' in gui
+    assert "self.config.script.enhanced_police_ai" in gui
+    assert "enhanced_police_ai = true" in example
+    assert '"enhanced_police_ai", true' in coordinator
+    constructor = coordinator[coordinator.index("public PoliceTacticsCoordinator()"):
+                              coordinator.index("private void OnTick")]
+    assert '"gta_iv_npc_physics", false' not in constructor
 
 
 def test_gbay_main_menu_uses_clean_rounded_green_header():
     browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
     renderer = (ROOT / "script/src/GbayRenderer.cs").read_text()
-    assert "DrawGbayHeader(BROWSER_CX, 0.18f, 0.22f, 0.075f)" in browser
+    assert "DrawGbayHeader(BROWSER_CX, 0.145f, 0.22f, 0.075f)" in browser
     assert "internal static void DrawRoundedRect(" in renderer
     assert "internal static void DrawGbayHeader(" in renderer
     assert "const int slices = 32" in renderer
     assert "Color highlight" not in renderer
     assert 'DrawText("GBAY"' in renderer
     assert "TextWhite" in renderer
+
+
+def test_gbay_visual_system_is_shared_across_catalogs_and_workbench():
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    renderer = (ROOT / "script/src/GbayRenderer.cs").read_text()
+    gear = (ROOT / "script/src/GbayBrowser.Gear.cs").read_text()
+    workbench = (ROOT / "script/src/GbayWeaponCustomization.cs").read_text()
+    customize = (ROOT / "script/src/GbayBrowserCustomize.cs").read_text()
+
+    for primitive in (
+        "DrawElevatedPanel", "DrawCatalogCardSurface", "DrawHeaderAccent",
+        "DrawMoneyBadge", "DrawStatusPill", "DrawMenuTile", "DrawEmptyState",
+    ):
+        assert f"internal static void {primitive}(" in renderer
+    assert "CARD_VISUAL_ASPECT = 1.45f" in browser
+    assert browser.count("DrawCatalogCardSurface(") >= 2
+    assert "GbayPreferences.IsVehicleFavorite(card.Model)" in browser
+    assert "GbayPreferences.IsWeaponFavorite(card.WeaponName)" in browser
+    assert '"STORY MODE MARKETPLACE"' in browser
+    assert "GbayRenderer.DrawMenuTile(" in browser
+    assert "GbayRenderer.DrawCatalogCardSurface(" in gear
+    assert "GbayRenderer.DrawCatalogCardSurface(" in workbench
+    assert "_workbenchRows.Count > WORKBENCH_VISIBLE_ROWS" in workbench
+    assert "GbayRenderer.DrawElevatedPanel(" in customize
 
 
 def test_gbay_vehicle_purchase_chooses_a_destination_without_a_3d_showroom():
@@ -1034,9 +1138,10 @@ def test_every_gbay_screen_uses_the_shared_green_title_badge():
     assert "TextWhite" in title_badge
     for title in (
         '"LOADING GBAY"', '"VEHICLES"',
-        '"CONFIRM VEHICLE SALE"', '"WEAPONS"',
+        '"CONFIRM VEHICLE SALE"',
     ):
         assert f"DrawTitleBadge(\n                {title}" in browser
+    assert '_weaponWorkbenchMode ? "CUSTOMIZE WEAPONS" : "PURCHASE WEAPONS"' in browser
     assert '_harbourListAccessMode ? "BOAT LIST" : "MY GARAGE"' in browser
     assert "DrawTitleBadge(displayName" in browser
     assert "DrawTitleBadge(displayName" in browser
@@ -1084,7 +1189,8 @@ def test_gbay_gear_store_is_reachable_and_uses_captured_previews():
     browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
     gear_browser = (ROOT / "script/src/GbayBrowser.Gear.cs").read_text()
     shop = (ROOT / "script/src/GbayShop.cs").read_text()
-    assert '"Vehicles", "Weapons", "Gear", "My Garage"' in browser
+    assert '"Vehicles", "Purchase Weapons", "Customize Weapons"' in browser
+    assert '"Gear", "My Garage", "Diagnostics", "About"' in browser
     assert "case BrowserState.GearBrowser:" in browser
     assert "new GearCategory(\"Protection\", GearList.Protection)" in gear_browser
     assert "new GearCategory(\"Equipment\", GearList.Equipment)" in gear_browser
@@ -1453,6 +1559,46 @@ def test_gbay_search_ownership_and_emergency_recovery_contracts():
     assert "emergency_recovery_completed" in garage
     controller_source = (ROOT / "script/src/ControllerBindings.cs").read_text()
     assert "FrontendY" in controller_source and "FrontendX" in controller_source
+
+
+def test_physics_experiment_has_observable_runtime_and_safe_archive_tooling():
+    physics = (ROOT / "script/src/NpcPhysicsExperiment.cs").read_text()
+    workbench = (ROOT / "script/src/GbayWeaponCustomization.cs").read_text()
+    diagnostics = (ROOT / "script/src/PhysicsExperimentLog.cs").read_text()
+    patcher = (ROOT / "tools/RpfPatcher/Program.cs").read_text()
+    assert "PhysicsExperimentLog.Step" in physics
+    assert '"reaction_observation"' in physics
+    assert '"heartbeat"' in physics
+    assert "IS_ENTITY_TOUCHING_ENTITY" in physics
+    assert "ShouldForceVehicleImpactRagdoll" in physics
+    assert '"vehicle_push_vanilla_preserved"' in physics
+    assert '"vehicle_native_reaction_observed"' in physics
+    assert 'fields["natural_motion_dispatched"] = false' in physics
+    assert "private Ped _workbenchDummy" in workbench
+    assert "player.Clone(_workbenchPreviousHeading)" in workbench
+    assert "SET_LOCAL_PLAYER_INVISIBLE_LOCALLY" in workbench
+    assert "DeleteWeaponWorkbenchDummy" in workbench
+    assert "state.WasAlive = true;" in physics
+    assert "Enum.GetValues(typeof(ExplosionType))" in physics
+    assert "ScriptDirectory =\n            AppDomain.CurrentDomain.BaseDirectory" in physics
+    assert "PhysicsExperimentLog.Configure(_debug)" in physics
+    assert "Assembly.Location" not in diagnostics
+    assert "MaxBytes" in diagnostics and "RotateIfNeeded" in diagnostics
+    assert 'command == "validate-euphoria"' in patcher
+    assert "createModsCopy" in patcher
+    assert "IsGtaProcessRunning()" in patcher
+    install = patcher[patcher.index("static int InstallEuphoria"):
+                      patcher.index("static int VerifyEuphoria")]
+    assert install.index("EnsureEuphoriaBackup") < install.index(
+        "tuningWritesStarted = true"
+    )
+    assert "TryRollbackEuphoriaInstall" in install
+    assert "VerifyEuphoriaMarker" in patcher
+    remove = patcher[patcher.index("static int RemoveEuphoria"):
+                     patcher.index("static bool TryLoadEuphoriaPayload")]
+    assert remove.index("restore.Add") < remove.index(
+        "File.Copy(backup, target, true)"
+    )
 
 
 def test_windows_toolchain_ci_is_cached_bounded_and_non_mutating():

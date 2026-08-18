@@ -52,6 +52,10 @@ namespace ALLIN1
                 new Dictionary<string, int>();
             public List<int> owned_tints { get; set; } = new List<int> { 0 };
             public int active_tint { get; set; }
+            public Dictionary<string, List<int>> owned_component_tints { get; set; } =
+                new Dictionary<string, List<int>>();
+            public Dictionary<string, int> active_component_tints { get; set; } =
+                new Dictionary<string, int>();
         }
 
         public sealed class Variation
@@ -255,9 +259,12 @@ namespace ALLIN1
             if (!_state.TryGetValue(character, out Inventory inventory)) return;
             NormalizeInventory(inventory);
             bool hasSavedWeapons = inventory.weapons.Count > 0;
+            bool hasSavedCustomizations =
+                inventory.weapon_customizations.Count > 0;
             if (!inventory.managed && !(inventory.outfit?.managed ?? false) &&
                 !(inventory.progress?.managed ?? false) &&
-                inventory.equipped_gear.Count == 0 && !hasSavedWeapons) return;
+                inventory.equipped_gear.Count == 0 && !hasSavedWeapons &&
+                !hasSavedCustomizations) return;
             Ped ped = Game.Player.Character;
             var owned = new HashSet<string>(inventory.weapons ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
             foreach (var entry in WeaponHashes)
@@ -276,6 +283,19 @@ namespace ALLIN1
                 }
                 else if (inventory.managed)
                     Function.Call(Hash.REMOVE_WEAPON_FROM_PED, ped.Handle, hash);
+            }
+            // Story/base-game weapons may be customized through GBAY without
+            // having been purchased through GBAY. Reapply those saved upgrades
+            // when the character loads without granting the weapon itself.
+            foreach (KeyValuePair<string, WeaponCustomization> entry in
+                inventory.weapon_customizations)
+            {
+                if (owned.Contains(entry.Key)) continue;
+                int weaponHash = GetWeaponHash(entry.Key);
+                if (Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON,
+                        ped.Handle, weaponHash, false))
+                    ApplyWeaponCustomization(ped, entry.Key,
+                        (Hash)weaponHash, inventory);
             }
             foreach (string gear in inventory.equipped_gear)
             {
@@ -553,6 +573,68 @@ namespace ALLIN1
             }
         }
 
+        internal static bool IsWeaponComponentTintOwned(
+            string weapon, int componentHash, int tint)
+        {
+            if (tint == 0) return true;
+            string character = CurrentCharacter();
+            if (character.Length == 0) return false;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory))
+                    return false;
+                NormalizeInventory(inventory);
+                if (!inventory.weapon_customizations.TryGetValue(
+                        weapon, out WeaponCustomization customization))
+                    return false;
+                return customization.owned_component_tints.TryGetValue(
+                    componentHash.ToString(), out List<int> tints) &&
+                    tints.Contains(tint);
+            }
+        }
+
+        internal static int GetActiveWeaponComponentTint(
+            string weapon, int componentHash)
+        {
+            string character = CurrentCharacter();
+            if (character.Length == 0) return 0;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory))
+                    return 0;
+                NormalizeInventory(inventory);
+                if (!inventory.weapon_customizations.TryGetValue(
+                        weapon, out WeaponCustomization customization))
+                    return 0;
+                return customization.active_component_tints.TryGetValue(
+                    componentHash.ToString(), out int tint) ? tint : 0;
+            }
+        }
+
+        internal static void RecordWeaponComponentTint(
+            string weapon, int componentHash, int tint)
+        {
+            string character = CurrentCharacter();
+            if (character.Length == 0 || string.IsNullOrWhiteSpace(weapon)) return;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory)) return;
+                NormalizeInventory(inventory);
+                WeaponCustomization customization = GetOrCreateCustomization(
+                    inventory, weapon);
+                string key = componentHash.ToString();
+                if (!customization.owned_component_tints.TryGetValue(
+                        key, out List<int> owned))
+                {
+                    owned = new List<int> { 0 };
+                    customization.owned_component_tints[key] = owned;
+                }
+                if (!owned.Contains(tint)) owned.Add(tint);
+                customization.active_component_tints[key] = tint;
+                StageStateLocked(character, "weapon_component_tint", weapon);
+            }
+        }
+
         private static WeaponCustomization GetOrCreateCustomization(
             Inventory inventory, string weapon)
         {
@@ -577,10 +659,83 @@ namespace ALLIN1
                     Function.Call(Hash.GIVE_WEAPON_COMPONENT_TO_PED,
                         ped.Handle, weaponHash, component);
             }
+            foreach (KeyValuePair<string, int> entry in
+                customization.active_component_tints)
+            {
+                if (!int.TryParse(entry.Key, out int component) ||
+                    !customization.active_components.ContainsValue(component))
+                    continue;
+                Function.Call(Hash.SET_PED_WEAPON_COMPONENT_TINT_INDEX,
+                    ped.Handle, weaponHash, component, entry.Value);
+            }
             int tintCount = Function.Call<int>(Hash.GET_WEAPON_TINT_COUNT, weaponHash);
             if (customization.active_tint >= 0 && customization.active_tint < tintCount)
                 Function.Call(Hash.SET_PED_WEAPON_TINT_INDEX,
                     ped.Handle, weaponHash, customization.active_tint);
+        }
+
+        internal static bool ApplyWeaponCustomizationNow(
+            Ped ped, string weapon)
+        {
+            if (ped == null || !ped.Exists() ||
+                string.IsNullOrWhiteSpace(weapon)) return false;
+            string character = CurrentCharacter();
+            if (character.Length == 0) return false;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory))
+                    return false;
+                NormalizeInventory(inventory);
+                if (!inventory.weapon_customizations.TryGetValue(
+                        weapon, out WeaponCustomization customization))
+                    return true;
+                int weaponHash = GetWeaponHash(weapon);
+                if (!Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON,
+                        ped.Handle, weaponHash, false)) return false;
+                // Giving an already-active Mk II magazine component can reset
+                // its special-ammo pool (SMG Mk II commonly falls back to one
+                // round). Preserve the live amount and clamp it to the capacity
+                // of the component set that was just applied.
+                int ammoBeforeComponents = Function.Call<int>(
+                    Hash.GET_AMMO_IN_PED_WEAPON, ped.Handle, weaponHash);
+                ApplyWeaponCustomization(ped, weapon, (Hash)weaponHash, inventory);
+                var maxAmmoOut = new OutputArgument();
+                bool capacityResolved = Function.Call<bool>(
+                    Hash.GET_MAX_AMMO, ped.Handle, weaponHash, maxAmmoOut);
+                int maxAmmoAfterComponents = maxAmmoOut.GetResult<int>();
+                int preservedAmmo = AmmoRefillPolicy.ClampPreservedAmmo(
+                    ammoBeforeComponents, capacityResolved,
+                    maxAmmoAfterComponents);
+                Function.Call(Hash.SET_PED_AMMO,
+                    ped.Handle, weaponHash, preservedAmmo);
+                foreach (int component in customization.active_components.Values)
+                    if (Function.Call<bool>(
+                            Hash.DOES_WEAPON_TAKE_WEAPON_COMPONENT,
+                            weaponHash, component) &&
+                        !Function.Call<bool>(
+                            Hash.HAS_PED_GOT_WEAPON_COMPONENT,
+                            ped.Handle, weaponHash, component))
+                        return false;
+                foreach (KeyValuePair<string, int> entry in
+                    customization.active_component_tints)
+                {
+                    if (!int.TryParse(entry.Key, out int component) ||
+                        !customization.active_components.ContainsValue(component))
+                        continue;
+                    if (Function.Call<int>(
+                            Hash.GET_PED_WEAPON_COMPONENT_TINT_INDEX,
+                            ped.Handle, weaponHash, component) != entry.Value)
+                        return false;
+                }
+                int tintCount = Function.Call<int>(
+                    Hash.GET_WEAPON_TINT_COUNT, weaponHash);
+                if (customization.active_tint >= 0 &&
+                    customization.active_tint < tintCount &&
+                    Function.Call<int>(Hash.GET_PED_WEAPON_TINT_INDEX,
+                        ped.Handle, weaponHash) != customization.active_tint)
+                    return false;
+                return true;
+            }
         }
 
         private void BackupWhenStorySaveWritten(string character, Ped player)
@@ -788,6 +943,45 @@ namespace ALLIN1
                     if (!value.owned_tints.Contains(value.active_tint))
                     {
                         value.owned_tints.Add(value.active_tint); changed = true;
+                    }
+                    if (value.owned_component_tints == null)
+                    {
+                        value.owned_component_tints =
+                            new Dictionary<string, List<int>>(); changed = true;
+                    }
+                    if (value.active_component_tints == null)
+                    {
+                        value.active_component_tints =
+                            new Dictionary<string, int>(); changed = true;
+                    }
+                    foreach (KeyValuePair<string, int> tintEntry in
+                        new Dictionary<string, int>(value.active_component_tints))
+                    {
+                        if (!int.TryParse(tintEntry.Key, out int component) ||
+                            !value.owned_components.Contains(component))
+                        {
+                            value.active_component_tints.Remove(tintEntry.Key);
+                            value.owned_component_tints.Remove(tintEntry.Key);
+                            changed = true;
+                            continue;
+                        }
+                        if (!value.owned_component_tints.TryGetValue(
+                                tintEntry.Key, out List<int> componentTints) ||
+                            componentTints == null)
+                        {
+                            componentTints = new List<int> { 0 };
+                            value.owned_component_tints[tintEntry.Key] =
+                                componentTints;
+                            changed = true;
+                        }
+                        if (!componentTints.Contains(0))
+                        {
+                            componentTints.Add(0); changed = true;
+                        }
+                        if (!componentTints.Contains(tintEntry.Value))
+                        {
+                            componentTints.Add(tintEntry.Value); changed = true;
+                        }
                     }
                     normalizedCustomizations[entry.Key] = value;
                 }

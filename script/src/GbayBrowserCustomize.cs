@@ -28,12 +28,14 @@ namespace ALLIN1
             // Background
             float bgCY = (BROWSER_TOP + BROWSER_BOTTOM) / 2f;
             float bgH = BROWSER_BOTTOM - BROWSER_TOP;
-            GbayRenderer.DrawRect(BROWSER_CX, bgCY, BROWSER_W, bgH,
-                GbayRenderer.BodyBg);
+            GbayRenderer.DrawElevatedPanel(BROWSER_CX, bgCY, BROWSER_W,
+                bgH, GbayRenderer.BodyBg);
 
             // Header
             GbayRenderer.DrawRect(BROWSER_CX, HEADER_CY, BROWSER_W, HEADER_H,
                 GbayRenderer.HeaderBg);
+            GbayRenderer.DrawHeaderAccent(
+                BROWSER_CX, HEADER_Y + HEADER_H, BROWSER_W);
             GbayRenderer.DrawGbayWordmark(
                 BROWSER_LEFT + 0.035f, HEADER_Y + 0.010f, 0.43f, true);
             GbayRenderer.DrawTitleBadge(

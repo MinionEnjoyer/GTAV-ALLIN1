@@ -591,9 +591,14 @@ namespace ALLIN1
             OutputArgument maxAmmoOut = new OutputArgument();
             bool capacityResolved = Function.Call<bool>(
                 Hash.GET_MAX_AMMO, player, weaponHash, maxAmmoOut);
-            int maxAmmo = maxAmmoOut.GetResult<int>();
+            int nativeMaxAmmo = maxAmmoOut.GetResult<int>();
+            int maxClipAmmo = capacityResolved ? Function.Call<int>(
+                Hash.GET_MAX_AMMO_IN_CLIP,
+                player.Handle, weaponHash, true) : 0;
+            int refillTarget = AmmoRefillPolicy.ResolveRefillTarget(
+                capacityResolved, nativeMaxAmmo, maxClipAmmo);
             AmmoCapacityResult capacity = AmmoRefillPolicy.Evaluate(
-                capacityResolved, currentAmmo, maxAmmo);
+                capacityResolved, currentAmmo, refillTarget);
 
             if (capacity.Status == AmmoCapacityStatus.Unavailable)
             {
@@ -626,8 +631,8 @@ namespace ALLIN1
                 return -2;
             }
 
-            Function.Call(Hash.SET_PED_AMMO, player, weaponHash, maxAmmo);
-            CharacterInventory.RecordWeaponAmmo(weaponName, maxAmmo);
+            Function.Call(Hash.SET_PED_AMMO, player, weaponHash, refillTarget);
+            CharacterInventory.RecordWeaponAmmo(weaponName, refillTarget);
 
             if (!_freeMode && totalCost > 0)
                 Game.Player.Money -= totalCost;
@@ -639,7 +644,9 @@ namespace ALLIN1
                 : $"~g~{displayName}~w~ ammo refilled ({needed} rounds).";
             GTA.UI.Screen.ShowSubtitle(msg, 3000);
 
-            Log($"RefillAmmo: {weaponName}, {needed} rounds, cost=${totalCost}");
+            Log($"RefillAmmo: {weaponName}, {needed} rounds, cost=${totalCost}, "
+                + $"target={refillTarget}, native_max={nativeMaxAmmo}, "
+                + $"clip_max={maxClipAmmo}");
             return totalCost;
         }
 
@@ -689,7 +696,8 @@ namespace ALLIN1
                 : "~g~Weapon upgrade equipped.~w~", 2500);
             ClientLog.Info("GBAY", "weapon_component_staged",
                 new Dictionary<string, object> {
-                    { "weapon", weaponName }, { "component", componentHash },
+                    { "weapon", weaponName },
+                    { "component_hash", componentHash },
                     { "attachment", attachmentPoint }, { "charged", charge }
                 });
             return true;
@@ -727,6 +735,59 @@ namespace ALLIN1
                 new Dictionary<string, object> {
                     { "weapon", weaponName }, { "tint", tint },
                     { "charged", charge }
+                });
+            return true;
+        }
+
+        internal bool ExecuteWeaponComponentTintPurchase(
+            string weaponName, int componentHash, int attachmentPoint,
+            int tint, int price)
+        {
+            Ped player = Game.Player.Character;
+            int weaponHash = CharacterInventory.GetWeaponHash(weaponName);
+            if (tint < 0 || tint >= 32 || !Function.Call<bool>(
+                    Hash.HAS_PED_GOT_WEAPON_COMPONENT, player.Handle,
+                    weaponHash, componentHash))
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~y~Equip that livery before selecting its color.", 2500);
+                return false;
+            }
+            bool owned = CharacterInventory.IsWeaponComponentTintOwned(
+                weaponName, componentHash, tint);
+            int charge = _freeMode || owned ? 0 : Math.Max(0, price);
+            if (charge > 0 && Game.Player.Money < charge)
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~Insufficient funds.", 2500);
+                return false;
+            }
+
+            Function.Call(Hash.SET_PED_WEAPON_COMPONENT_TINT_INDEX,
+                player.Handle, weaponHash, componentHash, tint);
+            int applied = Function.Call<int>(
+                Hash.GET_PED_WEAPON_COMPONENT_TINT_INDEX,
+                player.Handle, weaponHash, componentHash);
+            if (applied != tint)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~The livery color could not be applied.", 2500);
+                return false;
+            }
+            if (charge > 0) Game.Player.Money -= charge;
+            if (!CharacterInventory.IsWeaponComponentOwned(
+                    weaponName, componentHash))
+                CharacterInventory.RecordWeaponComponent(
+                    weaponName, componentHash, attachmentPoint);
+            CharacterInventory.RecordWeaponComponentTint(
+                weaponName, componentHash, tint);
+            GTA.UI.Screen.ShowSubtitle(charge > 0
+                ? $"~g~Livery color~w~ purchased for ~g~${charge:N0}~w~."
+                : "~g~Livery color equipped.~w~", 2500);
+            ClientLog.Info("GBAY", "weapon_component_tint_staged",
+                new Dictionary<string, object> {
+                    { "weapon", weaponName },
+                    { "component_hash", componentHash },
+                    { "tint", tint }, { "charged", charge }
                 });
             return true;
         }
@@ -1439,9 +1500,14 @@ namespace ALLIN1
             OutputArgument maxAmmoOut = new OutputArgument();
             bool capacityResolved = Function.Call<bool>(
                 Hash.GET_MAX_AMMO, player, weaponHash, maxAmmoOut);
-            int maxAmmo = maxAmmoOut.GetResult<int>();
+            int nativeMaxAmmo = maxAmmoOut.GetResult<int>();
+            int maxClipAmmo = capacityResolved ? Function.Call<int>(
+                Hash.GET_MAX_AMMO_IN_CLIP,
+                player.Handle, weaponHash, true) : 0;
+            int refillTarget = AmmoRefillPolicy.ResolveRefillTarget(
+                capacityResolved, nativeMaxAmmo, maxClipAmmo);
             AmmoCapacityResult capacity = AmmoRefillPolicy.Evaluate(
-                capacityResolved, currentAmmo, maxAmmo);
+                capacityResolved, currentAmmo, refillTarget);
             if (capacity.Status == AmmoCapacityStatus.Unavailable)
                 return AmmoCapacityUnavailable;
             if (capacity.Status == AmmoCapacityStatus.NotApplicable)

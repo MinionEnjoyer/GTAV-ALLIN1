@@ -91,6 +91,8 @@ def test_weapon_customization_round_trip_is_preserved_by_launcher(tmp_path):
         "active_components": {"2": 456},
         "owned_tints": [0, 3],
         "active_tint": 3,
+        "owned_component_tints": {"456": [0, 5]},
+        "active_component_tints": {"456": 5},
     }
     store.save({"michael": CharacterLoadout(
         weapons=["WEAPON_A"], weapon_ammo={"WEAPON_A": 99},

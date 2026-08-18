@@ -80,9 +80,12 @@ hold_duration_ms = 350
 gbay_free_mode = false
 # Default false: wanted players cannot enter, while garage exits stay usable.
 garages_always_accessible = false
+# Coordinate open-world police into bounded stack/rush or firing-line tactics.
+enhanced_police_ai = true
 # Experimental runtime-only NaturalMotion preset for ambient human NPCs.
 # Mission characters, persistent peds, occupants, and the player are excluded.
 gta_iv_npc_physics = false
+gta_iv_npc_physics_debug = true
 
 # Controller shortcuts use modifier + action. Defaults are LB+R3 for GBAY,
 # LB+D-pad left for night vision, and LB+D-pad right for the seat selector.
