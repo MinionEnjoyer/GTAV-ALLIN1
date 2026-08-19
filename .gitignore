@@ -41,6 +41,8 @@ output/
 # Locally built external preview tools
 tools/YTDToolio.exe
 tools/FuckDX.dll
+tools/_build_temp/
+tools/gtautil/
 tools/RpfPatcher/*.dll
 tools/RpfPatcher/*.exe
 tools/RpfPatcher/*.pdb
