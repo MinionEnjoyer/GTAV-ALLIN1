@@ -416,7 +416,7 @@ class AddonSdkDialog(tk.Toplevel):
     def _preview_oiv(self) -> None:
         selected = filedialog.askopenfilename(
             parent=self, title="Select an OIV package",
-            filetypes=(("OpenIV package", "*.oiv *.zip"), ("All files", "*.*")),
+            filetypes=(("OIV package", "*.oiv *.zip"), ("All files", "*.*")),
         )
         if not selected:
             return

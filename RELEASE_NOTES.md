@@ -5,8 +5,9 @@ guarded package lifecycle and a more consistent professional desktop identity.
 
 ## Launcher, client, and SDK integration
 
-- Added a Story Mode-only gameplay toggle that prevents accidental GTA Online
-  routing while preserving an explicit opt-out for users who need normal flow.
+- Retired the pre-release offline-launch toggle after it proved capable of
+  blocking Rockstar authentication. ALLIN1 now uses the normal signed-in game
+  launch flow and removes only offline arguments it can prove it previously added.
 - Added structured SDK agent commands to list, install, and uninstall validated
   packages through approved console/API actions with two-stage write consent,
   closed-game checks, audit logging, checksums, receipts, backups, and rollback.
@@ -16,6 +17,11 @@ guarded package lifecycle and a more consistent professional desktop identity.
   exposing the same guarded package lifecycle to developer and AI tooling.
 - Bumped the launcher, in-game client assembly, and SDK release surfaces
   together to 0.5.0.
+- Made Enhanced Police AI, experimental NPC physics, physics diagnostics, and
+  enhanced smoke effects explicit opt-ins. New installations and missing
+  settings now fail closed, while existing saved user choices remain intact.
+- Disabled verbose launcher/client logging in the public example profile so a
+  clean installation starts with production-oriented settings.
 
 # GTA V ALLIN1 0.4.9
 

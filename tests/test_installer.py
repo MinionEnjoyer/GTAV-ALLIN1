@@ -288,9 +288,15 @@ def test_uninstall_removes_owned_story_policy_but_preserves_other_flags(
     tmp_path, monkeypatch,
 ):
     game = _game(tmp_path)
-    (game / "commandline.txt").write_text("-windowed\n-nobattleye\n")
-    from allin1.launch_policy import configure_story_mode_only
-    configure_story_mode_only(game, True)
+    (game / "commandline.txt").write_text(
+        "-windowed\n-nobattleye\n-scofflineonly\n"
+    )
+    state = game / "scripts/.allin1/launch-policy.json"
+    state.parent.mkdir(parents=True)
+    state.write_text(json.dumps({
+        "schema_version": 1, "argument": "-scofflineonly",
+        "inserted": True, "created_file": False,
+    }))
     config = Config.default()
     config.general.gta_path = str(game)
     monkeypatch.setattr(installer, "_unpatch_dlclist_rpf", Mock())
@@ -400,6 +406,46 @@ def test_install_rejects_missing_required_standalone_map_pack(tmp_path, monkeypa
 
     with pytest.raises(RuntimeError, match="garage interiors would be unavailable"):
         installer.install(config, Mock())
+
+
+def test_repair_preserves_existing_dlc_packs_when_rebuild_fails(
+    tmp_path, monkeypatch,
+):
+    game = _game(tmp_path, enhanced=True)
+    preview = game / "mods/update/x64/dlcpacks/allin1_previews/dlc.rpf"
+    maps = game / "mods/update/x64/dlcpacks/allin1_maps/dlc.rpf"
+    preview.parent.mkdir(parents=True)
+    maps.parent.mkdir(parents=True)
+    preview.write_bytes(b"working-preview")
+    maps.write_bytes(b"working-maps")
+
+    config = Config.default()
+    config.general.gta_path = str(game)
+    for name, value in (
+        ("_clean_legacy_files", None), ("_deploy_script", True),
+        ("_check_scripthookv", True), ("_check_shvdn", True),
+        ("_check_openrpf", True),
+    ):
+        monkeypatch.setattr(installer, name, Mock(return_value=value))
+    monkeypatch.setattr(
+        installer, "_deploy_standalone_map_dlc",
+        Mock(side_effect=RuntimeError("helper blocked")),
+    )
+    remove_preview = Mock()
+    remove_maps = Mock()
+    unpatch = Mock()
+    monkeypatch.setattr(installer, "_remove_preview_pack", remove_preview)
+    monkeypatch.setattr(installer, "_remove_map_pack", remove_maps)
+    monkeypatch.setattr(installer, "_unpatch_dlclist_rpf", unpatch)
+
+    with pytest.raises(RuntimeError, match="helper blocked"):
+        installer.install(config, Mock())
+
+    assert preview.read_bytes() == b"working-preview"
+    assert maps.read_bytes() == b"working-maps"
+    remove_preview.assert_not_called()
+    remove_maps.assert_not_called()
+    unpatch.assert_not_called()
 
 
 def test_install_deploys_default_enabled_rpf_previews(tmp_path, monkeypatch):

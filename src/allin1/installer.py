@@ -11,7 +11,7 @@ File placement:
 Prerequisites (installed separately by the user):
 - ScriptHookV (dinput8.dll + ScriptHookV.dll)
 - ScriptHookVDotNet Enhanced (ScriptHookVDotNet.asi + ScriptHookVDotNet3.dll)
-- OpenRPF (Enhanced) or OpenIV.asi (Legacy) — optional, for GBAY artwork only
+- An edition-compatible RPF loader — optional, for GBAY artwork only
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from allin1 import asi_loader
 from allin1.config import Config
 from allin1.detector import detect_gta_path, validate_gta_path
 from allin1.health import inspect_windows_binary
-from allin1.launch_policy import configure_story_mode_only
+from allin1.launch_policy import remove_retired_offline_policy
 from allin1.preview_assets import GEAR_PREVIEW_ITEMS, WORLD_ASSET_PREVIEW_ITEMS
 from allin1.processes import run_hidden
 from allin1.vehicles.database import VehicleDatabase
@@ -210,11 +210,10 @@ def install(
     result.openrpf_found = _check_openrpf(gta_path, enhanced)
     _report_progress(progress, 38, "Dependencies verified")
 
-    # Rebuild ALLIN1-owned DLC registrations transactionally. The standalone
-    # map pack is useful even when artwork has been disabled.
-    _remove_preview_pack(gta_path)
-    _remove_map_pack(gta_path)
-    _unpatch_dlclist_rpf(gta_path)
+    # Build replacements before touching the installed packs. Each deploy
+    # swaps its verified dlc.rpf atomically and registration is idempotent, so
+    # a blocked helper or failed build cannot turn Repair into an uninstall.
+    # The standalone map pack is useful even when artwork has been disabled.
     if enhanced:
         # This exclusion is independent of the smoke feature toggle: Repair
         # must also clean up a failed pack left by an older configuration.
@@ -240,7 +239,7 @@ def install(
     if config.general.enable_rpf_previews:
         if not result.openrpf_found:
             result.warnings.append(
-                "RPF previews requested but no compatible OpenRPF/OpenIV loader was detected; "
+                "RPF previews requested but no edition-compatible RPF loader was detected; "
                 "safe GBAY placeholders will be used."
             )
         else:
@@ -253,6 +252,8 @@ def install(
                 result.warnings.append(f"Preview texture injection failed: {exc}")
     else:
         log.info("RPF previews disabled; using crash-safe GBAY placeholders")
+        _remove_preview_pack(gta_path)
+        _unpatch_dlclist_rpf(gta_path, "allin1_previews")
 
     if config.script.enhanced_smoke_effects:
         stock_update = gta_path / "update" / "update.rpf"
@@ -274,7 +275,7 @@ def install(
             log.debug("Skipping smoke RPF tuning for placeholder update.rpf")
         else:
             result.warnings.append(
-                "Enhanced smoke requested but no compatible OpenRPF/OpenIV "
+                "Enhanced smoke requested but no edition-compatible RPF "
                 "loader was detected; scripted CASEVAC smoke remains available, "
                 "but purchasable colored weapons require the custom weapon pack."
             )
@@ -294,16 +295,16 @@ def uninstall(config: Config) -> list[Path]:
     gta_path = resolve_gta_path(config)
     removed: list[Path] = []
 
-    # Remove only the offline launch argument previously owned by ALLIN1.
-    # Player-authored commandline.txt options, including an independently
-    # configured -scofflineonly argument, remain untouched.
+    # Remove the retired offline argument only when ALLIN1's ownership marker
+    # proves it came from the pre-release experiment. Player-authored launch
+    # arguments remain untouched.
     try:
         commandline_existed = (gta_path / "commandline.txt").is_file()
-        configure_story_mode_only(gta_path, False)
+        remove_retired_offline_policy(gta_path)
         if commandline_existed and not (gta_path / "commandline.txt").exists():
             removed.append(gta_path / "commandline.txt")
     except OSError:
-        log.warning("Could not remove Story Mode-only launch policy", exc_info=True)
+        log.warning("Could not clean up retired offline launch policy", exc_info=True)
 
     _remove_smoke_tuning(gta_path)
     _remove_merged_smoke_canary(gta_path)
@@ -591,25 +592,25 @@ def _check_openrpf(gta_path: Path, enhanced: bool) -> bool:
         asi_path = gta_path / "OpenIV.asi"
         found = inspect_windows_binary(asi_path).valid
         if found and not inspect_windows_binary(gta_path / "dinput8.dll").valid:
-            log.warning("OpenIV.asi exists but dinput8.dll ASI loader is missing")
+            log.warning("Legacy RPF plugin exists but dinput8.dll ASI loader is missing")
             found = False
         if found:
-            log.info("OpenIV.asi found — mods folder support available")
+            log.info("Legacy RPF plugin found — mods folder support available")
         else:
             log.warning(
-                "OpenIV.asi not found. Install OpenIV for vehicle preview "
-                "textures to work."
+                "Legacy RPF plugin not found; vehicle preview textures will "
+                "use placeholders."
             )
         return found
 
-    # OpenIV.asi is a Legacy binary; loading it alongside OpenRPF on Enhanced
-    # is an invalid configuration.
+    # The Legacy plugin binary cannot be loaded alongside the Enhanced RPF
+    # loader; that combination is an invalid configuration.
     asi_path = gta_path / "OpenRPF.asi"
     if not asi_path.exists():
         log.warning("OpenRPF.asi not found; optional artwork will use placeholders")
         return False
     if (gta_path / "OpenIV.asi").exists():
-        log.error("Both OpenRPF.asi and OpenIV.asi are installed on Enhanced")
+        log.error("Both Enhanced and Legacy RPF plugins are installed on Enhanced")
         return False
     inspection = inspect_windows_binary(asi_path)
     if not inspection.valid:
@@ -1090,8 +1091,8 @@ def _patch_dlclist_rpf(
         return False
 
 
-def _unpatch_dlclist_rpf(gta_path: Path) -> None:
-    """Remove ALLIN1 entry from dlclist.xml inside update.rpf (legacy cleanup)."""
+def _unpatch_dlclist_rpf(gta_path: Path, *pack_names: str) -> None:
+    """Remove selected ALLIN1 entries, or every owned entry during uninstall."""
     rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
     if not rpf_patcher.exists():
         log.debug("RpfPatcher.exe not found — skipping dlclist unpatch")
@@ -1099,7 +1100,7 @@ def _unpatch_dlclist_rpf(gta_path: Path) -> None:
 
     try:
         proc = run_hidden(
-            [str(rpf_patcher), "unpatch", str(gta_path)],
+            [str(rpf_patcher), "unpatch", str(gta_path), *pack_names],
             capture_output=True, text=True, timeout=120,
         )
         if proc.returncode == 0:

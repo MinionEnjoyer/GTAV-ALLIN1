@@ -18,6 +18,7 @@ from allin1.sdk_manager import (
     install_sdk_archive,
     install_sdk_release,
     read_sdk_status,
+    sdk_launch_error_message,
     sdk_update_available,
     uninstall_sdk,
 )
@@ -106,6 +107,10 @@ class SdkManagerDialog(ttk.Frame):
             secondary, text="Install from package…", command=self.install_package,
         )
         self.package_button.pack(side="left")
+        self.update_button = ttk.Button(
+            secondary, text="Check for updates", command=self.check_for_updates,
+        )
+        self.update_button.pack(side="left", padx=(8, 0))
         ttk.Button(
             secondary, text="View public repository",
             command=lambda: webbrowser.open(SDK_REPOSITORY_URL),
@@ -140,6 +145,10 @@ class SdkManagerDialog(ttk.Frame):
         state = "disabled" if busy else "normal"
         self.install_button.configure(state=state)
         self.package_button.configure(state=state)
+        self.update_button.configure(state=state)
+        self.open_button.configure(state=state)
+        self.repair_button.configure(state=state)
+        self.remove_button.configure(state=state)
         self.progress_text.set(label)
         if not busy:
             self.progress.configure(value=0)
@@ -181,6 +190,12 @@ class SdkManagerDialog(ttk.Frame):
         ))
         return release
 
+    def check_for_updates(self) -> None:
+        self.latest_text.set("Checking the public SDK release…")
+        self._run_background(
+            "Checking SDK releases", self._check_release, quiet=True,
+        )
+
     def _progress(self, label: str, current: int, total: int) -> None:
         percentage = int(current * 100 / total) if total > 0 else 0
         self.after(0, lambda: (
@@ -221,7 +236,9 @@ class SdkManagerDialog(ttk.Frame):
         try:
             subprocess.Popen([str(status.executable)], cwd=status.root, **options)
         except OSError as exc:
-            messagebox.showerror("Could not open ALLIN1 SDK", str(exc), parent=self)
+            detail = sdk_launch_error_message(exc)
+            self.detail_text.set(detail)
+            messagebox.showerror("Could not open ALLIN1 SDK", detail, parent=self)
 
     def remove(self) -> None:
         if not messagebox.askyesno(

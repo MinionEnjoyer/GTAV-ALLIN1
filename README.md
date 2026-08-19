@@ -55,8 +55,7 @@ If the ALLIN1 Launcher and SDK are useful to you, project support is available t
   skill levels, weapons, gear, garage saves, outfit components, props, and named outfit presets.
 - **Desktop control center** — detect the game edition, configure gameplay and accessibility
   options, install or repair the mod, run health checks, export redacted diagnostics, manage
-  profiles, block accidental GTA Online entry with a reversible Story Mode-only gameplay toggle,
-  and launch GTA V from one persistent launcher window.
+  profiles, and launch GTA V from one persistent launcher window.
 - **Local mod packages** — install, update, enable, disable, and uninstall user-supplied ASI,
   ScriptHookVDotNet, RPF, and config/data packages through validated `mod.toml` manifests,
   including transactional `dlclist.xml` registration for explicitly owned add-on packs.
@@ -113,7 +112,7 @@ persists character and garage state under the game's `scripts` directory.
 - [ScriptHookV](http://www.dev-c.com/gtav/scripthookv/).
 - [ScriptHookVDotNet Enhanced](https://github.com/Chiheb-Bacha/scripthookvdotnetenhanced).
 - Python 3.10 or newer when installing from source.
-- OpenRPF for Enhanced or OpenIV.asi for Legacy when GBAY preview artwork is enabled.
+- A compatible edition-specific RPF loader when GBAY preview artwork is enabled.
 
 ScriptHookV and ScriptHookVDotNet Enhanced must be installed in the directory containing
 `GTA5.exe` or `GTA5_Enhanced.exe` before ALLIN1 is installed.
@@ -126,8 +125,7 @@ ScriptHookV and ScriptHookVDotNet Enhanced must be installed in the directory co
 4. Open `manager.bat`.
 5. Confirm the Legacy and/or Enhanced GTA V directories, choose the active target, and select
    **Install / Repair**.
-6. Keep **Gameplay → Story Mode only** enabled, select **Launch GTA V**, and press **F9** in
-   Story Mode to open GBAY.
+6. Select **Launch GTA V**, and press **F9** in Story Mode to open GBAY.
 
 The installer deploys the ALLIN1 client and configuration under `<GTA V>/scripts`, registers the
 GBAY preview DLC when artwork is enabled, creates recoverable backups before replacement, and adds the no-BattlEye

@@ -76,6 +76,9 @@ def test_public_file_collection_is_explicit_and_excludes_sources(tmp_path):
     assert "script/dist/ALLIN1.dll" in names
     assert "data/vehicle_grounding.json" in names
     assert "tools/RpfPatcher/RpfPatcher.exe" in names
+    assert "mods/README.md" in names
+    assert "sdk/examples/colored_smokes/addon.json" in names
+    assert "mods/examples/script/mod.toml.example" not in names
     assert "tools/RpfPatcher/Program.cs" not in names
     assert "tools/RpfPatcher/RpfPatcher.pdb" not in names
     assert "script/tools/WorldVectorTool.cs" not in names
@@ -115,6 +118,7 @@ def test_release_rejects_version_drift(tmp_path):
 @pytest.mark.parametrize(("relative", "match"), [
     ("../secret", "unsafe"),
     ("tests/test_release.py", "development/private"),
+    ("mods/examples/script/mod.toml.example", "sample/test mod"),
     ("script/src/GbayShop.cs", "client source/tooling"),
     ("tools/RpfPatcher/RpfPatcher.pdb", "debug symbols"),
 ])

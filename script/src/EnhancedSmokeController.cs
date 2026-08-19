@@ -234,7 +234,7 @@ namespace ALLIN1
         {
             _current = this;
             _enabled = NpcPhysicsExperiment.ReadBooleanSetting(
-                "enhanced_smoke_effects", true);
+                "enhanced_smoke_effects", false);
             string marker = Path.Combine(
                 AppDomain.CurrentDomain.BaseDirectory,
                 "ALLIN1_smoke_tuning.json");

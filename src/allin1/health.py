@@ -187,7 +187,7 @@ def scan_installation(gta_path: Path, *, expected_hashes: dict[str, str] | None 
     if edition == "enhanced" and (gta_path / "OpenRPF.asi").exists():
         if (gta_path / "OpenIV.asi").exists():
             issues.append(HealthIssue("rpf_loader_conflict", "error",
-                                      "OpenIV.asi cannot be loaded alongside OpenRPF on Enhanced.",
+                                      "The Legacy RPF plugin cannot be loaded alongside the Enhanced loader.",
                                       str(gta_path / "OpenIV.asi")))
         loader_paths = [gta_path / name for name in
                         ("dsound.dll", "xinput1_4.dll", "dinput8.dll")]

@@ -19,6 +19,7 @@ from allin1.sdk_manager import (
     install_sdk_archive,
     install_sdk_release,
     read_sdk_status,
+    sdk_launch_error_message,
     sdk_update_available,
     uninstall_sdk,
     _safe_member,
@@ -54,6 +55,21 @@ def test_default_sdk_root_is_per_user_and_separate_from_game(tmp_path):
     root = default_sdk_root({"LOCALAPPDATA": str(tmp_path)})
     assert root == tmp_path / "ALLIN1" / "SDK"
     assert default_sdk_root({}).name == "SDK"
+
+
+def test_launch_error_explains_enforced_application_control_policy():
+    error = OSError("raw system message")
+    error.winerror = 4551
+    message = sdk_launch_error_message(error)
+    assert "Windows Application Control" in message
+    assert "publisher-signed SDK build" in message
+    assert "unblocking the file will not change this policy" in message
+
+
+def test_launch_error_preserves_unrecognized_system_message():
+    error = OSError("ordinary launch failure")
+    error.winerror = 2
+    assert sdk_launch_error_message(error) == "ordinary launch failure"
 
 
 def test_status_reports_invalid_partial_installations(tmp_path):

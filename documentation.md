@@ -227,10 +227,10 @@ Available classes: `compacts`, `coupes`, `sedans`, `suvs`, `muscle`, `sports`, `
 | `seat_selector_enabled` | `true` | Enable hold-to-select vehicle seats. |
 | `gbay_free_mode` | `false` | All GBAY purchases are free; vehicle sales have no payout. |
 | `garages_always_accessible` | `false` | Allow garage entry with a wanted level. Mission, vehicle-ownership, and size safety rules still apply. |
-| `enhanced_police_ai` | `true` | Coordinate open-world police squads into synchronized stack/rush assaults or defensive firing lines. Mission AI is excluded. |
+| `enhanced_police_ai` | `false` | Opt in to coordinating open-world police squads into synchronized stack/rush assaults or defensive firing lines. Mission AI is excluded. |
 | `gta_iv_npc_physics` | `false` | Experimental GTA IV-style Euphoria reactions for nearby ambient human NPCs. Excludes the player, mission/persistent peds, animals, and vehicle occupants. |
-| `gta_iv_npc_physics_debug` | `true` | Write rotating JSON-line diagnostics to `scripts/ALLIN1_npc_physics.log`, including configuration resolution when the experiment is disabled. |
-| `enhanced_smoke_effects` | `true` | Install isolated smoke tuning plus seven generated M18 smoke weapon/ammo entries with independent weapon-wheel selection. Native Tear Gas remains untouched. |
+| `gta_iv_npc_physics_debug` | `false` | Write rotating JSON-line diagnostics to `scripts/ALLIN1_npc_physics.log`, including configuration resolution when the experiment is disabled. |
+| `enhanced_smoke_effects` | `false` | Opt in to isolated smoke tuning plus seven generated M18 smoke weapon/ammo entries with independent weapon-wheel selection. Native Tear Gas remains untouched. |
 | `controller_enabled` | `true` | Enable the shared ALLIN1 controller input layer. |
 | `controller_open_gbay` / `controller_open_gbay_modifier` | `FrontendRdown` / `FrontendLb` | Open GBAY with the configured action chord (LB+R3 by default). |
 | `controller_night_vision` / `controller_night_vision_modifier` | `FrontendLeft` / `FrontendLb` | Toggle purchased night vision (LB+D-pad left by default). |

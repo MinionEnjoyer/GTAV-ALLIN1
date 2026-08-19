@@ -1,6 +1,7 @@
 """Tests for the UI-facing management service."""
 
 from pathlib import Path
+import json
 import struct
 from unittest.mock import Mock
 
@@ -107,7 +108,7 @@ def test_install_forwards_progress_callback(tmp_path):
     assert install_fn.call_args.kwargs == {"progress": progress}
 
 
-def test_save_config_applies_and_reverses_story_mode_launch_policy(
+def test_save_config_cleans_retired_owned_offline_launch_policy(
     tmp_path, monkeypatch,
 ):
     project = tmp_path / "project"
@@ -119,17 +120,23 @@ def test_save_config_applies_and_reverses_story_mode_launch_policy(
     config = Config.default()
     config.general.gta_path = str(game)
     monkeypatch.setattr("allin1.manager.detect_gta_path", lambda: None)
+    (game / "commandline.txt").write_text("-scofflineonly\n")
+    state = game / "scripts/.allin1/launch-policy.json"
+    state.parent.mkdir(parents=True)
+    state.write_text(json.dumps({
+        "schema_version": 1, "argument": "-scofflineonly",
+        "inserted": True, "created_file": True,
+    }))
 
-    manager.save_config(config)
-    assert "-scofflineonly" in (game / "commandline.txt").read_text()
-    assert not (game / "scripts/ALLIN1.toml").exists()
-
-    config.general.story_mode_only = False
     manager.save_config(config)
     assert not (game / "commandline.txt").exists()
+    assert not state.exists()
+    runtime_config = game / "scripts/ALLIN1.toml"
+    assert runtime_config.is_file()
+    assert "story_mode_only" not in runtime_config.read_text()
 
 
-def test_disabling_story_mode_policy_clears_both_configured_editions(
+def test_save_config_cleans_retired_policy_from_both_configured_editions(
     tmp_path, monkeypatch,
 ):
     project = tmp_path / "project"
@@ -145,11 +152,14 @@ def test_disabling_story_mode_policy_clears_both_configured_editions(
     config.general.gta_legacy_path = str(legacy)
     config.general.gta_enhanced_path = str(enhanced)
     monkeypatch.setattr("allin1.manager.detect_gta_path", lambda: None)
-    from allin1.launch_policy import configure_story_mode_only
-    configure_story_mode_only(legacy, True)
-    configure_story_mode_only(enhanced, True)
-
-    config.general.story_mode_only = False
+    for game in (legacy, enhanced):
+        (game / "commandline.txt").write_text("-scofflineonly\n")
+        state = game / "scripts/.allin1/launch-policy.json"
+        state.parent.mkdir(parents=True)
+        state.write_text(json.dumps({
+            "schema_version": 1, "argument": "-scofflineonly",
+            "inserted": True, "created_file": True,
+        }))
     manager.save_config(config)
 
     assert not (legacy / "commandline.txt").exists()

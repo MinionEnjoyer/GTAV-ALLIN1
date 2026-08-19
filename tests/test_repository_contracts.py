@@ -952,21 +952,47 @@ def test_physics_live_hits_balance_without_standing_ground_writhe():
     assert "balance.MaxBalanceTime = 6.2f" in physics
 
 
-def test_enhanced_police_ai_is_an_independent_launcher_option():
+def test_experimental_systems_are_independent_opt_in_launcher_options():
     config = (ROOT / "src/allin1/config.py").read_text()
     gui = (ROOT / "src/allin1/gui.py").read_text()
     example = (ROOT / "config.example.toml").read_text()
     coordinator = (ROOT / "script/src/PoliceTacticsCoordinator.cs").read_text()
+    physics = (ROOT / "script/src/NpcPhysicsExperiment.cs").read_text()
+    smoke = (ROOT / "script/src/EnhancedSmokeController.cs").read_text()
 
-    assert "enhanced_police_ai: bool = True" in config
+    assert "enhanced_police_ai: bool = False" in config
+    assert "gta_iv_npc_physics: bool = False" in config
+    assert "gta_iv_npc_physics_debug: bool = False" in config
+    assert "enhanced_smoke_effects: bool = False" in config
     assert 'f"{boolean(self.script.enhanced_police_ai)}\\n"' in config
     assert 'text="Enhanced Police AI"' in gui
     assert "self.config.script.enhanced_police_ai" in gui
-    assert "enhanced_police_ai = true" in example
-    assert '"enhanced_police_ai", true' in coordinator
+    assert "enhanced_police_ai = false" in example
+    assert "gta_iv_npc_physics = false" in example
+    assert "gta_iv_npc_physics_debug = false" in example
+    assert "enhanced_smoke_effects = false" in example
+    assert '"enhanced_police_ai", false' in coordinator
+    assert '"gta_iv_npc_physics_debug", false' in physics
+    assert '"enhanced_smoke_effects", false' in smoke
     constructor = coordinator[coordinator.index("public PoliceTacticsCoordinator()"):
                               coordinator.index("private void OnTick")]
     assert '"gta_iv_npc_physics", false' not in constructor
+
+
+def test_offline_launch_experiment_is_culled_from_release_surfaces():
+    config = (ROOT / "src/allin1/config.py").read_text()
+    gui = (ROOT / "src/allin1/gui.py").read_text()
+    manager = (ROOT / "src/allin1/manager.py").read_text()
+    policy = (ROOT / "src/allin1/launch_policy.py").read_text()
+    example = (ROOT / "config.example.toml").read_text()
+
+    assert "story_mode_only" not in config
+    assert "story_mode_only" not in gui
+    assert "story_mode_only" not in example
+    assert "configure_story_mode_only" not in manager
+    assert "_append_argument" not in policy
+    assert "_write_state" not in policy
+    assert "remove_retired_offline_policy" in manager
 
 
 def test_gbay_main_menu_uses_clean_rounded_green_header():

@@ -23,6 +23,7 @@ SDK_RELEASES_API = "https://api.github.com/repos/MinionEnjoyer/ALLIN1-SDK/releas
 SDK_EXECUTABLE = "ALLIN1-SDK.exe"
 SDK_RELEASE_METADATA = "release.json"
 SDK_CHECKSUMS = "checksums.json"
+APPLICATION_CONTROL_WINERROR = 4551
 MAX_ARCHIVE_BYTES = 768 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_ARCHIVE_FILES = 20_000
@@ -64,6 +65,20 @@ class SdkPackageInfo:
 
 
 ProgressCallback = Callable[[str, int, int], None]
+
+
+def sdk_launch_error_message(error: OSError) -> str:
+    """Translate Windows application-control failures into an actionable message."""
+    if getattr(error, "winerror", None) == APPLICATION_CONTROL_WINERROR:
+        return (
+            "Windows Application Control blocked the SDK because this build is not signed "
+            "by a publisher trusted by the active device policy.\n\n"
+            "The SDK package passed ALLIN1's checksum verification, but Windows separately "
+            "controls which applications may run. Reinstalling or unblocking the file will "
+            "not change this policy. Install a publisher-signed SDK build, or ask the device "
+            "administrator to approve ALLIN1 SDK."
+        )
+    return str(error)
 
 
 def default_sdk_root(environment: Mapping[str, str] | None = None) -> Path:

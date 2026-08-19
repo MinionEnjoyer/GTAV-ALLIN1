@@ -21,7 +21,6 @@ class GeneralConfig:
     gta_legacy_path: str = "auto"
     gta_enhanced_path: str = "auto"
     target_edition: str = "auto"
-    story_mode_only: bool = True
     free_mode: bool = False
     backup: bool = True
     enable_rpf_previews: bool = True
@@ -67,10 +66,10 @@ class ScriptConfig:
     hold_duration_ms: int = 350
     gbay_free_mode: bool = False
     garages_always_accessible: bool = False
-    enhanced_police_ai: bool = True
+    enhanced_police_ai: bool = False
     gta_iv_npc_physics: bool = False
-    gta_iv_npc_physics_debug: bool = True
-    enhanced_smoke_effects: bool = True
+    gta_iv_npc_physics_debug: bool = False
+    enhanced_smoke_effects: bool = False
     controller_enabled: bool = True
     controller_open_gbay: str = "FrontendRdown"
     controller_open_gbay_modifier: str = "FrontendLb"
@@ -155,7 +154,6 @@ class Config:
             f"gta_legacy_path = {quote(self.general.gta_legacy_path)}\n"
             f"gta_enhanced_path = {quote(self.general.gta_enhanced_path)}\n"
             f"target_edition = {quote(self.general.target_edition)}\n"
-            f"story_mode_only = {boolean(self.general.story_mode_only)}\n"
             f"free_mode = {boolean(self.general.free_mode)}\n"
             f"backup = {boolean(self.general.backup)}\n"
             f"enable_rpf_previews = {boolean(self.general.enable_rpf_previews)}\n\n"

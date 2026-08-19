@@ -33,13 +33,14 @@ PUBLIC_ROOT_FILES = (
     "prices_gear.toml",
     "prices_vehicles.toml",
     "prices_weapons.toml",
+    "mods/README.md",
+    "sdk/examples/colored_smokes/addon.json",
 )
 
 PUBLIC_TREE_RULES = {
     "src/allin1": frozenset({".py", ".png", ".ico"}),
     "data": None,
     "script/dist": frozenset({".dll", ".png"}),
-    "mods": frozenset({".md", ".example"}),
 }
 
 FORBIDDEN_PARTS = frozenset({
@@ -119,6 +120,8 @@ def _validate_public_path(relative: str) -> None:
         raise ValueError(f"unsafe release path: {relative}")
     if path.name.lower() in FORBIDDEN_NAMES or lowered_parts & FORBIDDEN_PARTS:
         raise ValueError(f"development/private file is not allowed in a release: {relative}")
+    if tuple(part.lower() for part in path.parts[:2]) == ("mods", "examples"):
+        raise ValueError(f"sample/test mod is not allowed in a release: {relative}")
     if tuple(part.lower() for part in path.parts[:2]) in {
         ("script", "src"), ("script", "tools"),
     }:

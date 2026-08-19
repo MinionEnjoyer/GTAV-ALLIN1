@@ -415,7 +415,7 @@ namespace ALLIN1
         {
             _current = this;
             _enabled = NpcPhysicsExperiment.ReadBooleanSetting(
-                "enhanced_police_ai", true);
+                "enhanced_police_ai", false);
             Interval = _enabled ? 200 : 1000;
             Tick += OnTick;
             Aborted += OnAborted;

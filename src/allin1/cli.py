@@ -99,10 +99,9 @@ def install_cmd(ctx: click.Context) -> None:
             click.echo("OpenRPF not detected. This is optional; GBAY will use safe placeholders.")
             click.echo("For GBAY preview artwork, install it manually from:")
         else:
-            click.echo("OpenIV.asi not detected. This is optional for vehicle artwork:")
-        click.echo("  https://www.gta5-mods.com/tools/openrpf-openiv-asi-for-gta-v-enhanced")
+            click.echo("Legacy RPF loader not detected. This is optional for vehicle artwork.")
     else:
-        asi_name = "OpenRPF" if result.is_enhanced else "OpenIV.asi"
+        asi_name = "Enhanced RPF loader" if result.is_enhanced else "Legacy RPF loader"
         click.echo(f"{asi_name} detected (optional artwork loader).")
     if result.rpf_previews_deployed:
         click.echo("GBAY RPF preview textures deployed.")

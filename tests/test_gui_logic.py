@@ -27,7 +27,6 @@ def _window():
     window = ManagerWindow.__new__(ManagerWindow)
     window.config = Config.default()
     window.path = Variable(" /game ")
-    window.story_mode_only = Variable(False)
     window.rpf_previews = Variable(True)
     window.backup_enabled = Variable(False)
     window.traffic = Variable(False)
@@ -60,7 +59,6 @@ def _window():
 def test_current_config_collects_all_launcher_fields():
     config = _window()._current_config()
     assert config.general.gta_path == "/game"
-    assert config.general.story_mode_only is False
     assert config.general.free_mode is True
     assert config.general.enable_rpf_previews is True
     assert config.general.backup is False

@@ -235,9 +235,6 @@ class ManagerWindow:
         self.legacy_path = tk.StringVar(value=self.config.general.gta_legacy_path)
         self.enhanced_path = tk.StringVar(value=self.config.general.gta_enhanced_path)
         self.target_edition = tk.StringVar(value=self.config.general.target_edition.title())
-        self.story_mode_only = tk.BooleanVar(
-            value=self.config.general.story_mode_only,
-        )
         self.rpf_previews = tk.BooleanVar(value=self.config.general.enable_rpf_previews)
         self.backup_enabled = tk.BooleanVar(value=self.config.general.backup)
         self.traffic = tk.BooleanVar(value=self.config.traffic.enabled)
@@ -292,7 +289,7 @@ class ManagerWindow:
         self._build()
         self._setting_variables = (
             self.path, self.legacy_path, self.enhanced_path, self.target_edition,
-            self.story_mode_only, self.rpf_previews, self.backup_enabled, self.traffic,
+            self.rpf_previews, self.backup_enabled, self.traffic,
             self.rich_areas_only, self.adaptive_performance, self.enable_all_vehicles,
             self.disabled_classes, self.disabled_vehicles, self.police,
             self.logging_enabled, self.gbay_key, self.night_vision_key,
@@ -531,9 +528,11 @@ class ManagerWindow:
 
         outer = ttk.Frame(self.root, padding=(16, 14, 16, 12))
         outer.pack(fill="both", expand=True)
+        outer.columnconfigure(0, weight=1)
+        outer.rowconfigure(1, weight=1)
 
         banner = tk.Frame(outer, background=dark_green, padx=16, pady=10)
-        banner.pack(fill="x", pady=(0, 12))
+        banner.grid(row=0, column=0, sticky="ew", pady=(0, 12))
         try:
             with Image.open(ASSET_DIR / "ALLIN1.png") as source:
                 logo = source.convert("RGBA")
@@ -581,7 +580,7 @@ class ManagerWindow:
             ),
         )
         shell = ttk.Frame(outer)
-        shell.pack(fill="both", expand=True)
+        shell.grid(row=1, column=0, sticky="nsew")
         sidebar = ttk.Frame(shell, style="Surface.TFrame", padding=(8, 12))
         sidebar.pack(side="left", fill="y", padx=(0, 12))
         ttk.Label(
@@ -712,20 +711,6 @@ class ManagerWindow:
         world.pack(fill="x", pady=(0, 12))
         world.columnconfigure(0, weight=1)
         world.columnconfigure(1, weight=1)
-        ttk.Checkbutton(
-            world,
-            text="Story Mode only — block GTA Online entry",
-            variable=self.story_mode_only,
-        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=4)
-        ttk.Label(
-            world,
-            text=(
-                "Uses Rockstar's supported offline launch argument for the active "
-                "edition. Other commandline.txt options are preserved; turning it "
-                "off clears ALLIN1's flag from both configured editions."
-            ),
-            foreground="#52635c", wraplength=900, justify="left",
-        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 5))
         for row, (left_text, left_var, right_text, right_var) in enumerate((
             ("Free GBAY purchases (no sale payouts)", self.gbay_free_mode,
              "Enable DLC traffic", self.traffic),
@@ -733,11 +718,11 @@ class ManagerWindow:
              "Supercars only in wealthy areas", self.rich_areas_only),
             ("Adaptive traffic performance", self.adaptive_performance,
              "Enable every DLC vehicle", self.enable_all_vehicles),
-            ("GBAY preview artwork (OpenRPF/OpenIV)", self.rpf_previews,
+            ("GBAY preview artwork (RPF loader)", self.rpf_previews,
              "Allow garage entry while wanted", self.garages_always_accessible),
             ("Back up game changes", self.backup_enabled,
              "Safe mode (limits traffic and Harmony Garage)", self.safe_mode),
-        ), start=2):
+        )):
             ttk.Checkbutton(world, text=left_text, variable=left_var).grid(
                 row=row, column=0, sticky="w", padx=(0, 28), pady=4,
             )
@@ -766,7 +751,10 @@ class ManagerWindow:
         ).pack(side="left", padx=(10, 6))
         ttk.Label(scale_row, text="0.75×–1.50×", foreground="#52635c").pack(side="left")
 
-        experiments = ttk.LabelFrame(gameplay, text="Experimental systems & diagnostics", padding=14)
+        experiments = ttk.LabelFrame(
+            gameplay, text="Experimental systems & diagnostics (off by default)",
+            padding=14,
+        )
         experiments.pack(fill="x", pady=(0, 12))
         experiments.columnconfigure(0, weight=1)
         experiments.columnconfigure(1, weight=1)
@@ -987,10 +975,17 @@ class ManagerWindow:
                   wraplength=830).pack(anchor="w")
         ttk.Label(state, textvariable=self.version_text, justify="left",
                   foreground="#3f6659").pack(anchor="w", pady=(5, 0))
-        self.update_button = ttk.Button(
-            state, text="Check for updates", command=self.check_for_updates,
+        status_actions = ttk.Frame(state)
+        status_actions.pack(fill="x", pady=(10, 0))
+        self.install_repair_button = ttk.Button(
+            status_actions, text="Install / Repair", command=self.install,
+            style="Accent.TButton",
         )
-        self.update_button.pack(anchor="w", pady=(10, 0))
+        self.install_repair_button.pack(side="left")
+        self.update_button = ttk.Button(
+            status_actions, text="Check for updates", command=self.check_for_updates,
+        )
+        self.update_button.pack(side="left", padx=(8, 0))
 
         activity_toolbar = ttk.Frame(activity)
         activity_toolbar.pack(fill="x", pady=(0, 10))
@@ -1020,7 +1015,7 @@ class ManagerWindow:
         scroll.pack(side="right", fill="y")
 
         footer = ttk.Frame(outer, padding=(0, 11, 0, 0))
-        footer.pack(side="bottom", fill="x")
+        footer.grid(row=2, column=0, sticky="ew")
         footer_actions = ttk.Frame(footer)
         footer_actions.pack(side="right")
         footer_left = ttk.Frame(footer)
@@ -1093,7 +1088,6 @@ class ManagerWindow:
             self.config.general.gta_path = selected_path
         else:
             self.config.general.gta_path = self.path.get().strip() or "auto"
-        self.config.general.story_mode_only = self.story_mode_only.get()
         self.config.general.free_mode = self.gbay_free_mode.get()
         self.config.general.backup = self.backup_enabled.get()
         self.config.general.enable_rpf_previews = self.rpf_previews.get()
@@ -1182,7 +1176,6 @@ class ManagerWindow:
                 self.legacy_path.set(self.config.general.gta_legacy_path)
                 self.enhanced_path.set(self.config.general.gta_enhanced_path)
                 self.target_edition.set(self.config.general.target_edition.title())
-            self.story_mode_only.set(self.config.general.story_mode_only)
             self.backup_enabled.set(self.config.general.backup)
             self.rpf_previews.set(self.config.general.enable_rpf_previews)
             self.traffic.set(self.config.traffic.enabled)
@@ -1548,10 +1541,6 @@ class ManagerWindow:
             return
         self._clear_dirty("Launching GTA V")
         self._append_log(f"Launching {target.description}.")
-        if config.general.story_mode_only:
-            self._append_log(
-                "Story Mode-only launch protection is enabled; GTA Online is unavailable."
-            )
         if smoke_canary_consumed:
             self._append_log(
                 "Consumed the one-run colored-smoke RPF canary authorization."
@@ -1833,7 +1822,10 @@ class ManagerWindow:
 
     def _set_actions(self, enabled: bool) -> None:
         if not enabled:
-            for button in (self.launch_button, self.save_button, self.game_action_button):
+            for button in (
+                self.launch_button, self.save_button, self.game_action_button,
+                self.install_repair_button, self.update_button,
+            ):
                 button.configure(state="disabled")
             for menu in (self.file_menu, self.game_menu, self.sdk_menu):
                 for index in range(menu.index("end") + 1):
@@ -1854,6 +1846,14 @@ class ManagerWindow:
             )
             self.save_button.configure(state="normal")
             self.game_action_button.configure(state="normal")
+            self.update_button.configure(state="normal")
+            self.install_repair_button.configure(
+                state=(
+                    "normal"
+                    if presentation and presentation.can_install
+                    else "disabled"
+                ),
+            )
             for menu in (self.file_menu, self.sdk_menu):
                 for index in range(menu.index("end") + 1):
                     if menu.type(index) == "command":

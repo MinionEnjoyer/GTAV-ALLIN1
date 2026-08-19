@@ -2496,7 +2496,7 @@ namespace RpfPatcher
                     return 5;
                 }
                 // ExtractFile returns decompressed resource payloads. Re-wrap
-                // them as standalone OpenIV-compatible resource files so the
+                // them as standalone header-bearing RAGE resource files so the
                 // result can be opened and compared outside its source RPF.
                 if (matches[0] is RpfResourceFileEntry resourceEntry)
                 {

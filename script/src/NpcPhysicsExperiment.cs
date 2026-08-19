@@ -845,8 +845,8 @@ namespace ALLIN1
             _current = this;
             _enabled = ReadBooleanSetting("gta_iv_npc_physics", false);
             _enhancedPoliceAi = ReadBooleanSetting(
-                "enhanced_police_ai", true);
-            _debug = ReadBooleanSetting("gta_iv_npc_physics_debug", true);
+                "enhanced_police_ai", false);
+            _debug = ReadBooleanSetting("gta_iv_npc_physics_debug", false);
             // Keep diagnostics available when configuration unexpectedly
             // disables the experiment; otherwise a path/parser failure hides
             // the evidence needed to diagnose itself.

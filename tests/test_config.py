@@ -78,6 +78,15 @@ enabled = true
     assert config.traffic.enabled is True
 
 
+def test_retired_offline_launch_setting_is_ignored(tmp_path):
+    path = _write_toml(tmp_path, """
+[general]
+story_mode_only = true
+""")
+    config = Config.load(path)
+    assert not hasattr(config.general, "story_mode_only")
+
+
 def test_disabled_classes(tmp_path):
     path = _write_toml(tmp_path, """
 [vehicles]
@@ -116,7 +125,6 @@ def test_default_config():
     assert config.general.gta_legacy_path == "auto"
     assert config.general.gta_enhanced_path == "auto"
     assert config.general.target_edition == "auto"
-    assert config.general.story_mode_only is True
     assert config.traffic.enabled is True
     assert config.traffic.max_driven == 20
     assert config.traffic.replacement_chance == 0.30
@@ -126,10 +134,10 @@ def test_default_config():
     assert config.script.ui_scale == 1.0
     assert config.script.seat_selector_key == "L"
     assert config.script.garages_always_accessible is False
-    assert config.script.enhanced_police_ai is True
+    assert config.script.enhanced_police_ai is False
     assert config.script.gta_iv_npc_physics is False
-    assert config.script.gta_iv_npc_physics_debug is True
-    assert config.script.enhanced_smoke_effects is True
+    assert config.script.gta_iv_npc_physics_debug is False
+    assert config.script.enhanced_smoke_effects is False
     assert config.script.controller_enabled is True
     assert config.script.controller_open_gbay == "FrontendRdown"
 
@@ -140,7 +148,6 @@ def test_save_round_trip_preserves_all_fields(tmp_path):
     config.general.gta_legacy_path = r"C:\Games\GTAV Legacy"
     config.general.gta_enhanced_path = r"D:\Games\GTAV Enhanced"
     config.general.target_edition = "enhanced"
-    config.general.story_mode_only = False
     config.general.free_mode = True
     config.general.backup = False
     config.traffic.enabled = False
