@@ -2959,6 +2959,45 @@ namespace ALLIN1
         internal static bool IsFloorGarageInitialized => _floorGarageInitialized;
         internal static int CurrentFloor => _currentFloor;
 
+        /// <summary>
+        /// Keep Harmony visible on the map even while recovery mode defers its
+        /// interior and storage initialization. This is deliberately
+        /// idempotent because normal initialization retries it after recovery.
+        /// </summary>
+        internal static void EnsureFloorGarageBlips()
+        {
+            try
+            {
+                if (_floorGarageEntranceBlip == null ||
+                    !_floorGarageEntranceBlip.Exists())
+                {
+                    _floorGarageEntranceBlip = World.CreateBlip(
+                        FLOOR_GARAGE_ENTRANCE_POS);
+                    _floorGarageEntranceBlip.Sprite = BlipSprite.Garage;
+                    _floorGarageEntranceBlip.Color = CharacterBlipColor();
+                    _floorGarageEntranceBlip.Name =
+                        "ALLIN1 Harmony Garage (Vehicle)";
+                    _floorGarageEntranceBlip.IsShortRange = true;
+                }
+
+                if (_floorGaragePedBlip == null ||
+                    !_floorGaragePedBlip.Exists())
+                {
+                    _floorGaragePedBlip = World.CreateBlip(
+                        FLOOR_GARAGE_PED_EXIT_DEST);
+                    _floorGaragePedBlip.Sprite = BlipSprite.Garage;
+                    _floorGaragePedBlip.Color = CharacterBlipColor();
+                    _floorGaragePedBlip.Name =
+                        "ALLIN1 Harmony Garage (Pedestrian)";
+                    _floorGaragePedBlip.IsShortRange = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogException("EnsureFloorGarageBlips", ex);
+            }
+        }
+
         /// <summary>Get the theme choice for a specific floor and category.</summary>
         internal static int GetFloorThemeChoice(int floor, int category)
         {
@@ -3014,24 +3053,13 @@ namespace ALLIN1
 
             try
             {
+                EnsureFloorGarageBlips();
                 FloorGarageLoad();
                 FloorGarageThemesLoad();
                 int total = 0;
                 foreach (var list in _floorGarageStored.Values)
                     total += list.Count;
                 Log($"Floor Garage: loaded {total} stored vehicles");
-
-                _floorGarageEntranceBlip = World.CreateBlip(FLOOR_GARAGE_ENTRANCE_POS);
-                _floorGarageEntranceBlip.Sprite = BlipSprite.Garage;
-                _floorGarageEntranceBlip.Color = CharacterBlipColor();
-                _floorGarageEntranceBlip.Name = "ALLIN1 Harmony Garage (Vehicle)";
-                _floorGarageEntranceBlip.IsShortRange = true;
-
-                _floorGaragePedBlip = World.CreateBlip(FLOOR_GARAGE_PED_EXIT_DEST);
-                _floorGaragePedBlip.Sprite = BlipSprite.Garage;
-                _floorGaragePedBlip.Color = CharacterBlipColor();
-                _floorGaragePedBlip.Name = "ALLIN1 Harmony Garage (Pedestrian)";
-                _floorGaragePedBlip.IsShortRange = true;
 
                 Log("Floor Garage initialized (5-floor oversized vehicle storage)");
             }

@@ -240,6 +240,10 @@ namespace ALLIN1
                 GarageManager.InitializeHelipad();
                 GarageManager.InitializeHarbour();
                 GarageManager.InitializeYachtHelipad();
+                // Recovery mode may defer Harmony's interior/storage work,
+                // but its map locations should remain visible with every
+                // other ALLIN1 garage.
+                GarageManager.EnsureFloorGarageBlips();
                 if (!ClientWatchdog.SafeMode)
                     GarageManager.InitializeFloorGarage();
                 else

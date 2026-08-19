@@ -1250,6 +1250,30 @@ def test_all_garage_locations_share_protagonist_colors():
     assert "BlipColor.Green" not in davis
 
 
+def test_harmony_blips_are_not_suppressed_by_recovery_mode():
+    garage = (ROOT / "script/src/GarageManager.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    helper = garage[
+        garage.index("internal static void EnsureFloorGarageBlips()"):
+        garage.index("internal static int GetFloorThemeChoice")
+    ]
+    assert "_floorGarageEntranceBlip == null" in helper
+    assert "_floorGaragePedBlip == null" in helper
+    assert '"ALLIN1 Harmony Garage (Vehicle)"' in helper
+    assert '"ALLIN1 Harmony Garage (Pedestrian)"' in helper
+    initialize = shop[
+        shop.index("GarageManager.InitializeYachtHelipad();"):
+        shop.index("Log(\"GarageManager base initialization completed\")")
+    ]
+    assert initialize.index("GarageManager.EnsureFloorGarageBlips();") < \
+        initialize.index("if (!ClientWatchdog.SafeMode)")
+    floor_init = garage[
+        garage.index("internal static void InitializeFloorGarage()"):
+        garage.index("internal static int GetFloorGarageUsedSlots()")
+    ]
+    assert "EnsureFloorGarageBlips();" in floor_init
+
+
 def test_gbay_control_legends_are_high_contrast_and_shared_across_pages():
     browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
     gear_browser = (ROOT / "script/src/GbayBrowser.Gear.cs").read_text()
