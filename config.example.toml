@@ -15,8 +15,9 @@ free_mode = false
 # Create backups of original game files before modifying.
 backup = true
 
-# Install GBAY thumbnails through OpenRPF/OpenIV. Disable this only when
-# troubleshooting an artwork-loader conflict; placeholders remain available.
+# Install GBAY thumbnails through a compatible RPF loader. Install / Repair can
+# offer the pinned official RageOpenV release after asking for permission.
+# Disable this only when troubleshooting a conflict; placeholders remain available.
 enable_rpf_previews = true
 
 [traffic]

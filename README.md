@@ -112,7 +112,8 @@ persists character and garage state under the game's `scripts` directory.
 - [ScriptHookV](http://www.dev-c.com/gtav/scripthookv/).
 - [ScriptHookVDotNet Enhanced](https://github.com/Chiheb-Bacha/scripthookvdotnetenhanced).
 - Python 3.10 or newer when installing from source.
-- A compatible edition-specific RPF loader when GBAY preview artwork is enabled.
+- A compatible RPF loader when GBAY preview artwork is enabled. Install / Repair can offer to
+  download the pinned official RageOpenV release after asking for permission.
 
 ScriptHookV and ScriptHookVDotNet Enhanced must be installed in the directory containing
 `GTA5.exe` or `GTA5_Enhanced.exe` before ALLIN1 is installed.
@@ -121,7 +122,8 @@ ScriptHookV and ScriptHookVDotNet Enhanced must be installed in the directory co
 
 1. Clone or download this repository.
 2. Install ScriptHookV and ScriptHookVDotNet Enhanced into the GTA V root directory.
-3. Run `install.bat` once. It creates the local Python environment and prepares the manager.
+3. Run `install.bat` once. It creates the local Python environment, prepares the manager, and can
+   offer the optional RPF preview loader if the selected game installation needs one.
 4. Open `manager.bat`.
 5. Confirm the Legacy and/or Enhanced GTA V directories, choose the active target, and select
    **Install / Repair**.
@@ -130,6 +132,12 @@ ScriptHookV and ScriptHookVDotNet Enhanced must be installed in the directory co
 The installer deploys the ALLIN1 client and configuration under `<GTA V>/scripts`, registers the
 GBAY preview DLC when artwork is enabled, creates recoverable backups before replacement, and adds the no-BattlEye
 launch argument required for Story Mode scripting.
+
+RPF-loader installation is opt-in. ALLIN1 downloads the pinned RageOpenV and, when needed,
+Ultimate ASI Loader archives directly from their official GitHub releases, verifies their exact
+size and SHA-256 before writing anything, and never bundles those third-party binaries. An
+uninstall removes only unchanged dependency files recorded as installed by ALLIN1; pre-existing
+or modified loader files are preserved.
 
 ## Desktop manager
 

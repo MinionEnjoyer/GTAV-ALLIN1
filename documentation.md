@@ -41,7 +41,8 @@ mid-flight loading screens and Story-interior asset loss.
 - **GTA V** (Legacy or Enhanced edition, Steam/Epic/Rockstar Launcher)
 - **ScriptHookV** — [dev-c.com/gtav/scripthookv](http://www.dev-c.com/gtav/scripthookv/)
 - **ScriptHookVDotNet Enhanced** — [github.com/Chiheb-Bacha/scripthookvdotnetenhanced](https://github.com/Chiheb-Bacha/scripthookvdotnetenhanced)
-- **OpenRPF** (Enhanced edition) or **OpenIV.asi** (Legacy edition)
+- A compatible **RPF loader** when GBAY preview artwork is enabled. Install / Repair can offer the
+  pinned official RageOpenV release for either edition after asking for permission.
 - **Python 3.10+** (for the installer)
 - **Windows** (GTA V is Windows-only)
 
@@ -73,11 +74,16 @@ ScriptHookV and ScriptHookVDotNet must be installed into the GTA V root director
 5. Builds and deploys the preview texture DLC pack to `mods/update/x64/dlcpacks/allin1_previews/`
 6. Patches `dlclist.xml` inside `mods/update/update.rpf` to register the DLC
 7. Adds `-nobattleye` to `commandline.txt`
-8. Auto-downloads OpenRPF if missing (Enhanced edition only)
+8. If preview artwork is enabled and no compatible RPF loader is ready, offers to download the
+   pinned RageOpenV release directly from its official project. If the game also lacks an ASI
+   loader, the offer includes the pinned Ultimate ASI Loader release. Both archives must pass
+   exact size and SHA-256 checks before anything is installed.
 
 ### Uninstall
 
 Run `uninstall.bat` to remove all ALLIN1 files, unpatch `dlclist.xml`, and clean up legacy files.
+If ALLIN1 installed the optional RPF dependencies, uninstall removes only the unchanged files in
+its dependency receipt. Existing user-installed loaders and locally modified files are preserved.
 
 ### Update
 
@@ -1031,8 +1037,10 @@ Model names are stored as spawn names (e.g., `"zentorno"` not GXT labels). A mig
 
 - The DLC pack must be properly installed and registered in dlclist.xml
 - Check that `mods/update/x64/dlcpacks/allin1_previews/dlc.rpf` exists
-- For Enhanced edition, ensure OpenRPF.asi is installed
-- For Legacy edition, ensure OpenIV.asi is installed
+- Open Setup and review the RPF-loader status. Install / Repair can offer the supported RageOpenV
+  dependency for either edition when no conflicting loader is present.
+- If you use an existing loader instead, ensure its ASI plug-in and edition-compatible ASI loader
+  are both installed and pass Health Check.
 - Check the debug subtitle when browsing vehicles — it shows texture dict loading status
 
 ---

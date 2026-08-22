@@ -93,6 +93,30 @@ def test_install_command_reports_result(tmp_path, monkeypatch):
     assert "ALLIN1.dll deployed" in invoked.output
 
 
+def test_install_command_rpf_loader_consent_modes(tmp_path, monkeypatch):
+    _project(tmp_path, monkeypatch)
+    game = tmp_path / "game"
+    approvals = []
+
+    def fake_install(_config, _database, *, rpf_loader_consent):
+        approvals.append(rpf_loader_consent(game, True))
+        return InstallResult(game, is_enhanced=True, openrpf_found=True)
+
+    monkeypatch.setattr(cli, "install", fake_install)
+    runner = CliRunner()
+
+    prompted = runner.invoke(cli.main, ["install"], input="y\n")
+    installed = runner.invoke(
+        cli.main, ["install", "--rpf-loader", "install"],
+    )
+    skipped = runner.invoke(cli.main, ["install", "--rpf-loader", "skip"])
+
+    assert prompted.exit_code == installed.exit_code == skipped.exit_code == 0
+    assert "Install these optional third-party dependencies?" in prompted.output
+    assert "pinned RageOpenV release" in prompted.output
+    assert approvals == [True, True, False]
+
+
 def test_install_and_uninstall_failures_are_user_facing(tmp_path, monkeypatch):
     _project(tmp_path, monkeypatch)
     monkeypatch.setattr(cli, "install", Mock(side_effect=FileNotFoundError("no game")))

@@ -27,7 +27,7 @@ HELP_TOPICS: tuple[HelpTopic, ...] = (
         "Connect a game installation, check readiness, and launch safely.",
         """1. Open the Setup workspace and select your GTA V Legacy and/or Enhanced folders.
 2. Choose the active edition. All install, launch, health, and package actions use it.
-3. Review the readiness card. Install / Repair resolves the ALLIN1 client and supported dependencies.
+3. Review the readiness card. Install / Repair resolves the ALLIN1 client and can offer the optional RPF preview dependency when needed.
 4. Save settings, then launch GTA V from the persistent action bar.
 
 ALLIN1 is for Story Mode. Do not use a modified installation with GTA Online.""",
@@ -50,7 +50,9 @@ Health Check performs a deeper validation. Diagnostics creates a shareable repor
 
 The retired offline-launch experiment is not part of 0.5.0. The launcher uses the normal Rockstar authentication flow and automatically removes only an old offline argument carrying ALLIN1's ownership record. Other commandline.txt options remain untouched.
 
-If launch is blocked by an RPF safety warning, run Health Check before repairing. The warning is designed to prevent a known-bad package from hanging Story Mode.""",
+If preview artwork is enabled but no compatible RPF loader is ready, Install / Repair asks before downloading anything. The pinned RageOpenV release is downloaded directly from its official project and checked before installation. If an ASI loader is also needed, the same rules apply to the pinned Ultimate ASI Loader release. Declining keeps placeholder artwork available.
+
+ALLIN1 does not bundle these third-party binaries or overwrite an existing loader. If launch is blocked by an RPF safety warning, run Health Check before repairing. The warning is designed to prevent a known-bad package from hanging Story Mode.""",
         ("repair", "health", "launch", "dependencies", "blocked"),
     ),
     HelpTopic(
@@ -116,7 +118,9 @@ Search and filter the archive tree, then use Entry actions to preview or extract
         "Understand what ALLIN1 changes and how to recover it.",
         """Keep Back up game changes enabled for normal use. Package receipts identify installed files; uninstall uses those receipts and backups to restore replaced content.
 
-Never manually delete a partially installed package before collecting diagnostics. Use Health Check, then Install / Repair or the package's Uninstall action. RPF replacement remains plan-only in the explorer because archive mutation requires stronger transactional guarantees.""",
+Never manually delete a partially installed package before collecting diagnostics. Use Health Check, then Install / Repair or the package's Uninstall action. RPF replacement remains plan-only in the explorer because archive mutation requires stronger transactional guarantees.
+
+Optional RPF dependencies installed by ALLIN1 have their own receipt. Uninstall removes only files that still match that receipt; pre-existing or modified loader files are preserved.""",
         ("backup", "rollback", "restore", "safety", "receipt"),
     ),
     HelpTopic(

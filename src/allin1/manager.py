@@ -12,6 +12,7 @@ from allin1.detector import detect_gta_path, validate_gta_path
 from allin1.installer import InstallResult, install, uninstall
 from allin1.health import inspect_windows_binary
 from allin1.launch_policy import remove_retired_offline_policy
+from allin1.rpf_loader import inspect_rpf_loader
 from allin1.vehicles.database import VehicleDatabase
 from allin1.versioning import read_installed_version
 
@@ -159,20 +160,28 @@ class ModManager:
             installed_version = read_installed_version(scripts)
         except (OSError, ValueError):
             installed_version = None
-        rpf_plugin = gta_path / ("OpenRPF.asi" if edition == "Enhanced" else "OpenIV.asi")
-        rpf_installed = inspect_windows_binary(rpf_plugin).valid
-        disabled_plugin = (
-            gta_path / "allin1_backups" / "DisabledPlugins" /
-            (rpf_plugin.name + ".disabled")
+        rpf_dependency = inspect_rpf_loader(
+            gta_path, edition == "Enhanced",
+        ) if edition != "Unknown" else None
+        rpf_installed = bool(rpf_dependency and rpf_dependency.ready)
+        disabled_names = (
+            "RageOpenV.asi.disabled",
+            ("OpenRPF.asi.disabled" if edition == "Enhanced"
+             else "OpenIV.asi.disabled"),
         )
-        asi_loader = any(inspect_windows_binary(gta_path / name).valid for name in
-                         ("dinput8.dll", "dsound.dll", "xinput1_4.dll"))
-        if rpf_installed:
-            rpf_status = "Installed (file validated)"
-        elif disabled_plugin.is_file():
+        disabled_plugin = any(
+            (
+                gta_path / "allin1_backups" / "DisabledPlugins" / name
+            ).is_file()
+            for name in disabled_names
+        )
+        if rpf_installed and rpf_dependency is not None:
+            plugin_name = rpf_dependency.plugin.name if rpf_dependency.plugin else "loader"
+            rpf_status = f"Installed ({plugin_name} validated)"
+        elif disabled_plugin:
             rpf_status = "Disabled"
-        elif asi_loader:
-            rpf_status = "Plug-in missing"
+        elif rpf_dependency is not None:
+            rpf_status = rpf_dependency.reason
         else:
             rpf_status = "Missing"
 
@@ -192,12 +201,18 @@ class ModManager:
         self,
         config: Config,
         progress: Callable[[int, str], None] | None = None,
+        rpf_loader_consent: Callable[[Path, bool], bool] | None = None,
     ) -> InstallResult:
         self.save_config(config)
         database = VehicleDatabase.load(self.database_path)
-        if progress is None:
+        if progress is None and rpf_loader_consent is None:
             return self._install(config, database)
-        return self._install(config, database, progress=progress)
+        kwargs = {}
+        if progress is not None:
+            kwargs["progress"] = progress
+        if rpf_loader_consent is not None:
+            kwargs["rpf_loader_consent"] = rpf_loader_consent
+        return self._install(config, database, **kwargs)
 
     def uninstall(self, config: Config) -> list[Path]:
         return self._uninstall(config)

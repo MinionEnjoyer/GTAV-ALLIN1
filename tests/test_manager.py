@@ -36,6 +36,7 @@ def test_status_reports_complete_legacy_install(tmp_path):
     _write_pe(tmp_path / "ScriptHookV.dll")
     _write_pe(tmp_path / "ScriptHookVDotNet.asi")
     _write_pe(tmp_path / "OpenIV.asi")
+    _write_pe(tmp_path / "dinput8.dll")
     scripts = tmp_path / "scripts"
     scripts.mkdir()
     _write_pe(scripts / "ALLIN1.dll")
@@ -51,7 +52,7 @@ def test_status_reports_complete_legacy_install(tmp_path):
     assert status.scripthookv_installed is True
     assert status.shvdn_installed is True
     assert status.openrpf_installed is True
-    assert status.rpf_loader_status == "Installed (file validated)"
+    assert status.rpf_loader_status == "Installed (OpenIV.asi validated)"
     assert status.installed_version == "0.2.0"
     assert status.manager_version == "0.5.0"
 
@@ -106,6 +107,17 @@ def test_install_forwards_progress_callback(tmp_path):
     manager.install(config, progress=progress)
 
     assert install_fn.call_args.kwargs == {"progress": progress}
+
+
+def test_install_forwards_optional_rpf_loader_consent(tmp_path):
+    install_fn = Mock(return_value=object())
+    manager = _manager(tmp_path, install_fn=install_fn)
+    config = Config.default()
+    consent = Mock(return_value=True)
+
+    manager.install(config, rpf_loader_consent=consent)
+
+    assert install_fn.call_args.kwargs == {"rpf_loader_consent": consent}
 
 
 def test_save_config_cleans_retired_owned_offline_launch_policy(

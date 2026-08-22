@@ -202,6 +202,7 @@ echo.
 echo   Requires:
 echo     ScriptHookV:              http://www.dev-c.com/gtav/scripthookv/
 echo     ScriptHookVDotNet Enhanced: github.com/Chiheb-Bacha/scripthookvdotnetenhanced
+echo     RPF preview loader: offered during installation when needed
 echo.
 echo   Full log saved to: allin1.log
 echo ============================================================

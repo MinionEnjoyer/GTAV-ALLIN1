@@ -73,6 +73,22 @@ def test_health_accepts_complete_preview_pack(tmp_path):
     assert "preview_dlc_invalid" not in codes
 
 
+def test_health_accepts_rageopenv_for_both_editions(tmp_path):
+    for enhanced in (False, True):
+        game = tmp_path / ("enhanced" if enhanced else "legacy")
+        game.mkdir()
+        _game(game, enhanced=enhanced)
+        old_plugin = game / ("OpenRPF.asi" if enhanced else "OpenIV.asi")
+        old_plugin.unlink()
+        _write_pe(game / "RageOpenV.asi")
+
+        codes = {issue.code for issue in scan_installation(game).issues}
+
+        assert "rpf_loader_missing" not in codes
+        assert "rpf_loader_corrupt" not in codes
+        assert "rpf_loader_conflict" not in codes
+
+
 def test_health_rejects_empty_openrpf_and_missing_asi_loader(tmp_path):
     _game(tmp_path, enhanced=True)
     (tmp_path / "OpenRPF.asi").write_bytes(b"")

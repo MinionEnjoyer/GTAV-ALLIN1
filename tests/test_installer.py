@@ -3,6 +3,7 @@
 from pathlib import Path
 import json
 import struct
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -387,6 +388,74 @@ def test_install_orchestrates_steps_and_collects_preview_warning(tmp_path, monke
     assert result.warnings == ["Preview texture injection failed: preview failed"]
     map_deploy.assert_called_once_with(game, result, progress=None)
     patch.assert_not_called()
+
+
+def test_install_uses_approved_optional_rpf_dependency(tmp_path, monkeypatch):
+    game = _game(tmp_path, enhanced=True)
+    config = Config.default()
+    config.general.gta_path = str(game)
+    for name, value in (
+        ("_clean_legacy_files", None), ("_deploy_script", True),
+        ("_check_scripthookv", True), ("_check_shvdn", True),
+        ("_remove_preview_pack", []), ("_remove_map_pack", []),
+        ("_unpatch_dlclist_rpf", None),
+        ("_deploy_standalone_map_dlc", True), ("_deploy_preview_dlc", True),
+    ):
+        monkeypatch.setattr(installer, name, Mock(return_value=value))
+    check = Mock(side_effect=[False, True])
+    monkeypatch.setattr(installer, "_check_openrpf", check)
+    installed = SimpleNamespace(
+        installed=(game / "RageOpenV.asi",),
+        provider="RageOpenV", version="v1.0",
+    )
+    dependency = Mock(return_value=installed)
+    monkeypatch.setattr(installer, "install_recommended_rpf_loader", dependency)
+    monkeypatch.setattr(
+        installer.asi_loader, "ensure_nobattleye", Mock(return_value="set"),
+    )
+    consent = Mock(return_value=True)
+
+    result = installer.install(
+        config, Mock(), rpf_loader_consent=consent,
+    )
+
+    consent.assert_called_once_with(game, True)
+    dependency.assert_called_once_with(game, True)
+    assert result.openrpf_found is True
+    assert result.rpf_loader_installed is True
+    assert result.rpf_loader_provider == "RageOpenV v1.0"
+
+
+def test_optional_rpf_dependency_io_failure_does_not_block_repair(
+    tmp_path, monkeypatch,
+):
+    game = _game(tmp_path, enhanced=False)
+    config = Config.default()
+    config.general.gta_path = str(game)
+    for name, value in (
+        ("_clean_legacy_files", None), ("_deploy_script", True),
+        ("_check_scripthookv", True), ("_check_shvdn", True),
+        ("_remove_preview_pack", []), ("_remove_map_pack", []),
+        ("_unpatch_dlclist_rpf", None),
+        ("_deploy_standalone_map_dlc", True), ("_deploy_preview_dlc", True),
+    ):
+        monkeypatch.setattr(installer, name, Mock(return_value=value))
+    monkeypatch.setattr(installer, "_check_openrpf", Mock(return_value=False))
+    monkeypatch.setattr(
+        installer, "install_recommended_rpf_loader",
+        Mock(side_effect=PermissionError("access denied")),
+    )
+    monkeypatch.setattr(
+        installer.asi_loader, "ensure_nobattleye", Mock(return_value="set"),
+    )
+
+    result = installer.install(
+        config, Mock(), rpf_loader_consent=lambda _path, _enhanced: True,
+    )
+
+    assert result.openrpf_found is False
+    assert result.rpf_previews_deployed is False
+    assert any("access denied" in warning for warning in result.warnings)
 
 
 def test_install_rejects_missing_required_standalone_map_pack(tmp_path, monkeypatch):
