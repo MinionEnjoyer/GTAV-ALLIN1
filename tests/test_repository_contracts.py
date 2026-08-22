@@ -166,6 +166,16 @@ def test_required_user_entrypoints_exist():
         assert (ROOT / relative).is_file()
 
 
+def test_windows_installer_bootstraps_a_real_python_runtime():
+    installer = (ROOT / "install.bat").read_text(encoding="utf-8")
+    assert "call :find_python" in installer
+    assert "sys.version_info.minor in range(10, 100)" in installer
+    assert "Python.Python.3.12" in installer
+    assert "winget install --exact" in installer
+    assert '"--check-python"' in installer
+    assert "where python >nul" not in installer
+
+
 def test_garage_transitions_are_guarded_and_recoverable():
     garage = (ROOT / "script/src/GarageManager.cs").read_text()
     shop = (ROOT / "script/src/GbayShop.cs").read_text()
