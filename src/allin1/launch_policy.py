@@ -42,8 +42,11 @@ def remove_retired_offline_policy(
     original_exists = commandline.exists()
     if original_exists and not commandline.is_file():
         raise OSError(f"Launch arguments path is not a file: {commandline}")
+    # Path.read_text() enables universal-newline translation, which changes
+    # CRLF command lines to LF when cleanup runs outside Windows. Decode the
+    # bytes directly so an unrelated launch argument keeps its exact endings.
     original = (
-        commandline.read_text(encoding="utf-8-sig", errors="replace")
+        commandline.read_bytes().decode("utf-8-sig", errors="replace")
         if original_exists else ""
     )
     state = _read_state(state_path)
@@ -97,5 +100,5 @@ def _read_state(path: Path) -> dict[str, object] | None:
 
 def _write_commandline(path: Path, text: str) -> None:
     temporary = path.with_name(f".{path.name}.allin1.tmp")
-    temporary.write_text(text, encoding="utf-8")
+    temporary.write_bytes(text.encode("utf-8"))
     temporary.replace(path)
