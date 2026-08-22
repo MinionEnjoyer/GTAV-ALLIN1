@@ -205,6 +205,29 @@ def test_repair_progress_text_clamps_percentages():
     assert _operation_progress_text("Repairing", 150) == "Repairing - 100%"
 
 
+def test_install_offers_verified_optional_rpf_loader(tmp_path, monkeypatch):
+    window = _window()
+    window.root = Mock()
+    window.messages = queue.Queue()
+    window.manager = Mock()
+    window.manager.status.return_value = _status(
+        gta_path=tmp_path,
+        valid_game=True,
+        edition="Enhanced",
+        openrpf_installed=False,
+    )
+    window._run = Mock(side_effect=lambda _label, worker, **_kwargs: worker())
+    approved = Mock(return_value=True)
+    monkeypatch.setattr("allin1.gui.messagebox.askyesno", approved)
+
+    window.install()
+
+    approved.assert_called_once()
+    kwargs = window.manager.install.call_args.kwargs
+    assert kwargs["rpf_loader_consent"](tmp_path, True) is True
+    assert callable(kwargs["progress"])
+
+
 def test_launch_guard_submits_only_one_storefront_request(tmp_path, monkeypatch):
     window = _window()
     window.busy = False

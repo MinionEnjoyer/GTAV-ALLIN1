@@ -8,10 +8,11 @@ File placement:
   Spawns the configured GTA Online DLC vehicle catalog into Story Mode traffic.
 - <GTA V root>/scripts/ALLIN1.toml — Config deployed from project config.toml.
 
-Prerequisites (installed separately by the user):
+Prerequisites:
 - ScriptHookV (dinput8.dll + ScriptHookV.dll)
 - ScriptHookVDotNet Enhanced (ScriptHookVDotNet.asi + ScriptHookVDotNet3.dll)
-- An edition-compatible RPF loader — optional, for GBAY artwork only
+- An edition-compatible RPF loader — optional and installed only with consent
+  when GBAY artwork is enabled
 """
 
 from __future__ import annotations
@@ -33,6 +34,10 @@ from allin1.health import inspect_windows_binary
 from allin1.launch_policy import remove_retired_offline_policy
 from allin1.preview_assets import GEAR_PREVIEW_ITEMS, WORLD_ASSET_PREVIEW_ITEMS
 from allin1.processes import run_hidden
+from allin1.rpf_loader import (
+    RpfLoaderInstallError, install_recommended_rpf_loader,
+    inspect_rpf_loader, uninstall_managed_rpf_loader,
+)
 from allin1.vehicles.database import VehicleDatabase
 from allin1.versioning import VERSION_FILE, write_installed_version
 
@@ -133,6 +138,8 @@ class InstallResult:
     scripthookv_found: bool = False
     shvdn_found: bool = False
     openrpf_found: bool = False
+    rpf_loader_installed: bool = False
+    rpf_loader_provider: str = ""
     rpf_previews_deployed: bool = False
     standalone_maps_deployed: bool = False
     smoke_tuning_installed: bool = False
@@ -168,6 +175,7 @@ def resolve_gta_path(config: Config) -> Path:
 
 
 InstallProgress = Callable[[int, str], None]
+RpfLoaderConsent = Callable[[Path, bool], bool]
 
 
 def _report_progress(
@@ -181,6 +189,7 @@ def install(
     config: Config,
     db: VehicleDatabase,
     progress: InstallProgress | None = None,
+    rpf_loader_consent: RpfLoaderConsent | None = None,
 ) -> InstallResult:
     """Run the full installation process."""
     log.info("=== Starting installation ===")
@@ -206,8 +215,27 @@ def install(
     # --- Check for ScriptHookVDotNet ---
     result.shvdn_found = _check_shvdn(gta_path)
 
-    # --- Detect optional RPF loader; never install third-party executable code ---
+    # --- Detect optional RPF loader and offer a verified official download ---
     result.openrpf_found = _check_openrpf(gta_path, enhanced)
+    if (
+        config.general.enable_rpf_previews
+        and not result.openrpf_found
+        and rpf_loader_consent is not None
+        and rpf_loader_consent(gta_path, enhanced)
+    ):
+        _report_progress(progress, 34, "Installing optional RPF loader")
+        try:
+            dependency = install_recommended_rpf_loader(gta_path, enhanced)
+            result.openrpf_found = _check_openrpf(gta_path, enhanced)
+            result.rpf_loader_installed = bool(dependency.installed)
+            result.rpf_loader_provider = (
+                f"{dependency.provider} {dependency.version}"
+            )
+        except (RpfLoaderInstallError, OSError) as exc:
+            log.warning("Optional RPF loader installation failed: %s", exc)
+            result.warnings.append(
+                f"Optional RPF loader was not installed: {exc}"
+            )
     _report_progress(progress, 38, "Dependencies verified")
 
     # Build replacements before touching the installed packs. Each deploy
@@ -390,6 +418,10 @@ def uninstall(config: Config) -> list[Path]:
 
     # Remove ALLIN1 .ytd files from script_txds.rpf inside mods/update.rpf
     _remove_preview_ytds(gta_path)
+
+    # Remove only unchanged third-party loader files that ALLIN1 installed and
+    # recorded. User-installed or subsequently modified files are preserved.
+    removed.extend(uninstall_managed_rpf_loader(gta_path))
 
     # Remove -nobattleye from commandline.txt (or the whole file if it only
     # contained that flag).
@@ -587,41 +619,17 @@ def _check_shvdn(gta_path: Path) -> bool:
 
 
 def _check_openrpf(gta_path: Path, enhanced: bool) -> bool:
-    """Detect a user-installed RPF loader without downloading executable code."""
-    if not enhanced:
-        asi_path = gta_path / "OpenIV.asi"
-        found = inspect_windows_binary(asi_path).valid
-        if found and not inspect_windows_binary(gta_path / "dinput8.dll").valid:
-            log.warning("Legacy RPF plugin exists but dinput8.dll ASI loader is missing")
-            found = False
-        if found:
-            log.info("Legacy RPF plugin found — mods folder support available")
-        else:
-            log.warning(
-                "Legacy RPF plugin not found; vehicle preview textures will "
-                "use placeholders."
-            )
-        return found
-
-    # The Legacy plugin binary cannot be loaded alongside the Enhanced RPF
-    # loader; that combination is an invalid configuration.
-    asi_path = gta_path / "OpenRPF.asi"
-    if not asi_path.exists():
-        log.warning("OpenRPF.asi not found; optional artwork will use placeholders")
-        return False
-    if (gta_path / "OpenIV.asi").exists():
-        log.error("Both Enhanced and Legacy RPF plugins are installed on Enhanced")
-        return False
-    inspection = inspect_windows_binary(asi_path)
-    if not inspection.valid:
-        log.warning("OpenRPF.asi is invalid: %s", inspection.reason)
-        return False
-    asi_loaders = ("dsound.dll", "xinput1_4.dll", "dinput8.dll")
-    if not any(inspect_windows_binary(gta_path / name).valid for name in asi_loaders):
-        log.warning("OpenRPF.asi exists but no compatible ASI loader was detected")
-        return False
-    log.info("User-installed OpenRPF.asi and ASI loader detected")
-    return True
+    """Detect a valid edition-compatible RPF plug-in and ASI loader."""
+    status = inspect_rpf_loader(gta_path, enhanced)
+    if status.ready:
+        log.info(
+            "RPF dependency detected: %s through %s",
+            status.plugin.name if status.plugin else "unknown",
+            status.asi_loader.name if status.asi_loader else "unknown",
+        )
+    else:
+        log.warning("RPF dependency unavailable: %s", status.reason)
+    return status.ready
 
 
 def _deploy_preview_dlc(

@@ -158,6 +158,7 @@ def consume_rpf_canary(gta_path: Path, pack_id: str) -> bool:
 
 def scan_installation(gta_path: Path, *, expected_hashes: dict[str, str] | None = None) -> HealthReport:
     issues: list[HealthIssue] = []
+    rpf_plugin_active = False
     legacy = gta_path / "GTA5.exe"
     enhanced = gta_path / "GTA5_Enhanced.exe"
     edition = "enhanced" if enhanced.is_file() else "legacy" if legacy.is_file() else "unknown"
@@ -174,38 +175,53 @@ def scan_installation(gta_path: Path, *, expected_hashes: dict[str, str] | None 
                     "dependency_corrupt", "error",
                     f"Required dependency is invalid: {name} ({inspection.reason}).", str(path),
                 ))
-    loader = "OpenRPF.asi" if edition == "enhanced" else "OpenIV.asi"
-    if edition != "unknown" and not (gta_path / loader).is_file():
-        issues.append(HealthIssue("rpf_loader_missing", "warning", f"{loader} is missing; previews may not load.", str(gta_path / loader)))
-    elif edition != "unknown":
-        inspection = inspect_windows_binary(gta_path / loader)
-        if not inspection.valid:
+    if edition != "unknown":
+        # Imported here to keep PE validation in this module while avoiding a
+        # module-import cycle: rpf_loader uses inspect_windows_binary above.
+        from allin1.rpf_loader import PLUGIN_NAMES, inspect_rpf_loader
+        rpf_status = inspect_rpf_loader(gta_path, edition == "enhanced")
+        rpf_plugin_active = rpf_status.plugin is not None
+        present_plugins = [
+            gta_path / name for name in PLUGIN_NAMES
+            if (gta_path / name).exists()
+        ]
+        if rpf_status.conflicts:
             issues.append(HealthIssue(
-                "rpf_loader_corrupt", "error", f"{loader} is invalid ({inspection.reason}).",
-                str(gta_path / loader),
+                "rpf_loader_conflict", "error", rpf_status.reason,
+                str(rpf_status.conflicts[0]),
             ))
-    if edition == "enhanced" and (gta_path / "OpenRPF.asi").exists():
-        if (gta_path / "OpenIV.asi").exists():
-            issues.append(HealthIssue("rpf_loader_conflict", "error",
-                                      "The Legacy RPF plugin cannot be loaded alongside the Enhanced loader.",
-                                      str(gta_path / "OpenIV.asi")))
-        loader_paths = [gta_path / name for name in
-                        ("dsound.dll", "xinput1_4.dll", "dinput8.dll")]
-        present_loaders = [path for path in loader_paths if path.is_file()]
-        valid_loaders = [path for path in present_loaders
-                         if inspect_windows_binary(path).valid]
-        if not present_loaders:
-            issues.append(HealthIssue("asi_loader_missing", "error",
-                                      "OpenRPF is installed but no ASI loader was detected.",
-                                      str(gta_path)))
-        elif not valid_loaders:
-            details = ", ".join(
-                f"{path.name}: {inspect_windows_binary(path).reason}"
-                for path in present_loaders
-            )
+        elif rpf_status.plugin is not None and rpf_status.asi_loader is None:
+            code = "asi_loader_corrupt" if "invalid" in rpf_status.reason.lower() else "asi_loader_missing"
             issues.append(HealthIssue(
-                "asi_loader_corrupt", "error",
-                f"ASI loader files are present but invalid ({details}).", str(gta_path),
+                code, "error", rpf_status.reason, str(gta_path),
+            ))
+        elif not rpf_status.ready and present_plugins:
+            issues.append(HealthIssue(
+                "rpf_loader_corrupt", "error", rpf_status.reason,
+                str(present_plugins[0]),
+            ))
+            asi_names = (
+                ("xinput1_4.dll", "dsound.dll", "dinput8.dll")
+                if edition == "enhanced" else ("dinput8.dll",)
+            )
+            present_asi = [
+                gta_path / name for name in asi_names
+                if (gta_path / name).exists()
+            ]
+            if not any(inspect_windows_binary(path).valid for path in present_asi):
+                issues.append(HealthIssue(
+                    "asi_loader_corrupt" if present_asi else "asi_loader_missing",
+                    "error",
+                    "ASI loader files are invalid." if present_asi
+                    else "RPF plug-in is present but no ASI loader was detected.",
+                    str(gta_path),
+                ))
+        elif not rpf_status.ready:
+            expected = "RageOpenV.asi"
+            issues.append(HealthIssue(
+                "rpf_loader_missing", "warning",
+                f"{expected} is missing; previews may not load.",
+                str(gta_path / expected),
             ))
     preview_dir = gta_path / "mods/update/x64/dlcpacks/allin1_previews"
     if preview_dir.exists():
@@ -256,7 +272,7 @@ def scan_installation(gta_path: Path, *, expected_hashes: dict[str, str] | None 
     for archive_name in archive_names:
         mods_update = gta_path / "mods/update" / archive_name
         base_update = gta_path / "update" / archive_name
-        if ((gta_path / loader).is_file() and mods_update.is_file() and base_update.is_file()
+        if (rpf_plugin_active and mods_update.is_file() and base_update.is_file()
                 and mods_update.stat().st_mtime_ns + 1_000_000_000 < base_update.stat().st_mtime_ns):
             issues.append(HealthIssue(
                 "rpf_mod_archive_stale", "error",

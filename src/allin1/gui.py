@@ -1494,11 +1494,37 @@ class ManagerWindow:
 
     def install(self) -> None:
         config = self._current_config()
+        install_rpf_loader = False
+        status = self.manager.status(config)
+        if (
+            config.general.enable_rpf_previews
+            and status.valid_game
+            and not status.openrpf_installed
+        ):
+            install_rpf_loader = messagebox.askyesno(
+                "Install optional preview loader?",
+                "GBAY preview artwork needs an RPF loader.\n\n"
+                "ALLIN1 can download the pinned RageOpenV release directly "
+                "from its author and verify its SHA-256 before installing it. "
+                "If needed, the official x64 Ultimate ASI Loader will also "
+                "be downloaded and verified.\n\n"
+                "These are optional third-party components. Choose No to "
+                "continue with placeholder artwork.",
+                parent=self.root,
+            )
+
         def report(percentage: int, detail: str) -> None:
             self.messages.put(("progress", ("Repairing", percentage, detail)))
         self._run(
             "Repairing",
-            lambda: self.manager.install(config, progress=report),
+            lambda: self.manager.install(
+                config,
+                progress=report,
+                rpf_loader_consent=(
+                    (lambda _path, _enhanced: install_rpf_loader)
+                    if config.general.enable_rpf_previews else None
+                ),
+            ),
             determinate=True,
         )
 

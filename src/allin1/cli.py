@@ -50,8 +50,18 @@ def main(ctx: click.Context, config: str, verbose: bool) -> None:
 
 
 @main.command()
+@click.option(
+    "--rpf-loader",
+    type=click.Choice(("ask", "install", "skip"), case_sensitive=False),
+    default="ask",
+    show_default=True,
+    help=(
+        "Install the optional verified RageOpenV dependency, skip it, or ask "
+        "when preview artwork is enabled and no compatible loader exists."
+    ),
+)
 @click.pass_context
-def install_cmd(ctx: click.Context) -> None:
+def install_cmd(ctx: click.Context, rpf_loader: str) -> None:
     """Install MP vehicles into your GTA V single player."""
     config: Config = ctx.obj["config"]
     db = VehicleDatabase.load(VEHICLES_DB)
@@ -59,8 +69,29 @@ def install_cmd(ctx: click.Context) -> None:
     click.echo(f"Loaded {len(db)} vehicles from database.")
     click.echo()
 
+    def approve_rpf_loader(_gta_path: Path, enhanced: bool) -> bool:
+        mode = rpf_loader.lower()
+        if mode == "install":
+            return True
+        if mode == "skip":
+            return False
+        edition = "Enhanced" if enhanced else "Legacy"
+        click.echo()
+        click.echo(
+            f"GBAY preview artwork needs an RPF loader for GTA V {edition}."
+        )
+        click.echo(
+            "ALLIN1 can download the pinned RageOpenV release directly from "
+            "its author and verify its SHA-256 before installation."
+        )
+        click.echo(
+            "If required, the official x64 Ultimate ASI Loader will also be "
+            "downloaded and verified."
+        )
+        return click.confirm("Install these optional third-party dependencies?", default=True)
+
     try:
-        result = install(config, db)
+        result = install(config, db, rpf_loader_consent=approve_rpf_loader)
     except (FileNotFoundError, ValueError) as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
@@ -103,6 +134,10 @@ def install_cmd(ctx: click.Context) -> None:
     else:
         asi_name = "Enhanced RPF loader" if result.is_enhanced else "Legacy RPF loader"
         click.echo(f"{asi_name} detected (optional artwork loader).")
+    if result.rpf_loader_installed:
+        click.echo(
+            f"Installed verified optional dependency: {result.rpf_loader_provider}."
+        )
     if result.rpf_previews_deployed:
         click.echo("GBAY RPF preview textures deployed.")
 
