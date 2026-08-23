@@ -56,12 +56,22 @@ ALLIN1 does not bundle these third-party binaries or overwrite an existing loade
         ("repair", "health", "launch", "dependencies", "blocked"),
     ),
     HelpTopic(
-        "gameplay", "Configuration", "Gameplay systems",
-        "Configure GBAY, traffic, police behavior, accessibility, and experiments.",
-        """The Gameplay workspace contains game-facing feature switches. Stable Story Mode content is separated from interface/accessibility options and experimental systems.
+        "gameplay", "Configuration", "Launcher host behavior",
+        "Configure shared recovery, previews, and diagnostics.",
+        """Gameplay contains settings owned by the launcher host: managed backups, recovery safe mode, archive-backed previews, and detailed logging.
 
-Changes are staged in the launcher until Save changes or Launch GTA V is used. Experimental physics and police systems can produce detailed logs for tuning; enable diagnostics only while investigating behavior because verbose logs grow quickly.""",
-        ("gbay", "traffic", "police", "physics", "smoke", "accessibility"),
+Gameplay supplied by a package belongs in Content. This keeps the launcher usable as a stable shell instead of hardcoding every installed system into this page.""",
+        ("backup", "safe mode", "previews", "logging", "host"),
+    ),
+    HelpTopic(
+        "content", "Configuration", "Content packages and systems",
+        "Review installed systems and configure package-owned settings.",
+        """Content is generated from versioned descriptors. ALLIN1 Online Content supplies the official GBAY, vehicle, weapon, gear, garage, property, traffic, and character systems. ALLIN1 Experimental Gameplay contains opt-in police and NPC-physics work.
+
+Select a package to review its version, status, capabilities, and owner. Select one of its systems to change typed settings. Apply settings writes only that package's namespace; built-in compatibility settings are also synchronized to the current runtime configuration.
+
+Package state enables or disables the whole selected package. The launcher refuses a state change when another enabled package requires it. A blocked package has failed its receipt or runtime-file integrity check.""",
+        ("systems", "extension", "api", "registry", "gbay", "typed settings"),
     ),
     HelpTopic(
         "input", "Configuration", "Keyboard and controller input",
@@ -130,7 +140,7 @@ Optional RPF dependencies installed by ALLIN1 have their own receipt. Uninstall 
 
 For installation and startup failures, run Health Check and create a diagnostics bundle. For in-game behavior, reproduce the issue once with only the relevant diagnostic setting enabled, then retain the newest ScriptHookVDotNet and ALLIN1 logs.
 
-Keyboard shortcuts: Ctrl+1–8 changes workspaces, Ctrl+S saves, Ctrl+L launches, F5 refreshes, and F1 opens this embedded help workspace.""",
+Keyboard shortcuts: Ctrl+1–9 changes workspaces, Ctrl+S saves, Ctrl+L launches, F5 refreshes, and F1 opens this embedded help workspace.""",
         ("logs", "crash", "hang", "diagnostics", "shortcuts", "fatal"),
     ),
     HelpTopic(
@@ -138,7 +148,7 @@ Keyboard shortcuts: Ctrl+1–8 changes workspaces, Ctrl+S saves, Ctrl+L launches
         "Version, project scope, support, and release information.",
         f"""ALLIN1 Launcher {__version__}
 
-ALLIN1 is a GTA V Story Mode launcher, gameplay expansion, package manager, and safety-focused companion to the standalone ALLIN1 SDK. The launcher owns installation, configuration, package lifecycle, profiles, diagnostics, and game launch. The SDK owns add-on linking, archive inspection, native assets, and developer automation.
+ALLIN1 is a GTA V Story Mode content launcher, package manager, and safety-focused companion to the standalone ALLIN1 SDK. Official gameplay is supplied by the ALLIN1 Online Content pack. The launcher owns installation, configuration, package lifecycle, profiles, diagnostics, and game launch. The SDK owns add-on linking, archive inspection, native assets, and developer automation.
 
 Created and maintained by MinionEnjoyer. Use the Check for updates action in Setup for current release status. Project support: https://buymeacoffee.com/minionenjoyer""",
         ("version", "credits", "support", "updates", "release"),

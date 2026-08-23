@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 import zipfile
+from contextlib import nullcontext
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from click.testing import CliRunner
 
+import allin1.dlc_inventory as dlc_inventory
 from allin1.cli import main
 from allin1.dlc_inventory import DlcInventory
 from allin1.mods import ModManifest
@@ -193,6 +196,49 @@ def test_dlc_inventory_reports_unavailable_dlclist_without_losing_folders(tmp_pa
     assert report.findings[0].code == "dlclist_unavailable"
     with pytest.raises(ValueError, match="Invalid dlclist"):
         DlcInventory(tmp_path).scan(game, dlclist_xml="<broken")
+
+
+def test_dlc_inventory_extracts_registration_with_bounded_helper(
+    tmp_path, monkeypatch,
+):
+    project = tmp_path / "project"
+    patcher = project / "tools/RpfPatcher/RpfPatcher.exe"
+    patcher.parent.mkdir(parents=True)
+    patcher.write_bytes(b"helper")
+    game = tmp_path / "game"
+    archive = game / "update/update.rpf"
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(b"rpf")
+    temporary = tmp_path / "extract"
+    temporary.mkdir()
+    monkeypatch.setattr(
+        dlc_inventory.tempfile, "TemporaryDirectory",
+        lambda **_kwargs: nullcontext(str(temporary)),
+    )
+    calls = []
+
+    def extract(command, **kwargs):
+        calls.append((command, kwargs))
+        Path(command[-1]).write_text(_dlc_xml("acme"), encoding="utf-8")
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(dlc_inventory, "run_hidden", extract)
+    report = DlcInventory(project).scan(game)
+    assert report.registrations == ("acme",)
+    assert calls[0][0] == [
+        patcher, "extract-entry", game.resolve(), archive, "dlclist.xml",
+        temporary / "dlclist.xml",
+    ]
+    assert calls[0][1]["timeout"] == 120
+
+    monkeypatch.setattr(
+        dlc_inventory, "run_hidden",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=1, stdout="", stderr="helper failed",
+        ),
+    )
+    report = DlcInventory(project).scan(game)
+    assert "helper failed" in report.findings[0].message
 
 
 VEHICLES_META = """<CVehicleModelInfo__InitDataList><InitDatas><Item>

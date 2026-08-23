@@ -1,6 +1,10 @@
 # ALLIN1 Launcher Documentation
 
-GTA V ALLIN1 is a mod installer that ports 461 GTA Online DLC vehicles, 100+ weapons, and gear into GTA V single-player Story Mode. It includes a traffic spawner, an in-game shop (GBAY), a personal garage system, and a vehicle seat selector.
+ALLIN1 is a GTA V Story Mode content launcher and guarded mod-package manager.
+The launcher is the stable host; the 461-vehicle catalog, 100+ weapons, gear,
+GBAY, garages, traffic, properties, and character systems are registered as the
+official **ALLIN1 Online Content** pack. Experimental NPC physics and police
+coordination are registered separately and remain off until enabled.
 
 Supports both GTA V Legacy and GTA V Enhanced editions.
 
@@ -33,6 +37,9 @@ mid-flight loading screens and Story-interior asset loss.
 10. [Tools](#tools)
 11. [Data Files](#data-files)
 12. [Troubleshooting](#troubleshooting)
+
+Content authors should also read the
+[versioned content extension API guide](docs/content-extension-api.md).
 
 ---
 
@@ -71,6 +78,7 @@ ScriptHookV and ScriptHookVDotNet must be installed into the GTA V root director
    - `LemonUI.SHVDN3.dll` — UI framework dependency
    - `ALLIN1.toml` — configuration (copy of `config.toml`)
    - `prices_gear.toml` — gear price overrides
+   - `.allin1/extensions/registry.json` — enabled, versioned content systems and effective settings
 5. Builds and deploys the preview texture DLC pack to `mods/update/x64/dlcpacks/allin1_previews/`
 6. Patches `dlclist.xml` inside `mods/update/update.rpf` to register the DLC
 7. Adds `-nobattleye` to `commandline.txt`
@@ -576,6 +584,10 @@ allin1 [--config PATH] [--verbose] COMMAND
 | `uninstall` | Remove all ALLIN1 files and unpatch dlclist.xml. |
 | `list [--class CLASS]` | List available vehicles, optionally filtered by class. |
 | `status` | Show current installation status and configuration. |
+| `content list [--gta-path PATH] [--json-output]` | List bundled and installed content systems through the stable registry. |
+| `content validate ALLIN1.CONTENT.JSON` | Validate a content descriptor without loading executable code. |
+| `content enable ID --yes` / `content disable ID --yes` | Apply an approved package-state change using the same lifecycle as the launcher UI. |
+| `content set ID KEY VALUE --yes` | Validate and apply one typed, package-namespaced setting. |
 | `export-catalog [--output PATH]` | Export vehicle database as JSON (default: `catalog/vehicles.json`). |
 | `generate-vehiclelist [--output PATH]` | Regenerate `VehicleList.cs` from data files. |
 | `generate-weaponlist [--output PATH]` | Regenerate `WeaponList.cs` from data files. |

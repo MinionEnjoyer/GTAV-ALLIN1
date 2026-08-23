@@ -30,6 +30,11 @@ from typing import Callable
 from allin1 import asi_loader
 from allin1.config import Config
 from allin1.detector import detect_gta_path, validate_gta_path
+from allin1.extensions import (
+    ExtensionCatalog,
+    ExtensionRegistry,
+    settings_from_config,
+)
 from allin1.health import inspect_windows_binary
 from allin1.launch_policy import remove_retired_offline_policy
 from allin1.preview_assets import GEAR_PREVIEW_ITEMS, WORLD_ASSET_PREVIEW_ITEMS
@@ -206,7 +211,7 @@ def install(
     _report_progress(progress, 15, "Previous installation checked")
 
     # --- Deploy ALLIN1.dll script ---
-    result.dll_deployed = _deploy_script(gta_path)
+    result.dll_deployed = _deploy_script(gta_path, config)
     _report_progress(progress, 28, "Client files repaired")
 
     # --- Check for ScriptHookV ---
@@ -337,6 +342,17 @@ def uninstall(config: Config) -> list[Path]:
     _remove_smoke_tuning(gta_path)
     _remove_merged_smoke_canary(gta_path)
     _remove_colored_smoke_weapons(gta_path)
+
+    # Remove the official descriptors from the shared content registry while
+    # preserving third-party receipts and namespaced settings. Reinstalling the
+    # launcher host can then restore the official packs without erasing package
+    # configuration owned by the user.
+    try:
+        registry = ExtensionRegistry(gta_path)
+        for manifest in ExtensionCatalog(_PROJECT_ROOT / "content").discover():
+            registry.unregister_builtin(manifest.extension_id, force=True)
+    except (OSError, ValueError):
+        log.warning("Could not fully reconcile the content registry", exc_info=True)
 
     # Remove script DLL, config, and log from scripts/
     scripts_dir = gta_path / SCRIPTS_DIR
@@ -475,7 +491,7 @@ def _clean_legacy_files(gta_path: Path, result: InstallResult) -> None:
             log.warning("Failed to remove %s: %s", data_dir, exc)
 
 
-def _deploy_script(gta_path: Path) -> bool:
+def _deploy_script(gta_path: Path, config: Config | None = None) -> bool:
     """Copy ALLIN1.dll to GTA V scripts/ folder. Returns True if deployed."""
     src = _SCRIPT_DIST_DIR / DLL_FILENAME
     if not src.exists():
@@ -500,16 +516,23 @@ def _deploy_script(gta_path: Path) -> bool:
         _copy_atomic(lemonui_src, lemonui_dest)
         log.info("Deployed %s → %s", LEMONUI_FILENAME, lemonui_dest)
 
-    # Deploy config.toml as ALLIN1.toml so the C# script can read it
+    # Deploy the exact in-memory configuration selected by this install. This
+    # keeps custom CLI config paths and extension compatibility bindings from
+    # silently falling back to an unrelated project-root file.
     toml_dest = scripts_dir / "ALLIN1.toml"
-    toml_src = _PROJECT_ROOT / "config.toml"
-    if not toml_src.exists():
-        toml_src = _PROJECT_ROOT / "config.example.toml"
-    if toml_src.exists():
-        _copy_atomic(toml_src, toml_dest)
-        log.info("Deployed config %s -> %s", toml_src.name, toml_dest)
+    if config is not None:
+        config.save(toml_dest)
+        log.info("Deployed active launcher configuration -> %s", toml_dest)
+    else:
+        toml_src = _PROJECT_ROOT / "config.toml"
+        if not toml_src.exists():
+            toml_src = _PROJECT_ROOT / "config.example.toml"
+        if toml_src.exists():
+            _copy_atomic(toml_src, toml_dest)
+            log.info("Deployed config %s -> %s", toml_src.name, toml_dest)
 
     _deploy_grounding_catalog(scripts_dir)
+    _deploy_content_registry(gta_path, config or Config.default())
 
     # Development-only runtime tools are retired. Their generated artifacts
     # are not user data and must not survive install or repair.
@@ -531,6 +554,24 @@ def _deploy_script(gta_path: Path) -> bool:
         log.info("Removed legacy ALLIN1.ini")
 
     return True
+
+
+def _deploy_content_registry(gta_path: Path, config: Config) -> None:
+    """Install/update official declarative packs without resetting user choices."""
+    catalog = ExtensionCatalog(_PROJECT_ROOT / "content")
+    manifests = catalog.discover()
+    if not manifests:
+        log.warning("No official ALLIN1 content descriptors were found")
+        return
+    registry = ExtensionRegistry(gta_path)
+    for manifest in manifests:
+        registry.register_builtin(
+            manifest,
+            enabled=None,
+            settings=settings_from_config(manifest, config),
+        )
+    registry.rebuild()
+    log.info("Registered %d official ALLIN1 content package(s)", len(manifests))
 
 
 def _deploy_grounding_catalog(scripts_dir: Path) -> None:

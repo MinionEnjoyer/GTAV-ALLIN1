@@ -18,6 +18,11 @@ from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
 
 from allin1.config import Config
+from allin1.extensions import (
+    ExtensionManifest,
+    ExtensionRegistry,
+    apply_settings_to_config,
+)
 from allin1.game_launcher import launch_gta
 from allin1.logging import setup_logging
 from allin1.manager import InstallationStatus, ModManager
@@ -211,6 +216,12 @@ class ManagerWindow:
         self.profiles = ProfileStore(manager.project_root / "profiles")
         self.mod_catalog = ModCatalog(manager.project_root / "mods" / "catalog")
         self.mod_manifests: dict[str, ModManifest] = {}
+        self.builtin_package_manifests: dict[str, ExtensionManifest] = {}
+        self.builtin_package_entries: dict[str, dict[str, object]] = {}
+        self.content_manifests: dict[str, ExtensionManifest] = {}
+        self.content_registry_entries: dict[str, dict[str, object]] = {}
+        self.content_setting_vars: dict[tuple[str, str], tk.Variable] = {}
+        self.content_selected_system: tuple[str, str | None] | None = None
         self.sdk_catalog = AddonSdkCatalog(manager.project_root)
         self.sdk_manifests: dict[str, AddonManifest] = {}
         self.sdk_install_root = default_sdk_root()
@@ -433,6 +444,7 @@ class ManagerWindow:
         for index, (key, label) in enumerate((
             ("setup", "Setup"),
             ("gameplay", "Gameplay"),
+            ("content", "Content"),
             ("input", "Input"),
             ("mods", "Packages"),
             ("characters", "Characters"),
@@ -594,6 +606,7 @@ class ManagerWindow:
 
         home_view = ScrollableFrame(workspace, body_bg)
         gameplay_view = ScrollableFrame(workspace, body_bg)
+        content_view = ScrollableFrame(workspace, body_bg)
         controls_view = ScrollableFrame(workspace, body_bg)
         mods_view = ScrollableFrame(workspace, body_bg)
         characters = ttk.Frame(workspace)
@@ -603,6 +616,7 @@ class ManagerWindow:
         self.workspace_pages = {
             "setup": home_view,
             "gameplay": gameplay_view,
+            "content": content_view,
             "input": controls_view,
             "mods": mods_view,
             "characters": characters,
@@ -617,6 +631,7 @@ class ManagerWindow:
         for key, label in (
             ("setup", "Setup"),
             ("gameplay", "Gameplay"),
+            ("content", "Content"),
             ("input", "Input"),
             ("mods", "Packages"),
             ("characters", "Characters"),
@@ -645,6 +660,7 @@ class ManagerWindow:
         self._select_workspace("setup")
         home = home_view.content
         gameplay = gameplay_view.content
+        content_page = content_view.content
         controls_page = controls_view.content
         mods_page = mods_view.content
 
@@ -654,7 +670,11 @@ class ManagerWindow:
         )
         self._page_intro(
             gameplay, "Gameplay systems",
-            "Configure GBAY, DLC traffic, accessibility, experimental physics, and police behavior.",
+            "Configure the launcher host, interface, recovery, and compatibility behavior.",
+        )
+        self._page_intro(
+            content_page, "Installed content systems",
+            "Review systems contributed by official and third-party packages, then configure them without adding new launcher windows.",
         )
         self._page_intro(
             controls_page, "Input & filtering",
@@ -707,21 +727,15 @@ class ManagerWindow:
             foreground="#3f6659",
         ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(5, 0))
 
-        world = ttk.LabelFrame(gameplay, text="Story Mode content", padding=14)
+        world = ttk.LabelFrame(gameplay, text="Launcher host & recovery", padding=14)
         world.pack(fill="x", pady=(0, 12))
         world.columnconfigure(0, weight=1)
         world.columnconfigure(1, weight=1)
         for row, (left_text, left_var, right_text, right_var) in enumerate((
-            ("Free GBAY purchases (no sale payouts)", self.gbay_free_mode,
-             "Enable DLC traffic", self.traffic),
-            ("Enable DLC police vehicles", self.police,
-             "Supercars only in wealthy areas", self.rich_areas_only),
-            ("Adaptive traffic performance", self.adaptive_performance,
-             "Enable every DLC vehicle", self.enable_all_vehicles),
-            ("GBAY preview artwork (RPF loader)", self.rpf_previews,
-             "Allow garage entry while wanted", self.garages_always_accessible),
-            ("Back up game changes", self.backup_enabled,
-             "Safe mode (limits traffic and Harmony Garage)", self.safe_mode),
+            ("Back up managed game changes", self.backup_enabled,
+             "Safe mode for recovery", self.safe_mode),
+            ("Enable archive-backed content previews", self.rpf_previews,
+             "Detailed host and runtime logging", self.logging_enabled),
         )):
             ttk.Checkbutton(world, text=left_text, variable=left_var).grid(
                 row=row, column=0, sticky="w", padx=(0, 28), pady=4,
@@ -730,58 +744,90 @@ class ManagerWindow:
                 row=row, column=1, sticky="w", pady=4,
             )
 
-        presentation = ttk.LabelFrame(gameplay, text="Interface & accessibility", padding=14)
-        presentation.pack(fill="x", pady=(0, 12))
-        presentation.columnconfigure(0, weight=1)
-        presentation.columnconfigure(1, weight=1)
-        ttk.Checkbutton(
-            presentation, text="Reduce GBAY transition motion",
-            variable=self.reduced_motion,
-        ).grid(row=0, column=0, sticky="w", pady=4)
-        ttk.Checkbutton(
-            presentation, text="Use colorblind-safe palette",
-            variable=self.colorblind_mode,
-        ).grid(row=0, column=1, sticky="w", pady=4)
-        scale_row = ttk.Frame(presentation)
-        scale_row.grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
-        ttk.Label(scale_row, text="In-game UI text scale").pack(side="left")
-        ttk.Spinbox(
-            scale_row, from_=0.75, to=1.5, increment=0.05,
-            textvariable=self.ui_scale, width=7,
-        ).pack(side="left", padx=(10, 6))
-        ttk.Label(scale_row, text="0.75×–1.50×", foreground="#52635c").pack(side="left")
-
-        experiments = ttk.LabelFrame(
-            gameplay, text="Experimental systems & diagnostics (off by default)",
-            padding=14,
-        )
-        experiments.pack(fill="x", pady=(0, 12))
-        experiments.columnconfigure(0, weight=1)
-        experiments.columnconfigure(1, weight=1)
-        ttk.Checkbutton(
-            experiments, text="Enhanced Police AI", variable=self.enhanced_police_ai,
-        ).grid(row=0, column=0, sticky="w", padx=(0, 28), pady=4)
-        ttk.Checkbutton(
-            experiments, text="GTA IV-style NPC physics",
-            variable=self.gta_iv_npc_physics,
-        ).grid(row=0, column=1, sticky="w", pady=4)
-        for row, (left_text, left_var, right_text, right_var) in enumerate((
-            ("Physics experiment diagnostics", self.gta_iv_npc_physics_debug,
-             "Enhanced custom smoke effects", self.enhanced_smoke_effects),
-            ("Detailed script logging", self.logging_enabled, "", None),
-        ), start=1):
-            ttk.Checkbutton(experiments, text=left_text, variable=left_var).grid(
-                row=row, column=0, sticky="w", padx=(0, 28), pady=4,
-            )
-            if right_var is not None:
-                ttk.Checkbutton(experiments, text=right_text, variable=right_var).grid(
-                    row=row, column=1, sticky="w", pady=4,
-                )
         ttk.Label(
-            experiments,
-            text="Experimental features may require extra logging and iterative in-game testing.",
+            gameplay,
+            text=("Gameplay supplied by content packs is configured in Content. "
+                  "This page contains only shared launcher behavior."),
             foreground="#52635c", wraplength=900, justify="left",
-        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ).pack(fill="x", anchor="w", pady=(0, 12))
+
+        content_library = ttk.LabelFrame(
+            content_page, text="Content packages & systems", padding=14,
+        )
+        content_library.pack(fill="both", expand=True, pady=(0, 12))
+        ttk.Label(
+            content_library,
+            text=(
+                "ALLIN1 Online Content is the official gameplay pack. Other packages can "
+                "add their own typed settings, runtime systems, and GBAY routes through "
+                "the same versioned API. Executable packages still require explicit install approval."
+            ),
+            wraplength=900, justify="left",
+        ).pack(fill="x", anchor="w", pady=(0, 10))
+        content_split = ttk.Frame(content_library)
+        content_split.pack(fill="both", expand=True)
+        content_split.columnconfigure(0, weight=2)
+        content_split.columnconfigure(1, weight=3)
+        content_split.rowconfigure(0, weight=1)
+        content_tree_frame = ttk.Frame(content_split)
+        content_tree_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        self.content_tree = ttk.Treeview(
+            content_tree_frame,
+            columns=("category", "version", "status"),
+            show="tree headings", height=15, selectmode="browse",
+        )
+        self.content_tree.heading("#0", text="Package / system")
+        self.content_tree.heading("category", text="Category")
+        self.content_tree.heading("version", text="Version")
+        self.content_tree.heading("status", text="Status")
+        self.content_tree.column("#0", width=280, minwidth=190)
+        self.content_tree.column("category", width=105, anchor="center")
+        self.content_tree.column("version", width=75, anchor="center")
+        self.content_tree.column("status", width=95, anchor="center")
+        content_scroll = ttk.Scrollbar(
+            content_tree_frame, orient="vertical", command=self.content_tree.yview,
+        )
+        self.content_tree.configure(yscrollcommand=content_scroll.set)
+        self.content_tree.pack(side="left", fill="both", expand=True)
+        content_scroll.pack(side="right", fill="y")
+        self.content_tree.bind("<<TreeviewSelect>>", self._show_content_details)
+
+        content_detail = ttk.Frame(content_split, style="Surface.TFrame", padding=12)
+        content_detail.grid(row=0, column=1, sticky="nsew")
+        self.content_detail_title = tk.StringVar(value="Select a content system")
+        self.content_detail_text = tk.StringVar(
+            value="Installed systems and their package ownership appear here."
+        )
+        ttk.Label(
+            content_detail, textvariable=self.content_detail_title,
+            style="Section.TLabel", background="#ffffff",
+        ).pack(fill="x", anchor="w")
+        ttk.Label(
+            content_detail, textvariable=self.content_detail_text,
+            wraplength=520, justify="left", background="#ffffff",
+        ).pack(fill="x", anchor="w", pady=(4, 10))
+        self.content_settings_frame = ttk.Frame(
+            content_detail, style="Surface.TFrame",
+        )
+        self.content_settings_frame.pack(fill="both", expand=True)
+        content_actions = ttk.Frame(content_detail, style="Surface.TFrame")
+        content_actions.pack(fill="x", pady=(12, 0))
+        ttk.Button(
+            content_actions, text="Apply settings",
+            command=self.apply_content_settings, style="Accent.TButton",
+        ).pack(side="left")
+        content_state_menu = tk.Menu(content_actions, tearoff=False)
+        content_state_menu.add_command(
+            label="Enable selected package",
+            command=lambda: self.toggle_selected_content(True),
+        )
+        content_state_menu.add_command(
+            label="Disable selected package",
+            command=lambda: self.toggle_selected_content(False),
+        )
+        ttk.Menubutton(
+            content_actions, text="Package state", menu=content_state_menu,
+        ).pack(side="left", padx=(8, 0))
 
         controls = ttk.LabelFrame(controls_page, text="Keyboard shortcuts & vehicle filters", padding=14)
         controls.pack(fill="x", pady=(0, 12))
@@ -1230,6 +1276,277 @@ class ManagerWindow:
         status = self.manager.status(self._current_config())
         self._show_status(status)
         self.refresh_mods()
+        self.refresh_content()
+
+    def _content_registry(self) -> ExtensionRegistry:
+        gta_path = self.manager.resolve_path(self._current_config())
+        if gta_path is None:
+            raise ValueError("Select a valid GTA V installation first.")
+        return ExtensionRegistry(gta_path)
+
+    def refresh_content(self) -> None:
+        if not hasattr(self, "content_tree"):
+            return
+        selected = self.content_tree.selection()
+        selected_id = selected[0] if selected else None
+        self.content_tree.delete(*self.content_tree.get_children())
+        self.content_tree_items: dict[str, tuple[str, str | None]] = {}
+        manifests: dict[str, ExtensionManifest] = {}
+        registry_entries: dict[str, dict[str, object]] = {}
+        registry_error = ""
+        try:
+            manifests.update({
+                manifest.extension_id: manifest
+                for manifest in self.manager.extension_catalog.discover()
+            })
+        except (OSError, ValueError) as exc:
+            self.content_detail_title.set("Content catalog error")
+            self.content_detail_text.set(str(exc))
+        try:
+            for entry in self._content_registry().installed():
+                manifest = ExtensionManifest.from_registry_entry(entry)
+                manifests[manifest.extension_id] = manifest
+                registry_entries[manifest.extension_id] = entry
+        except (OSError, ValueError, KeyError) as exc:
+            registry_error = str(exc)
+        self.content_registry_error = registry_error
+        self.content_manifests = manifests
+        self.content_registry_entries = registry_entries
+
+        for extension_id, manifest in sorted(
+            manifests.items(), key=lambda item: item[1].name.casefold(),
+        ):
+            entry = registry_entries.get(extension_id)
+            if entry is None:
+                if registry_error:
+                    status = "Registry error"
+                else:
+                    status = (
+                        "Install / Repair"
+                        if extension_id.startswith("allin1.") else "Available"
+                    )
+            elif entry.get("blocked_reason"):
+                status = "Blocked"
+            else:
+                status = "Enabled" if entry.get("enabled") else "Disabled"
+            parent_id = f"content:{extension_id}"
+            self.content_tree.insert(
+                "", "end", iid=parent_id, text=manifest.name, open=True,
+                values=("Package", manifest.version, status),
+            )
+            self.content_tree_items[parent_id] = (extension_id, None)
+            for system in manifest.systems:
+                child_id = f"system:{extension_id}:{system.system_id}"
+                system_status = "Experimental" if system.experimental else "Included"
+                if entry is not None and not entry.get("enabled"):
+                    system_status = "Off"
+                self.content_tree.insert(
+                    parent_id, "end", iid=child_id, text=system.name,
+                    values=(system.category, "", system_status),
+                )
+                self.content_tree_items[child_id] = (
+                    extension_id, system.system_id,
+                )
+        if selected_id and self.content_tree.exists(selected_id):
+            self.content_tree.selection_set(selected_id)
+            self.content_tree.focus(selected_id)
+        elif self.content_tree.get_children():
+            first = self.content_tree.get_children()[0]
+            self.content_tree.selection_set(first)
+            self.content_tree.focus(first)
+            self._show_content_details()
+
+    def _core_content_variable(self, config_key: str | None) -> tk.Variable | None:
+        if not config_key:
+            return None
+        names = {
+            "script.gbay_free_mode": "gbay_free_mode",
+            "general.enable_rpf_previews": "rpf_previews",
+            "vehicles.enable_all": "enable_all_vehicles",
+            "traffic.enabled": "traffic",
+            "traffic.rich_areas_only_supers": "rich_areas_only",
+            "traffic.adaptive_performance": "adaptive_performance",
+            "script.enable_dlc_police": "police",
+            "script.garages_always_accessible": "garages_always_accessible",
+            "script.seat_selector_enabled": "seat_selector_enabled",
+            "script.enhanced_police_ai": "enhanced_police_ai",
+            "script.gta_iv_npc_physics": "gta_iv_npc_physics",
+            "script.gta_iv_npc_physics_debug": "gta_iv_npc_physics_debug",
+            "script.enhanced_smoke_effects": "enhanced_smoke_effects",
+            "script.reduced_motion": "reduced_motion",
+            "script.colorblind_mode": "colorblind_mode",
+            "script.ui_scale": "ui_scale",
+        }
+        name = names.get(config_key)
+        return getattr(self, name, None) if name else None
+
+    @staticmethod
+    def _new_content_variable(
+        setting_type: str, value: object,
+    ) -> tk.Variable:
+        if setting_type == "boolean":
+            return tk.BooleanVar(value=bool(value))
+        if setting_type == "integer":
+            return tk.IntVar(value=int(value))
+        if setting_type == "number":
+            return tk.DoubleVar(value=float(value))
+        return tk.StringVar(value=str(value))
+
+    def _show_content_details(self, _event=None) -> None:
+        selection = self.content_tree.selection() if hasattr(self, "content_tree") else ()
+        if not selection:
+            return
+        selected = self.content_tree_items.get(selection[0])
+        if selected is None:
+            return
+        extension_id, system_id = selected
+        manifest = self.content_manifests[extension_id]
+        entry = self.content_registry_entries.get(extension_id, {})
+        self.content_selected_system = selected
+        for child in self.content_settings_frame.winfo_children():
+            child.destroy()
+        self.content_setting_vars.clear()
+        if system_id is None:
+            self.content_detail_title.set(manifest.name)
+            status = "not installed"
+            if getattr(self, "content_registry_error", ""):
+                status = f"registry error: {self.content_registry_error}"
+            if entry:
+                status = "enabled" if entry.get("enabled") else "disabled"
+                if entry.get("blocked_reason"):
+                    status = f"blocked: {entry['blocked_reason']}"
+            capability_text = ", ".join(manifest.capabilities) or "none declared"
+            self.content_detail_text.set(
+                f"{manifest.description or 'No package description.'}\n\n"
+                f"API {manifest.api_version} · {len(manifest.systems)} system(s) · "
+                f"{status}\nCapabilities: {capability_text}"
+            )
+            ttk.Label(
+                self.content_settings_frame,
+                text="Choose a system below this package to review its settings.",
+                background="#ffffff", foreground="#52635c", wraplength=500,
+            ).pack(anchor="w")
+            return
+        system = next(
+            item for item in manifest.systems if item.system_id == system_id
+        )
+        marker = " · Experimental" if system.experimental else ""
+        self.content_detail_title.set(system.name + marker)
+        self.content_detail_text.set(
+            system.description or "This system does not provide a description."
+        )
+        effective = entry.get("settings", {}) if isinstance(entry, dict) else {}
+        if not isinstance(effective, dict):
+            effective = {}
+        if not system.settings:
+            ttk.Label(
+                self.content_settings_frame,
+                text="This system has no configurable settings.",
+                background="#ffffff", foreground="#52635c",
+            ).pack(anchor="w")
+            return
+        for setting in system.settings:
+            row = ttk.Frame(self.content_settings_frame, style="Surface.TFrame")
+            row.pack(fill="x", pady=(0, 10))
+            value = effective.get(setting.key, setting.default)
+            variable = self._core_content_variable(setting.config_key)
+            if variable is None:
+                variable = self._new_content_variable(setting.setting_type, value)
+            self.content_setting_vars[(extension_id, setting.key)] = variable
+            if setting.setting_type == "boolean":
+                ttk.Checkbutton(
+                    row, text=setting.label, variable=variable,
+                ).pack(anchor="w")
+            else:
+                ttk.Label(
+                    row, text=setting.label, background="#ffffff",
+                ).pack(anchor="w")
+                if setting.setting_type == "choice":
+                    ttk.Combobox(
+                        row, textvariable=variable, values=setting.choices,
+                        state="readonly",
+                    ).pack(fill="x", pady=(3, 0))
+                elif setting.setting_type in {"integer", "number"}:
+                    ttk.Spinbox(
+                        row,
+                        from_=setting.minimum if setting.minimum is not None else -1000000,
+                        to=setting.maximum if setting.maximum is not None else 1000000,
+                        increment=setting.step or 1,
+                        textvariable=variable,
+                    ).pack(fill="x", pady=(3, 0))
+                else:
+                    ttk.Entry(row, textvariable=variable).pack(fill="x", pady=(3, 0))
+            if setting.description:
+                ttk.Label(
+                    row, text=setting.description, wraplength=500,
+                    foreground="#52635c", background="#ffffff",
+                ).pack(anchor="w", pady=(3, 0))
+
+    def apply_content_settings(self) -> None:
+        selected = self.content_selected_system
+        if selected is None:
+            messagebox.showinfo("Content settings", "Select a content system first.")
+            return
+        extension_id, system_id = selected
+        if system_id is None:
+            messagebox.showinfo("Content settings", "Select a system below the package.")
+            return
+        manifest = self.content_manifests[extension_id]
+        system = next(item for item in manifest.systems if item.system_id == system_id)
+        values: dict[str, object] = {}
+        try:
+            for setting in system.settings:
+                variable = self.content_setting_vars[(extension_id, setting.key)]
+                values[setting.key] = setting.validate(variable.get())
+            unbound = [
+                setting for setting in system.settings if not setting.config_key
+            ]
+            installed = extension_id in self.content_registry_entries
+            if unbound and not installed:
+                raise ValueError(
+                    "Install this content package before saving its package-owned settings."
+                )
+            apply_settings_to_config(manifest, self.config, values)
+            config = self._current_config()
+            self.manager.save_config(config)
+            if installed and unbound:
+                registry = self._content_registry()
+                registry.set_settings(
+                    extension_id,
+                    {setting.key: values[setting.key] for setting in unbound},
+                )
+            self.settings_dirty = False
+            self.notice_text.set(f"Saved settings for {system.name}")
+            self.refresh_content()
+        except (OSError, ValueError, tk.TclError) as exc:
+            messagebox.showerror("Could not save content settings", str(exc))
+
+    def toggle_selected_content(self, enabled: bool) -> None:
+        selected = self.content_selected_system
+        if selected is None:
+            messagebox.showinfo("Content package", "Select a content package first.")
+            return
+        extension_id, _system_id = selected
+        entry = self.content_registry_entries.get(extension_id)
+        if entry is None:
+            messagebox.showinfo(
+                "Content package",
+                "Run Install / Repair to install the official content packages first.",
+            )
+            return
+        try:
+            if entry.get("source") == "built-in":
+                self._content_registry().set_builtin_enabled(extension_id, enabled)
+            else:
+                self._mod_service().set_enabled(extension_id, enabled)
+            self.notice_text.set(
+                f"{self.content_manifests[extension_id].name} "
+                f"{'enabled' if enabled else 'disabled'} · restart Story Mode"
+            )
+            self.refresh_mods()
+            self.refresh_content()
+        except (OSError, ValueError, RuntimeError) as exc:
+            messagebox.showerror("Could not change package state", str(exc))
 
     def _mod_service(self, manifest: ModManifest | None = None) -> ModIntegrationService:
         config = self._current_config()
@@ -1263,6 +1580,30 @@ class ManagerWindow:
             self.sdk_manifests = {}
             catalog_error = catalog_error or f"SDK catalog: {exc}"
 
+        try:
+            builtin_content = self.manager.extension_catalog.discover()
+            self.builtin_package_manifests = {
+                f"builtin:{manifest.extension_id}": manifest
+                for manifest in builtin_content
+            }
+        except (OSError, ValueError) as exc:
+            self.builtin_package_manifests = {}
+            catalog_error = catalog_error or f"Built-in content: {exc}"
+        self.builtin_package_entries = {}
+        try:
+            registry_entries = {
+                str(entry["id"]): entry
+                for entry in self._content_registry().installed()
+                if entry.get("source") == "built-in"
+            }
+            self.builtin_package_entries = {
+                item_id: registry_entries[manifest.extension_id]
+                for item_id, manifest in self.builtin_package_manifests.items()
+                if manifest.extension_id in registry_entries
+            }
+        except (OSError, ValueError, KeyError):
+            pass
+
         installed = {}
         try:
             installed = {status.mod_id: status for status in self._mod_service().list_installed()}
@@ -1274,7 +1615,10 @@ class ManagerWindow:
             manifest = self.mod_manifests.get(mod_id)
             status = installed.get(mod_id)
             name = manifest.name if manifest else status.name
-            mod_type = manifest.mod_type if manifest else status.mod_type
+            mod_type = (
+                "content" if manifest and manifest.extension
+                else manifest.mod_type if manifest else status.mod_type
+            )
             version = manifest.version if manifest else status.version
             editions = (
                 " + ".join(value.title() for value in manifest.editions)
@@ -1283,6 +1627,23 @@ class ManagerWindow:
             state = "Enabled" if status and status.enabled else "Disabled" if status else "Available"
             self.mod_tree.insert("", "end", iid=mod_id, text=name,
                                  values=(mod_type.upper(), editions, version, state))
+        for item_id, manifest in sorted(
+            self.builtin_package_manifests.items(),
+            key=lambda item: item[1].name.casefold(),
+        ):
+            entry = self.builtin_package_entries.get(item_id)
+            if entry is None:
+                state = "Install / Repair"
+            elif entry.get("blocked_reason"):
+                state = "Blocked"
+            else:
+                state = "Enabled" if entry.get("enabled") else "Disabled"
+            self.mod_tree.insert(
+                "", "end", iid=item_id, text=manifest.name,
+                values=(
+                    "CONTENT", "Legacy + Enhanced", manifest.version, state,
+                ),
+            )
         for sdk_id, manifest in sorted(
             self.sdk_manifests.items(), key=lambda item: item[1].name.lower()
         ):
@@ -1298,7 +1659,7 @@ class ManagerWindow:
             self.mod_tree.focus(selected)
         elif catalog_error:
             self.mod_details.set(f"Catalog error: {catalog_error}")
-        elif not mod_ids and not self.sdk_manifests:
+        elif not mod_ids and not self.builtin_package_manifests and not self.sdk_manifests:
             self.mod_details.set(
                 "No optional mods installed or present in the local catalog. Import a package to begin."
             )
@@ -1314,7 +1675,24 @@ class ManagerWindow:
         if not mod_id:
             return
         manifest = self.mod_manifests.get(mod_id)
+        builtin_manifest = self.builtin_package_manifests.get(mod_id)
         sdk_manifest = self.sdk_manifests.get(mod_id)
+        if builtin_manifest:
+            entry = self.builtin_package_entries.get(mod_id)
+            if entry is None:
+                status = "not installed; run Install / Repair"
+            elif entry.get("blocked_reason"):
+                status = f"blocked: {entry['blocked_reason']}"
+            else:
+                status = "enabled" if entry.get("enabled") else "disabled"
+            self.mod_details.set(
+                f"{builtin_manifest.description or 'Included ALLIN1 content package.'}\n"
+                f"Package ID: {builtin_manifest.extension_id} · Built into ALLIN1 · "
+                f"API {builtin_manifest.api_version} · "
+                f"{len(builtin_manifest.systems)} system(s) · {status}. "
+                "Open Content to configure its individual systems."
+            )
+            return
         if sdk_manifest:
             self.mod_details.set(
                 f"{sdk_manifest.summary or 'Built-in SDK integration example.'}\n"
@@ -1325,9 +1703,16 @@ class ManagerWindow:
         if manifest:
             requirements = ", ".join(manifest.dependencies) or "none"
             description = manifest.description or "No description provided."
+            extension_text = ""
+            if manifest.extension:
+                extension_text = (
+                    f" · ALLIN1 API {manifest.extension.api_version} · "
+                    f"{len(manifest.extension.systems)} contributed system(s)"
+                )
             self.mod_details.set(
                 f"{description}\nPackage ID: {mod_id} · Requires: {requirements} · "
                 f"Supports: {', '.join(value.title() for value in manifest.editions)}"
+                f"{extension_text}"
             )
         else:
             self.mod_details.set(
@@ -1352,6 +1737,9 @@ class ManagerWindow:
 
     def install_selected_mod(self) -> None:
         mod_id = self._selected_mod_id()
+        if mod_id in self.builtin_package_manifests:
+            self.install()
+            return
         if mod_id in self.sdk_manifests:
             self.open_addon_sdk()
             return
@@ -1383,6 +1771,28 @@ class ManagerWindow:
         if not mod_id:
             messagebox.showinfo("Optional mods", "Select an installed mod first.")
             return
+        builtin_manifest = self.builtin_package_manifests.get(mod_id)
+        if builtin_manifest is not None:
+            entry = self.builtin_package_entries.get(mod_id)
+            if entry is None:
+                messagebox.showinfo(
+                    "Built-in content",
+                    "Run Install / Repair before changing this package.",
+                )
+                return
+            try:
+                self._content_registry().set_builtin_enabled(
+                    builtin_manifest.extension_id, enabled,
+                )
+                self.notice_text.set(
+                    f"{builtin_manifest.name} "
+                    f"{'enabled' if enabled else 'disabled'} · restart Story Mode"
+                )
+                self.refresh_mods()
+                self.refresh_content()
+            except (OSError, ValueError, RuntimeError) as exc:
+                messagebox.showerror("Could not change package state", str(exc))
+            return
         if mod_id in self.sdk_manifests:
             messagebox.showinfo(
                 "Built-in SDK example",
@@ -1405,6 +1815,13 @@ class ManagerWindow:
         mod_id = self._selected_mod_id()
         if not mod_id:
             messagebox.showinfo("Optional mods", "Select an installed mod first.")
+            return
+        if mod_id in self.builtin_package_manifests:
+            messagebox.showinfo(
+                "Built-in content",
+                "This package is included with ALLIN1 and cannot be uninstalled "
+                "separately. Use Install / Repair to restore it.",
+            )
             return
         if mod_id in self.sdk_manifests:
             messagebox.showinfo(
@@ -1482,6 +1899,7 @@ class ManagerWindow:
             topic = {
                 "setup": "getting-started",
                 "gameplay": "gameplay",
+                "content": "content",
                 "input": "input",
                 "mods": "packages",
                 "characters": "characters",

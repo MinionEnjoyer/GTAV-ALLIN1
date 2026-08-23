@@ -175,6 +175,12 @@ namespace ALLIN1
 
         public GetawayVehicleCompatibility()
         {
+            if (!Allin1ExtensionApi.IsPackageEnabled(
+                    Allin1ExtensionApi.OnlineContentPackageId))
+            {
+                Interval = 1000;
+                return;
+            }
             Tick += OnTick;
             Interval = 100;
         }

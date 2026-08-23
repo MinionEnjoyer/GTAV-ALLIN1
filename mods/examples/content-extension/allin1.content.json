@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "api_version": 1,
+  "id": "example.content-settings",
+  "name": "Example Declarative Content Settings",
+  "version": "1.0.0",
+  "description": "A safe, non-executable example that demonstrates launcher-rendered typed settings.",
+  "capabilities": [
+    "launcher.settings"
+  ],
+  "systems": [
+    {
+      "id": "display-options",
+      "name": "Example display options",
+      "description": "These settings demonstrate the controls supported by the declarative content workspace.",
+      "category": "Example",
+      "experimental": false,
+      "enabled_by_default": true,
+      "settings": [
+        {
+          "key": "show_hints",
+          "label": "Show example hints",
+          "type": "boolean",
+          "default": true,
+          "description": "Demonstrates a true or false setting.",
+          "group": "General"
+        },
+        {
+          "key": "items_per_page",
+          "label": "Items per page",
+          "type": "integer",
+          "default": 12,
+          "description": "Demonstrates a bounded whole-number setting.",
+          "group": "Layout",
+          "minimum": 4,
+          "maximum": 40,
+          "step": 1
+        },
+        {
+          "key": "preview_scale",
+          "label": "Preview scale",
+          "type": "number",
+          "default": 1.0,
+          "description": "Demonstrates a bounded decimal setting.",
+          "group": "Layout",
+          "minimum": 0.5,
+          "maximum": 2.0,
+          "step": 0.25
+        },
+        {
+          "key": "welcome_text",
+          "label": "Welcome text",
+          "type": "string",
+          "default": "Example content is ready.",
+          "description": "Demonstrates a text setting.",
+          "group": "General"
+        },
+        {
+          "key": "layout",
+          "label": "Layout density",
+          "type": "choice",
+          "default": "comfortable",
+          "description": "Demonstrates a setting with a fixed list of choices.",
+          "group": "Layout",
+          "choices": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    }
+  ],
+  "gbay": {
+    "sections": [],
+    "catalogs": []
+  },
+  "runtime": {
+    "assemblies": []
+  }
+}

@@ -189,6 +189,13 @@ namespace ALLIN1
 
         public SeatSelector()
         {
+            if (!Allin1ExtensionApi.IsPackageEnabled(
+                    Allin1ExtensionApi.OnlineContentPackageId))
+            {
+                _enabled = false;
+                Interval = 1000;
+                return;
+            }
             LoadConfig();
             ControllerBindings.Load(Path.Combine(
                 AppDomain.CurrentDomain.BaseDirectory, "ALLIN1.toml"));

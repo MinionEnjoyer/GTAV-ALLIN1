@@ -10,6 +10,12 @@ import click
 
 from allin1.config import Config
 from allin1 import __version__
+from allin1.extensions import (
+    ExtensionCatalog,
+    ExtensionManifest,
+    ExtensionRegistry,
+    apply_settings_to_config,
+)
 from allin1.installer import install, uninstall
 from allin1.logging import setup_logging
 from allin1.vehicles.database import VehicleDatabase
@@ -228,6 +234,223 @@ def status(ctx: click.Context) -> None:
 
     db = VehicleDatabase.load(VEHICLES_DB)
     click.echo(f"\nVehicle database: {len(db)} vehicles across {len(db.classes)} classes")
+
+
+def _content_game_path(ctx: click.Context, gta_path: Path | None) -> Path:
+    """Resolve the selected game root for content API commands."""
+    from allin1.detector import validate_gta_path
+    from allin1.manager import ModManager
+
+    if gta_path is not None:
+        return validate_gta_path(gta_path)
+    resolved = ModManager(PROJECT_ROOT).resolve_path(ctx.obj["config"])
+    if resolved is None:
+        raise click.ClickException(
+            "GTA V was not detected; configure a game folder or pass --gta-path."
+        )
+    return validate_gta_path(resolved)
+
+
+def _content_entry(registry: ExtensionRegistry, extension_id: str) -> dict:
+    normalized = extension_id.strip().lower()
+    for entry in registry.installed():
+        if entry.get("id") == normalized:
+            return entry
+    raise click.ClickException(f"Content package is not installed: {normalized}")
+
+
+@main.group("content")
+def content_group() -> None:
+    """Validate and manage versioned ALLIN1 content extensions."""
+
+
+@content_group.command("list")
+@click.option(
+    "--gta-path", type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="Read the installed registry from this GTA V folder.",
+)
+@click.option("--json-output", is_flag=True, help="Print machine-readable JSON.")
+@click.pass_context
+def content_list(ctx: click.Context, gta_path: Path | None, json_output: bool) -> None:
+    """List bundled descriptors and, when available, installed package state."""
+    bundled = ExtensionCatalog(PROJECT_ROOT / "content").discover()
+    installed: list[dict] = []
+    try:
+        game = _content_game_path(ctx, gta_path)
+    except click.ClickException:
+        if gta_path is not None:
+            raise
+        game = None
+    if game is not None:
+        try:
+            installed = ExtensionRegistry(game).installed()
+        except (OSError, ValueError, KeyError) as exc:
+            raise click.ClickException(
+                f"Could not read the installed content registry: {exc}"
+            ) from exc
+    if json_output:
+        click.echo(json.dumps({
+            "api_version": 1,
+            "bundled": [manifest.to_dict() for manifest in bundled],
+            "installed": installed,
+        }, indent=2, sort_keys=True))
+        return
+    states = {
+        str(entry.get("id")): (
+            "blocked" if entry.get("blocked_reason")
+            else "enabled" if entry.get("enabled") else "disabled"
+        )
+        for entry in installed
+    }
+    manifests = {manifest.extension_id: manifest for manifest in bundled}
+    for entry in installed:
+        manifest = ExtensionManifest.from_registry_entry(entry)
+        manifests[manifest.extension_id] = manifest
+    if not manifests:
+        click.echo("No ALLIN1 content descriptors were found.")
+        return
+    for extension_id in sorted(manifests):
+        manifest = manifests[extension_id]
+        click.echo(
+            f"{extension_id:<36} {manifest.version:<10} "
+            f"{states.get(extension_id, 'available'):<10} {manifest.name}"
+        )
+
+
+@content_group.command("validate")
+@click.argument("manifest", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def content_validate(manifest: Path) -> None:
+    """Validate an allin1.content.json descriptor without loading its code."""
+    descriptor = ExtensionManifest.load(manifest)
+    click.echo(
+        f"PASS: {descriptor.extension_id} API {descriptor.api_version}; "
+        f"{len(descriptor.systems)} system(s), "
+        f"{len(descriptor.gbay_sections)} GBAY route(s), "
+        f"{len(descriptor.runtime_assemblies)} runtime assembly declaration(s)"
+    )
+
+
+def _confirm_content_change(yes: bool, prompt: str) -> None:
+    if not yes and not click.confirm(prompt, default=False):
+        raise click.Abort()
+
+
+def _set_content_enabled(
+    ctx: click.Context, gta_path: Path | None, extension_id: str,
+    enabled: bool, yes: bool,
+) -> None:
+    from allin1.mods import ModIntegrationService
+
+    game = _content_game_path(ctx, gta_path)
+    registry = ExtensionRegistry(game)
+    entry = _content_entry(registry, extension_id)
+    state = "enable" if enabled else "disable"
+    _confirm_content_change(yes, f"{state.title()} {entry.get('name', extension_id)}?")
+    if entry.get("source") == "built-in":
+        registry.set_builtin_enabled(str(entry["id"]), enabled)
+    else:
+        ModIntegrationService(game).set_enabled(str(entry["id"]), enabled)
+    click.echo(f"{entry['id']} is now {'enabled' if enabled else 'disabled'}.")
+
+
+def _content_state_options(function):
+    function = click.option(
+        "--gta-path", type=click.Path(exists=True, file_okay=False, path_type=Path),
+    )(function)
+    function = click.option(
+        "--yes", is_flag=True, help="Approve the requested state change non-interactively.",
+    )(function)
+    function = click.argument("extension_id")(function)
+    return click.pass_context(function)
+
+
+@content_group.command("enable")
+@_content_state_options
+def content_enable(
+    ctx: click.Context, extension_id: str, yes: bool, gta_path: Path | None,
+) -> None:
+    """Enable an installed content package."""
+    _set_content_enabled(ctx, gta_path, extension_id, True, yes)
+
+
+@content_group.command("disable")
+@_content_state_options
+def content_disable(
+    ctx: click.Context, extension_id: str, yes: bool, gta_path: Path | None,
+) -> None:
+    """Disable an installed content package."""
+    _set_content_enabled(ctx, gta_path, extension_id, False, yes)
+
+
+@content_group.command("set")
+@click.argument("extension_id")
+@click.argument("key")
+@click.argument("value")
+@click.option(
+    "--gta-path", type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--yes", is_flag=True, help="Approve the setting change non-interactively.")
+@click.pass_context
+def content_set(
+    ctx: click.Context, extension_id: str, key: str, value: str,
+    gta_path: Path | None, yes: bool,
+) -> None:
+    """Set a typed package setting (VALUE accepts JSON or plain text)."""
+    from allin1.manager import ModManager
+
+    game = _content_game_path(ctx, gta_path)
+    registry = ExtensionRegistry(game)
+    entry = _content_entry(registry, extension_id)
+    manifest = ExtensionManifest.from_registry_entry(entry)
+    setting = manifest.setting(key)
+    try:
+        candidate = json.loads(value)
+    except json.JSONDecodeError:
+        candidate = value
+    validated = setting.validate(candidate)
+    _confirm_content_change(
+        yes, f"Set {manifest.name} / {setting.label} to {validated!r}?",
+    )
+    config: Config = ctx.obj["config"]
+    manager = ModManager(PROJECT_ROOT)
+    manager.config_path = ctx.obj["config_path"]
+    runtime_config = game / "scripts" / "ALLIN1.toml"
+    tracked_paths = (
+        manager.config_path,
+        runtime_config,
+        registry.settings.path,
+        registry.registry_path,
+    )
+    snapshots = {
+        path: path.read_bytes() if path.is_file() else None
+        for path in tracked_paths
+    }
+    try:
+        if setting.config_key:
+            apply_settings_to_config(manifest, config, {setting.key: validated})
+            # An explicit --gta-path is authoritative for this approved API
+            # action; never let a different path inside config redirect the
+            # runtime write to another installation.
+            manager.save_config(config, sync_runtime=False)
+            if (game / "scripts" / "ALLIN1.dll").is_file():
+                config.save(runtime_config)
+        effective = registry.set_setting(
+            manifest.extension_id, setting.key, validated,
+        )
+    except Exception:
+        for path, snapshot in snapshots.items():
+            if snapshot is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                temporary = path.with_name(path.name + ".content-set-rollback")
+                temporary.write_bytes(snapshot)
+                temporary.replace(path)
+        raise
+    click.echo(
+        f"{manifest.extension_id}:{setting.key} = "
+        f"{json.dumps(effective[setting.key], allow_nan=False)}"
+    )
 
 
 @main.group("sdk")

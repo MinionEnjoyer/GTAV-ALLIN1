@@ -1,9 +1,49 @@
+# GTA V ALLIN1 0.5.1
+
+Version 0.5.1 completes the transition to a package-driven launcher and gives
+the SDK a focused vehicle-authoring workflow, while tightening release and
+runtime behavior across both applications.
+
+## Launcher and content packs
+
+- Finished the versioned content-extension surface for launcher settings,
+  GBAY routes, package-owned assemblies, lifecycle controls, and approved
+  console/API actions.
+- Registered the official Online Content and optional Experimental Gameplay
+  systems as visible managed packages without changing their familiar in-game
+  behavior.
+- Hardened package receipts, compatibility checks, executable destinations,
+  recovery behavior, update reporting, and RPF preview dependency handling.
+- Refined GBAY inventory, weapon customization, vehicle restrictions, smoke
+  content, experimental physics, police tactics, traffic, and input behavior.
+
+## SDK vehicle workbench and RPF tooling
+
+- Added an end-to-end vehicle project workbench for discovery, metadata,
+  handling, tuning, validation, packaging, and install-plan review.
+- Expanded visual archive workflows with guarded change plans, package recipes,
+  binary workspaces, previews, CLI commands, and approved agent API routes.
+- Reduced repeated scans, bounded parallel package reads, cached console
+  metadata, and lazy-loaded large workspaces for faster startup and navigation.
+- Cleaned release metadata and generated-workspace handling, and synchronized
+  launcher, content-pack, in-game client, and SDK version surfaces to 0.5.1.
+
 # GTA V ALLIN1 0.5.0
 
 Version 0.5.0 unifies the launcher, in-game client, and standalone SDK around a
 guarded package lifecycle and a more consistent professional desktop identity.
 
 ## Launcher, client, and SDK integration
+
+- Added the first versioned ALLIN1 content-extension API. The launcher now discovers official and
+  third-party systems from declarative descriptors, renders typed settings in a shared Content
+  workspace, stores package-owned settings by namespace, and exposes approved `content` console
+  commands for validation, inspection, enable/disable, and setting changes.
+- Registered the existing gameplay surface as **ALLIN1 Online Content** and isolated the opt-in
+  police/physics work as **ALLIN1 Experimental Gameplay**. The runtime consumes the installed
+  registry while retaining a compatibility fallback for older installations.
+- Hardened executable extensions with package-owned destinations, receipt SHA-256 authorization,
+  dependency-aware lifecycle controls, and fail-closed manifest/API version checks.
 
 - Retired the pre-release offline-launch toggle after it proved capable of
   blocking Rockstar authentication. ALLIN1 now uses the normal signed-in game

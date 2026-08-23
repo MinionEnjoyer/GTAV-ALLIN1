@@ -33,6 +33,7 @@ namespace ALLIN1
         private bool _reducedMotion;
         private bool _colorblindMode;
         private float _uiScale = 1f;
+        private readonly bool _onlineContentEnabled;
 
         // Night vision state
         internal static bool NightVisionOwned;
@@ -50,11 +51,14 @@ namespace ALLIN1
 
         // --- Public accessors for GbayBrowser ---
         internal bool FreeMode => _freeMode;
+        internal bool OnlineContentEnabled => _onlineContentEnabled;
         internal const int AmmoNotApplicable = -1;
         internal const int AmmoCapacityUnavailable = -3;
 
         public GbayShop()
         {
+            _onlineContentEnabled = Allin1ExtensionApi.IsPackageEnabled(
+                Allin1ExtensionApi.OnlineContentPackageId);
             Tick += OnTick;
             KeyDown += OnKeyDown;
             Aborted += OnAborted;
@@ -64,8 +68,11 @@ namespace ALLIN1
         private void OnAborted(object sender, EventArgs args)
         {
             _browser?.Close();
-            GarageManager.OnScriptAborted();
-            YachtManager.Shutdown();
+            if (_onlineContentEnabled)
+            {
+                GarageManager.OnScriptAborted();
+                YachtManager.Shutdown();
+            }
         }
 
         // ------------------------------------------------------------------ //
@@ -223,37 +230,40 @@ namespace ALLIN1
             GbayBrowser.ReducedMotion = _reducedMotion;
             GbayRenderer.ColorblindMode = _colorblindMode;
             GbayRenderer.UiScale = _uiScale;
-            LoadGearPrices();
+            if (_onlineContentEnabled)
+                LoadGearPrices();
             Log($"=== GBAY Initialized: key={_openKey} freeMode={_freeMode} ===");
 
-            YachtManager.Initialize();
-
-            try
+            if (_onlineContentEnabled)
             {
-                GarageManager.Configure(
-                    _enableLogging, _garagesAlwaysAccessible);
-                GarageManager.Initialize();
-                GarageManager.InitializeDavisGarage();
-                GarageManager.InitializeGarmentGarage();
-                GarageManager.InitializeRuralGarage();
-                GarageManager.InitializePaletoGarage();
-                GarageManager.InitializeHelipad();
-                GarageManager.InitializeHarbour();
-                GarageManager.InitializeYachtHelipad();
-                // Recovery mode may defer Harmony's interior/storage work,
-                // but its map locations should remain visible with every
-                // other ALLIN1 garage.
-                GarageManager.EnsureFloorGarageBlips();
-                if (!ClientWatchdog.SafeMode)
-                    GarageManager.InitializeFloorGarage();
-                else
-                    Log("Floor garage initialization deferred: " +
-                        ClientWatchdog.SafeModeReason);
-                Log("GarageManager base initialization completed");
-            }
-            catch (Exception ex)
-            {
-                LogException("GarageManager.Initialize", ex);
+                YachtManager.Initialize();
+                try
+                {
+                    GarageManager.Configure(
+                        _enableLogging, _garagesAlwaysAccessible);
+                    GarageManager.Initialize();
+                    GarageManager.InitializeDavisGarage();
+                    GarageManager.InitializeGarmentGarage();
+                    GarageManager.InitializeRuralGarage();
+                    GarageManager.InitializePaletoGarage();
+                    GarageManager.InitializeHelipad();
+                    GarageManager.InitializeHarbour();
+                    GarageManager.InitializeYachtHelipad();
+                    // Recovery mode may defer Harmony's interior/storage work,
+                    // but its map locations should remain visible with every
+                    // other ALLIN1 garage.
+                    GarageManager.EnsureFloorGarageBlips();
+                    if (!ClientWatchdog.SafeMode)
+                        GarageManager.InitializeFloorGarage();
+                    else
+                        Log("Floor garage initialization deferred: " +
+                            ClientWatchdog.SafeModeReason);
+                    Log("GarageManager base initialization completed");
+                }
+                catch (Exception ex)
+                {
+                    LogException("GarageManager.Initialize", ex);
+                }
             }
 
             _browser = new GbayBrowser(this);
@@ -1994,7 +2004,7 @@ namespace ALLIN1
                     ClientLog.Warn("GBAY", "browser_closed_for_unsupported_player_model");
                 }
 
-                if (_initialized)
+                if (_initialized && _onlineContentEnabled)
                 {
                     YachtManager.OnTick();
                     // A crash-recovery session suppresses the multi-floor
@@ -2042,12 +2052,14 @@ namespace ALLIN1
                         ControllerBindings.OpenGbay))
                     TryToggleBrowser();
 
-                if (NightVisionOwned && ControllerBindings.ChordJustPressed(
+                if (_onlineContentEnabled && NightVisionOwned &&
+                    ControllerBindings.ChordJustPressed(
                         ControllerBindings.NightVisionModifier,
                         ControllerBindings.NightVision))
                     ToggleNightVision();
 
-                JuggernautTick();
+                if (_onlineContentEnabled)
+                    JuggernautTick();
             }
             catch (Exception ex)
             {
@@ -2071,7 +2083,8 @@ namespace ALLIN1
                     LogException("OnKeyDown", ex);
                 }
             }
-            else if (e.KeyCode == _nightVisionKey && NightVisionOwned)
+            else if (_onlineContentEnabled && e.KeyCode == _nightVisionKey &&
+                NightVisionOwned)
                 ToggleNightVision();
         }
 

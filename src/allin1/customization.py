@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -11,6 +12,35 @@ CHARACTERS = ("michael", "franklin", "trevor")
 LOADOUT_SCHEMA_VERSION = 8
 GARAGE_SCHEMA_VERSION = 2
 SKILLS = ("stamina", "strength", "lung_capacity", "driving", "flying", "shooting", "stealth")
+
+_CHARACTER_FIELDS = frozenset({
+    "weapons", "weapon_ammo", "weapon_customizations", "gear",
+    "equipped_gear", "properties", "smoke_grenades", "active_smoke_color",
+    "managed", "outfit", "progress", "schema_version",
+})
+_OUTFIT_FIELDS = frozenset({
+    "managed", "unlock_all", "components", "props", "presets",
+})
+_PROGRESS_FIELDS = frozenset({"managed", "money", "skills"})
+_VARIATION_FIELDS = frozenset({"drawable", "texture"})
+
+
+def _unknown_fields(value: object, known: frozenset[str] | tuple[str, ...]) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: deepcopy(item)
+        for key, item in value.items()
+        if key not in known
+    }
+
+
+def _with_known_fields(
+    extra_fields: dict[str, object], known_fields: dict[str, object],
+) -> dict[str, object]:
+    result = deepcopy(extra_fields)
+    result.update(known_fields)
+    return result
 
 
 @dataclass(frozen=True)
@@ -35,6 +65,7 @@ def _atomic_json(path: Path, value: object) -> None:
 class OutfitVariation:
     drawable: int = 0
     texture: int = 0
+    extra_fields: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass
@@ -46,6 +77,7 @@ class CharacterOutfit:
     props: list[OutfitVariation] = field(
         default_factory=lambda: [OutfitVariation(-1, 0) for _ in range(8)])
     presets: dict[str, dict] = field(default_factory=dict)
+    extra_fields: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass
@@ -53,6 +85,8 @@ class CharacterProgress:
     managed: bool = False
     money: int = 0
     skills: dict[str, int] = field(default_factory=lambda: {name: 0 for name in SKILLS})
+    extra_skills: dict[str, object] = field(default_factory=dict)
+    extra_fields: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass
@@ -65,6 +99,31 @@ class CharacterLoadout:
     equipped_gear: list[str] = field(default_factory=list)
     weapon_ammo: dict[str, int] = field(default_factory=dict)
     weapon_customizations: dict[str, dict] = field(default_factory=dict)
+    properties: list[str] = field(default_factory=list)
+    smoke_grenades: dict[str, int] = field(default_factory=dict)
+    active_smoke_color: str = "white"
+    schema_version: int = LOADOUT_SCHEMA_VERSION
+    extra_fields: dict[str, object] = field(default_factory=dict)
+
+
+def _load_variation(value: object, default_drawable: int) -> OutfitVariation:
+    raw = value if isinstance(value, dict) else {}
+    return OutfitVariation(
+        int(raw.get("drawable", default_drawable)),
+        int(raw.get("texture", 0)),
+        _unknown_fields(raw, _VARIATION_FIELDS),
+    )
+
+
+def _serialize_variation(
+    value: OutfitVariation, existing: object | None = None,
+) -> dict[str, object]:
+    preserved = _unknown_fields(existing, _VARIATION_FIELDS)
+    preserved.update(deepcopy(value.extra_fields))
+    return _with_known_fields(preserved, {
+        "drawable": value.drawable,
+        "texture": value.texture,
+    })
 
 
 class LoadoutStore:
@@ -72,12 +131,26 @@ class LoadoutStore:
         self.path = path
         self.valid_weapons = valid_weapons
         self.valid_gear = valid_gear
+        self._root_extra_fields: dict[str, object] = {}
+        self._loaded = False
+
+    def _read(self) -> dict[str, object]:
+        if not self.path.exists():
+            return {}
+        raw = json.loads(self.path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise ValueError("Character save root must be an object")
+        return raw
 
     def load(self) -> dict[str, CharacterLoadout]:
-        raw = json.loads(self.path.read_text(encoding="utf-8")) if self.path.exists() else {}
+        raw = self._read()
+        self._root_extra_fields = _unknown_fields(raw, CHARACTERS)
+        self._loaded = True
         result = {}
         for character in CHARACTERS:
             item = raw.get(character, {})
+            if not isinstance(item, dict):
+                raise ValueError(f"Character state for {character} must be an object")
             weapons = list(dict.fromkeys(item.get("weapons", [])))
             gear = list(dict.fromkeys(item.get("gear", [])))
             schema_version = int(item.get("schema_version", 0))
@@ -108,10 +181,22 @@ class LoadoutStore:
                 if weapon in weapons and isinstance(value, dict)
             }
             outfit_raw = item.get("outfit", {})
-            components = [OutfitVariation(int(v.get("drawable", 0)), int(v.get("texture", 0)))
-                          for v in outfit_raw.get("components", [])]
-            props = [OutfitVariation(int(v.get("drawable", -1)), int(v.get("texture", 0)))
-                     for v in outfit_raw.get("props", [])]
+            if not isinstance(outfit_raw, dict):
+                outfit_raw = {}
+            components = [
+                _load_variation(value, 0)
+                for value in outfit_raw.get("components", [])
+            ]
+            props = [
+                _load_variation(value, -1)
+                for value in outfit_raw.get("props", [])
+            ]
+            progress_raw = item.get("progress", {})
+            if not isinstance(progress_raw, dict):
+                progress_raw = {}
+            skills_raw = progress_raw.get("skills", {})
+            if not isinstance(skills_raw, dict):
+                skills_raw = {}
             result[character] = CharacterLoadout(
                 weapons,
                 gear,
@@ -121,19 +206,27 @@ class LoadoutStore:
                     bool(outfit_raw.get("unlock_all", False)),
                     components or [OutfitVariation() for _ in range(12)],
                     props or [OutfitVariation(-1, 0) for _ in range(8)],
-                    dict(outfit_raw.get("presets", {})),
+                    deepcopy(outfit_raw.get("presets", {})),
+                    _unknown_fields(outfit_raw, _OUTFIT_FIELDS),
                 ),
                 CharacterProgress(
-                    bool(item.get("progress", {}).get("managed", False)),
-                    int(item.get("progress", {}).get("money", 0)),
+                    bool(progress_raw.get("managed", False)),
+                    int(progress_raw.get("money", 0)),
                     {
-                        name: int(item.get("progress", {}).get("skills", {}).get(name, 0))
+                        name: int(skills_raw.get(name, 0))
                         for name in SKILLS
                     },
+                    _unknown_fields(skills_raw, SKILLS),
+                    _unknown_fields(progress_raw, _PROGRESS_FIELDS),
                 ),
                 equipped_gear,
                 weapon_ammo,
                 weapon_customizations,
+                deepcopy(item.get("properties", [])),
+                deepcopy(item.get("smoke_grenades", {})),
+                str(item.get("active_smoke_color", "white")),
+                max(LOADOUT_SCHEMA_VERSION, schema_version),
+                _unknown_fields(item, _CHARACTER_FIELDS),
             )
         return result
 
@@ -141,9 +234,17 @@ class LoadoutStore:
         unknown_characters = set(loadouts) - set(CHARACTERS)
         if unknown_characters:
             raise ValueError(f"Unknown characters: {sorted(unknown_characters)}")
-        output = {}
+        existing = {} if self._loaded else self._read()
+        root_extra_fields = (
+            self._root_extra_fields
+            if self._loaded else _unknown_fields(existing, CHARACTERS)
+        )
+        output = deepcopy(root_extra_fields)
         for character in CHARACTERS:
             loadout = loadouts.get(character, CharacterLoadout())
+            existing_item = existing.get(character, {})
+            if not isinstance(existing_item, dict):
+                existing_item = {}
             bad_weapons = set(loadout.weapons) - self.valid_weapons
             bad_gear = set(loadout.gear) - self.valid_gear
             bad_equipped = set(loadout.equipped_gear) - set(loadout.gear)
@@ -158,7 +259,35 @@ class LoadoutStore:
                 raise ValueError("Weapon ammunition must be a non-negative whole number")
             self._validate_outfit(loadout.outfit)
             self._validate_progress(loadout.progress)
-            output[character] = {
+            existing_outfit = existing_item.get("outfit", {})
+            if not isinstance(existing_outfit, dict):
+                existing_outfit = {}
+            existing_components = existing_outfit.get("components", [])
+            if not isinstance(existing_components, list):
+                existing_components = []
+            existing_props = existing_outfit.get("props", [])
+            if not isinstance(existing_props, list):
+                existing_props = []
+            outfit_extra_fields = _unknown_fields(
+                existing_outfit, _OUTFIT_FIELDS)
+            outfit_extra_fields.update(deepcopy(loadout.outfit.extra_fields))
+
+            existing_progress = existing_item.get("progress", {})
+            if not isinstance(existing_progress, dict):
+                existing_progress = {}
+            existing_skills = existing_progress.get("skills", {})
+            if not isinstance(existing_skills, dict):
+                existing_skills = {}
+            progress_extra_fields = _unknown_fields(
+                existing_progress, _PROGRESS_FIELDS)
+            progress_extra_fields.update(deepcopy(loadout.progress.extra_fields))
+            extra_skills = _unknown_fields(existing_skills, SKILLS)
+            extra_skills.update(deepcopy(loadout.progress.extra_skills))
+
+            character_extra_fields = _unknown_fields(
+                existing_item, _CHARACTER_FIELDS)
+            character_extra_fields.update(deepcopy(loadout.extra_fields))
+            output[character] = _with_known_fields(character_extra_fields, {
                 "weapons": sorted(set(loadout.weapons)),
                 "gear": sorted(set(loadout.gear)),
                 "equipped_gear": sorted(set(loadout.equipped_gear)),
@@ -171,21 +300,42 @@ class LoadoutStore:
                     for weapon in sorted(loadout.weapon_customizations)
                 },
                 "managed": loadout.managed,
-                "outfit": {
+                "properties": deepcopy(loadout.properties),
+                "smoke_grenades": deepcopy(loadout.smoke_grenades),
+                "active_smoke_color": loadout.active_smoke_color,
+                "outfit": _with_known_fields(outfit_extra_fields, {
                     "managed": loadout.outfit.managed,
                     "unlock_all": loadout.outfit.unlock_all,
-                    "components": [vars(value) for value in loadout.outfit.components],
-                    "props": [vars(value) for value in loadout.outfit.props],
-                    "presets": loadout.outfit.presets,
-                },
-                "progress": {
+                    "components": [
+                        _serialize_variation(
+                            value,
+                            existing_components[index]
+                            if index < len(existing_components) else None,
+                        )
+                        for index, value in enumerate(loadout.outfit.components)
+                    ],
+                    "props": [
+                        _serialize_variation(
+                            value,
+                            existing_props[index]
+                            if index < len(existing_props) else None,
+                        )
+                        for index, value in enumerate(loadout.outfit.props)
+                    ],
+                    "presets": deepcopy(loadout.outfit.presets),
+                }),
+                "progress": _with_known_fields(progress_extra_fields, {
                     "managed": loadout.progress.managed,
                     "money": loadout.progress.money,
-                    "skills": loadout.progress.skills,
-                },
-                "schema_version": LOADOUT_SCHEMA_VERSION,
-            }
+                    "skills": _with_known_fields(
+                        extra_skills, deepcopy(loadout.progress.skills)),
+                }),
+                "schema_version": max(
+                    LOADOUT_SCHEMA_VERSION, int(loadout.schema_version)),
+            })
         _atomic_json(self.path, output)
+        self._root_extra_fields = deepcopy(root_extra_fields)
+        self._loaded = True
 
     @staticmethod
     def _validate_progress(progress: CharacterProgress) -> None:
@@ -217,8 +367,8 @@ class LoadoutStore:
         if not name or len(name) > 64:
             raise ValueError("Outfit preset names must contain 1-64 characters")
         outfit.presets[name] = {
-            "components": [vars(value).copy() for value in outfit.components],
-            "props": [vars(value).copy() for value in outfit.props],
+            "components": [_serialize_variation(value) for value in outfit.components],
+            "props": [_serialize_variation(value) for value in outfit.props],
         }
 
     @staticmethod
@@ -226,8 +376,12 @@ class LoadoutStore:
         if name not in outfit.presets:
             raise KeyError(name)
         preset = outfit.presets[name]
-        outfit.components = [OutfitVariation(**value) for value in preset["components"]]
-        outfit.props = [OutfitVariation(**value) for value in preset["props"]]
+        outfit.components = [
+            _load_variation(value, 0) for value in preset["components"]
+        ]
+        outfit.props = [
+            _load_variation(value, -1) for value in preset["props"]
+        ]
         LoadoutStore._validate_outfit(outfit)
 
 

@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "api_version": 1,
+  "id": "allin1.online-content",
+  "name": "ALLIN1 Online Content",
+  "version": "0.5.1",
+  "description": "The official Story Mode content pack: GBAY products, DLC traffic, properties, garages, specialized storage, and character-owned equipment.",
+  "capabilities": [
+    "gbay.catalogs",
+    "gbay.sections",
+    "launcher.settings",
+    "story-save.transactions",
+    "world.locations",
+    "traffic.catalog"
+  ],
+  "systems": [
+    {
+      "id": "gbay-marketplace",
+      "name": "GBAY Marketplace",
+      "category": "Storefront",
+      "description": "The in-game marketplace shell, purchases, favorites, previews, and delivery flow.",
+      "settings": [
+        {
+          "key": "free_purchases",
+          "label": "Free GBAY purchases",
+          "type": "boolean",
+          "default": false,
+          "description": "Purchases cost nothing and vehicle sales have no payout.",
+          "config_key": "script.gbay_free_mode"
+        },
+        {
+          "key": "preview_artwork",
+          "label": "Archive-backed preview artwork",
+          "type": "boolean",
+          "default": true,
+          "description": "Show installed product and property artwork when the compatible preview loader is available.",
+          "config_key": "general.enable_rpf_previews"
+        },
+        {
+          "key": "reduced_motion",
+          "label": "Reduce menu transition motion",
+          "type": "boolean",
+          "default": false,
+          "config_key": "script.reduced_motion"
+        },
+        {
+          "key": "colorblind_mode",
+          "label": "Use colorblind-safe menu colors",
+          "type": "boolean",
+          "default": false,
+          "config_key": "script.colorblind_mode"
+        },
+        {
+          "key": "ui_scale",
+          "label": "In-game menu text scale",
+          "type": "number",
+          "default": 1.0,
+          "minimum": 0.75,
+          "maximum": 1.5,
+          "step": 0.05,
+          "config_key": "script.ui_scale"
+        }
+      ]
+    },
+    {
+      "id": "vehicles",
+      "name": "Online Vehicle Catalog",
+      "category": "Vehicles",
+      "description": "DLC vehicle listings, prices, previews, delivery compatibility, and getaway-vehicle rules.",
+      "settings": [
+        {
+          "key": "enable_all_vehicles",
+          "label": "Enable every DLC vehicle",
+          "type": "boolean",
+          "default": true,
+          "config_key": "vehicles.enable_all"
+        }
+      ]
+    },
+    {
+      "id": "weapons",
+      "name": "Online Weapons & Customization",
+      "category": "Weapons",
+      "description": "The full weapon catalog, ammunition, finishes, attachments, and visual workbench."
+    },
+    {
+      "id": "gear",
+      "name": "Armor & Field Gear",
+      "category": "Gear",
+      "description": "Armor, night vision, parachutes, utility items, and per-character equipment ownership."
+    },
+    {
+      "id": "garages",
+      "name": "Garage & Port Network",
+      "category": "Storage",
+      "description": "Persistent garages, helipads, harbours, vehicle delivery, customization, and recovery.",
+      "settings": [
+        {
+          "key": "wanted_entry",
+          "label": "Allow garage entry while wanted",
+          "type": "boolean",
+          "default": false,
+          "config_key": "script.garages_always_accessible"
+        }
+      ]
+    },
+    {
+      "id": "yacht",
+      "name": "Galaxy Super Yacht",
+      "category": "Properties",
+      "description": "The purchasable yacht, streamed world state, and its dedicated helipad storage."
+    },
+    {
+      "id": "traffic",
+      "name": "DLC Traffic",
+      "category": "World",
+      "description": "Adds compatible Online vehicles to ambient Story Mode traffic with safety and performance guards.",
+      "settings": [
+        {
+          "key": "traffic_enabled",
+          "label": "Enable DLC traffic",
+          "type": "boolean",
+          "default": true,
+          "config_key": "traffic.enabled"
+        },
+        {
+          "key": "rich_area_supers",
+          "label": "Supercars only in wealthy areas",
+          "type": "boolean",
+          "default": true,
+          "config_key": "traffic.rich_areas_only_supers"
+        },
+        {
+          "key": "adaptive_performance",
+          "label": "Adaptive traffic performance",
+          "type": "boolean",
+          "default": true,
+          "config_key": "traffic.adaptive_performance"
+        }
+      ]
+    },
+    {
+      "id": "police-vehicles",
+      "name": "DLC Police Vehicles",
+      "category": "World",
+      "description": "Allows supported DLC law-enforcement vehicles to appear in Story Mode responses.",
+      "settings": [
+        {
+          "key": "police_vehicles_enabled",
+          "label": "Enable DLC police vehicles",
+          "type": "boolean",
+          "default": false,
+          "config_key": "script.enable_dlc_police"
+        }
+      ]
+    },
+    {
+      "id": "seat-selector",
+      "name": "Vehicle Seat Selector",
+      "category": "Vehicles",
+      "description": "Native seat entry and shuffle behavior backed by vehicle metadata.",
+      "settings": [
+        {
+          "key": "seat_selector_enabled",
+          "label": "Enable vehicle seat selector",
+          "type": "boolean",
+          "default": true,
+          "config_key": "script.seat_selector_enabled"
+        }
+      ]
+    },
+    {
+      "id": "character-content",
+      "name": "Character Purchases & Loadouts",
+      "category": "Characters",
+      "description": "Per-character weapons, gear, property ownership, money, outfits, and Story-save-bound transactions."
+    },
+    {
+      "id": "smoke-signals",
+      "name": "Enhanced Smoke Signals",
+      "category": "Effects",
+      "description": "Ground-settled smoke plumes and colored signal products. Custom weapon metadata remains experimental.",
+      "experimental": true,
+      "enabled_by_default": false,
+      "settings": [
+        {
+          "key": "enhanced_smoke",
+          "label": "Enhanced custom smoke effects",
+          "type": "boolean",
+          "default": false,
+          "config_key": "script.enhanced_smoke_effects"
+        }
+      ]
+    }
+  ],
+  "gbay": {
+    "sections": [
+      {"id": "vehicles", "label": "Vehicles", "description": "Browse and deliver vehicles.", "route": "builtin:vehicles", "order": 10},
+      {"id": "purchase-weapons", "label": "Purchase Weapons", "description": "Buy weapons and ammunition.", "route": "builtin:weapons", "order": 20},
+      {"id": "customize-weapons", "label": "Customize Weapons", "description": "Modify owned weapons.", "route": "builtin:weapon-customization", "order": 30},
+      {"id": "gear", "label": "Gear", "description": "Buy armor and equipment.", "route": "builtin:gear", "order": 40},
+      {"id": "garages", "label": "My Garage", "description": "Manage storage locations.", "route": "builtin:garages", "order": 50}
+    ],
+    "catalogs": []
+  },
+  "runtime": {
+    "assemblies": [
+      {"path": "scripts/ALLIN1.dll"}
+    ]
+  }
+}

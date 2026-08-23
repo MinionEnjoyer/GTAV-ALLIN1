@@ -194,6 +194,29 @@ def test_install_backups_and_uninstall_restores_preexisting_file(tmp_path: Path)
     assert target.read_bytes() == b"original"
 
 
+def test_toggle_restores_and_reapplies_preexisting_loose_file(tmp_path: Path):
+    game = _game(tmp_path)
+    target = game / "scripts" / "settings.ini"
+    target.parent.mkdir()
+    target.write_bytes(b"original")
+    manifest = ModManifest.load(_package(
+        tmp_path, "layered-config", "config", "scripts/settings.ini",
+        payload=b"replacement",
+    ))
+    service = ModIntegrationService(game)
+
+    service.install(manifest)
+    service.set_enabled("layered-config", False)
+    assert target.read_bytes() == b"original"
+    assert target.with_name("settings.ini.disabled").read_bytes() == b"replacement"
+
+    service.set_enabled("layered-config", True)
+    assert target.read_bytes() == b"replacement"
+    assert not target.with_name("settings.ini.disabled").exists()
+    service.uninstall("layered-config")
+    assert target.read_bytes() == b"original"
+
+
 def test_reinstall_same_mod_updates_payload(tmp_path: Path):
     game = _game(tmp_path)
     package = _package(tmp_path, "updated-script", "script", "scripts/Updated.dll",
@@ -207,6 +230,142 @@ def test_reinstall_same_mod_updates_payload(tmp_path: Path):
     )
     service.install(ModManifest.load(package))
     assert (game / "scripts" / "Updated.dll").read_bytes() == b"v2"
+
+
+def test_update_preserves_disabled_package_state(tmp_path: Path):
+    game = _game(tmp_path)
+    old_package = _package(
+        tmp_path / "old", "disabled-update", "script",
+        "scripts/DisabledUpdate.dll", payload=b"v1", version="1.0.0",
+    )
+    new_package = _package(
+        tmp_path / "new", "disabled-update", "script",
+        "scripts/DisabledUpdate.dll", payload=b"v2", version="2.0.0",
+    )
+    service = ModIntegrationService(game)
+    service.install(ModManifest.load(old_package))
+    service.set_enabled("disabled-update", False)
+
+    status = service.install(ModManifest.load(new_package))
+
+    target = game / "scripts" / "DisabledUpdate.dll"
+    assert status.enabled is False
+    assert not target.exists()
+    assert target.with_name("DisabledUpdate.dll.disabled").read_bytes() == b"v2"
+    receipt = json.loads(
+        (service.state_root / "disabled-update.json").read_text(encoding="utf-8")
+    )
+    assert receipt["enabled"] is False
+    assert receipt["version"] == "2.0.0"
+
+
+def test_failed_disabled_update_never_leaves_new_payload_active(
+    tmp_path: Path, monkeypatch,
+):
+    game = _game(tmp_path)
+    old_package = _package(
+        tmp_path / "old", "disabled-update-rollback", "script",
+        "scripts/DisabledRollback.dll", payload=b"v1", version="1.0.0",
+    )
+    new_package = _package(
+        tmp_path / "new", "disabled-update-rollback", "script",
+        "scripts/DisabledRollback.dll", payload=b"v2", version="2.0.0",
+    )
+    service = ModIntegrationService(game)
+    service.install(ModManifest.load(old_package))
+    service.set_enabled("disabled-update-rollback", False)
+    monkeypatch.setattr(
+        service, "_deactivate_new_loose_payload",
+        lambda _records: (_ for _ in ()).throw(OSError("synthetic deactivate failure")),
+    )
+
+    with pytest.raises(OSError, match="synthetic deactivate failure"):
+        service.install(ModManifest.load(new_package))
+
+    target = game / "scripts" / "DisabledRollback.dll"
+    assert not target.exists()
+    assert target.with_name("DisabledRollback.dll.disabled").read_bytes() == b"v1"
+    receipt = json.loads(
+        (service.state_root / "disabled-update-rollback.json").read_text(
+            encoding="utf-8",
+        )
+    )
+    assert receipt["enabled"] is False
+    assert receipt["version"] == "1.0.0"
+
+
+def test_failed_disabled_update_restores_underlying_file(
+    tmp_path: Path, monkeypatch,
+):
+    game = _game(tmp_path)
+    target = game / "scripts" / "LayeredRollback.ini"
+    target.parent.mkdir()
+    target.write_bytes(b"original")
+    old_package = _package(
+        tmp_path / "old", "disabled-layered-rollback", "config",
+        "scripts/LayeredRollback.ini", payload=b"v1", version="1.0.0",
+    )
+    new_package = _package(
+        tmp_path / "new", "disabled-layered-rollback", "config",
+        "scripts/LayeredRollback.ini", payload=b"v2", version="2.0.0",
+    )
+    service = ModIntegrationService(game)
+    service.install(ModManifest.load(old_package))
+    service.set_enabled("disabled-layered-rollback", False)
+
+    def fail_deactivation(_records):
+        raise OSError("synthetic deactivate failure")
+
+    monkeypatch.setattr(
+        service, "_deactivate_new_loose_payload", fail_deactivation,
+    )
+    with pytest.raises(OSError, match="synthetic deactivate failure"):
+        service.install(ModManifest.load(new_package))
+
+    assert target.read_bytes() == b"original"
+    assert target.with_name("LayeredRollback.ini.disabled").read_bytes() == b"v1"
+    receipt = json.loads(
+        (service.state_root / "disabled-layered-rollback.json").read_text(
+            encoding="utf-8",
+        )
+    )
+    assert receipt["enabled"] is False
+    assert receipt["version"] == "1.0.0"
+
+
+def test_uninstall_rolls_back_loose_files_and_receipt_when_registry_fails(
+    tmp_path: Path, monkeypatch,
+):
+    game = _game(tmp_path)
+    target = game / "scripts" / "rollback.ini"
+    target.parent.mkdir()
+    target.write_bytes(b"original")
+    manifest = ModManifest.load(_package(
+        tmp_path, "uninstall-rollback", "config", "scripts/rollback.ini",
+        payload=b"managed",
+    ))
+    service = ModIntegrationService(game)
+    service.install(manifest)
+
+    from allin1.extensions import ExtensionRegistry
+
+    real_rebuild = ExtensionRegistry.rebuild
+    calls = 0
+
+    def fail_once(registry):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("synthetic registry failure")
+        return real_rebuild(registry)
+
+    monkeypatch.setattr(ExtensionRegistry, "rebuild", fail_once)
+    with pytest.raises(OSError, match="synthetic registry failure"):
+        service.uninstall("uninstall-rollback")
+
+    assert target.read_bytes() == b"managed"
+    assert (service.state_root / "uninstall-rollback.json").is_file()
+    assert service.list_installed()[0].enabled is True
 
 
 def test_failed_update_restores_previous_installed_version(tmp_path: Path, monkeypatch):
@@ -293,7 +452,7 @@ def test_manifest_metadata_validation(tmp_path: Path, replacement: str, message:
     manifest_path = package / "mod.toml"
     text = manifest_path.read_text()
     if replacement.startswith("schema"):
-        text = text.replace(replacement, "schema_version = 2")
+        text = text.replace(replacement, "schema_version = 3")
     elif replacement.startswith("id"):
         text = text.replace(replacement, 'id = "BAD ID"')
     elif replacement.startswith("type"):
@@ -355,6 +514,54 @@ def test_launcher_managed_destinations_are_reserved(tmp_path: Path, destination:
         ModManifest.load(package)
 
 
+@pytest.mark.parametrize(
+    "destination",
+    [
+        "scripts/payload.dll:stream",
+        "scripts/CON.txt",
+        "scripts/trailing-dot.",
+        "scripts/bad?.dll",
+    ],
+)
+def test_windows_invalid_destination_components_are_rejected(
+    tmp_path: Path, destination: str,
+):
+    package = _package(
+        tmp_path, "invalid-windows-path", "script", destination,
+    )
+    with pytest.raises(ValueError, match="Windows-invalid or reserved"):
+        ModManifest.load(package)
+
+
+def test_package_namespace_reserved_for_launcher_builtins(tmp_path: Path):
+    package = _package(
+        tmp_path, "allin1.forged", "script", "scripts/Forged.dll",
+    )
+    with pytest.raises(ValueError, match="namespace is reserved"):
+        ModManifest.load(package)
+
+
+def test_install_rejects_in_root_symlink_destination_alias(tmp_path: Path):
+    game = _game(tmp_path)
+    scripts = game / "scripts"
+    scripts.mkdir()
+    protected = scripts / "ALLIN1.toml"
+    protected.write_bytes(b"protected")
+    alias = scripts / "Harmless.toml"
+    try:
+        alias.symlink_to(protected)
+    except OSError as exc:
+        pytest.skip(f"symlink creation is unavailable: {exc}")
+    manifest = ModManifest.load(_package(
+        tmp_path, "alias-package", "config", "scripts/Harmless.toml",
+        payload=b"replacement",
+    ))
+
+    with pytest.raises(ValueError, match="symlink or junction"):
+        ModIntegrationService(game).install(manifest)
+    assert protected.read_bytes() == b"protected"
+
+
 def test_edition_missing_receipt_and_corrupt_receipt_errors(tmp_path: Path):
     game = _game(tmp_path, enhanced=False)
     service = ModIntegrationService(game)
@@ -382,7 +589,7 @@ def test_enable_refuses_missing_or_colliding_managed_file(tmp_path: Path):
     with pytest.raises(FileNotFoundError, match="Managed mod file is missing"):
         service.set_enabled("toggle-test", False)
 
-    target.write_bytes(b"managed")
+    target.write_bytes(b"synthetic mod payload")
     service.set_enabled("toggle-test", False)
     target.write_bytes(b"collision")
     with pytest.raises(FileExistsError, match="destination exists"):

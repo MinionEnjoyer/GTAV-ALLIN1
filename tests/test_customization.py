@@ -101,6 +101,113 @@ def test_weapon_customization_round_trip_is_preserved_by_launcher(tmp_path):
         "WEAPON_A": customization}
 
 
+def test_launcher_edit_preserves_client_owned_and_future_character_state(tmp_path):
+    path = tmp_path / "characters.json"
+    skills = {
+        "stamina": 20,
+        "strength": 21,
+        "lung_capacity": 22,
+        "driving": 23,
+        "flying": 24,
+        "shooting": 25,
+        "stealth": 26,
+        "future_skill": {"rank": 4},
+    }
+    components = [
+        {"drawable": index, "texture": 0}
+        for index in range(12)
+    ]
+    components[0]["future_palette"] = {"primary": 7}
+    props = [
+        {"drawable": -1, "texture": 0}
+        for _ in range(8)
+    ]
+    props[0]["future_anchor"] = "head"
+    payload = {
+        "_future_root": {"format": 3},
+        "future_character": {"do_not_remove": True},
+        "michael": {
+            "schema_version": 12,
+            "weapons": ["WEAPON_A"],
+            "weapon_ammo": {"WEAPON_A": 47},
+            "weapon_customizations": {
+                "WEAPON_A": {
+                    "active_tint": 2,
+                    "future_finish": {"wear": 0.2},
+                },
+            },
+            "gear": [],
+            "equipped_gear": [],
+            "properties": ["allin1_super_yacht", "future_property"],
+            "smoke_grenades": {"orange": 3, "future_color": 2},
+            "active_smoke_color": "orange",
+            "managed": True,
+            "future_entitlements": {"season": 9},
+            "outfit": {
+                "managed": True,
+                "unlock_all": False,
+                "components": components,
+                "props": props,
+                "presets": {},
+                "future_outfit_mode": {"layered": True},
+            },
+            "progress": {
+                "managed": True,
+                "money": 1000,
+                "skills": skills,
+                "future_progress": {"reputation": 88},
+            },
+        },
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    store = LoadoutStore(path, {"WEAPON_A"}, set())
+    loadouts = store.load()
+    loadouts["michael"].progress.money = 2000
+    loadouts["michael"].outfit.components[0].drawable = 11
+    store.save(loadouts)
+
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    michael = saved["michael"]
+    assert saved["_future_root"] == payload["_future_root"]
+    assert saved["future_character"] == payload["future_character"]
+    assert michael["properties"] == payload["michael"]["properties"]
+    assert michael["smoke_grenades"] == payload["michael"]["smoke_grenades"]
+    assert michael["active_smoke_color"] == "orange"
+    assert michael["schema_version"] == 12
+    assert michael["future_entitlements"] == {"season": 9}
+    assert michael["weapon_customizations"]["WEAPON_A"]["future_finish"] == {
+        "wear": 0.2}
+    assert michael["outfit"]["future_outfit_mode"] == {"layered": True}
+    assert michael["outfit"]["components"][0] == {
+        "drawable": 11,
+        "texture": 0,
+        "future_palette": {"primary": 7},
+    }
+    assert michael["outfit"]["props"][0]["future_anchor"] == "head"
+    assert michael["progress"]["future_progress"] == {"reputation": 88}
+    assert michael["progress"]["skills"]["future_skill"] == {"rank": 4}
+    assert michael["progress"]["money"] == 2000
+
+
+def test_properties_and_smoke_state_round_trip_for_launcher_created_state(tmp_path):
+    path = tmp_path / "characters.json"
+    store = LoadoutStore(path, set(), set())
+    loadout = CharacterLoadout(
+        properties=["allin1_super_yacht"],
+        smoke_grenades={"white": 5, "orange": 2},
+        active_smoke_color="orange",
+        schema_version=10,
+    )
+    store.save({"trevor": loadout})
+
+    loaded = store.load()["trevor"]
+    assert loaded.properties == ["allin1_super_yacht"]
+    assert loaded.smoke_grenades == {"white": 5, "orange": 2}
+    assert loaded.active_smoke_color == "orange"
+    assert loaded.schema_version == 10
+
+
 def test_loadout_rejects_unequipped_owned_gear(tmp_path):
     store = LoadoutStore(tmp_path / "loadouts.json", set(), {"ARMOR", "PARACHUTE"})
     loadout = CharacterLoadout(

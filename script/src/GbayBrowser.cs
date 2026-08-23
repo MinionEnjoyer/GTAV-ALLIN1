@@ -24,6 +24,7 @@ namespace ALLIN1
         WeaponBrowser,
         WeaponCustomize,
         GearBrowser,
+        Addons,
         Diagnostics,
         About,
     }
@@ -437,6 +438,9 @@ namespace ALLIN1
                 case BrowserState.GearBrowser:
                     DrawGearBrowser(input);
                     break;
+                case BrowserState.Addons:
+                    DrawAddons(input);
+                    break;
                 case BrowserState.Diagnostics:
                     DrawDiagnostics(input);
                     break;
@@ -547,21 +551,28 @@ namespace ALLIN1
             // Clean GBAY panel. PHAT remains on the loading screen only.
             GbayRenderer.DrawGbayHeader(BROWSER_CX, 0.145f, 0.22f, 0.075f);
 
+            bool addonsAvailable = Allin1ExtensionApi.GetGbayActions().Count > 0;
             string[] labels = { "Vehicles", "Purchase Weapons", "Customize Weapons",
-                "Gear", "My Garage", "Diagnostics", "About" };
+                "Gear", "My Garage", "Add-ons", "Diagnostics", "About" };
             string[] descriptions = {
                 "Browse and deliver road vehicles",
                 "Buy firearms and ammunition",
                 "Upgrade weapons you already own",
                 "Armor, equipment, and field gear",
                 "Manage every personal storage location",
+                addonsAvailable ? "Open installed content-pack actions"
+                    : "No installed add-on actions",
                 "Preview, installation, and runtime status",
                 "ALLIN1 version, credits, and support"
             };
-            bool[] enabled = { true, true, true, true, true, true, true };
-            float[] buttonX = { 0.50f, 0.3975f, 0.6025f, 0.50f, 0.50f, 0.50f, 0.50f };
-            float[] buttonY = { 0.230f, 0.307f, 0.307f, 0.384f, 0.461f, 0.538f, 0.615f };
-            float[] buttonW = { 0.46f, 0.225f, 0.225f, 0.46f, 0.46f, 0.46f, 0.46f };
+            bool contentAvailable = _shop.OnlineContentEnabled;
+            bool[] enabled = {
+                contentAvailable, contentAvailable, contentAvailable,
+                contentAvailable, contentAvailable, addonsAvailable, true, true
+            };
+            float[] buttonX = { 0.50f, 0.3975f, 0.6025f, 0.50f, 0.50f, 0.50f, 0.50f, 0.50f };
+            float[] buttonY = { 0.230f, 0.307f, 0.307f, 0.384f, 0.461f, 0.538f, 0.615f, 0.692f };
+            float[] buttonW = { 0.46f, 0.225f, 0.225f, 0.46f, 0.46f, 0.46f, 0.46f, 0.46f };
 
             GbayRenderer.DrawStatusPill($"BALANCE  ${Game.Player.Money:N0}",
                 BROWSER_CX, 0.202f, 0.20f, GbayRenderer.HeaderBg,
@@ -587,7 +598,7 @@ namespace ALLIN1
 
             GbayRenderer.DrawText(
                 "D-PAD / LEFT STICK NAVIGATE    A SELECT    B CLOSE",
-                BROWSER_CX, 0.716f, 0.225f, GbayRenderer.TextDim,
+                BROWSER_CX, 0.770f, 0.225f, GbayRenderer.TextDim,
                 GbayRenderer.FONT_CONDENSED, true);
 
             bool closeClicked = DrawCenteredBackButton(
@@ -610,6 +621,9 @@ namespace ALLIN1
                     next = _topMenuIndex == 3 ? 1
                         : (_topMenuIndex == 1 || _topMenuIndex == 2) ? 0
                         : _topMenuIndex - 1;
+                int direction = input.DirY > 0 ? 1 : -1;
+                while (next >= 0 && next < labels.Length && !enabled[next])
+                    next += direction;
                 if (next >= 0 && next < labels.Length)
                 {
                     _topMenuIndex = next;
@@ -679,9 +693,13 @@ namespace ALLIN1
                 }
                 else if (activateIdx == 5)
                 {
-                    _state = BrowserState.Diagnostics;
+                    OpenAddons();
                 }
                 else if (activateIdx == 6)
+                {
+                    _state = BrowserState.Diagnostics;
+                }
+                else if (activateIdx == 7)
                 {
                     _state = BrowserState.About;
                 }

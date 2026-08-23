@@ -54,4 +54,6 @@ tools/RpfPatcher/SharpDX*.dll
 .artifacts/
 work/
 .codex_video_*/
+.codex-*/
+.tmp*/
 tools/RpfPatcher/strings.txt

@@ -233,13 +233,55 @@ def test_refresh_current_mods_archive_leaves_it_untouched(tmp_path):
     installer._remove_preview_ytds,
 ])
 def test_rpf_helpers_handle_success_failure_and_exception(tmp_path, monkeypatch, helper):
-    _layout(tmp_path, monkeypatch)
+    _project, _dist, tools = _layout(tmp_path, monkeypatch)
+    patcher = tools / "RpfPatcher" / "RpfPatcher.exe"
     result = installer.InstallResult(tmp_path)
-    for response in (
-        Mock(returncode=0, stdout="ok", stderr=""),
-        Mock(returncode=2, stdout="", stderr="bad"),
-    ):
-        monkeypatch.setattr(installer.subprocess, "run", Mock(return_value=response))
-        helper(tmp_path, result) if helper is installer._patch_dlclist_rpf else helper(tmp_path)
-    monkeypatch.setattr(installer.subprocess, "run", Mock(side_effect=OSError("failed")))
-    helper(tmp_path, result) if helper is installer._patch_dlclist_rpf else helper(tmp_path)
+    command = {
+        installer._patch_dlclist_rpf: [
+            str(patcher), "patch", str(tmp_path), "allin1_previews",
+        ],
+        installer._unpatch_dlclist_rpf: [
+            str(patcher), "unpatch", str(tmp_path),
+        ],
+        installer._remove_preview_ytds: [
+            str(patcher), "remove-ytd", str(tmp_path), "allin1_",
+        ],
+    }[helper]
+
+    success = Mock(return_value=Mock(returncode=0, stdout="ok", stderr=""))
+    monkeypatch.setattr(installer, "run_hidden", success)
+    returned = (
+        helper(tmp_path, result)
+        if helper is installer._patch_dlclist_rpf else helper(tmp_path)
+    )
+    success.assert_called_once_with(
+        command, capture_output=True, text=True, timeout=120,
+    )
+    if helper is installer._patch_dlclist_rpf:
+        assert returned is True
+
+    failure = Mock(return_value=Mock(returncode=2, stdout="", stderr="bad"))
+    monkeypatch.setattr(installer, "run_hidden", failure)
+    returned = (
+        helper(tmp_path, result)
+        if helper is installer._patch_dlclist_rpf else helper(tmp_path)
+    )
+    failure.assert_called_once_with(
+        command, capture_output=True, text=True, timeout=120,
+    )
+    if helper is installer._patch_dlclist_rpf:
+        assert returned is False
+        assert result.warnings[-1] == "Failed to patch dlclist.xml: bad"
+
+    crashed = Mock(side_effect=OSError("failed"))
+    monkeypatch.setattr(installer, "run_hidden", crashed)
+    returned = (
+        helper(tmp_path, result)
+        if helper is installer._patch_dlclist_rpf else helper(tmp_path)
+    )
+    crashed.assert_called_once_with(
+        command, capture_output=True, text=True, timeout=120,
+    )
+    if helper is installer._patch_dlclist_rpf:
+        assert returned is False
+        assert result.warnings[-1] == "Could not patch dlclist.xml: failed"

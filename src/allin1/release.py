@@ -23,6 +23,7 @@ PUBLIC_ROOT_FILES = (
     "README.md",
     "RELEASE_NOTES.md",
     "documentation.md",
+    "docs/content-extension-api.md",
     "config.example.toml",
     "install.bat",
     "manager.bat",
@@ -39,6 +40,7 @@ PUBLIC_ROOT_FILES = (
 
 PUBLIC_TREE_RULES = {
     "src/allin1": frozenset({".py", ".png", ".ico"}),
+    "content": frozenset({".json"}),
     "data": None,
     "script/dist": frozenset({".dll", ".png"}),
 }

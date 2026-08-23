@@ -553,6 +553,7 @@ def test_character_customization_is_shared_with_gbay_and_has_animated_loading():
 
 def test_gbay_weapons_restore_without_clobbering_story_loadouts():
     inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()
+    extension_runtime = (ROOT / "script/src/ExtensionRuntime.cs").read_text()
     assert "bool hasSavedWeapons = inventory.weapons.Count > 0" in inventory
     assert "inventory.equipped_gear.Count == 0 && !hasSavedWeapons" in inventory
     apply_start = inventory.index("private static void Apply(string character)")
@@ -568,9 +569,11 @@ def test_gbay_weapons_restore_without_clobbering_story_loadouts():
     assert '"managed", inventory.managed' in inventory
     assert "IS_AUTO_SAVE_IN_PROGRESS" in inventory
     assert "CaptureWeaponAmmo(character, player, \"story_save_started\")" in inventory
-    assert 'new[] { "GTA V", "GTAV Enhanced" }' in inventory
-    assert 'Directory.EnumerateFiles(' in inventory
-    assert 'profiles, "SGTA5*", SearchOption.AllDirectories' in inventory
+    assert "CreateActiveScope(documents, scripts)" in extension_runtime
+    assert "SaveGameFolderForScripts" in extension_runtime
+    assert 'profileDirectory, "SGTA5*", SearchOption.TopDirectoryOnly' in extension_runtime
+    assert 'new[] { "GTA V", "GTAV Enhanced" }' not in extension_runtime
+    assert '"SGTA5*", SearchOption.AllDirectories' not in extension_runtime
     assert 'CaptureWeaponAmmo(character, player, "story_save_written")' in inventory
     assert "gbay_state_backed_up" in inventory
     assert "GET_AMMO_IN_PED_WEAPON" in inventory
@@ -675,7 +678,7 @@ def test_all_garage_entrances_fail_closed_during_story_missions():
     assert "garages_always_accessible" in (
         ROOT / "src/allin1/config.py").read_text()
     assert "Allow garage entry while wanted" in (
-        ROOT / "src/allin1/gui.py").read_text()
+        ROOT / "content/allin1-online-content/allin1.content.json").read_text()
     assert "GarageEntryPolicy.Evaluate(" in garage
     assert "RejectGarageEntry(ECLIPSE_GARAGE)" in garage
     assert "RejectGarageEntry(THREE_FLOOR_GARAGE)" in garage
@@ -969,13 +972,18 @@ def test_experimental_systems_are_independent_opt_in_launcher_options():
     coordinator = (ROOT / "script/src/PoliceTacticsCoordinator.cs").read_text()
     physics = (ROOT / "script/src/NpcPhysicsExperiment.cs").read_text()
     smoke = (ROOT / "script/src/EnhancedSmokeController.cs").read_text()
+    experiment_content = (
+        ROOT / "content/allin1-experimental-gameplay/allin1.content.json"
+    ).read_text()
 
     assert "enhanced_police_ai: bool = False" in config
     assert "gta_iv_npc_physics: bool = False" in config
     assert "gta_iv_npc_physics_debug: bool = False" in config
     assert "enhanced_smoke_effects: bool = False" in config
     assert 'f"{boolean(self.script.enhanced_police_ai)}\\n"' in config
-    assert 'text="Enhanced Police AI"' in gui
+    assert '"label": "Enhanced Police AI"' in experiment_content
+    assert '"default": false' in experiment_content
+    assert "content_setting_vars" in gui
     assert "self.config.script.enhanced_police_ai" in gui
     assert "enhanced_police_ai = false" in example
     assert "gta_iv_npc_physics = false" in example
@@ -1228,7 +1236,7 @@ def test_gbay_gear_store_is_reachable_and_uses_captured_previews():
     gear_browser = (ROOT / "script/src/GbayBrowser.Gear.cs").read_text()
     shop = (ROOT / "script/src/GbayShop.cs").read_text()
     assert '"Vehicles", "Purchase Weapons", "Customize Weapons"' in browser
-    assert '"Gear", "My Garage", "Diagnostics", "About"' in browser
+    assert '"Gear", "My Garage", "Add-ons", "Diagnostics", "About"' in browser
     assert "case BrowserState.GearBrowser:" in browser
     assert "new GearCategory(\"Protection\", GearList.Protection)" in gear_browser
     assert "new GearCategory(\"Equipment\", GearList.Equipment)" in gear_browser

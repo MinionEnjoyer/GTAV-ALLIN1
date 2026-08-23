@@ -6,12 +6,19 @@ import hashlib
 import json
 import re
 import shutil
+import stat
 import sys
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
+from allin1.extensions import (
+    EXTENSION_API_VERSION,
+    ExtensionManifest,
+    ExtensionRegistry,
+)
 from allin1.processes import run_hidden
 
 if sys.version_info >= (3, 11):
@@ -25,6 +32,9 @@ SUPPORTED_DEPENDENCIES = frozenset({"scripthookv", "shvdn", "openrpf"})
 _ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _DLC_PACK_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+_REQUIREMENT_PATTERN = re.compile(
+    r"^([a-z0-9][a-z0-9._-]{1,63})(?:(==|>=)([0-9]+(?:\.[0-9]+){0,3}))?$"
+)
 _RESERVED_DESTINATIONS = frozenset({
     "dinput8.dll",
     "openiv.asi",
@@ -37,17 +47,32 @@ _RESERVED_DESTINATIONS = frozenset({
     "scripts/allin1.dll",
     "scripts/allin1.toml",
 })
+_WINDOWS_INVALID_PATH_CHARS = frozenset('<>:"|?*')
+_WINDOWS_RESERVED_STEMS = frozenset({
+    "con", "prn", "aux", "nul",
+    *(f"com{index}" for index in range(1, 10)),
+    *(f"lpt{index}" for index in range(1, 10)),
+})
 
 
 def _relative_path(value: object, label: str) -> PurePosixPath:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{label} must be a non-empty relative path")
     normalized = value.strip().replace("\\", "/")
+    raw_parts = normalized.split("/")
     path = PurePosixPath(normalized)
-    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+    if path.is_absolute() or any(part in {"", ".", ".."} for part in raw_parts):
         raise ValueError(f"{label} must not be absolute or contain traversal segments")
-    if ":" in path.parts[0]:
-        raise ValueError(f"{label} must not contain a drive letter")
+    for part in raw_parts:
+        if (
+            any(character in _WINDOWS_INVALID_PATH_CHARS for character in part)
+            or any(ord(character) < 32 for character in part)
+            or part.endswith((" ", "."))
+            or part.split(".", 1)[0].casefold() in _WINDOWS_RESERVED_STEMS
+        ):
+            raise ValueError(
+                f"{label} contains a Windows-invalid or reserved path component"
+            )
     return path
 
 
@@ -80,10 +105,33 @@ def _dlc_pack_list(value: object) -> tuple[str, ...]:
 
 
 def _contained_path(root: Path, relative: str | PurePosixPath) -> Path:
+    """Return a lexical contained path after rejecting every reparse alias.
+
+    Resolving and then operating on the canonical target lets an in-root
+    symlink or junction redirect a harmless-looking manifest destination onto
+    a reserved or separately owned file. Keep the declared lexical target and
+    reject all existing reparse components instead.
+    """
     base = root.resolve()
-    candidate = (base / Path(*PurePosixPath(relative).parts)).resolve(strict=False)
-    if not candidate.is_relative_to(base):
+    safe_relative = _relative_path(str(relative), "managed path")
+    candidate = base / Path(*safe_relative.parts)
+    canonical = candidate.resolve(strict=False)
+    if not canonical.is_relative_to(base):
         raise ValueError(f"Path escapes the allowed root: {relative}")
+    current = base
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    for part in safe_relative.parts:
+        current = current / part
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError:
+            continue
+        if current.is_symlink() or (
+            getattr(metadata, "st_file_attributes", 0) & reparse_flag
+        ):
+            raise ValueError(
+                f"Managed paths may not traverse a symlink or junction: {relative}"
+            )
     return candidate
 
 
@@ -111,6 +159,50 @@ class RpfEntryPatch:
 
 
 @dataclass(frozen=True)
+class PackageRequirement:
+    """A dependency on another enabled ALLIN1-managed content package."""
+
+    mod_id: str
+    operator: str | None = None
+    version: str | None = None
+
+    @classmethod
+    def parse(cls, value: str) -> "PackageRequirement":
+        normalized = value.strip().lower().replace(" ", "")
+        match = _REQUIREMENT_PATTERN.fullmatch(normalized)
+        if not match:
+            raise ValueError(
+                "ALLIN1 package requirements use 'package.id', "
+                "'package.id>=1.2', or 'package.id==1.2.3'"
+            )
+        return cls(match.group(1), match.group(2), match.group(3))
+
+    def __str__(self) -> str:
+        return self.mod_id + (
+            f"{self.operator}{self.version}" if self.operator and self.version else ""
+        )
+
+    @staticmethod
+    def _version_parts(value: str) -> tuple[int, ...]:
+        return tuple(int(part) for part in value.split("."))
+
+    def accepts(self, installed_version: str) -> bool:
+        if self.operator is None or self.version is None:
+            return True
+        try:
+            installed = self._version_parts(installed_version)
+            required = self._version_parts(self.version)
+        except ValueError:
+            return False
+        width = max(len(installed), len(required))
+        installed += (0,) * (width - len(installed))
+        required += (0,) * (width - len(required))
+        if self.operator == "==":
+            return installed == required
+        return installed >= required
+
+
+@dataclass(frozen=True)
 class ModManifest:
     """A validated local mod package manifest."""
 
@@ -126,6 +218,8 @@ class ModManifest:
     dlc_packs: tuple[str, ...]
     files: tuple[ModFile, ...]
     rpf_entries: tuple[RpfEntryPatch, ...]
+    package_requirements: tuple[PackageRequirement, ...] = ()
+    extension: ExtensionManifest | None = None
 
     @property
     def package_root(self) -> Path:
@@ -151,11 +245,16 @@ class ModManifest:
         except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
             raise ValueError(f"Invalid mod.toml manifest: {exc}") from exc
 
-        if data.get("schema_version") != 1:
-            raise ValueError("mod.toml schema_version must be 1")
+        schema_version = data.get("schema_version")
+        if schema_version not in {1, 2}:
+            raise ValueError("mod.toml schema_version must be 1 or 2")
         mod_id = str(data.get("id", "")).strip().lower()
         if not _ID_PATTERN.fullmatch(mod_id):
             raise ValueError("Mod id must be 2-64 lowercase letters, numbers, dots, dashes, or underscores")
+        if mod_id.startswith("allin1."):
+            raise ValueError(
+                "The allin1.* package namespace is reserved for launcher-bundled content"
+            )
         name = str(data.get("name", "")).strip()
         version = str(data.get("version", "")).strip()
         mod_type = str(data.get("type", "")).strip().lower()
@@ -249,6 +348,56 @@ class ModManifest:
         if rpf_entries and "openrpf" not in dependencies:
             raise ValueError("RPF entry patches require the openrpf dependency")
 
+        extension: ExtensionManifest | None = None
+        package_requirements: tuple[PackageRequirement, ...] = ()
+        raw_allin1 = data.get("allin1")
+        if schema_version == 1 and raw_allin1 is not None:
+            raise ValueError(
+                "ALLIN1 extension declarations require mod.toml schema_version = 2"
+            )
+        if schema_version == 2 and raw_allin1 is None:
+            raise ValueError(
+                "mod.toml schema_version 2 requires an [allin1] extension table"
+            )
+        if raw_allin1 is not None:
+            if not isinstance(raw_allin1, dict):
+                raise ValueError("[allin1] must be a table")
+            unknown = set(raw_allin1) - {"api_version", "content", "requires"}
+            if unknown:
+                raise ValueError(
+                    "Unsupported [allin1] field(s): " + ", ".join(sorted(unknown))
+                )
+            if raw_allin1.get("api_version") != EXTENSION_API_VERSION:
+                raise ValueError(
+                    f"[allin1].api_version must be {EXTENSION_API_VERSION}"
+                )
+            content_path = _relative_path(
+                raw_allin1.get("content"), "[allin1].content"
+            )
+            extension = ExtensionManifest.load(
+                _contained_path(path.parent, content_path)
+            )
+            if extension.extension_id != mod_id:
+                raise ValueError("Content manifest id must match the mod.toml id")
+            if extension.version != version:
+                raise ValueError("Content manifest version must match the mod.toml version")
+            if any(setting.config_key for setting in extension.settings):
+                raise ValueError(
+                    "Packaged content settings may not bind launcher core config fields; "
+                    "use package-namespaced settings"
+                )
+            raw_requires = _string_list(
+                raw_allin1.get("requires"), "[allin1].requires"
+            )
+            package_requirements = tuple(
+                PackageRequirement.parse(requirement) for requirement in raw_requires
+            )
+            requirement_ids = [requirement.mod_id for requirement in package_requirements]
+            if len(requirement_ids) != len(set(requirement_ids)):
+                raise ValueError("[allin1].requires contains duplicate package ids")
+            if mod_id in requirement_ids:
+                raise ValueError("A content package may not depend on itself")
+
         cls._validate_destinations(mod_type, files)
         if dlc_packs:
             actual_destinations = {
@@ -263,6 +412,10 @@ class ModManifest:
                         f"DLC pack '{pack}' must own exactly this payload destination: "
                         f"mods/update/x64/dlcpacks/{pack}/dlc.rpf"
                     )
+        if extension is not None:
+            extension.validate_package_destinations(
+                item.destination.as_posix() for item in files
+            )
         manifest = cls(
             path,
             mod_id,
@@ -276,6 +429,8 @@ class ModManifest:
             dlc_packs,
             tuple(files),
             tuple(rpf_entries),
+            package_requirements,
+            extension,
         )
         if validate_payload:
             manifest.validate_payload()
@@ -384,6 +539,14 @@ class ModIntegrationService:
         if not _ID_PATTERN.fullmatch(mod_id):
             raise ValueError("Invalid mod id")
         return self.state_root / f"{mod_id}.json"
+
+    def _loose_paths(self, destination: str | PurePosixPath) -> tuple[Path, Path]:
+        relative = _relative_path(str(destination), "managed destination")
+        disabled_relative = relative.with_name(relative.name + ".disabled")
+        return (
+            _contained_path(self.gta_path, relative),
+            _contained_path(self.gta_path, disabled_relative),
+        )
 
     def _read_receipt(self, mod_id: str) -> dict[str, Any]:
         path = self._receipt_path(mod_id)
@@ -570,6 +733,68 @@ class ModIntegrationService:
                 missing.append("openrpf")
         if missing:
             raise ValueError(f"Missing required loader(s): {', '.join(missing)}")
+        self._check_package_requirements(manifest.package_requirements)
+
+    def _check_package_requirements(
+        self, requirements: Iterable[PackageRequirement],
+    ) -> None:
+        required = tuple(requirements)
+        if not required:
+            return
+        installed: dict[str, tuple[str, bool]] = {}
+        for status in self.list_installed():
+            installed[status.mod_id] = (status.version, status.enabled)
+        try:
+            for entry in ExtensionRegistry(self.gta_path).installed():
+                installed[str(entry["id"])] = (
+                    str(entry.get("version", "0")), bool(entry.get("enabled", False))
+                )
+        except (OSError, ValueError, KeyError):
+            pass
+        missing: list[str] = []
+        for requirement in required:
+            candidate = installed.get(requirement.mod_id)
+            if candidate is None or not candidate[1] or not requirement.accepts(candidate[0]):
+                missing.append(str(requirement))
+        if missing:
+            raise ValueError(
+                "Missing required ALLIN1 content package(s): " + ", ".join(missing)
+            )
+
+    def _check_dependents(
+        self, mod_id: str, *, replacement_version: str | None = None,
+    ) -> None:
+        dependents: list[str] = []
+        for status in self.list_installed():
+            if status.mod_id == mod_id or not status.enabled:
+                continue
+            receipt = self._read_receipt(status.mod_id)
+            requirements = tuple(
+                PackageRequirement.parse(str(value))
+                for value in receipt.get("requires", [])
+            )
+            for requirement in requirements:
+                if requirement.mod_id != mod_id:
+                    continue
+                if (
+                    replacement_version is None
+                    or not requirement.accepts(replacement_version)
+                ):
+                    detail = str(requirement)
+                    dependents.append(f"{status.mod_id} ({detail})")
+                break
+        if dependents:
+            if replacement_version is None:
+                action = "is required by"
+            else:
+                action = (
+                    f"cannot be updated to {replacement_version}; that version "
+                    "does not satisfy"
+                )
+            raise ValueError(
+                f"Content package '{mod_id}' {action}: "
+                + ", ".join(sorted(dependents))
+            )
 
     def _check_conflicts(self, manifest: ModManifest) -> None:
         installed_statuses = self.list_installed()
@@ -632,14 +857,19 @@ class ModIntegrationService:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
         backup_dir = self.backup_root / manifest.mod_id / timestamp
         previous_receipt: dict[str, Any] | None = None
-        previous_payloads: list[tuple[Path, str]] = []
+        previous_payloads: list[tuple[Path, str, Path | None]] = []
         records: list[dict[str, Any]] = []
         rpf_records: list[dict[str, Any]] = []
         registered_packs: list[str] = []
+        install_enabled = True
         applied_root = self.state_root / ".payloads" / manifest.mod_id / timestamp
         try:
             if self._receipt_path(manifest.mod_id).exists():
                 previous_receipt = self._read_receipt(manifest.mod_id)
+                install_enabled = bool(previous_receipt.get("enabled", True))
+                self._check_dependents(
+                    manifest.mod_id, replacement_version=manifest.version,
+                )
                 if manifest.rpf_entries or previous_receipt.get("rpf_entries"):
                     raise ValueError(
                         "Updating a package that owns RPF entries requires uninstalling "
@@ -648,21 +878,34 @@ class ModIntegrationService:
                 snapshot_root = backup_dir / ".update-rollback"
                 previous_enabled = bool(previous_receipt.get("enabled", True))
                 for old_item in previous_receipt["files"]:
-                    target = _contained_path(self.gta_path, old_item["destination"])
-                    current = target if previous_enabled else target.with_name(
-                        target.name + ".disabled"
-                    )
+                    target, disabled = self._loose_paths(old_item["destination"])
+                    current = target if previous_enabled else disabled
                     if not current.is_file():
                         raise FileNotFoundError(f"Managed mod file is missing: {current}")
                     snapshot = _contained_path(snapshot_root, old_item["destination"])
                     snapshot.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(current, snapshot)
-                    previous_payloads.append((snapshot, str(old_item["destination"])))
-                self.uninstall(manifest.mod_id)
+                    underlying_snapshot: Path | None = None
+                    if not previous_enabled and target.is_file():
+                        underlying_snapshot = _contained_path(
+                            snapshot_root,
+                            PurePosixPath(".underlying")
+                            / str(old_item["destination"]),
+                        )
+                        underlying_snapshot.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(target, underlying_snapshot)
+                    previous_payloads.append(
+                        (
+                            snapshot,
+                            str(old_item["destination"]),
+                            underlying_snapshot,
+                        )
+                    )
+                self.uninstall(manifest.mod_id, check_dependents=False)
 
             for item in manifest.files:
                 source = _contained_path(manifest.package_root, item.source)
-                target = _contained_path(self.gta_path, item.destination)
+                target, _disabled = self._loose_paths(item.destination)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 backup: Path | None = None
                 if target.exists():
@@ -678,6 +921,8 @@ class ModIntegrationService:
                     "destination": item.destination.as_posix(),
                     "backup": str(backup.relative_to(self.gta_path)).replace("\\", "/")
                     if backup else None,
+                    "backup_sha256": _sha256(backup) if backup else None,
+                    "sha256": _sha256(target),
                 })
 
             for index, item in enumerate(manifest.rpf_entries, start=1):
@@ -714,27 +959,34 @@ class ModIntegrationService:
                         f"RPF entry verification failed: {item.archive}/{item.entry}"
                     )
 
-            for pack in manifest.dlc_packs:
-                if self._set_dlc_registration(pack, True):
-                    registered_packs.append(pack)
+            if not install_enabled:
+                self._deactivate_new_loose_payload(records)
+
+            if install_enabled:
+                for pack in manifest.dlc_packs:
+                    if self._set_dlc_registration(pack, True):
+                        registered_packs.append(pack)
 
             receipt = {
-                "schema_version": 1,
+                "schema_version": 2 if manifest.extension else 1,
                 "id": manifest.mod_id,
                 "name": manifest.name,
                 "version": manifest.version,
                 "type": manifest.mod_type,
-                "enabled": True,
+                "enabled": install_enabled,
                 "installed_at": datetime.now(timezone.utc).isoformat(),
                 "source_manifest": str(manifest.manifest_path),
                 "dependencies": list(manifest.dependencies),
                 "conflicts": list(manifest.conflicts),
                 "dlc_packs": list(manifest.dlc_packs),
+                "requires": [str(requirement) for requirement in manifest.package_requirements],
+                "extension": manifest.extension.to_dict() if manifest.extension else None,
                 "owned_dlc_packs": list(registered_packs),
                 "files": records,
                 "rpf_entries": rpf_records,
             }
             self._write_receipt(receipt)
+            ExtensionRegistry(self.gta_path).rebuild()
         except Exception:
             for pack in reversed(registered_packs):
                 try:
@@ -749,45 +1001,141 @@ class ModIntegrationService:
                     shutil.rmtree(applied_root)
             if previous_receipt is not None:
                 previous_enabled = bool(previous_receipt.get("enabled", True))
-                for snapshot, destination in previous_payloads:
-                    target = _contained_path(self.gta_path, destination)
-                    disabled = target.with_name(target.name + ".disabled")
+                for snapshot, destination, underlying_snapshot in previous_payloads:
+                    target, disabled = self._loose_paths(destination)
                     target.unlink(missing_ok=True)
                     disabled.unlink(missing_ok=True)
                     restored = target if previous_enabled else disabled
                     restored.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(snapshot, restored)
+                    if not previous_enabled and underlying_snapshot is not None:
+                        self._copy_atomic(underlying_snapshot, target)
                 self._write_receipt(previous_receipt)
                 if previous_enabled:
                     for pack in previous_receipt.get(
                         "owned_dlc_packs", previous_receipt.get("dlc_packs", []),
                     ):
                         self._set_dlc_registration(str(pack), True)
+                try:
+                    ExtensionRegistry(self.gta_path).rebuild()
+                except Exception:
+                    pass
+            else:
+                # A failure after writing a new receipt must not leave the
+                # package recorded as installed after its payload was rolled back.
+                self._receipt_path(manifest.mod_id).unlink(missing_ok=True)
+                try:
+                    ExtensionRegistry(self.gta_path).rebuild()
+                except Exception:
+                    pass
             raise
 
         return ModStatus(
-            manifest.mod_id, manifest.name, manifest.version, manifest.mod_type, True, True
+            manifest.mod_id, manifest.name, manifest.version, manifest.mod_type,
+            True, install_enabled,
         )
+
+    @staticmethod
+    def _copy_atomic(source: Path, target: Path) -> None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_name(
+            f".{target.name}.allin1-{uuid.uuid4().hex}.tmp"
+        )
+        try:
+            shutil.copy2(source, temporary)
+            temporary.replace(target)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    def _backup_for_loose_file(
+        self, item: dict[str, Any], *, require: bool = False,
+    ) -> Path | None:
+        value = item.get("backup")
+        if not value:
+            if require:
+                raise FileNotFoundError(
+                    f"Managed backup is missing for {item['destination']}"
+                )
+            return None
+        backup = _contained_path(self.gta_path, value)
+        if not backup.is_file():
+            raise FileNotFoundError(f"Managed mod backup is missing: {backup}")
+        expected = item.get("backup_sha256")
+        if expected and _sha256(backup) != expected:
+            raise RuntimeError(f"Managed mod backup was externally changed: {backup}")
+        return backup
+
+    def _deactivate_new_loose_payload(
+        self, records: Iterable[dict[str, Any]],
+    ) -> None:
+        records = list(records)
+        for item in records:
+            target, disabled = self._loose_paths(item["destination"])
+            if not target.is_file():
+                raise FileNotFoundError(f"Managed mod file is missing: {target}")
+            if _sha256(target) != item["sha256"]:
+                raise RuntimeError(f"Managed mod file was externally changed: {target}")
+            if disabled.exists() or disabled.is_symlink():
+                raise FileExistsError(
+                    f"Cannot preserve disabled package state; destination exists: {disabled}"
+                )
+            self._backup_for_loose_file(item)
+        for item in records:
+            target, disabled = self._loose_paths(item["destination"])
+            target.replace(disabled)
+            backup = self._backup_for_loose_file(item)
+            if backup is not None:
+                self._copy_atomic(backup, target)
 
     def _rollback_records(self, records: Iterable[dict[str, Any]]) -> None:
         for item in reversed(list(records)):
-            target = _contained_path(self.gta_path, item["destination"])
-            target.unlink(missing_ok=True)
+            target, disabled = self._loose_paths(item["destination"])
+            expected = item.get("sha256")
+            for candidate in (target, disabled):
+                if candidate.is_file() and (
+                    not expected or _sha256(candidate) == expected
+                ):
+                    candidate.unlink()
             if item.get("backup"):
                 backup = _contained_path(self.gta_path, item["backup"])
-                if backup.is_file():
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(backup, target)
+                if backup.is_file() and not target.exists():
+                    self._copy_atomic(backup, target)
 
     def set_enabled(self, mod_id: str, enabled: bool) -> ModStatus:
         receipt = self._read_receipt(mod_id)
         current = bool(receipt.get("enabled", True))
         if current == enabled:
+            if enabled and receipt.get("extension") is not None:
+                registry = ExtensionRegistry(self.gta_path).rebuild()
+                entry = next(
+                    (
+                        item for item in registry["extensions"]
+                        if item.get("id") == mod_id
+                    ),
+                    None,
+                )
+                if entry is None or not entry.get("enabled"):
+                    reason = (
+                        entry.get("blocked_reason", "runtime authorization failed")
+                        if entry else "extension receipt was rejected"
+                    )
+                    raise RuntimeError(
+                        f"Content package '{mod_id}' is blocked: {reason}"
+                    )
             return ModStatus(
                 mod_id, receipt["name"], receipt["version"], receipt["type"], True, enabled
             )
 
-        moves: list[tuple[Path, Path]] = []
+        if enabled:
+            self._check_package_requirements(
+                PackageRequirement.parse(str(value))
+                for value in receipt.get("requires", [])
+            )
+        else:
+            self._check_dependents(mod_id)
+        original_receipt = json.loads(json.dumps(receipt))
+
+        loose_state: list[tuple[dict[str, Any], bool]] = []
         changed_rpf_entries: list[dict[str, Any]] = []
         dlc_packs = [
             str(pack) for pack in receipt.get(
@@ -795,42 +1143,89 @@ class ModIntegrationService:
             )
         ]
         changed_registrations: list[str] = []
+
+        # Validate the complete loose-file layer before touching DLC
+        # registration, archive entries, files, or the receipt.
+        for item in receipt["files"]:
+            target, disabled = self._loose_paths(item["destination"])
+            source = disabled if enabled else target
+            if not source.is_file():
+                raise FileNotFoundError(f"Managed mod file is missing: {source}")
+            expected_hash = item.get("sha256")
+            if expected_hash and _sha256(source) != expected_hash:
+                raise RuntimeError(
+                    f"Managed mod file was externally changed: {source}"
+                )
+            backup = self._backup_for_loose_file(item)
+            if enabled:
+                if backup is None and (target.exists() or target.is_symlink()):
+                    raise FileExistsError(
+                        f"Cannot change mod state; destination exists: {target}"
+                    )
+                if backup is not None and target.exists():
+                    if not target.is_file():
+                        raise RuntimeError(
+                            f"Underlying path is not a regular file: {target}"
+                        )
+                    expected_backup = item.get("backup_sha256")
+                    if expected_backup:
+                        matches_backup = _sha256(target) == expected_backup
+                    else:
+                        matches_backup = _sha256(target) == _sha256(backup)
+                    if not matches_backup:
+                        raise RuntimeError(
+                            f"Underlying file changed while the mod was disabled: {target}"
+                        )
+            elif disabled.exists() or disabled.is_symlink():
+                raise FileExistsError(
+                    f"Cannot change mod state; destination exists: {disabled}"
+                )
+
+        # Validate archive ownership before toggling registrations.
+        if not enabled:
+            for item in reversed(receipt.get("rpf_entries", [])):
+                applied = _contained_path(self.gta_path, item["applied"])
+                if not self._rpf_entry_matches(item, applied):
+                    raise RuntimeError(
+                        f"Managed RPF entry was externally changed: "
+                        f"{item['archive']}/{item['entry']}"
+                    )
+        else:
+            for item in receipt.get("rpf_entries", []):
+                backup_value = item.get("backup")
+                backup = (
+                    _contained_path(self.gta_path, backup_value)
+                    if backup_value else None
+                )
+                if not self._rpf_entry_matches(item, backup):
+                    raise RuntimeError(
+                        f"RPF entry changed while the mod was disabled: "
+                        f"{item['archive']}/{item['entry']}"
+                    )
+
         try:
             if not enabled:
                 for pack in dlc_packs:
                     self._set_dlc_registration(pack, False)
                     changed_registrations.append(pack)
                 for item in reversed(receipt.get("rpf_entries", [])):
-                    applied = _contained_path(self.gta_path, item["applied"])
-                    if not self._rpf_entry_matches(item, applied):
-                        raise RuntimeError(
-                            f"Managed RPF entry was externally changed: "
-                            f"{item['archive']}/{item['entry']}"
-                        )
                     self._restore_rpf_record(item)
                     changed_rpf_entries.append(item)
             for item in receipt["files"]:
-                target = _contained_path(self.gta_path, item["destination"])
-                disabled = target.with_name(target.name + ".disabled")
-                source, destination = (disabled, target) if enabled else (target, disabled)
-                if not source.is_file():
-                    raise FileNotFoundError(f"Managed mod file is missing: {source}")
-                if destination.exists():
-                    raise FileExistsError(f"Cannot change mod state; destination exists: {destination}")
-                source.replace(destination)
-                moves.append((destination, source))
+                target, disabled = self._loose_paths(item["destination"])
+                underlying_existed = target.exists() if enabled else False
+                loose_state.append((item, underlying_existed))
+                backup = self._backup_for_loose_file(item)
+                if enabled:
+                    if underlying_existed:
+                        target.unlink()
+                    disabled.replace(target)
+                else:
+                    target.replace(disabled)
+                    if backup is not None:
+                        self._copy_atomic(backup, target)
             if enabled:
                 for item in receipt.get("rpf_entries", []):
-                    backup_value = item.get("backup")
-                    backup = (
-                        _contained_path(self.gta_path, backup_value)
-                        if backup_value else None
-                    )
-                    if not self._rpf_entry_matches(item, backup):
-                        raise RuntimeError(
-                            f"RPF entry changed while the mod was disabled: "
-                            f"{item['archive']}/{item['entry']}"
-                        )
                     applied = _contained_path(self.gta_path, item["applied"])
                     self._replace_rpf_entry(
                         _contained_path(self.gta_path, item["archive"]),
@@ -842,6 +1237,23 @@ class ModIntegrationService:
                     changed_registrations.append(pack)
             receipt["enabled"] = enabled
             self._write_receipt(receipt)
+            registry = ExtensionRegistry(self.gta_path).rebuild()
+            if enabled and receipt.get("extension") is not None:
+                entry = next(
+                    (
+                        item for item in registry["extensions"]
+                        if item.get("id") == mod_id
+                    ),
+                    None,
+                )
+                if entry is None or not entry.get("enabled"):
+                    reason = (
+                        entry.get("blocked_reason", "runtime authorization failed")
+                        if entry else "extension receipt was rejected"
+                    )
+                    raise RuntimeError(
+                        f"Content package '{mod_id}' is blocked: {reason}"
+                    )
         except Exception:
             for item in reversed(changed_rpf_entries):
                 try:
@@ -855,25 +1267,79 @@ class ModIntegrationService:
                         )
                 except Exception:
                     pass
-            for destination, source in reversed(moves):
-                if destination.exists() and not source.exists():
-                    destination.replace(source)
+            for item, underlying_existed in reversed(loose_state):
+                target, disabled = self._loose_paths(item["destination"])
+                backup = self._backup_for_loose_file(item)
+                try:
+                    if enabled:
+                        if target.is_file() and not disabled.exists():
+                            target.replace(disabled)
+                        if backup is not None and underlying_existed:
+                            self._copy_atomic(backup, target)
+                    elif disabled.is_file():
+                        if backup is not None:
+                            target.unlink(missing_ok=True)
+                        disabled.replace(target)
+                except Exception:
+                    pass
             for pack in reversed(changed_registrations):
                 try:
                     self._set_dlc_registration(pack, not enabled)
                 except Exception:
                     pass
+            try:
+                self._write_receipt(original_receipt)
+                ExtensionRegistry(self.gta_path).rebuild()
+            except Exception:
+                pass
             raise
         return ModStatus(
             mod_id, receipt["name"], receipt["version"], receipt["type"], True, enabled
         )
 
-    def uninstall(self, mod_id: str) -> None:
+    def uninstall(self, mod_id: str, *, check_dependents: bool = True) -> None:
         receipt = self._read_receipt(mod_id)
+        if check_dependents:
+            self._check_dependents(mod_id)
         was_enabled = bool(receipt.get("enabled", True))
+        receipt_path = self._receipt_path(mod_id)
+        receipt_snapshot = receipt_path.read_bytes()
+
+        # Verify the complete loose-file layer before changing registrations,
+        # archives, payloads, or the receipt.
+        for item in receipt["files"]:
+            target, disabled = self._loose_paths(item["destination"])
+            current = target if was_enabled else disabled
+            if not current.is_file():
+                raise FileNotFoundError(f"Managed mod file is missing: {current}")
+            expected_hash = item.get("sha256")
+            if expected_hash and _sha256(current) != expected_hash:
+                raise RuntimeError(
+                    f"Refusing to remove externally changed managed file: {current}"
+                )
+            backup = self._backup_for_loose_file(item)
+            if not was_enabled:
+                if backup is None and (target.exists() or target.is_symlink()):
+                    raise RuntimeError(
+                        f"Unmanaged file appeared while the mod was disabled: {target}"
+                    )
+                if backup is not None and target.exists():
+                    if not target.is_file():
+                        raise RuntimeError(
+                            f"Underlying path is not a regular file: {target}"
+                        )
+                    expected_backup = item.get("backup_sha256")
+                    matches = (
+                        _sha256(target) == expected_backup
+                        if expected_backup else _sha256(target) == _sha256(backup)
+                    )
+                    if not matches:
+                        raise RuntimeError(
+                            f"Underlying file changed while the mod was disabled: {target}"
+                        )
+
+        # Preflight all entry ownership before changing any state.
         if was_enabled:
-            # Preflight all entry ownership before changing registrations or
-            # archive content. A refusal must leave the installed mod intact.
             for item in reversed(receipt.get("rpf_entries", [])):
                 applied = _contained_path(self.gta_path, item["applied"])
                 if not self._rpf_entry_matches(item, applied):
@@ -881,25 +1347,86 @@ class ModIntegrationService:
                         f"Refusing to overwrite externally changed RPF entry: "
                         f"{item['archive']}/{item['entry']}"
                     )
-            for pack in receipt.get(
+
+        packs = [
+            str(pack) for pack in receipt.get(
                 "owned_dlc_packs", receipt.get("dlc_packs", []),
-            ):
-                self._set_dlc_registration(str(pack), False)
-            for item in reversed(receipt.get("rpf_entries", [])):
-                self._restore_rpf_record(item)
-        for item in reversed(receipt["files"]):
-            target = _contained_path(self.gta_path, item["destination"])
-            disabled = target.with_name(target.name + ".disabled")
-            target.unlink(missing_ok=True)
-            disabled.unlink(missing_ok=True)
-            if item.get("backup"):
-                backup = _contained_path(self.gta_path, item["backup"])
-                if backup.is_file():
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    temporary = target.with_name(f".{target.name}.allin1-restore")
-                    shutil.copy2(backup, temporary)
-                    temporary.replace(target)
-        self._receipt_path(mod_id).unlink()
+            )
+        ]
+        changed_packs: list[str] = []
+        changed_rpf: list[dict[str, Any]] = []
+        staged_loose: list[tuple[dict[str, Any], Path, bool]] = []
+        uninstall_stage = (
+            self.state_root / ".uninstall-rollback" / uuid.uuid4().hex
+        )
+        try:
+            if was_enabled:
+                for pack in packs:
+                    self._set_dlc_registration(pack, False)
+                    changed_packs.append(pack)
+                for item in reversed(receipt.get("rpf_entries", [])):
+                    self._restore_rpf_record(item)
+                    changed_rpf.append(item)
+
+            for item in reversed(receipt["files"]):
+                target, disabled = self._loose_paths(item["destination"])
+                managed = target if was_enabled else disabled
+                underlying_existed = target.exists() if not was_enabled else False
+                stage_name = hashlib.sha256(
+                    str(item["destination"]).encode("utf-8")
+                ).hexdigest()[:20] + ".payload"
+                stage = _contained_path(uninstall_stage, stage_name)
+                stage.parent.mkdir(parents=True, exist_ok=True)
+                managed.replace(stage)
+                staged_loose.append((item, stage, underlying_existed))
+                backup = self._backup_for_loose_file(item)
+                if backup is not None and not target.exists():
+                    self._copy_atomic(backup, target)
+
+            receipt_path.unlink()
+            ExtensionRegistry(self.gta_path).rebuild()
+        except Exception:
+            for item, stage, underlying_existed in reversed(staged_loose):
+                try:
+                    target, disabled = self._loose_paths(item["destination"])
+                    destination = target if was_enabled else disabled
+                    if was_enabled and item.get("backup"):
+                        target.unlink(missing_ok=True)
+                    elif (
+                        not was_enabled
+                        and item.get("backup")
+                        and not underlying_existed
+                    ):
+                        target.unlink(missing_ok=True)
+                    if stage.is_file() and not destination.exists():
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        stage.replace(destination)
+                except Exception:
+                    pass
+            for item in reversed(changed_rpf):
+                try:
+                    applied = _contained_path(self.gta_path, item["applied"])
+                    self._replace_rpf_entry(
+                        _contained_path(self.gta_path, item["archive"]),
+                        item["entry"], applied,
+                    )
+                except Exception:
+                    pass
+            for pack in reversed(changed_packs):
+                try:
+                    self._set_dlc_registration(pack, True)
+                except Exception:
+                    pass
+            try:
+                if not receipt_path.exists():
+                    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+                    receipt_path.write_bytes(receipt_snapshot)
+                ExtensionRegistry(self.gta_path).rebuild()
+            except Exception:
+                pass
+            raise
+
+        shutil.rmtree(uninstall_stage, ignore_errors=True)
         payload_root = self.state_root / ".payloads" / mod_id
         if payload_root.is_dir():
-            shutil.rmtree(payload_root)
+            shutil.rmtree(payload_root, ignore_errors=True)

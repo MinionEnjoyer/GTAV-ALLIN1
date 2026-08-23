@@ -18,8 +18,10 @@ Supported package types:
 - `mixed`: a reviewed combination of supported root plug-ins, scripts, data,
   whole RPF archives, and/or entry-level RPF patches
 
-The examples are inert templates: rename `mod.toml.example` to `mod.toml` only
-inside a real package containing the referenced payload. The launcher validates
+Most examples are inert templates: rename `mod.toml.example` to `mod.toml` only
+inside a real package containing the referenced payload. The
+`examples/content-extension/` package is an intentionally safe, non-executable
+schema version 2 example that can be inspected as-is. The launcher validates
 paths, editions, declared dependencies, conflicts, and optional SHA-256 hashes.
 It records installed files, backs up replaced files, supports enable/disable,
 and restores backups during uninstall.
@@ -39,7 +41,7 @@ editions = ["enhanced"]
 dependencies = ["openrpf"]
 
 [[rpf_entries]]
-source = "OpenIV/Enhanced/interior.ymap"
+source = "payload/Enhanced/interior.ymap"
 archive = "mods/x64h.rpf"
 entry = "levels/gta5/interiors/interior.ymap"
 sha256 = "<64 lowercase hex characters>"
@@ -58,3 +60,16 @@ removes it. Raw OIV, ZIP, RAR, and 7z files are inspected in the **Add-on Conten
 SDK** first; the mod installer intentionally accepts only a reviewed `mod.toml`.
 An already-registered pack remains externally owned and is never removed by
 ALLIN1.
+
+## Declarative content extensions
+
+Package schema version 2 can register typed launcher settings, GBAY section and
+catalog metadata, package requirements, and game-runtime assembly metadata. It
+does not permit arbitrary launcher UI, Python, or command injection. Extension
+packages use an `[allin1]` table in `mod.toml` and a versioned
+`allin1.content.json` descriptor.
+
+Start with the safe example in `examples/content-extension/`, then read the
+[content extension API guide](../docs/content-extension-api.md) for the complete
+schema, lifecycle, security model, compatibility rules, and required Story-save
+behavior for GBAY transactions.

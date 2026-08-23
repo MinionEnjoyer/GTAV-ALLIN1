@@ -843,10 +843,14 @@ namespace ALLIN1
         public NpcPhysicsExperiment()
         {
             _current = this;
-            _enabled = ReadBooleanSetting("gta_iv_npc_physics", false);
-            _enhancedPoliceAi = ReadBooleanSetting(
+            bool packageEnabled = Allin1ExtensionApi.IsPackageEnabled(
+                Allin1ExtensionApi.ExperimentalGameplayPackageId);
+            _enabled = packageEnabled &&
+                ReadBooleanSetting("gta_iv_npc_physics", false);
+            _enhancedPoliceAi = packageEnabled && ReadBooleanSetting(
                 "enhanced_police_ai", false);
-            _debug = ReadBooleanSetting("gta_iv_npc_physics_debug", false);
+            _debug = packageEnabled &&
+                ReadBooleanSetting("gta_iv_npc_physics_debug", false);
             // Keep diagnostics available when configuration unexpectedly
             // disables the experiment; otherwise a path/parser failure hides
             // the evidence needed to diagnose itself.

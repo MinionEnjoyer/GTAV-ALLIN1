@@ -7,6 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from allin1.config import Config
+from allin1.extensions import ExtensionManifest
 from allin1.gui import (
     ManagerWindow, QueueLogHandler, _operation_progress_text, _status_presentation,
 )
@@ -120,6 +121,10 @@ def test_mod_package_list_includes_builtin_smoke_sdk_example():
     window.sdk_catalog.discover.return_value = [smoke]
     window.mod_details = Mock()
     window._mod_service = Mock(side_effect=ValueError("game not selected"))
+    content_catalog = Mock()
+    content_catalog.discover.return_value = []
+    window.manager = SimpleNamespace(extension_catalog=content_catalog)
+    window._content_registry = Mock(side_effect=ValueError("game not selected"))
 
     window.refresh_mods()
 
@@ -129,6 +134,109 @@ def test_mod_package_list_includes_builtin_smoke_sdk_example():
         text="ALLIN1 Colored Smoke Grenades",
         values=("SDK", "Enhanced", "1.0.0", "Built-in example"),
     )
+
+
+def test_mod_package_list_includes_all_builtin_content_packages():
+    online = ExtensionManifest.load(
+        ROOT / "content" / "allin1-online-content" / "allin1.content.json"
+    )
+    experiments = ExtensionManifest.load(
+        ROOT / "content" / "allin1-experimental-gameplay" / "allin1.content.json"
+    )
+    window = ManagerWindow.__new__(ManagerWindow)
+    window.mod_tree = Mock()
+    window.mod_tree.selection.return_value = ()
+    window.mod_tree.get_children.return_value = ()
+    window.mod_catalog = Mock()
+    window.mod_catalog.discover.return_value = []
+    window.sdk_catalog = Mock()
+    window.sdk_catalog.discover.return_value = []
+    window.mod_details = Mock()
+    content_catalog = Mock()
+    content_catalog.discover.return_value = [online, experiments]
+    window.manager = SimpleNamespace(extension_catalog=content_catalog)
+    registry = Mock()
+    registry.installed.return_value = [
+        {"id": online.extension_id, "source": "built-in", "enabled": True},
+        {"id": experiments.extension_id, "source": "built-in", "enabled": False},
+        {"id": "third.party", "source": "package", "enabled": True},
+    ]
+    window._content_registry = Mock(return_value=registry)
+    service = Mock()
+    service.list_installed.return_value = []
+    window._mod_service = Mock(return_value=service)
+
+    window.refresh_mods()
+
+    assert set(window.builtin_package_manifests) == {
+        f"builtin:{online.extension_id}",
+        f"builtin:{experiments.extension_id}",
+    }
+    window.mod_tree.insert.assert_any_call(
+        "", "end", iid=f"builtin:{online.extension_id}", text=online.name,
+        values=("CONTENT", "Legacy + Enhanced", online.version, "Enabled"),
+    )
+    window.mod_tree.insert.assert_any_call(
+        "", "end", iid=f"builtin:{experiments.extension_id}",
+        text=experiments.name,
+        values=("CONTENT", "Legacy + Enhanced", experiments.version, "Disabled"),
+    )
+    assert window.mod_tree.insert.call_count == 2
+
+
+def test_builtin_package_actions_use_registry_and_protect_uninstall(monkeypatch):
+    online = ExtensionManifest.load(
+        ROOT / "content" / "allin1-online-content" / "allin1.content.json"
+    )
+    item_id = f"builtin:{online.extension_id}"
+    window = ManagerWindow.__new__(ManagerWindow)
+    window._selected_mod_id = Mock(return_value=item_id)
+    window.builtin_package_manifests = {item_id: online}
+    window.builtin_package_entries = {
+        item_id: {"id": online.extension_id, "source": "built-in", "enabled": True},
+    }
+    window.notice_text = Mock()
+    window.refresh_mods = Mock()
+    window.refresh_content = Mock()
+    window.install = Mock()
+    registry = Mock()
+    window._content_registry = Mock(return_value=registry)
+    showinfo = Mock()
+    monkeypatch.setattr("allin1.gui.messagebox.showinfo", showinfo)
+
+    window.install_selected_mod()
+    window.toggle_selected_mod(False)
+    window.uninstall_selected_mod()
+
+    window.install.assert_called_once_with()
+    registry.set_builtin_enabled.assert_called_once_with(
+        online.extension_id, False,
+    )
+    window.refresh_mods.assert_called_once_with()
+    window.refresh_content.assert_called_once_with()
+    assert "cannot be uninstalled" in showinfo.call_args.args[1]
+
+
+def test_builtin_package_details_point_to_content_workspace():
+    online = ExtensionManifest.load(
+        ROOT / "content" / "allin1-online-content" / "allin1.content.json"
+    )
+    item_id = f"builtin:{online.extension_id}"
+    window = ManagerWindow.__new__(ManagerWindow)
+    window._selected_mod_id = Mock(return_value=item_id)
+    window.mod_manifests = {}
+    window.sdk_manifests = {}
+    window.builtin_package_manifests = {item_id: online}
+    window.builtin_package_entries = {
+        item_id: {"enabled": True, "source": "built-in"},
+    }
+    window.mod_details = Mock()
+
+    window._show_mod_details()
+
+    detail = window.mod_details.set.call_args.args[0]
+    assert "Built into ALLIN1" in detail
+    assert "Open Content to configure" in detail
 
 
 def test_asset_viewer_opens_selected_package_root(tmp_path, monkeypatch):
@@ -226,6 +334,139 @@ def test_install_offers_verified_optional_rpf_loader(tmp_path, monkeypatch):
     kwargs = window.manager.install.call_args.kwargs
     assert kwargs["rpf_loader_consent"](tmp_path, True) is True
     assert callable(kwargs["progress"])
+
+
+def test_content_workspace_renders_every_declared_system():
+    online = ExtensionManifest.load(
+        ROOT / "content" / "allin1-online-content" / "allin1.content.json"
+    )
+    window = ManagerWindow.__new__(ManagerWindow)
+    window.content_tree = Mock()
+    window.content_tree.selection.return_value = ()
+    window.content_tree.get_children.return_value = ()
+    window.content_detail_title = Mock()
+    window.content_detail_text = Mock()
+    catalog = Mock()
+    catalog.discover.return_value = [online]
+    window.manager = SimpleNamespace(extension_catalog=catalog)
+    registry = Mock()
+    registry.installed.return_value = []
+    window._content_registry = Mock(return_value=registry)
+
+    window.refresh_content()
+
+    assert window.content_manifests == {online.extension_id: online}
+    assert window.content_registry_entries == {}
+    assert window.content_registry_error == ""
+    assert set(window.content_tree_items.values()) == {
+        (online.extension_id, None),
+        *((online.extension_id, system.system_id) for system in online.systems),
+    }
+    assert window.content_tree.insert.call_count == 1 + len(online.systems)
+    package_call = window.content_tree.insert.call_args_list[0]
+    assert package_call.kwargs["text"] == "ALLIN1 Online Content"
+    assert package_call.kwargs["values"] == (
+        "Package", "0.5.1", "Install / Repair",
+    )
+
+
+def test_content_workspace_surfaces_registry_failure():
+    online = ExtensionManifest.load(
+        ROOT / "content" / "allin1-online-content" / "allin1.content.json"
+    )
+    window = ManagerWindow.__new__(ManagerWindow)
+    window.content_tree = Mock()
+    window.content_tree.selection.return_value = ()
+    window.content_tree.get_children.return_value = ()
+    window.content_detail_title = Mock()
+    window.content_detail_text = Mock()
+    catalog = Mock()
+    catalog.discover.return_value = [online]
+    window.manager = SimpleNamespace(extension_catalog=catalog)
+    registry = Mock()
+    registry.installed.side_effect = ValueError("registry is corrupt")
+    window._content_registry = Mock(return_value=registry)
+
+    window.refresh_content()
+
+    assert window.content_registry_error == "registry is corrupt"
+    package_call = window.content_tree.insert.call_args_list[0]
+    assert package_call.kwargs["values"] == (
+        "Package", "0.5.1", "Registry error",
+    )
+
+
+def test_content_workspace_saves_namespaced_package_settings():
+    manifest = ExtensionManifest.from_dict({
+        "schema_version": 1,
+        "api_version": 1,
+        "id": "example.content",
+        "name": "Example Content",
+        "version": "1.0.0",
+        "capabilities": ["launcher.settings"],
+        "systems": [{
+            "id": "display",
+            "name": "Display",
+            "settings": [{
+                "key": "show_hints",
+                "label": "Show hints",
+                "type": "boolean",
+                "default": True,
+            }],
+        }],
+        "gbay": {"sections": [], "catalogs": []},
+        "runtime": {"assemblies": []},
+    })
+    window = _window()
+    window.content_selected_system = (manifest.extension_id, "display")
+    window.content_manifests = {manifest.extension_id: manifest}
+    window.content_registry_entries = {
+        manifest.extension_id: {"source": "package", "enabled": True},
+    }
+    window.content_setting_vars = {
+        (manifest.extension_id, "show_hints"): Variable(False),
+    }
+    window.manager = Mock()
+    registry = Mock()
+    window._content_registry = Mock(return_value=registry)
+    window.notice_text = Mock()
+    window.refresh_content = Mock()
+
+    window.apply_content_settings()
+
+    window.manager.save_config.assert_called_once()
+    registry.set_settings.assert_called_once_with(
+        manifest.extension_id, {"show_hints": False},
+    )
+    window.notice_text.set.assert_called_once_with("Saved settings for Display")
+    window.refresh_content.assert_called_once_with()
+
+
+def test_content_workspace_toggles_builtins_through_registry():
+    online = ExtensionManifest.load(
+        ROOT / "content" / "allin1-online-content" / "allin1.content.json"
+    )
+    window = ManagerWindow.__new__(ManagerWindow)
+    window.content_selected_system = (online.extension_id, None)
+    window.content_manifests = {online.extension_id: online}
+    window.content_registry_entries = {
+        online.extension_id: {"source": "built-in", "enabled": True},
+    }
+    registry = Mock()
+    window._content_registry = Mock(return_value=registry)
+    window._mod_service = Mock()
+    window.notice_text = Mock()
+    window.refresh_mods = Mock()
+    window.refresh_content = Mock()
+
+    window.toggle_selected_content(False)
+
+    registry.set_builtin_enabled.assert_called_once_with(
+        online.extension_id, False,
+    )
+    window._mod_service.assert_not_called()
+    window.refresh_mods.assert_called_once_with()
+    window.refresh_content.assert_called_once_with()
 
 
 def test_launch_guard_submits_only_one_storefront_request(tmp_path, monkeypatch):

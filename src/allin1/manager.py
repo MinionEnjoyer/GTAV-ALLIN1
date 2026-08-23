@@ -9,6 +9,11 @@ from typing import Callable
 from allin1.config import Config
 from allin1 import __version__
 from allin1.detector import detect_gta_path, validate_gta_path
+from allin1.extensions import (
+    ExtensionCatalog,
+    ExtensionRegistry,
+    settings_from_config,
+)
 from allin1.installer import InstallResult, install, uninstall
 from allin1.health import inspect_windows_binary
 from allin1.launch_policy import remove_retired_offline_policy
@@ -44,6 +49,7 @@ class ModManager:
         self.project_root = project_root
         self.config_path = project_root / "config.toml"
         self.database_path = project_root / "data" / "vehicles.toml"
+        self.extension_catalog = ExtensionCatalog(project_root / "content")
         self._install = install_fn
         self._uninstall = uninstall_fn
 
@@ -53,7 +59,7 @@ class ModManager:
         example = self.project_root / "config.example.toml"
         return Config.load(example) if example.exists() else Config.default()
 
-    def save_config(self, config: Config) -> None:
+    def save_config(self, config: Config, *, sync_runtime: bool = True) -> None:
         config.validate()
         gta_path = self.resolve_path(config)
         runtime_scripts_present = bool(
@@ -73,9 +79,17 @@ class ModManager:
                 continue
             remove_retired_offline_policy(candidate)
         config.save(self.config_path)
-        if gta_path is not None and runtime_scripts_present:
+        if sync_runtime and gta_path is not None and runtime_scripts_present:
             scripts = gta_path / "scripts"
             config.save(scripts / "ALLIN1.toml")
+            registry = ExtensionRegistry(gta_path)
+            for manifest in self.extension_catalog.discover():
+                installed = registry.builtin_root / f"{manifest.extension_id}.json"
+                if installed.is_file():
+                    registry.settings.update(
+                        manifest, settings_from_config(manifest, config)
+                    )
+            registry.rebuild()
 
     @staticmethod
     def _path_value(value: str) -> Path | None:
@@ -203,7 +217,10 @@ class ModManager:
         progress: Callable[[int, str], None] | None = None,
         rpf_loader_consent: Callable[[Path, bool], bool] | None = None,
     ) -> InstallResult:
-        self.save_config(config)
+        # The installer deploys the same saved configuration and creates the
+        # extension registry transactionally. Avoid touching a detected live
+        # installation twice before that operation begins.
+        self.save_config(config, sync_runtime=False)
         database = VehicleDatabase.load(self.database_path)
         if progress is None and rpf_loader_consent is None:
             return self._install(config, database)

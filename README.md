@@ -4,16 +4,17 @@
 
 # ALLIN1 Launcher — GTA V Story Mode
 
-A Windows mod tool and Story Mode expansion for bringing GTA Online vehicles, weapons, and
-supporting systems into Grand Theft Auto V single-player. ALLIN1 combines a desktop control center,
-an in-game storefront called **GBAY**, persistent garages, DLC-aware traffic, character editing,
-and a general-purpose local mod-package manager in one project.
+A Windows content launcher and mod manager for Grand Theft Auto V single-player. The launcher is
+the stable shell: it installs, validates, configures, enables, disables, and exposes content packs
+through a versioned API. The official vehicles, weapons, GBAY storefront, properties, garages,
+traffic, and character systems are identified as the **ALLIN1 Online Content** pack; optional NPC
+physics and police-coordination work is identified separately as **ALLIN1 Experimental Gameplay**.
 
 ALLIN1 supports both GTA V Legacy and GTA V Enhanced. It is designed exclusively for **Story
 Mode**; the installer configures the game to launch without BattlEye and should never be used in
 GTA Online.
 
-> **Current public release:** **0.5.0**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
+> **Current public release:** **0.5.1**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
 > highlights and hardening work included in this build.
 
 ## Support
@@ -22,6 +23,15 @@ If the ALLIN1 Launcher and SDK are useful to you, project support is available t
 [Buy Me a Coffee](https://buymeacoffee.com/minionenjoyer).
 
 ## Features
+
+The gameplay features below are supplied by the official ALLIN1 Online Content pack. The launcher
+uses the same package registry, typed-settings model, compatibility checks, and lifecycle controls
+for official and third-party extensions.
+
+- **Versioned content extension API** — managed `mod.toml` v2 packages can contribute discoverable
+  systems, typed launcher settings, GBAY routes and catalogs, package requirements, and
+  receipt-authorized Story Mode assemblies without injecting arbitrary Python or launcher widgets.
+  See [the content extension guide](docs/content-extension-api.md).
 
 - **Galaxy Super Yacht** — purchase the persistent yacht from GBAY's Special
   catalog and assign its GTA Online helipad aircraft (Swift Deluxe or
@@ -87,23 +97,27 @@ If the ALLIN1 Launcher and SDK are useful to you, project support is available t
 ## How it fits together
 
 ```text
-ALLIN1 desktop manager
-  Settings, profiles, health checks, character editor, mod packages
-  Install / repair and Launch GTA V
+ALLIN1 Launcher host
+  Setup, profiles, health, recovery, package lifecycle, shared input
+  Versioned content registry and namespaced settings
                      |
                      v
 GTA V Story Mode
   ScriptHookV + ScriptHookVDotNet Enhanced
-    ALLIN1 client
+    ALLIN1 runtime host
+      ALLIN1 Online Content
       GBAY marketplace and streamed preview artwork
       Traffic spawner and vehicle helpers
       Persistent garages and floor customization
       Character loadouts, progress, outfits, and seat selector
+      ALLIN1 Experimental Gameplay (optional, off by default)
 ```
 
-The Python manager owns configuration, installation, backups, RPF packaging, diagnostics, and
-external mod integration. The C# ScriptHookVDotNet client owns the live Story Mode systems and
-persists character and garage state under the game's `scripts` directory.
+The Python launcher owns configuration, installation, backups, archive packaging, diagnostics,
+extension discovery, and package receipts. The C# runtime owns live Story Mode integration and
+enforces the same installed-content registry. The first API release keeps a compatibility runtime
+for existing official systems while their catalogs and assets are moved behind package boundaries;
+the registry is already the authority for enablement and third-party runtime ownership.
 
 ## Requirements
 
@@ -150,7 +164,8 @@ windows; only file selection, confirmation, and blocking progress remain modal.
 
 The launcher workspaces cover:
 
-- core gameplay, traffic, keybind, performance, and accessibility settings;
+- launcher-host recovery plus shared input and accessibility settings;
+- a dynamic Content workspace generated from official and third-party system declarations;
 - installation status, dependency and RPF-loader health, updates, and rollback-aware repair;
 - per-character skills, money, garages, inventories, outfits, and presets;
 - local third-party mod packages with dependency, conflict, edition, and checksum validation;
@@ -158,7 +173,8 @@ The launcher workspaces cover:
 - redacted support bundles and runtime log inspection.
 
 Named profiles can preserve different combinations of traffic, GBAY, input, and accessibility
-settings. The installed `scripts/ALLIN1.toml` remains the runtime source of truth.
+settings. The installed `scripts/ALLIN1.toml` remains the compatibility source for core runtime
+options; `.allin1/extensions/registry.json` carries package state and effective namespaced settings.
 
 ## In-game controls
 
@@ -195,9 +211,10 @@ Important groups include:
   preview artwork;
 - `[traffic]` — spawn distances, population limits, replacement behavior, and adaptive FPS guard;
 - `[vehicles]` — global enablement plus class and model exclusions;
-- `[script]` — GBAY, night vision and seat-selector keys, UI scale, reduced motion, colorblind mode,
-  safe mode, free purchases, support logging, and the F10 world-vector overlay.
-  The experimental branch also offers an opt-in GTA IV-style ambient NPC physics preset.
+- `[script]` — shared input, accessibility, recovery, compatibility, and logging fields used by
+  the current runtime bridge. Content-pack settings should be changed in the launcher's Content
+  workspace and are synchronized to this bridge when required.
+  The Experimental Gameplay pack offers an opt-in GTA IV-style ambient NPC physics preset.
   See [the experiment notes](docs/gtaiv-npc-physics-experiment.md) for its safety boundary and prior art.
 
 Vehicle, weapon, and gear pricing is maintained in `prices_vehicles.toml`,
@@ -214,7 +231,7 @@ The manager validates edition support, loader requirements, conflicts, destinati
 optional SHA-256 hashes before installation. Replaced files are backed up and restored when the
 package is removed. Entry-level RPF ownership and rollback preserve unrelated archive content.
 
-The format and inert examples are documented in [mods/README.md](mods/README.md). ALLIN1 does not
+Classic and content-extension formats are documented in [mods/README.md](mods/README.md). ALLIN1 does not
 ship or download arbitrary third-party mods through this interface.
 
 ## Standalone ALLIN1 SDK

@@ -161,6 +161,14 @@ namespace ALLIN1
 
         public TrafficSpawner()
         {
+            if (!Allin1ExtensionApi.IsPackageEnabled(
+                    Allin1ExtensionApi.OnlineContentPackageId))
+            {
+                _enabled = false;
+                PauseReason = "content package disabled";
+                Interval = 1000;
+                return;
+            }
             LoadSettings();
             Tick += OnTick;
             // Traffic work is proximity/cooldown based and does not need to run

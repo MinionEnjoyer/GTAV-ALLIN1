@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Callable
 
+from allin1 import __version__
 from allin1.health import inspect_windows_binary, sha256_file
 
 
@@ -165,7 +166,7 @@ def _download_asset(asset: ReleaseAsset) -> bytes:
     request = urllib.request.Request(
         asset.url,
         headers={
-            "User-Agent": "ALLIN1/0.5.0 dependency-installer",
+            "User-Agent": f"ALLIN1/{__version__} dependency-installer",
             "Accept": "application/octet-stream",
         },
     )

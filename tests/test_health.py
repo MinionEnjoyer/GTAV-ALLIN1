@@ -3,7 +3,14 @@ import json
 import os
 import struct
 
-from allin1.health import consume_rpf_canary, scan_installation, sha256_file
+import allin1.health as health
+from allin1.health import (
+    consume_rpf_canary,
+    inspect_windows_binary,
+    is_rpf_canary_authorized,
+    scan_installation,
+    sha256_file,
+)
 
 
 def _write_pe(path, *, size=4096):
@@ -202,3 +209,100 @@ def test_health_rejects_smoke_canary_hash_mismatch(tmp_path):
         issue.code for issue in report.issues
     }
     assert report.launch_safe is False
+
+
+def test_binary_inspection_rejects_each_malformed_header(tmp_path):
+    missing_signature = tmp_path / "missing-signature.dll"
+    missing_signature.write_bytes(b"x" * 4096)
+    assert inspect_windows_binary(missing_signature).reason == "missing DOS/PE signature"
+
+    bad_offset = tmp_path / "bad-offset.dll"
+    payload = bytearray(4096)
+    payload[:2] = b"MZ"
+    struct.pack_into("<I", payload, 0x3C, 1)
+    bad_offset.write_bytes(payload)
+    assert inspect_windows_binary(bad_offset).reason == "invalid PE header offset"
+
+    bad_pe = tmp_path / "bad-pe.dll"
+    struct.pack_into("<I", payload, 0x3C, 0x80)
+    bad_pe.write_bytes(payload)
+    assert inspect_windows_binary(bad_pe).reason == "missing PE signature"
+
+
+def test_binary_inspection_reports_unreadable_file(tmp_path, monkeypatch):
+    target = tmp_path / "locked.dll"
+    target.write_bytes(b"x" * 4096)
+    original_open = type(target).open
+
+    def fail_open(path, *args, **kwargs):
+        if path == target:
+            raise OSError("locked")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(type(target), "open", fail_open)
+    assert "unreadable" in inspect_windows_binary(target).reason
+
+
+def test_canary_rejects_bad_marker_hash_and_archive_read_failure(
+    tmp_path, monkeypatch,
+):
+    archive = tmp_path / "mods/update/x64/dlcpacks/allin1_smoke/dlc.rpf"
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(b"canary")
+    marker = tmp_path / "scripts/ALLIN1_colored_smoke_weapons.json"
+    marker.parent.mkdir()
+    marker.write_text(json.dumps({
+        "schema": 2, "pack_id": "allin1_smoke", "canary_state": "pending",
+        "archive_sha256": 123,
+    }))
+    assert is_rpf_canary_authorized(tmp_path, "allin1_smoke", archive) is False
+
+    payload = json.loads(marker.read_text())
+    payload["archive_sha256"] = hashlib.sha256(archive.read_bytes()).hexdigest()
+    marker.write_text(json.dumps(payload))
+    monkeypatch.setattr(health, "sha256_file", lambda _path: (_ for _ in ()).throw(OSError("locked")))
+    assert is_rpf_canary_authorized(tmp_path, "allin1_smoke", archive) is False
+
+
+def test_consume_canary_handles_marker_race_and_write_failure(tmp_path, monkeypatch):
+    archive = tmp_path / "mods/update/x64/dlcpacks/allin1_smoke/dlc.rpf"
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(b"canary")
+    marker = tmp_path / "scripts/ALLIN1_colored_smoke_weapons.json"
+    marker.parent.mkdir()
+    payload = {
+        "schema": 2, "pack_id": "allin1_smoke", "canary_state": "pending",
+        "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+    }
+    marker.write_text(json.dumps(payload))
+
+    real_reader = health._read_canary_marker
+    calls = 0
+
+    def disappearing_marker(path):
+        nonlocal calls
+        calls += 1
+        return real_reader(path) if calls == 1 else None
+
+    monkeypatch.setattr(health, "_read_canary_marker", disappearing_marker)
+    assert consume_rpf_canary(tmp_path, "allin1_smoke") is False
+
+    monkeypatch.setattr(health, "_read_canary_marker", real_reader)
+    path_type = type(marker)
+    original_write = path_type.write_text
+
+    def fail_temporary_write(path, *args, **kwargs):
+        if path.name.endswith(".tmp"):
+            raise OSError("read-only")
+        return original_write(path, *args, **kwargs)
+
+    monkeypatch.setattr(path_type, "write_text", fail_temporary_write)
+    assert consume_rpf_canary(tmp_path, "allin1_smoke") is False
+
+
+def test_health_flags_incomplete_standalone_map_pack(tmp_path):
+    _game(tmp_path, enhanced=True)
+    maps = tmp_path / "mods/update/x64/dlcpacks/allin1_maps"
+    maps.mkdir(parents=True)
+    report = scan_installation(tmp_path)
+    assert "standalone_map_dlc_invalid" in {issue.code for issue in report.issues}

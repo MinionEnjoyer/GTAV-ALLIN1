@@ -1,0 +1,18 @@
+schema_version = 2
+id = "example.content-settings"
+name = "Example Declarative Content Settings"
+version = "1.0.0"
+type = "config"
+description = "A safe, non-executable example of typed ALLIN1 content settings."
+editions = ["legacy", "enhanced"]
+dependencies = []
+conflicts = []
+
+[allin1]
+api_version = 1
+content = "allin1.content.json"
+requires = []
+
+[[files]]
+source = "allin1.content.json"
+destination = "scripts/ExampleContent/allin1.content.json"

@@ -74,7 +74,7 @@ def test_deploy_script_copies_binaries_and_config(tmp_path, monkeypatch):
     assert (scripts / "LemonUI.SHVDN3.dll").read_bytes() == b"ui"
     assert (scripts / "ALLIN1.toml").exists()
     assert (scripts / "ALLIN1_vehicle_grounding.json").exists()
-    assert (scripts / "ALLIN1.version").read_text().strip() == "0.5.0"
+    assert (scripts / "ALLIN1.version").read_text().strip() == "0.5.1"
     assert not (scripts / "ALLIN1.ini").exists()
 
 
@@ -761,8 +761,11 @@ def test_merged_smoke_removal_handles_missing_tool_failure_and_exception(
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text("{}")
     monkeypatch.setattr(installer, "_TOOLS_DIR", tools)
+    missing_run = Mock()
+    monkeypatch.setattr(installer, "run_hidden", missing_run)
 
     installer._remove_merged_smoke_canary(game)
+    missing_run.assert_not_called()
 
     patcher = tools / "RpfPatcher" / "RpfPatcher.exe"
     patcher.parent.mkdir(parents=True)
@@ -770,6 +773,11 @@ def test_merged_smoke_removal_handles_missing_tool_failure_and_exception(
     run = Mock(return_value=Mock(returncode=7, stdout="", stderr="bad restore"))
     monkeypatch.setattr(installer, "run_hidden", run)
     installer._remove_merged_smoke_canary(game)
+    run.assert_called_once_with(
+        [str(patcher), "remove-merged-smoke-canary", str(game)],
+        capture_output=True, text=True, timeout=600,
+    )
 
     run.side_effect = OSError("busy")
     installer._remove_merged_smoke_canary(game)
+    assert run.call_count == 2

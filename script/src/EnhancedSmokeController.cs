@@ -233,8 +233,10 @@ namespace ALLIN1
         public EnhancedSmokeController()
         {
             _current = this;
-            _enabled = NpcPhysicsExperiment.ReadBooleanSetting(
-                "enhanced_smoke_effects", false);
+            _enabled = Allin1ExtensionApi.IsPackageEnabled(
+                    Allin1ExtensionApi.OnlineContentPackageId) &&
+                NpcPhysicsExperiment.ReadBooleanSetting(
+                    "enhanced_smoke_effects", false);
             string marker = Path.Combine(
                 AppDomain.CurrentDomain.BaseDirectory,
                 "ALLIN1_smoke_tuning.json");

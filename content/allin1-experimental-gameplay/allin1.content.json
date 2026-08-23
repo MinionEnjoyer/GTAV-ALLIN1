@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "api_version": 1,
+  "id": "allin1.experimental-gameplay",
+  "name": "ALLIN1 Experimental Gameplay",
+  "version": "0.5.1",
+  "description": "Optional NPC physics and coordinated police-response experiments. Every feature remains off until explicitly enabled.",
+  "capabilities": [
+    "launcher.settings",
+    "npc.physics",
+    "police.coordination",
+    "story-save.transactions"
+  ],
+  "systems": [
+    {
+      "id": "enhanced-police-ai",
+      "name": "Enhanced Police AI",
+      "category": "Police",
+      "description": "Containment, firing lines, squad movement, casualty collection, smoke cover, and CASEVAC experiments.",
+      "experimental": true,
+      "enabled_by_default": false,
+      "settings": [
+        {
+          "key": "enhanced_police_ai",
+          "label": "Enhanced Police AI",
+          "type": "boolean",
+          "default": false,
+          "config_key": "script.enhanced_police_ai"
+        }
+      ]
+    },
+    {
+      "id": "npc-physics",
+      "name": "NPC Physics Experiment",
+      "category": "Physics",
+      "description": "NaturalMotion, injury, disarm, recovery, and interaction tuning for ambient NPCs.",
+      "experimental": true,
+      "enabled_by_default": false,
+      "settings": [
+        {
+          "key": "npc_physics",
+          "label": "GTA IV-style NPC physics",
+          "type": "boolean",
+          "default": false,
+          "config_key": "script.gta_iv_npc_physics"
+        },
+        {
+          "key": "npc_physics_debug",
+          "label": "Physics experiment diagnostics",
+          "type": "boolean",
+          "default": false,
+          "config_key": "script.gta_iv_npc_physics_debug"
+        }
+      ]
+    }
+  ],
+  "gbay": {"sections": [], "catalogs": []},
+  "runtime": {
+    "assemblies": [
+      {"path": "scripts/ALLIN1.dll"}
+    ]
+  }
+}

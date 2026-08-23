@@ -89,6 +89,12 @@ namespace ALLIN1
 
         public CharacterInventory()
         {
+            if (!Allin1ExtensionApi.IsPackageEnabled(
+                    Allin1ExtensionApi.OnlineContentPackageId))
+            {
+                Interval = 1000;
+                return;
+            }
             Interval = 250;
             Tick += OnTick;
             Aborted += OnAborted;
@@ -1078,29 +1084,7 @@ namespace ALLIN1
 
         internal static DateTime LatestStorySaveWriteUtc()
         {
-            DateTime latest = DateTime.MinValue;
-            string documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            string rockstar = Path.Combine(documents, "Rockstar Games");
-            foreach (string gameFolder in new[] { "GTA V", "GTAV Enhanced" })
-            {
-                string profiles = Path.Combine(rockstar, gameFolder, "Profiles");
-                if (!Directory.Exists(profiles)) continue;
-                try
-                {
-                    foreach (string path in Directory.EnumerateFiles(
-                        profiles, "SGTA5*", SearchOption.AllDirectories))
-                    {
-                        // Real save slots have no extension. Ignore Rockstar's .bak
-                        // recovery copies so one save operation produces one backup.
-                        if (Path.GetExtension(path).Length != 0) continue;
-                        DateTime write = File.GetLastWriteTimeUtc(path);
-                        if (write > latest) latest = write;
-                    }
-                }
-                catch (IOException) { }
-                catch (UnauthorizedAccessException) { }
-            }
-            return latest;
+            return StorySaveMonitor.LatestStorySaveWriteUtc();
         }
 
         private static void CaptureWeaponAmmo(string character, Ped ped, string reason)
