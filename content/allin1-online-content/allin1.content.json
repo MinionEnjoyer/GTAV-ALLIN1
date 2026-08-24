@@ -3,7 +3,7 @@
   "api_version": 1,
   "id": "allin1.online-content",
   "name": "ALLIN1 Online Content",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "The official Story Mode content pack: GBAY products, DLC traffic, properties, garages, specialized storage, and character-owned equipment.",
   "capabilities": [
     "gbay.catalogs",

@@ -1,3 +1,17 @@
+# GTA V ALLIN1 0.5.3
+
+Version 0.5.3 keeps the launcher, in-game client, official content packs, and
+standalone SDK on one coordinated public release.
+
+## Coordinated release
+
+- Bumped the launcher, in-game client assembly, ALLIN1 Online Content, and
+  optional Experimental Gameplay package to 0.5.3.
+- Published the expanded 0.5.3 SDK with deeper weapon authoring, package and
+  archive inspection, workbench validation, and API coverage.
+- Hardened grounded assistant diagnostics with safer context margins,
+  query-focused symbol excerpts, evidence-aware confidence, and bounded repair.
+
 # GTA V ALLIN1 0.5.2
 
 Version 0.5.2 expands ALLIN1's package platform and standalone SDK while
