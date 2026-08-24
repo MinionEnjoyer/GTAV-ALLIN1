@@ -9,6 +9,10 @@ from click.testing import CliRunner
 
 import allin1.mods as mods
 from allin1.cli import main
+from allin1.mod_package_contract import (
+    parse_workbench_contract,
+    validate_mod_schema_envelope,
+)
 from allin1.mods import ModManifest, open_mod_package
 
 
@@ -38,6 +42,82 @@ def test_contract_fixture_bytes_match_sdk_copy() -> None:
         for path in SDK_FIXTURES.rglob("*") if path.is_file()
     }
     assert local == sdk
+
+
+def test_schema_envelope_and_scripted_weapon_relationship_contract() -> None:
+    schema, extension = validate_mod_schema_envelope({
+        "schema_version": 2,
+        "allin1": {
+            "api_version": 1,
+            "content": "allin1.content.json",
+            "requires": ["allin1.online-content@>=0.5.4"],
+        },
+    })
+    assert schema == 2
+    assert extension is not None
+
+    enhancements = parse_workbench_contract({
+        "weapon_enhancements": [{
+            "id": "test.suppressor-heat",
+            "name": "Suppressor heat",
+            "mode": "scripted_vanilla_components",
+            "weapon_components": [{
+                "weapon_name": "WEAPON_PISTOL",
+                "weapon_hash": "0x1B06D571",
+                "component_name": "COMPONENT_AT_PI_SUPP_02",
+                "component_hash": "65EA7EBB",
+            }],
+            "script_entry_points": ["Test.Suppressor.Controller"],
+            "visual_assets": [{
+                "dlc_pack": "test_heat",
+                "archive": "x64/models/cdimages/test_heat.rpf",
+                "families": ["pi", "ar"],
+                "levels": 24,
+                "model_pattern": "test_{family}_{level:02d}.ydr",
+                "base_model_pattern": "test_{family}.ydr",
+                "texture_dictionary": "test_heat.ytd",
+                "texture_pattern": "test_gradient_{level:02d}",
+                "archetype_dictionary": "test_heat.ytyp",
+                "base_level_uses_unsuffixed": True,
+            }],
+        }],
+    }, runtime_entry_points=["Test.Suppressor.Controller"])
+    enhancement = enhancements[0]
+    assert enhancement.enhancement_id == "test.suppressor-heat"
+    assert enhancement.weapon_components[0].weapon_hash == "0x1B06D571"
+    assert enhancement.weapon_components[0].component_hash == "0x65EA7EBB"
+    assert enhancement.visual_assets[0].levels == 24
+    assert enhancement.to_dict()["id"] == "test.suppressor-heat"
+
+
+@pytest.mark.parametrize("payload", [
+    {"schema_version": 3},
+    {"schema_version": 1, "allin1": {}},
+    {"schema_version": 2},
+    {"schema_version": 2, "allin1": []},
+    {"schema_version": 2, "allin1": {"api_version": 9, "content": "x"}},
+    {"schema_version": 2, "allin1": {"api_version": 1, "content": "", "requires": []}},
+    {"schema_version": 2, "allin1": {"api_version": 1, "content": "x", "requires": "bad"}},
+])
+def test_schema_envelope_rejects_invalid_versions_and_extensions(payload) -> None:
+    with pytest.raises(ValueError):
+        validate_mod_schema_envelope(payload)
+
+
+@pytest.mark.parametrize("workbench", [
+    [],
+    {"unknown": []},
+    {"weapon_enhancements": "bad"},
+    {"weapon_enhancements": [{}]},
+    {"weapon_enhancements": [{
+        "id": "test.bad", "name": "Bad", "mode": "replacement",
+        "weapon_components": [], "script_entry_points": ["Test.Bad.Controller"],
+        "visual_assets": [],
+    }]},
+])
+def test_workbench_contract_fails_closed_on_malformed_relationships(workbench) -> None:
+    with pytest.raises(ValueError):
+        parse_workbench_contract(workbench)
 
 
 def _zip_tree(archive: Path, root: Path, prefix: str = "") -> None:

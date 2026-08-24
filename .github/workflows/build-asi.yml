@@ -41,6 +41,10 @@ jobs:
           Copy-Item -Path "script/out/ALLIN1.dll" -Destination "script/dist/ALLIN1.dll" -Force
           Copy-Item -Path "script/out/LemonUI.SHVDN3.dll" -Destination "script/dist/LemonUI.SHVDN3.dll" -Force
 
+      - name: Rebuild Suppressors Enhanced distributables
+        shell: pwsh
+        run: ./mods/realistic-suppressors/Build-ReleasePackage.ps1
+
       - name: Upload artifact
         # GitHub can temporarily report a full artifact quota for 6–12 hours
         # after old artifacts are removed. The build and binary commit remain
@@ -53,6 +57,7 @@ jobs:
             script/dist/ALLIN1.dll
             script/dist/LemonUI.SHVDN3.dll
             mods/realistic-suppressors/payload/RealisticSuppressors.dll
+            mods/realistic-suppressors/dist/*
 
       - name: Commit pre-built binaries
         # Feature branches receive the artifact above. Committing generated
@@ -63,6 +68,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main
-          git add script/dist/ALLIN1.dll script/dist/LemonUI.SHVDN3.dll mods/realistic-suppressors/payload/RealisticSuppressors.dll
+          git add script/dist/ALLIN1.dll script/dist/LemonUI.SHVDN3.dll
+          git add mods/realistic-suppressors/payload/RealisticSuppressors.dll
+          git add mods/realistic-suppressors/standalone/payload/RealisticSuppressors.dll
+          git add mods/realistic-suppressors/dist mods/realistic-suppressors/standalone/dist
           git diff --cached --quiet || git commit -m "Auto-build: update packaged DLLs"
           git push
