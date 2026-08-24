@@ -2,15 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Web.Script.Serialization;
 
 namespace RealisticSuppressors
 {
     internal static class ClientLog
     {
         private static readonly object Sync = new object();
-        private static readonly JavaScriptSerializer Json =
-            new JavaScriptSerializer();
         private static readonly string LogPath = Path.Combine(
             Environment.GetFolderPath(
                 Environment.SpecialFolder.LocalApplicationData),
@@ -57,7 +54,7 @@ namespace RealisticSuppressors
                     Directory.CreateDirectory(
                         Path.GetDirectoryName(LogPath));
                     File.AppendAllText(LogPath,
-                        Json.Serialize(record) + Environment.NewLine);
+                        PortableJson.Serialize(record) + Environment.NewLine);
                 }
             }
             catch (Exception)

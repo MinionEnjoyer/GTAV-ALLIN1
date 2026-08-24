@@ -1,9 +1,10 @@
-# Realistic suppressors
+# Suppressors Enhanced
 
-Realistic Suppressors is its own GTA V Story Mode script mod. It is installed,
-configured, enabled, disabled, and uninstalled as the independent
-`realistic-suppressors` package through the ALLIN1 launcher; it is not part of
-ALLIN1, ALLIN1 Online Content, or `ALLIN1.dll`.
+Suppressors Enhanced is its own GTA V Enhanced Story Mode mixed mod. The
+recommended build is installed, configured, enabled, disabled, and uninstalled
+as the independent `realistic-suppressors` package through the ALLIN1 launcher;
+it is not part of ALLIN1 Online Content or compiled into `ALLIN1.dll`. An
+optional standalone build has no `ALLIN1.dll` reference and uses a local INI.
 
 The mod gives attached suppressors a practical stealth benefit while preserving
 the cues that make a shot detectable. It also simulates suppressor temperature,
@@ -14,15 +15,18 @@ suppressor does not need to come from an ALLIN1 storefront to use the model.
 
 ## Install and remove
 
+### Recommended: ALLIN1
+
 1. Open **Packages** in the ALLIN1 launcher.
 2. Choose **Import & install package** and select the distributed
    `realistic-suppressors/mod.toml`.
 3. Confirm the package is enabled, apply its settings, and restart Story Mode.
 
-The launcher receipt owns only
-`scripts/RealisticSuppressors/RealisticSuppressors.dll` and the package's
-installed content descriptor. Disable and re-enable operations act on those
-standalone files. Uninstall removes them without removing or replacing
+The launcher receipt owns
+`scripts/RealisticSuppressors/RealisticSuppressors.dll`, the package's
+installed content descriptor, and the small `rs_suppressor_heat` OpenRPF DLC.
+Disable and re-enable operations act on those standalone files and the DLC-list
+registration. Uninstall removes them without removing or replacing
 `scripts/ALLIN1.dll`, ALLIN1 Online Content, or another mod.
 
 Per-character condition is user state, not an installed payload. It is stored
@@ -31,16 +35,35 @@ retained after uninstall so reinstalling the mod can resume the saved condition.
 Condition changes use the receipt-authorized Story-save transaction lifecycle:
 they commit after a real Story Mode save and discard with an unsaved session.
 
+### Optional: launcher-independent OIV
+
+Open `Suppressors-Enhanced-Standalone-1.1.0.oiv` in an Enhanced-compatible OIV
+installer. It installs a standalone DLL, the same heat DLC, and one
+`dlcpacks:/rs_suppressor_heat/` registration. ScriptHookV,
+ScriptHookVDotNet 3, and OpenRPF remain required. The DLL creates
+`scripts/RealisticSuppressors/RealisticSuppressors.ini` on first launch; edit it
+and restart Story Mode or reload scripts to apply changes. Use the OIV
+installer's reversible package manager to uninstall.
+
+Do not install the ALLIN1 and standalone variants together. Standalone mode
+persists condition at each wear checkpoint and recognizes vanilla Ammu-Nation
+replacement through attachment removal and reattachment. It does not provide
+the ALLIN1 settings UI, package receipt, transactional Story-save rollback, or
+the optional GBAY purchase-event bridge.
+
 ## Settings
 
-After installing the package, open **Content**, select **Realistic Suppressors**,
-and open its **Realistic Suppressors** system.
+After installing the package, open **Content**, select **Suppressors Enhanced**,
+and open its **Suppressors Enhanced** system.
 
 | Setting | Default | Effect |
 |---|---:|---|
-| **Realistic suppressor stealth** | On | Enables witness-aware firearm-report suppression. Heat, glow, and the separate breakage option continue to work when this stealth switch is off. |
-| **Suppressor wear and breakage** | On | Enables condition loss and permanent failure. Turning it off retains heating, cooling, warnings, and glow without reducing condition or removing a suppressor. |
+| **Realistic suppressor stealth** | On | Enables witness-aware firearm-report suppression. Heat, glow, smoke, and the separate breakage option continue to work when this stealth switch is off. |
+| **Suppressor wear and breakage** | On | Enables condition loss and permanent failure. Turning it off retains heating, cooling, glow, and smoke without reducing condition or removing a suppressor. |
 | **Suppressor durability multiplier** | 1.0× | Scales service life from 0.5× to 3.0×. It has no effect while breakage is off. |
+| **Suppressor heat smoke** | On | Emits can-attached barrel smoke above the weapon profile's accelerated-wear onset. Hotter cans produce a denser trail and remain smoky longer while cooling. |
+| **Heat smoke intensity** | 1.0× | Scales smoke size and density from 0.5× to 2.0× without changing temperature, wear, or failure. |
+| **Temperature debug** | Off | Shows `SUPPRESSOR 526 °C` as a small, live lower-right HUD readout while a supported suppressor is equipped. |
 
 Apply changed settings and reload scripts or restart Story Mode.
 
@@ -96,10 +119,40 @@ Franklin, and Trevor. If a trainer substitutes an unsupported player model,
 the mod keeps thermal simulation and glow active but safely suspends destructive
 wear because that model has no supported saved-character replacement path.
 
-The first visible glow begins at 525 °C. A small orange/red glow is rendered at
-the weapon's muzzle bone and intensifies toward the profile's critical
-temperature. Heat is a runtime state; durable condition is saved per character,
-weapon, and suppressor component.
+Visible incandescence begins physically at 525 °C. Because stock GTA component
+materials cannot be changed safely at runtime, the Enhanced package supplies
+five collisionless emissive sleeve assets sized to the stock AR, AR02, pistol,
+sniper, and Mk II sniper suppressor families. Each sleeve has 64 radial sides,
+17 axial rings, outward-facing triangles, and a stock-envelope clearance of
+1.5 mm. Its low-alpha end colors and concentrated orange center are revealed in
+five deliberately spaced opacity stages: a faint center band appears first,
+then gradually spreads outward, with full opacity withheld until the final 4%
+of the path to critical heat. The controller creates
+only the matching sleeve and attaches it directly to `WAPSupp` or `WAPSupp_2`;
+GTA's entity hierarchy therefore moves
+it with weapon sway, recoil, reloads, and camera transitions. The old
+intersecting-entity marker, point light, and frame-drawn world polygon paths are
+not used, so the effect cannot paint the receiver, optic, sight picture, or
+hands. On the first transition to broken condition, a non-damaging particle
+burst and spatial metallic pop fire at the suppressor front cap before removal.
+It is cosmetic only: no explosion, bullet, damage, force, fire, decal, or
+camera-shake native is used. Heat is a runtime state; durable condition is
+saved per character, weapon, and suppressor component.
+
+Above each profile's accelerated-wear onset, a separate looped
+`core/muz_smoking_barrel` effect follows the suppressor bone. Its scale and
+opacity rise continuously with temperature, remain restrained through ordinary
+high heat, and receive a smooth, pronounced boost across the final 18% before
+critical. Sustained high heat adds a second emitter farther down the can for a
+dense, long trail. Particle updates are
+rate-limited, emitters stop on holster, weapon or character changes, unsafe game
+states, failure, and script abort, and the renderer disables itself after a
+native failure without affecting stealth, heat, condition, or the break pop.
+
+The mod does not post heat, critical-condition, breakage, activation, or
+recovery messages to GTA's notification feed. Enable **Temperature debug** when
+you want a live thermal readout; structured diagnostic and failure events remain
+available in `RealisticSuppressors.log`.
 
 ## Weapon profiles
 
@@ -159,8 +212,11 @@ Always follow the actual manufacturer's current manual for real equipment.
 The standalone log at
 `%LOCALAPPDATA%\RealisticSuppressors\RealisticSuppressors.log` records
 `shot_evaluated` entries containing the witness reason, audible radius,
-temperature, durability, heat stage, and profile. A permanent failure emits
+temperature, durability, heat stage, and profile. `configured` proves that the
+launcher authorized the runtime, `runtime_inactive` records a failed startup
+gate, and `glow_started` records the resolved attachment bone and temperature.
+A permanent failure emits one `break_effect_emitted` record followed by
 `component_broken` with the native-removal and condition-update results.
 
-The manual Legacy/Enhanced validation flow is in
+The manual Enhanced validation flow is in
 [tests/IN_GAME_CHECKLIST.md](../tests/IN_GAME_CHECKLIST.md).

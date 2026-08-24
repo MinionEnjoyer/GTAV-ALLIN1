@@ -34,6 +34,14 @@ bin/
 obj/
 
 !script/dist/
+!mods/realistic-suppressors/standalone/dist/
+!mods/realistic-suppressors/standalone/dist/*.oiv
+!mods/realistic-suppressors/dist/
+!mods/realistic-suppressors/dist/*.zip
+!mods/realistic-suppressors/dist/*.oiv
+!mods/realistic-suppressors/dist/*.txt
+mods/realistic-suppressors/standalone/.build/
+mods/realistic-suppressors/.release-build/
 
 # Generated output files
 output/

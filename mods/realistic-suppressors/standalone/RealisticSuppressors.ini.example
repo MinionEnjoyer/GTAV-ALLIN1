@@ -1,0 +1,12 @@
+; Suppressors Enhanced standalone settings
+; Copying is unnecessary: the mod creates RealisticSuppressors.ini beside the
+; standalone DLL on first launch. Edit that generated file, then restart Story
+; Mode or reload ScriptHookVDotNet scripts.
+
+[RealisticSuppressors]
+realistic_suppressor_stealth = true
+suppressor_wear_and_breakage = true
+suppressor_durability_multiplier = 1.0
+suppressor_heat_smoke = true
+heat_smoke_intensity = 1.0
+temperature_debug = false

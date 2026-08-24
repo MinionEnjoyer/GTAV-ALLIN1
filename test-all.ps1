@@ -16,9 +16,9 @@ if ($LASTEXITCODE -ne 0) { throw "Restoring the C# client failed." }
 dotnet test script/tests/ALLIN1.Tests.csproj -c Release --no-restore
 if ($LASTEXITCODE -ne 0) { throw "C# client tests failed." }
 dotnet restore mods/realistic-suppressors/tests/RealisticSuppressors.Tests.csproj
-if ($LASTEXITCODE -ne 0) { throw "Restoring the Realistic Suppressors tests failed." }
+if ($LASTEXITCODE -ne 0) { throw "Restoring the Suppressors Enhanced tests failed." }
 dotnet test mods/realistic-suppressors/tests/RealisticSuppressors.Tests.csproj -c Release --no-restore
-if ($LASTEXITCODE -ne 0) { throw "Realistic Suppressors tests failed." }
+if ($LASTEXITCODE -ne 0) { throw "Suppressors Enhanced tests failed." }
 Copy-Item -LiteralPath "script/bin/Release/ALLIN1.dll" -Destination "script/dist/ALLIN1.dll" -Force
 
 if (-not (Test-Path -LiteralPath "tools/RpfPatcher/RpfPatcher.exe")) {

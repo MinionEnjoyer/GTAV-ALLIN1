@@ -4,8 +4,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Drawing;
+using System.Globalization;
+#if ALLIN1_HOST
 using ALLIN1;
+#endif
 using GTA;
 using GTA.Math;
 using GTA.Native;
@@ -185,8 +187,11 @@ namespace RealisticSuppressors
         }
     }
 
-    public sealed class RealisticSuppressorController : Script,
+    public sealed class RealisticSuppressorController : Script
+#if ALLIN1_HOST
+        ,
         IStorySaveParticipant, IWeaponComponentLifecycleParticipant
+#endif
     {
         private const string PackageId = "realistic-suppressors";
         private const float ShooterScanRadius = 75f;
@@ -195,6 +200,19 @@ namespace RealisticSuppressors
         private const int PostShotCrimeLeaseMs = 180;
         private const int PersistenceIntervalMs = 2000;
         private const int WitnessWorldCacheMs = 100;
+        private const int ActivationRetryMs = 5000;
+        private const string BreakParticleAsset = "core";
+        private const string BreakParticleEffect =
+            "bul_carmetal";
+        private const string BreakSoundName = "Drill_Pin_Break";
+        private const string BreakSoundSet =
+            "DLC_HEIST_FLEECA_SOUNDSET";
+        private const float BreakParticleScale = 0.30f;
+        private const string SmokeParticleAsset = "core";
+        private const string SmokeParticleEffect =
+            "muz_smoking_barrel";
+        private const int SmokeStartRetryMs = 750;
+        private const int SmokeVisualUpdateMs = 125;
 
         // Values are CrimeType indices. SHVDN 3.6 exposes the native but not
         // the later named CrimeType enum.
@@ -248,23 +266,28 @@ namespace RealisticSuppressors
             internal int LastTemperatureAt { get; set; }
             internal int LastPersistedAt { get; set; }
             internal SuppressorHeatStage Stage { get; set; }
-            internal SuppressorHeatStage HighestNotifiedStage { get; set; }
             internal bool Dirty { get; set; }
             internal bool Broken { get; set; }
-            internal bool BreakNotified { get; set; }
+            internal bool BreakEventLogged { get; set; }
             internal bool ConditionRecorded { get; set; }
             internal bool ObservedAbsentAfterBreak { get; set; }
+            internal bool GlowStartedLogged { get; set; }
             internal int LastBreakRemovalAttemptAt { get; set; } =
                 int.MinValue / 2;
         }
 
-        private readonly bool _runtimeEnabled;
-        private readonly bool _stealthEnabled;
-        private readonly bool _breakageEnabled;
-        private readonly float _durabilityScale;
+        private bool _runtimeEnabled;
+        private bool _stealthEnabled;
+        private bool _breakageEnabled;
+        private bool _temperatureDebugEnabled;
+        private bool _heatSmokeEnabled;
+        private float _durabilityScale = 1f;
+        private float _heatSmokeIntensityScale = 1f;
         private readonly SuppressorStateStore _stateStore;
-        private readonly IDisposable _saveRegistration;
-        private readonly IDisposable _componentRegistration;
+#if ALLIN1_HOST
+        private IDisposable _saveRegistration;
+        private IDisposable _componentRegistration;
+#endif
         private readonly Dictionary<uint, ThermalRuntimeState>
             _thermalStates =
                 new Dictionary<uint, ThermalRuntimeState>();
@@ -290,85 +313,249 @@ namespace RealisticSuppressors
         private int _postShotLeaseStartedAt = int.MinValue / 2;
         private int _postShotLeaseWeaponHash;
         private int _lastPersistenceRetryAt = int.MinValue / 2;
+        private int _lastActivationAttemptAt = int.MinValue / 2;
+#if ALLIN1_HOST
+        private bool _activationFailureLogged;
+#endif
         private float _lastAudibleRadius;
         private string _lastWitnessReason = "none";
         private int _lastCandidateCount;
         private int _cachedWeaponEntity;
-        private int _cachedMuzzleBoneIndex = -1;
+        private int _cachedSuppressorBoneIndex = -1;
+        private string _cachedSuppressorBoneName = "none";
+        private uint _cachedSuppressorComponentHash;
+        private Prop _heatOverlay;
+        private int _heatOverlayWeaponEntity;
+        private int _heatOverlayBoneIndex = -1;
+        private string _heatOverlayModelName = "none";
+        private int _heatOverlayOpacity;
+        private int _primaryHeatSmokeHandle;
+        private int _secondaryHeatSmokeHandle;
+        private int _heatSmokeWeaponEntity;
+        private int _heatSmokeBoneIndex = -1;
+        private uint _heatSmokeComponentHash;
+        private int _lastHeatSmokeStartAttemptAt = int.MinValue / 2;
+        private int _lastSecondarySmokeStartAttemptAt = int.MinValue / 2;
+        private int _lastHeatSmokeVisualUpdateAt = int.MinValue / 2;
+        private bool _heatSmokeRuntimeFailed;
+        private bool _heatSmokeCleanupFailureLogged;
+        private readonly HashSet<string> _unavailableHeatOverlayModelsLogged =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private bool _breakParticleAssetRequested;
+        private bool _breakParticleAssetReady;
+        private bool _breakParticleAssetFailureLogged;
         private Ped[] _cachedWorldPeds;
         private int _cachedWorldPedsAt = int.MinValue / 2;
         private long _roundsProcessed;
         private long _unwitnessedShots;
         private long _witnessedShots;
         private long _brokenSuppressors;
+        private long _breakEffectsStarted;
+        private long _heatSmokeEffectsStarted;
         private long _exceptions;
 
         public RealisticSuppressorController()
         {
             _stateStore = new SuppressorStateStore(
                 SuppressorStateStore.DefaultPath);
-            bool enabled = Allin1ExtensionApi.IsPackageEnabled(PackageId);
+            TryActivateRuntime(false);
+            Interval = _runtimeEnabled ? 0 : 1000;
+            Tick += OnTick;
+            Aborted += OnAborted;
+        }
+
+        private bool TryActivateRuntime(bool recoveredAtRuntime)
+        {
+            _lastActivationAttemptAt = Game.GameTime;
+#if ALLIN1_HOST
+            bool enabled;
+            try
+            {
+                enabled = Allin1ExtensionApi.IsPackageEnabled(PackageId);
+            }
+            catch (Exception ex)
+            {
+                enabled = false;
+                if (!_activationFailureLogged)
+                {
+                    _activationFailureLogged = true;
+                    ClientLog.Error("SUPPRESSORS",
+                        "package_status_failed", ex);
+                }
+            }
+            if (!enabled)
+            {
+                if (!_activationFailureLogged)
+                {
+                    _activationFailureLogged = true;
+                    ClientLog.Warn("SUPPRESSORS", "runtime_inactive",
+                        new Dictionary<string, object>
+                        {
+                            { "registry_available",
+                                Allin1ExtensionApi.RegistryAvailable },
+                            { "package_enabled", false },
+                            { "retry_ms", ActivationRetryMs },
+                            { "allin1_location",
+                                typeof(Allin1ExtensionApi).Assembly.Location },
+                            { "allin1_codebase",
+                                typeof(Allin1ExtensionApi).Assembly.CodeBase },
+                            { "app_base",
+                                AppDomain.CurrentDomain.BaseDirectory },
+                        });
+                }
+                return false;
+            }
+
             IDisposable saveRegistration = null;
             IDisposable componentRegistration = null;
-            if (enabled)
+            try
             {
-                try
+                saveRegistration = Allin1ExtensionApi
+                    .RegisterStorySaveParticipant(
+                        PackageId, "suppressor-condition", this);
+                componentRegistration = Allin1ExtensionApi
+                    .RegisterWeaponComponentLifecycleParticipant(
+                        PackageId, "suppressor-components", this);
+            }
+            catch (Exception ex)
+            {
+                saveRegistration?.Dispose();
+                componentRegistration?.Dispose();
+                if (!_activationFailureLogged)
                 {
-                    saveRegistration = Allin1ExtensionApi
-                        .RegisterStorySaveParticipant(
-                            PackageId, "suppressor-condition", this);
-                    componentRegistration = Allin1ExtensionApi
-                        .RegisterWeaponComponentLifecycleParticipant(
-                            PackageId, "suppressor-components", this);
-                }
-                catch (Exception ex)
-                {
-                    saveRegistration?.Dispose();
-                    componentRegistration?.Dispose();
-                    enabled = false;
+                    _activationFailureLogged = true;
                     ClientLog.Error("SUPPRESSORS",
-                        "runtime_authorization_failed", ex);
+                        "runtime_authorization_failed", ex,
+                        new Dictionary<string, object>
+                        {
+                            { "registry_available",
+                                Allin1ExtensionApi.RegistryAvailable },
+                            { "package_enabled", true },
+                        });
                 }
+                return false;
             }
             _saveRegistration = saveRegistration;
             _componentRegistration = componentRegistration;
-            _runtimeEnabled = enabled;
-            _stealthEnabled = enabled &&
+            _runtimeEnabled = true;
+            _activationFailureLogged = false;
+            _stealthEnabled =
                 Allin1ExtensionApi.GetBooleanSetting(
                     PackageId, "realistic_suppressors", true);
             _breakageEnabled = Allin1ExtensionApi.GetBooleanSetting(
                 PackageId, "suppressor_breakage", true);
+            _temperatureDebugEnabled =
+                Allin1ExtensionApi.GetBooleanSetting(
+                    PackageId, "suppressor_temperature_debug", false);
+            _heatSmokeEnabled =
+                Allin1ExtensionApi.GetBooleanSetting(
+                    PackageId, "suppressor_heat_smoke", true);
             _durabilityScale = Clamp(
                 (float)Allin1ExtensionApi.GetNumberSetting(
                     PackageId, "suppressor_durability_scale", 1d),
                 0.5f, 3f);
-            Interval = _runtimeEnabled ? 0 : 1000;
-            Tick += OnTick;
-            Aborted += OnAborted;
+            _heatSmokeIntensityScale = Clamp(
+                (float)Allin1ExtensionApi.GetNumberSetting(
+                    PackageId, "suppressor_smoke_intensity", 1d),
+                0.5f, 2f);
+            Interval = 0;
+            ClientLog.Info("SUPPRESSORS", "configured",
+                new Dictionary<string, object>
+                {
+                    { "runtime_mode", "allin1" },
+                    { "stealth_enabled", _stealthEnabled },
+                    { "breakage_enabled", _breakageEnabled },
+                    { "temperature_debug_enabled",
+                        _temperatureDebugEnabled },
+                    { "heat_smoke_enabled", _heatSmokeEnabled },
+                    { "heat_smoke_intensity",
+                        _heatSmokeIntensityScale },
+                    { "durability_scale", _durabilityScale },
+                    { "profiled_weapons",
+                        SuppressorThermalProfiles.All.Count },
+                    { "recovered_at_runtime", recoveredAtRuntime },
+                });
+            return true;
+#else
+            string assemblyLocation =
+                typeof(RealisticSuppressorController).Assembly.Location;
+            string directory = System.IO.Path.GetDirectoryName(
+                assemblyLocation) ?? AppDomain.CurrentDomain.BaseDirectory;
+            string configPath = System.IO.Path.Combine(directory,
+                StandaloneSuppressorSettings.FileName);
+            string createWarning = StandaloneSuppressorSettings
+                .EnsureDefaultFile(configPath);
+            StandaloneSuppressorSettings settings =
+                StandaloneSuppressorSettings.Load(configPath);
 
-            if (_runtimeEnabled)
+            _stealthEnabled = settings.StealthEnabled;
+            _breakageEnabled = settings.BreakageEnabled;
+            _temperatureDebugEnabled =
+                settings.TemperatureDebugEnabled;
+            _heatSmokeEnabled = settings.HeatSmokeEnabled;
+            _durabilityScale = settings.DurabilityScale;
+            _heatSmokeIntensityScale = settings.HeatSmokeIntensity;
+            _runtimeEnabled = true;
+            Interval = 0;
+
+            ClientLog.Info("SUPPRESSORS", "configured",
+                new Dictionary<string, object>
+                {
+                    { "runtime_mode", "standalone" },
+                    { "config_path", configPath },
+                    { "config_present", System.IO.File.Exists(configPath) },
+                    { "config_warnings", settings.Warnings.Count },
+                    { "stealth_enabled", _stealthEnabled },
+                    { "breakage_enabled", _breakageEnabled },
+                    { "temperature_debug_enabled",
+                        _temperatureDebugEnabled },
+                    { "heat_smoke_enabled", _heatSmokeEnabled },
+                    { "heat_smoke_intensity",
+                        _heatSmokeIntensityScale },
+                    { "durability_scale", _durabilityScale },
+                    { "profiled_weapons",
+                        SuppressorThermalProfiles.All.Count },
+                    { "recovered_at_runtime", recoveredAtRuntime },
+                });
+            foreach (string warning in settings.Warnings)
             {
-                ClientLog.Info("SUPPRESSORS", "configured",
+                ClientLog.Warn("SUPPRESSORS", "standalone_config_warning",
                     new Dictionary<string, object>
                     {
-                        { "stealth_enabled", _stealthEnabled },
-                        { "breakage_enabled", _breakageEnabled },
-                        { "durability_scale", _durabilityScale },
-                        { "profiled_weapons",
-                            SuppressorThermalProfiles.All.Count },
+                        { "warning", warning },
+                        { "config_path", configPath },
                     });
             }
+            if (createWarning.Length > 0)
+            {
+                ClientLog.Warn("SUPPRESSORS", "standalone_config_warning",
+                    new Dictionary<string, object>
+                    {
+                        { "warning", createWarning },
+                        { "config_path", configPath },
+                    });
+            }
+            return true;
+#endif
         }
 
         private void OnTick(object sender, EventArgs args)
         {
-            if (!_runtimeEnabled) return;
             int now = Game.GameTime;
+            if (!_runtimeEnabled)
+            {
+                if (ElapsedMilliseconds(now,
+                        _lastActivationAttemptAt) >= ActivationRetryMs)
+                    TryActivateRuntime(true);
+                if (!_runtimeEnabled) return;
+            }
             try
             {
                 bool unsafeGameState = Game.IsLoading || Game.IsPaused ||
                     Game.IsCutsceneActive ||
+#if ALLIN1_HOST
                     Allin1ExtensionApi.IsGbayMenuActive ||
+#endif
                     !Game.Player.CanControlCharacter;
                 Ped player = Game.Player.Character;
                 if (unsafeGameState || player == null || !player.Exists() ||
@@ -376,6 +563,8 @@ namespace RealisticSuppressors
                 {
                     if (player != null && player.Exists())
                         TryFlushActiveThermalState(now, true);
+                    DestroyHeatOverlay();
+                    DestroySuppressorSmoke();
                     _activeThermalState = null;
                     CancelPostShotLease();
                     ResetShotObservation();
@@ -408,6 +597,8 @@ namespace RealisticSuppressors
                 _breakageActiveForCurrentCharacter =
                     _breakageEnabled &&
                     CurrentCharacter(player).Length > 0;
+                if (_breakageActiveForCurrentCharacter)
+                    PrepareBreakEffectAsset();
                 if (_breakageEnabled &&
                     !_breakageActiveForCurrentCharacter &&
                     !_unsupportedCharacterLogged)
@@ -448,11 +639,17 @@ namespace RealisticSuppressors
 
                 if (thermalState != null && !thermalState.Broken)
                 {
-                    UpdateHeatStage(thermalState,
-                        _breakageActiveForCurrentCharacter);
+                    UpdateHeatStage(thermalState);
                     RenderSuppressorGlow(player, thermalState);
+                    TryRenderSuppressorSmoke(player, thermalState, now);
+                    RenderTemperatureDebug(thermalState);
                     MaybePersistThermalState(
                         thermalState, now, false);
+                }
+                else
+                {
+                    DestroyHeatOverlay();
+                    DestroySuppressorSmoke();
                 }
 
                 bool indoors = Function.Call<int>(
@@ -582,6 +779,7 @@ namespace RealisticSuppressors
             {
                 _exceptions++;
                 TryFlushActiveThermalState(now, true);
+                DestroySuppressorSmoke();
                 CancelPostShotLease();
                 ClientLog.Error("SUPPRESSORS", "tick_failed", ex);
             }
@@ -601,6 +799,9 @@ namespace RealisticSuppressors
                     else
                         MaybePersistThermalState(state, now, true);
                 }
+#if STANDALONE_RUNTIME
+                TryCommitStandaloneState("script_abort");
+#endif
             }
             catch (Exception ex)
             {
@@ -609,8 +810,13 @@ namespace RealisticSuppressors
             }
             finally
             {
+                DestroySuppressorSmoke();
+                DestroyHeatOverlay();
+                ReleaseBreakEffectAsset();
+#if ALLIN1_HOST
                 _componentRegistration?.Dispose();
                 _saveRegistration?.Dispose();
+#endif
             }
 
             ClientLog.Info("SUPPRESSORS", "session_summary",
@@ -620,11 +826,15 @@ namespace RealisticSuppressors
                     { "unwitnessed_rounds", _unwitnessedShots },
                     { "witnessed_rounds", _witnessedShots },
                     { "broken_suppressors", _brokenSuppressors },
+                    { "break_effects_started", _breakEffectsStarted },
+                    { "heat_smoke_effects_started",
+                        _heatSmokeEffectsStarted },
                     { "breakage_enabled", _breakageEnabled },
                     { "exceptions", _exceptions },
                 });
         }
 
+#if ALLIN1_HOST
         public void Commit(StorySaveContext context)
         {
             _stateStore.Commit();
@@ -644,6 +854,7 @@ namespace RealisticSuppressors
                     { "reason", context?.Reason ?? "session_end" },
                 });
         }
+#endif
 
         public bool IsComponentConsumed(
             string weaponName, int componentHash)
@@ -681,6 +892,9 @@ namespace RealisticSuppressors
                 character, profile.WeaponName,
                 profile.ComponentHash,
                 SuppressorStatePolicy.NewCondition);
+#if STANDALONE_RUNTIME
+            TryCommitStandaloneState("native_component_purchase");
+#endif
             if (_thermalStates.TryGetValue(
                     profile.WeaponHash,
                     out ThermalRuntimeState runtimeState) &&
@@ -712,6 +926,8 @@ namespace RealisticSuppressors
             _characterModelHash = modelHash;
             _replacementBaselinesHydrated = false;
             _unsupportedCharacterLogged = false;
+            DestroyHeatOverlay();
+            DestroySuppressorSmoke();
             ResetShotObservation();
             ResetMuzzleCache();
             CancelPostShotLease();
@@ -726,6 +942,8 @@ namespace RealisticSuppressors
             _thermalStates.Clear();
             _purchaseNotifications.Clear();
             _activeThermalState = null;
+            DestroyHeatOverlay();
+            DestroySuppressorSmoke();
             ResetShotObservation();
             ResetMuzzleCache();
             CancelPostShotLease();
@@ -787,6 +1005,8 @@ namespace RealisticSuppressors
             int weaponHash, int ammoInClip, int now)
         {
             FlushActiveThermalState(now, true);
+            DestroyHeatOverlay();
+            DestroySuppressorSmoke();
             _activeThermalState = null;
             _lastWeaponHash = weaponHash;
             _lastAmmoInClip = ammoInClip;
@@ -803,11 +1023,23 @@ namespace RealisticSuppressors
         private int DetectRoundsFired(
             int ammoInClip, bool isShooting, bool weaponChanged)
         {
+            return CountRoundsFired(_lastAmmoInClip, ammoInClip,
+                isShooting, _wasShooting, weaponChanged);
+        }
+
+        internal static int CountRoundsFired(
+            int previousAmmoInClip, int ammoInClip,
+            bool isShooting, bool wasShooting, bool weaponChanged)
+        {
+            // The ammo delta is the durable observation. IsShooting may have
+            // returned to false before this script's frame after a quick
+            // semi-automatic shot, so applying that guard first loses heat.
+            if (!weaponChanged && previousAmmoInClip >= 0 &&
+                ammoInClip >= 0 && ammoInClip < previousAmmoInClip)
+                return Math.Min(100,
+                    previousAmmoInClip - ammoInClip);
             if (!isShooting) return 0;
-            if (!weaponChanged && _lastAmmoInClip >= 0 &&
-                ammoInClip >= 0 && ammoInClip < _lastAmmoInClip)
-                return Math.Min(100, _lastAmmoInClip - ammoInClip);
-            return !_wasShooting ? 1 : 0;
+            return !wasShooting ? 1 : 0;
         }
 
         private void UpdateBurst(int now, int roundsFired)
@@ -934,6 +1166,9 @@ namespace RealisticSuppressors
                     character, state.Profile.WeaponName,
                     state.Profile.ComponentHash,
                     SuppressorStatePolicy.NewCondition);
+#if STANDALONE_RUNTIME
+                TryCommitStandaloneState("native_component_replacement");
+#endif
                 persisted = _stateStore.GetDurability(
                     character, state.Profile.WeaponName,
                     state.Profile.ComponentHash);
@@ -941,7 +1176,7 @@ namespace RealisticSuppressors
             }
 
             state.Broken = false;
-            state.BreakNotified = false;
+            state.BreakEventLogged = false;
             state.ConditionRecorded = false;
             state.ObservedAbsentAfterBreak = false;
             state.LastBreakRemovalAttemptAt = int.MinValue / 2;
@@ -952,7 +1187,6 @@ namespace RealisticSuppressors
             state.LastTemperatureAt = now;
             state.LastPersistedAt = now;
             state.Stage = SuppressorHeatStage.Normal;
-            state.HighestNotifiedStage = SuppressorHeatStage.Normal;
             state.Dirty = false;
             ClientLog.Info("SUPPRESSORS", "replacement_registered",
                 new Dictionary<string, object>
@@ -980,6 +1214,11 @@ namespace RealisticSuppressors
             bool confirmed = _stateStore.GetDurability(
                 character, profile.WeaponName,
                 profile.ComponentHash) <= 0f;
+#if STANDALONE_RUNTIME
+            if (confirmed)
+                confirmed = TryCommitStandaloneState(
+                    "suppressor_failure");
+#endif
             state.ConditionRecorded = confirmed;
             return confirmed;
         }
@@ -1006,6 +1245,15 @@ namespace RealisticSuppressors
         {
             state.LastBreakRemovalAttemptAt = now;
             SuppressorThermalProfile profile = state.Profile;
+            bool firstBreak = SuppressorThermalPolicy
+                .ShouldBeginBreakEvent(notify, state.BreakEventLogged);
+            if (firstBreak)
+            {
+                // Latch before any native call so an exception cannot replay
+                // the one-shot audiovisual failure on a later removal retry.
+                state.BreakEventLogged = true;
+                TryEmitSuppressorBreakEffect(player, profile);
+            }
             bool conditionRecorded = PersistBrokenCondition(state);
             Function.Call(Hash.REMOVE_WEAPON_COMPONENT_FROM_PED,
                 player.Handle, unchecked((int)profile.WeaponHash),
@@ -1027,19 +1275,15 @@ namespace RealisticSuppressors
             state.LastPersistedDurability = 0f;
             state.Dirty = false;
             state.Broken = true;
+            DestroyHeatOverlay();
             state.ObservedAbsentAfterBreak |= removed;
             state.TemperatureCelsius = Math.Min(
                 state.TemperatureCelsius,
                 SuppressorThermalPolicy.MaximumTrackedCelsius);
 
-            if (notify && !state.BreakNotified)
+            if (firstBreak)
             {
-                state.BreakNotified = true;
                 _brokenSuppressors++;
-                GTA.UI.Notification.Show(
-                    "~r~Suppressor failed~w~ on " +
-                    DisplayWeaponName(profile.WeaponName) +
-                    ". Replace it at Ammu-Nation or a compatible weapon shop.");
                 ClientLog.Warn("SUPPRESSORS", "component_broken",
                     new Dictionary<string, object>
                     {
@@ -1051,6 +1295,173 @@ namespace RealisticSuppressors
                         { "condition_recorded", conditionRecorded },
                         { "native_removed", removed },
                     });
+            }
+        }
+
+        private void PrepareBreakEffectAsset()
+        {
+            if (_breakParticleAssetReady) return;
+            try
+            {
+                Function.Call(Hash.REQUEST_NAMED_PTFX_ASSET,
+                    BreakParticleAsset);
+                _breakParticleAssetRequested = true;
+                _breakParticleAssetReady = Function.Call<bool>(
+                    Hash.HAS_NAMED_PTFX_ASSET_LOADED,
+                    BreakParticleAsset);
+            }
+            catch (Exception ex)
+            {
+                if (_breakParticleAssetFailureLogged) return;
+                _breakParticleAssetFailureLogged = true;
+                ClientLog.Error("SUPPRESSORS",
+                    "break_effect_asset_request_failed", ex,
+                    new Dictionary<string, object>
+                    {
+                        { "particle_asset", BreakParticleAsset },
+                        { "effect",
+                            "breakage remains active without sparks" },
+                    });
+            }
+        }
+
+        private void ReleaseBreakEffectAsset()
+        {
+            if (!_breakParticleAssetRequested) return;
+            try
+            {
+                Function.Call(Hash.REMOVE_NAMED_PTFX_ASSET,
+                    BreakParticleAsset);
+            }
+            catch (Exception ex)
+            {
+                ClientLog.Error("SUPPRESSORS",
+                    "break_effect_asset_release_failed", ex);
+            }
+            finally
+            {
+                _breakParticleAssetRequested = false;
+                _breakParticleAssetReady = false;
+            }
+        }
+
+        private void TryEmitSuppressorBreakEffect(
+            Ped player, SuppressorThermalProfile profile)
+        {
+            try
+            {
+                if (!TryGetSuppressorAttachment(
+                        player, profile, out Entity _,
+                        out EntityBone attachmentBone,
+                        out string poseSource))
+                {
+                    ClientLog.Warn("SUPPRESSORS",
+                        "break_effect_attachment_unavailable",
+                        new Dictionary<string, object>
+                        {
+                            { "weapon", profile.WeaponName },
+                            { "component_hash", profile.ComponentHash },
+                        });
+                    return;
+                }
+
+                float axialOffset = SuppressorThermalPolicy
+                    .BreakEffectAxialOffset(profile.ComponentHash);
+                if (axialOffset <= 0f) return;
+                Vector3 effectPosition;
+                try
+                {
+                    // The attached overlay has the same +X authoring axis as
+                    // the suppressor and remains available until removal.
+                    // Resolve the front cap to world space now so the
+                    // non-looped burst survives deletion of the component.
+                    effectPosition = _heatOverlay != null &&
+                        _heatOverlay.Exists()
+                        ? _heatOverlay.GetOffsetPosition(
+                            new Vector3(axialOffset, 0f, 0f))
+                        : attachmentBone.Position;
+                }
+                catch (Exception)
+                {
+                    effectPosition = attachmentBone.Position;
+                }
+
+                PrepareBreakEffectAsset();
+                bool particleStarted = false;
+                if (_breakParticleAssetReady)
+                {
+                    try
+                    {
+                        Function.Call(Hash.USE_PARTICLE_FX_ASSET,
+                            BreakParticleAsset);
+                        particleStarted = Function.Call<bool>(
+                            Hash.START_PARTICLE_FX_NON_LOOPED_AT_COORD,
+                            BreakParticleEffect,
+                            effectPosition.X, effectPosition.Y,
+                            effectPosition.Z,
+                            0f, 0f, 0f,
+                            BreakParticleScale,
+                            false, false, false);
+                    }
+                    catch (Exception ex)
+                    {
+                        ClientLog.Error("SUPPRESSORS",
+                            "break_effect_particle_failed", ex,
+                            new Dictionary<string, object>
+                            {
+                                { "weapon", profile.WeaponName },
+                                { "particle_asset", BreakParticleAsset },
+                                { "particle_effect", BreakParticleEffect },
+                            });
+                    }
+                }
+
+                bool soundRequested = false;
+                try
+                {
+                    Function.Call(Hash.PLAY_SOUND_FROM_COORD,
+                        -1, BreakSoundName,
+                        effectPosition.X, effectPosition.Y,
+                        effectPosition.Z, BreakSoundSet,
+                        false, 0, false);
+                    soundRequested = true;
+                }
+                catch (Exception ex)
+                {
+                    ClientLog.Error("SUPPRESSORS",
+                        "break_effect_sound_failed", ex,
+                        new Dictionary<string, object>
+                        {
+                            { "weapon", profile.WeaponName },
+                            { "sound", BreakSoundName },
+                            { "sound_set", BreakSoundSet },
+                        });
+                }
+
+                if (particleStarted || soundRequested)
+                    _breakEffectsStarted++;
+                ClientLog.Info("SUPPRESSORS", "break_effect_emitted",
+                    new Dictionary<string, object>
+                    {
+                        { "weapon", profile.WeaponName },
+                        { "component_hash", profile.ComponentHash },
+                        { "pose_source", poseSource },
+                        { "axial_offset_m", axialOffset },
+                        { "particle_asset", BreakParticleAsset },
+                        { "particle_effect", BreakParticleEffect },
+                        { "particle_scale", BreakParticleScale },
+                        { "particle_started", particleStarted },
+                        { "sound", BreakSoundName },
+                        { "sound_requested", soundRequested },
+                        { "gameplay_damage", false },
+                    });
+            }
+            catch (Exception ex)
+            {
+                // Visual/audio failure must never prevent the durability
+                // tombstone or native suppressor removal from completing.
+                ClientLog.Error(
+                    "SUPPRESSORS", "break_effect_failed", ex);
             }
         }
 
@@ -1098,6 +1509,11 @@ namespace RealisticSuppressors
                     character, state.Profile.WeaponName,
                     state.Profile.ComponentHash) - state.Durability) <=
                     0.000001f;
+#if STANDALONE_RUNTIME
+                if (persisted)
+                    persisted = TryCommitStandaloneState(
+                        "wear_checkpoint");
+#endif
             }
             state.LastPersistedAt = now;
             if (persisted)
@@ -1106,6 +1522,27 @@ namespace RealisticSuppressors
                 state.Dirty = false;
             }
         }
+
+#if STANDALONE_RUNTIME
+        private bool TryCommitStandaloneState(string reason)
+        {
+            try
+            {
+                _stateStore.Commit();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ClientLog.Error("SUPPRESSORS",
+                    "standalone_condition_commit_failed", ex,
+                    new Dictionary<string, object>
+                    {
+                        { "reason", reason ?? "checkpoint" },
+                    });
+                return false;
+            }
+        }
+#endif
 
         private void FlushActiveThermalState(int now, bool force)
         {
@@ -1126,94 +1563,513 @@ namespace RealisticSuppressors
             }
         }
 
-        private void UpdateHeatStage(
-            ThermalRuntimeState state, bool breakageActive)
+        private static void UpdateHeatStage(
+            ThermalRuntimeState state)
         {
             SuppressorHeatStage next = SuppressorThermalPolicy.HeatStage(
                 state.Profile, state.TemperatureCelsius);
+            if (next < SuppressorHeatStage.Glowing)
+                state.GlowStartedLogged = false;
             state.Stage = next;
-            if ((int)next <= (int)state.HighestNotifiedStage)
-                return;
-            state.HighestNotifiedStage = next;
+        }
 
-            string message = null;
-            if (next == SuppressorHeatStage.Damaging)
-                message = "~o~Suppressor hot~w~ — pause fire to cool it.";
-            else if (next == SuppressorHeatStage.Glowing)
-                message = breakageActive
-                    ? "~o~Suppressor glowing~w~ — sustained fire is accelerating wear."
-                    : _breakageEnabled
-                        ? "~o~Suppressor glowing~w~ — wear is unavailable for this player model."
-                        : "~o~Suppressor glowing~w~ — breakage is disabled.";
-            else if (next == SuppressorHeatStage.Critical)
-                message = breakageActive
-                    ? "~r~Suppressor critical~w~ — wear is extreme."
-                    : _breakageEnabled
-                        ? "~r~Suppressor critical~w~ — wear is unavailable for this player model."
-                        : "~r~Suppressor critical~w~ — breakage is disabled.";
-            if (message == null) return;
-            GTA.UI.Notification.Show(message);
+        private void RenderTemperatureDebug(ThermalRuntimeState state)
+        {
+            if (!_temperatureDebugEnabled || state == null || state.Broken)
+                return;
+
+            int red = 225;
+            int green = 235;
+            int blue = 245;
+            if (state.Stage == SuppressorHeatStage.Damaging)
+            {
+                red = 255;
+                green = 190;
+                blue = 70;
+            }
+            else if (state.Stage == SuppressorHeatStage.Glowing)
+            {
+                red = 255;
+                green = 105;
+                blue = 45;
+            }
+            else if (state.Stage == SuppressorHeatStage.Critical)
+            {
+                red = 255;
+                green = 45;
+                blue = 35;
+            }
+
+            Function.Call(Hash.SET_TEXT_FONT, 0);
+            Function.Call(Hash.SET_TEXT_SCALE, 0f, 0.32f);
+            Function.Call(Hash.SET_TEXT_COLOUR, red, green, blue, 235);
+            Function.Call(Hash.SET_TEXT_CENTRE, false);
+            Function.Call(Hash.SET_TEXT_RIGHT_JUSTIFY, true);
+            Function.Call(Hash.SET_TEXT_WRAP, 0f, 0.985f);
+            Function.Call(Hash.SET_TEXT_DROP_SHADOW);
+            Function.Call(Hash.SET_TEXT_OUTLINE);
+            Function.Call(Hash.BEGIN_TEXT_COMMAND_DISPLAY_TEXT, "STRING");
+            Function.Call(Hash.ADD_TEXT_COMPONENT_SUBSTRING_PLAYER_NAME,
+                TemperatureDebugText(state.TemperatureCelsius));
+            Function.Call(Hash.END_TEXT_COMMAND_DISPLAY_TEXT, 0.985f, 0.915f);
+        }
+
+        internal static string TemperatureDebugText(
+            float temperatureCelsius)
+        {
+            float bounded = temperatureCelsius;
+            if (float.IsNaN(bounded) || float.IsInfinity(bounded))
+                bounded = SuppressorThermalPolicy.AmbientCelsius;
+            bounded = Math.Max(SuppressorThermalPolicy.AmbientCelsius,
+                Math.Min(SuppressorThermalPolicy.MaximumTrackedCelsius,
+                    bounded));
+            return "SUPPRESSOR " + Math.Round(bounded).ToString(
+                "0", CultureInfo.InvariantCulture) + " °C";
         }
 
         private void RenderSuppressorGlow(
             Ped player, ThermalRuntimeState state)
         {
-            if (state.TemperatureCelsius <
-                SuppressorThermalPolicy.GlowOnsetCelsius)
+            SuppressorGlowVisual visual = SuppressorThermalPolicy
+                .GlowVisual(state.Profile, state.TemperatureCelsius);
+            if (!visual.Visible)
+            {
+                DestroyHeatOverlay();
                 return;
-            if (!TryGetMuzzlePosition(player, out Vector3 position))
+            }
+            if (!TryGetSuppressorAttachment(
+                    player, state.Profile, out Entity heldWeapon,
+                    out EntityBone attachmentBone,
+                    out string poseSource))
+            {
+                DestroyHeatOverlay();
+                return;
+            }
+            if (!EnsureHeatOverlay(
+                    heldWeapon, attachmentBone, visual))
                 return;
 
-            float intensity = Math.Max(0.08f,
-                SuppressorThermalPolicy.GlowIntensity(
-                    state.Profile, state.TemperatureCelsius));
-            int alpha = (int)(75f + 150f * intensity);
-            int green = (int)(135f - 75f * intensity);
-            Color color = Color.FromArgb(alpha, 255, green, 12);
-            float size = 0.020f + 0.035f * intensity;
-            float range = 0.30f + 0.55f * intensity;
-            World.DrawMarker(MarkerType.DebugSphere, position,
-                Vector3.Zero, Vector3.Zero,
-                new Vector3(size, size, size), color);
-            World.DrawLightWithRange(
-                position, color, range, 0.20f + 0.80f * intensity);
+            if (!state.GlowStartedLogged)
+            {
+                state.GlowStartedLogged = true;
+                ClientLog.Info("SUPPRESSORS", "glow_started",
+                    new Dictionary<string, object>
+                    {
+                        { "weapon", state.Profile.WeaponName },
+                        { "temperature_c", state.TemperatureCelsius },
+                        { "physical_intensity", visual.Intensity },
+                        { "pose_source", poseSource },
+                        { "renderer",
+                            "bone_attached_emissive_overlay" },
+                        { "overlay_model", visual.OverlayModelName },
+                        { "overlay_opacity", visual.Opacity },
+                    });
+            }
         }
 
-        private bool TryGetMuzzlePosition(
-            Ped player, out Vector3 position)
+        private bool EnsureHeatOverlay(
+            Entity heldWeapon, EntityBone attachmentBone,
+            SuppressorGlowVisual visual)
         {
-            position = Vector3.Zero;
+            bool overlayExists = _heatOverlay != null &&
+                _heatOverlay.Exists();
+            bool identityMatches = overlayExists &&
+                _heatOverlayWeaponEntity == heldWeapon.Handle &&
+                _heatOverlayBoneIndex == attachmentBone.Index &&
+                string.Equals(_heatOverlayModelName,
+                    visual.OverlayModelName,
+                    StringComparison.OrdinalIgnoreCase) &&
+                _heatOverlay.IsAttachedTo(heldWeapon);
+            if (!identityMatches)
+            {
+                DestroyHeatOverlay();
+                Model model = new Model(visual.OverlayModelName);
+                if (!model.IsValid || !model.IsInCdImage)
+                {
+                    if (_unavailableHeatOverlayModelsLogged.Add(
+                            visual.OverlayModelName))
+                    {
+                        ClientLog.Warn("SUPPRESSORS",
+                            "heat_overlay_model_unavailable",
+                            new Dictionary<string, object>
+                            {
+                                { "model", visual.OverlayModelName },
+                                { "model_hash",
+                                    unchecked((uint)model.Hash) },
+                                { "effect",
+                                    "temperature simulation remains active" },
+                            });
+                    }
+                    return false;
+                }
+                model.Request();
+                if (!model.IsLoaded) return false;
+
+                Prop overlay = World.CreatePropNoOffset(
+                    model, attachmentBone.Position, false);
+                model.MarkAsNoLongerNeeded();
+                if (overlay == null || !overlay.Exists())
+                    return false;
+
+                _heatOverlay = overlay;
+                _heatOverlayWeaponEntity = heldWeapon.Handle;
+                _heatOverlayBoneIndex = attachmentBone.Index;
+                _heatOverlayModelName = visual.OverlayModelName;
+                _heatOverlayOpacity = visual.Opacity;
+                overlay.IsPersistent = true;
+                overlay.IsInvincible = true;
+                overlay.IsCollisionEnabled = false;
+                Function.Call(Hash.SET_ENTITY_FLAG_SUPPRESS_SHADOW,
+                    overlay.Handle, true);
+                overlay.Opacity = visual.Opacity;
+                overlay.AttachTo(
+                    attachmentBone, Vector3.Zero, Vector3.Zero);
+                return true;
+            }
+
+            if (_heatOverlayOpacity != visual.Opacity)
+            {
+                _heatOverlay.Opacity = visual.Opacity;
+                _heatOverlayOpacity = visual.Opacity;
+            }
+            return true;
+        }
+
+        private void DestroyHeatOverlay()
+        {
+            Prop overlay = _heatOverlay;
+            _heatOverlay = null;
+            _heatOverlayWeaponEntity = 0;
+            _heatOverlayBoneIndex = -1;
+            _heatOverlayModelName = "none";
+            _heatOverlayOpacity = 0;
+            try
+            {
+                if (overlay != null && overlay.Exists())
+                    overlay.Delete();
+            }
+            catch (Exception ex)
+            {
+                ClientLog.Error(
+                    "SUPPRESSORS", "heat_overlay_cleanup_failed", ex);
+            }
+        }
+
+        private void RenderSuppressorSmoke(
+            Ped player, ThermalRuntimeState state, int now)
+        {
+            if (!_heatSmokeEnabled || state == null || state.Broken)
+            {
+                DestroySuppressorSmoke();
+                return;
+            }
+
+            SuppressorSmokeVisual visual = SuppressorThermalPolicy
+                .SmokeVisual(state.Profile, state.TemperatureCelsius,
+                    _heatSmokeIntensityScale);
+            if (!visual.Visible || !TryGetSuppressorAttachment(
+                    player, state.Profile, out Entity heldWeapon,
+                    out EntityBone attachmentBone,
+                    out string poseSource))
+            {
+                DestroySuppressorSmoke();
+                return;
+            }
+
+            bool primaryExists = SmokeEmitterExists(
+                _primaryHeatSmokeHandle);
+            bool identityMatches = primaryExists &&
+                _heatSmokeWeaponEntity == heldWeapon.Handle &&
+                _heatSmokeBoneIndex == attachmentBone.Index &&
+                _heatSmokeComponentHash == state.Profile.ComponentHash;
+            bool primaryStarted = false;
+            if (!identityMatches)
+            {
+                DestroySuppressorSmoke();
+                // If a native stop failed, DestroySuppressorSmoke retains
+                // the positive handle for a later retry. Never overwrite it
+                // with a new loop or the old emitter would become orphaned.
+                if (_primaryHeatSmokeHandle > 0 ||
+                    _secondaryHeatSmokeHandle > 0)
+                    return;
+                if (ElapsedMilliseconds(now,
+                        _lastHeatSmokeStartAttemptAt) < SmokeStartRetryMs)
+                    return;
+                _lastHeatSmokeStartAttemptAt = now;
+                PrepareBreakEffectAsset();
+                if (!_breakParticleAssetReady) return;
+
+                float frontCap = SuppressorThermalPolicy
+                    .BreakEffectAxialOffset(state.Profile.ComponentHash);
+                if (frontCap <= 0f) return;
+                _primaryHeatSmokeHandle = StartSuppressorSmokeEmitter(
+                    heldWeapon, attachmentBone,
+                    frontCap * 0.82f, visual.PrimaryScale);
+                if (_primaryHeatSmokeHandle <= 0) return;
+
+                _heatSmokeWeaponEntity = heldWeapon.Handle;
+                _heatSmokeBoneIndex = attachmentBone.Index;
+                _heatSmokeComponentHash = state.Profile.ComponentHash;
+                _heatSmokeEffectsStarted++;
+                primaryStarted = true;
+                ClientLog.Info("SUPPRESSORS", "heat_smoke_started",
+                    new Dictionary<string, object>
+                    {
+                        { "weapon", state.Profile.WeaponName },
+                        { "component_hash",
+                            state.Profile.ComponentHash },
+                        { "temperature_c", state.TemperatureCelsius },
+                        { "physical_intensity", visual.Intensity },
+                        { "particle_asset", SmokeParticleAsset },
+                        { "particle_effect", SmokeParticleEffect },
+                        { "pose_source", poseSource },
+                        { "renderer",
+                            "bone_attached_looped_particle" },
+                    });
+            }
+
+            bool secondaryStarted = false;
+            bool secondaryExists = SmokeEmitterExists(
+                _secondaryHeatSmokeHandle);
+            if (!secondaryExists)
+                _secondaryHeatSmokeHandle = 0;
+            bool useSecondary = SuppressorThermalPolicy
+                .ShouldUseSecondarySmoke(
+                    visual.Intensity, secondaryExists);
+            if (useSecondary &&
+                _secondaryHeatSmokeHandle <= 0 &&
+                ElapsedMilliseconds(now,
+                    _lastSecondarySmokeStartAttemptAt) >=
+                        SmokeStartRetryMs)
+            {
+                _lastSecondarySmokeStartAttemptAt = now;
+                float frontCap = SuppressorThermalPolicy
+                    .BreakEffectAxialOffset(state.Profile.ComponentHash);
+                _secondaryHeatSmokeHandle = StartSuppressorSmokeEmitter(
+                    heldWeapon, attachmentBone,
+                    frontCap * 0.42f, visual.SecondaryScale);
+                if (_secondaryHeatSmokeHandle > 0)
+                {
+                    _heatSmokeEffectsStarted++;
+                    secondaryStarted = true;
+                }
+            }
+            else if (!useSecondary &&
+                _secondaryHeatSmokeHandle > 0)
+            {
+                StopSuppressorSmokeEmitter(_secondaryHeatSmokeHandle);
+                _secondaryHeatSmokeHandle = 0;
+            }
+
+            if (!primaryStarted && !secondaryStarted &&
+                ElapsedMilliseconds(now,
+                    _lastHeatSmokeVisualUpdateAt) <
+                        SmokeVisualUpdateMs)
+                return;
+            _lastHeatSmokeVisualUpdateAt = now;
+            ApplySuppressorSmokeVisual(visual);
+        }
+
+        private void TryRenderSuppressorSmoke(
+            Ped player, ThermalRuntimeState state, int now)
+        {
+            if (_heatSmokeRuntimeFailed)
+            {
+                DestroySuppressorSmoke();
+                return;
+            }
+            try
+            {
+                RenderSuppressorSmoke(player, state, now);
+            }
+            catch (Exception ex)
+            {
+                _heatSmokeRuntimeFailed = true;
+                DestroySuppressorSmoke();
+                ClientLog.Error("SUPPRESSORS",
+                    "heat_smoke_renderer_failed", ex,
+                    new Dictionary<string, object>
+                    {
+                        { "effect",
+                            "temperature simulation remains active" },
+                    });
+            }
+        }
+
+        private static int StartSuppressorSmokeEmitter(
+            Entity heldWeapon, EntityBone attachmentBone,
+            float axialOffset, float scale)
+        {
+            Function.Call(Hash.USE_PARTICLE_FX_ASSET,
+                SmokeParticleAsset);
+            int handle = Function.Call<int>(
+                Hash.START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE,
+                SmokeParticleEffect, heldWeapon.Handle,
+                axialOffset, 0f, 0f,
+                0f, 0f, 0f,
+                attachmentBone.Index, scale,
+                false, false, false);
+            if (handle <= 0) return 0;
+            try
+            {
+                // Colour is cosmetic. Once the native returns a positive
+                // loop handle, always return it to the owner so cleanup can
+                // stop the emitter even if this optional adjustment fails.
+                Function.Call(Hash.SET_PARTICLE_FX_LOOPED_COLOUR,
+                    handle, 0.72f, 0.74f, 0.77f, false);
+            }
+            catch (Exception)
+            {
+                // Keep the stock particle colour rather than orphaning a
+                // live loop whose handle the controller can no longer reach.
+            }
+            return handle;
+        }
+
+        private void ApplySuppressorSmokeVisual(
+            SuppressorSmokeVisual visual)
+        {
+            if (SmokeEmitterExists(_primaryHeatSmokeHandle))
+            {
+                Function.Call(Hash.SET_PARTICLE_FX_LOOPED_SCALE,
+                    _primaryHeatSmokeHandle, visual.PrimaryScale);
+                Function.Call(Hash.SET_PARTICLE_FX_LOOPED_ALPHA,
+                    _primaryHeatSmokeHandle, visual.Alpha);
+            }
+            if (SmokeEmitterExists(_secondaryHeatSmokeHandle))
+            {
+                Function.Call(Hash.SET_PARTICLE_FX_LOOPED_SCALE,
+                    _secondaryHeatSmokeHandle, visual.SecondaryScale);
+                Function.Call(Hash.SET_PARTICLE_FX_LOOPED_ALPHA,
+                    _secondaryHeatSmokeHandle,
+                    visual.Alpha * 0.82f);
+            }
+        }
+
+        private static bool SmokeEmitterExists(int handle)
+        {
+            return handle > 0 && Function.Call<bool>(
+                Hash.DOES_PARTICLE_FX_LOOPED_EXIST, handle);
+        }
+
+        private static void StopSuppressorSmokeEmitter(int handle)
+        {
+            if (handle <= 0) return;
+            // A direct stop is safe for a stale handle and avoids a separate
+            // existence native becoming a failure point before cleanup.
+            Function.Call(Hash.STOP_PARTICLE_FX_LOOPED,
+                handle, false);
+        }
+
+        private void DestroySuppressorSmoke()
+        {
+            _heatSmokeWeaponEntity = 0;
+            _heatSmokeBoneIndex = -1;
+            _heatSmokeComponentHash = 0;
+            _lastHeatSmokeVisualUpdateAt = int.MinValue / 2;
+            Exception cleanupFailure = null;
+            try
+            {
+                StopSuppressorSmokeEmitter(_primaryHeatSmokeHandle);
+                _primaryHeatSmokeHandle = 0;
+            }
+            catch (Exception ex)
+            {
+                // Retain the positive handle so a later tick can retry.
+                cleanupFailure = ex;
+            }
+            try
+            {
+                StopSuppressorSmokeEmitter(_secondaryHeatSmokeHandle);
+                _secondaryHeatSmokeHandle = 0;
+            }
+            catch (Exception ex)
+            {
+                // Stop the other emitter independently and preserve this
+                // handle for the next cleanup attempt.
+                cleanupFailure = cleanupFailure ?? ex;
+            }
+            if (cleanupFailure != null &&
+                !_heatSmokeCleanupFailureLogged)
+            {
+                _heatSmokeCleanupFailureLogged = true;
+                ClientLog.Error("SUPPRESSORS",
+                    "heat_smoke_cleanup_failed", cleanupFailure);
+            }
+            else if (_primaryHeatSmokeHandle <= 0 &&
+                _secondaryHeatSmokeHandle <= 0)
+            {
+                _heatSmokeCleanupFailureLogged = false;
+            }
+        }
+
+        private bool TryGetSuppressorAttachment(
+            Ped player, SuppressorThermalProfile profile,
+            out Entity heldWeapon, out EntityBone attachmentBone,
+            out string poseSource)
+        {
+            heldWeapon = null;
+            attachmentBone = null;
+            poseSource = "none";
             int weaponEntity = Function.Call<int>(
                 Hash.GET_CURRENT_PED_WEAPON_ENTITY_INDEX,
                 player.Handle, 0);
-            if (weaponEntity != _cachedWeaponEntity)
+            if (weaponEntity != _cachedWeaponEntity ||
+                profile.ComponentHash != _cachedSuppressorComponentHash)
             {
                 _cachedWeaponEntity = weaponEntity;
-                _cachedMuzzleBoneIndex = -1;
+                _cachedSuppressorBoneIndex = -1;
+                _cachedSuppressorBoneName = "none";
+                _cachedSuppressorComponentHash = profile.ComponentHash;
                 if (weaponEntity != 0 && Function.Call<bool>(
                         Hash.DOES_ENTITY_EXIST, weaponEntity))
-                    _cachedMuzzleBoneIndex = Function.Call<int>(
+                {
+                    string first = profile.WeaponName.EndsWith(
+                        "_MK2", StringComparison.OrdinalIgnoreCase)
+                        ? "WAPSupp_2" : "WAPSupp";
+                    string second = first == "WAPSupp"
+                        ? "WAPSupp_2" : "WAPSupp";
+                    _cachedSuppressorBoneIndex = Function.Call<int>(
                         Hash.GET_ENTITY_BONE_INDEX_BY_NAME,
-                        weaponEntity, "gun_muzzle");
+                        weaponEntity, first);
+                    if (_cachedSuppressorBoneIndex >= 0)
+                        _cachedSuppressorBoneName = first;
+                    else
+                    {
+                        _cachedSuppressorBoneIndex = Function.Call<int>(
+                            Hash.GET_ENTITY_BONE_INDEX_BY_NAME,
+                            weaponEntity, second);
+                        if (_cachedSuppressorBoneIndex >= 0)
+                            _cachedSuppressorBoneName = second;
+                    }
+                }
             }
 
-            if (_cachedWeaponEntity != 0 &&
-                _cachedMuzzleBoneIndex >= 0 && Function.Call<bool>(
-                    Hash.DOES_ENTITY_EXIST, _cachedWeaponEntity))
-            {
-                position = Function.Call<Vector3>(
-                    Hash.GET_WORLD_POSITION_OF_ENTITY_BONE,
-                    _cachedWeaponEntity, _cachedMuzzleBoneIndex);
-            }
+            bool validWeaponEntity = _cachedWeaponEntity != 0 &&
+                Function.Call<bool>(
+                    Hash.DOES_ENTITY_EXIST, _cachedWeaponEntity);
+            if (!validWeaponEntity || _cachedSuppressorBoneIndex < 0)
+                return false;
 
-            if (!HasPosition(position))
+            try
             {
-                position = Function.Call<Vector3>(
-                    Hash.GET_PED_BONE_COORDS, player.Handle,
-                    57005, 0f, 0f, 0f) +
-                    player.ForwardVector * 0.48f;
+                heldWeapon = Entity.FromHandle(_cachedWeaponEntity);
+                if (heldWeapon == null || !heldWeapon.Exists())
+                    return false;
+                attachmentBone = heldWeapon.Bones[
+                    _cachedSuppressorBoneIndex];
+                if (attachmentBone == null || !attachmentBone.IsValid)
+                    return false;
+                poseSource = _cachedSuppressorBoneName +
+                    "+engine_attachment";
+                return true;
             }
-            return HasPosition(position);
+            catch (Exception)
+            {
+                heldWeapon = null;
+                attachmentBone = null;
+                return false;
+            }
         }
 
         private void RefreshPotentialWitness(
@@ -1485,7 +2341,9 @@ namespace RealisticSuppressors
         private void ResetMuzzleCache()
         {
             _cachedWeaponEntity = 0;
-            _cachedMuzzleBoneIndex = -1;
+            _cachedSuppressorBoneIndex = -1;
+            _cachedSuppressorBoneName = "none";
+            _cachedSuppressorComponentHash = 0;
         }
 
         private void LogShotEvaluation(

@@ -3,14 +3,32 @@
     <TargetFramework>net48</TargetFramework>
     <AssemblyName>RealisticSuppressors</AssemblyName>
     <RootNamespace>RealisticSuppressors</RootNamespace>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <AssemblyTitle>Suppressors Enhanced</AssemblyTitle>
+    <Product>Suppressors Enhanced</Product>
+    <Description>Realistic suppressor stealth, heat, wear, smoke, and breakage for GTA V Enhanced Story Mode.</Description>
+    <Authors>MinionEnjoyer</Authors>
+    <Company>MinionEnjoyer</Company>
+    <Copyright>Copyright © 2026 MinionEnjoyer</Copyright>
+    <RepositoryUrl>https://github.com/MinionEnjoyer/GTAV-ALLIN1</RepositoryUrl>
+    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
     <OutputType>Library</OutputType>
     <PlatformTarget>x64</PlatformTarget>
     <LangVersion>9.0</LangVersion>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <StandaloneBuild Condition="'$(StandaloneBuild)' == ''">false</StandaloneBuild>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(StandaloneBuild)' != 'true'">
+    <DefineConstants>$(DefineConstants);ALLIN1_HOST</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(StandaloneBuild)' == 'true'">
+    <DefineConstants>$(DefineConstants);STANDALONE_RUNTIME</DefineConstants>
+    <OutputPath>bin\Standalone\</OutputPath>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
@@ -19,13 +37,12 @@
     <Deterministic>true</Deterministic>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(StandaloneBuild)' != 'true'">
     <ProjectReference Include="..\..\script\ALLIN1.csproj" />
-    <PackageReference Include="ScriptHookVDotNet3" Version="3.6.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="System.Web.Extensions" />
+    <PackageReference Include="ScriptHookVDotNet3" Version="3.6.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -33,9 +50,16 @@
   </ItemGroup>
 
   <Target Name="StageStandalonePackage" AfterTargets="Build"
-          Condition="'$(Configuration)' == 'Release'">
+          Condition="'$(Configuration)' == 'Release' and '$(StandaloneBuild)' != 'true'">
     <MakeDir Directories="$(MSBuildProjectDirectory)\payload" />
     <Copy SourceFiles="$(TargetPath)"
           DestinationFiles="$(MSBuildProjectDirectory)\payload\$(TargetFileName)" />
+  </Target>
+
+  <Target Name="StageLauncherIndependentPackage" AfterTargets="Build"
+          Condition="'$(Configuration)' == 'Release' and '$(StandaloneBuild)' == 'true'">
+    <MakeDir Directories="$(MSBuildProjectDirectory)\standalone\payload" />
+    <Copy SourceFiles="$(TargetPath)"
+          DestinationFiles="$(MSBuildProjectDirectory)\standalone\payload\$(TargetFileName)" />
   </Target>
 </Project>

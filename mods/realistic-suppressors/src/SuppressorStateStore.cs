@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Web.Script.Serialization;
 
 namespace RealisticSuppressors
 {
@@ -50,8 +49,6 @@ namespace RealisticSuppressors
                         StringComparer.OrdinalIgnoreCase);
         }
 
-        private static readonly JavaScriptSerializer Json =
-            new JavaScriptSerializer();
         private readonly string _path;
         private StateDocument _committed;
         private StateDocument _working;
@@ -149,13 +146,18 @@ namespace RealisticSuppressors
             if (!File.Exists(path)) return Empty();
             try
             {
-                StateDocument loaded = Json.Deserialize<StateDocument>(
+                StateDocument loaded = Deserialize(
                     File.ReadAllText(path));
                 return Normalize(loaded);
             }
             catch (Exception ex)
             {
-                ClientLog.Error("STATE", "state_load_failed", ex);
+                // Unit tests and tools use isolated explicit paths. Do not
+                // pollute the player's live diagnostic log for those files.
+                if (string.Equals(Path.GetFullPath(path),
+                        Path.GetFullPath(DefaultPath),
+                        StringComparison.OrdinalIgnoreCase))
+                    ClientLog.Error("STATE", "state_load_failed", ex);
                 return Empty();
             }
         }
@@ -166,7 +168,7 @@ namespace RealisticSuppressors
             if (!string.IsNullOrEmpty(directory))
                 Directory.CreateDirectory(directory);
             string temporary = path + ".tmp";
-            File.WriteAllText(temporary, Json.Serialize(Normalize(state)));
+            File.WriteAllText(temporary, Serialize(Normalize(state)));
             if (File.Exists(path))
                 File.Replace(temporary, path, path + ".bak", true);
             else
@@ -175,8 +177,72 @@ namespace RealisticSuppressors
 
         private static StateDocument Clone(StateDocument state)
         {
-            return Normalize(Json.Deserialize<StateDocument>(
-                Json.Serialize(Normalize(state))));
+            StateDocument normalized = Normalize(state);
+            var result = Empty();
+            foreach (KeyValuePair<string, Dictionary<string, float>>
+                character in normalized.characters)
+            {
+                result.characters[character.Key] =
+                    new Dictionary<string, float>(
+                        character.Value, StringComparer.OrdinalIgnoreCase);
+            }
+            return result;
+        }
+
+        private static StateDocument Deserialize(string json)
+        {
+            Dictionary<string, object> root = PortableJson.ParseObject(json);
+            if (!root.TryGetValue("schema_version", out object schema) ||
+                Convert.ToInt32(schema, CultureInfo.InvariantCulture) != 1)
+                throw new InvalidDataException(
+                    "Unsupported suppressor state version.");
+
+            var result = Empty();
+            if (!root.TryGetValue("characters", out object charactersValue))
+                return result;
+            if (!(charactersValue is Dictionary<string, object> characters))
+                throw new InvalidDataException(
+                    "Suppressor state characters must be an object.");
+            foreach (KeyValuePair<string, object> character in characters)
+            {
+                if (!(character.Value is Dictionary<string, object>
+                        componentValues))
+                    throw new InvalidDataException(
+                        "Suppressor character state must be an object.");
+                var components = new Dictionary<string, float>(
+                    StringComparer.OrdinalIgnoreCase);
+                foreach (KeyValuePair<string, object> component in
+                    componentValues)
+                {
+                    float durability = Convert.ToSingle(
+                        component.Value, CultureInfo.InvariantCulture);
+                    components[component.Key] =
+                        SuppressorStatePolicy.ClampDurability(durability);
+                }
+                result.characters[character.Key] = components;
+            }
+            return result;
+        }
+
+        private static string Serialize(StateDocument state)
+        {
+            var characters = new Dictionary<string, object>(
+                StringComparer.Ordinal);
+            foreach (KeyValuePair<string, Dictionary<string, float>>
+                character in state.characters)
+            {
+                var components = new Dictionary<string, object>(
+                    StringComparer.Ordinal);
+                foreach (KeyValuePair<string, float> component in
+                    character.Value)
+                    components[component.Key] = component.Value;
+                characters[character.Key] = components;
+            }
+            return PortableJson.Serialize(new Dictionary<string, object>
+            {
+                { "schema_version", 1 },
+                { "characters", characters },
+            });
         }
 
         private static StateDocument Normalize(StateDocument state)

@@ -2,9 +2,9 @@
   "schema_version": 1,
   "api_version": 1,
   "id": "realistic-suppressors",
-  "name": "Realistic Suppressors",
-  "version": "1.0.0",
-  "description": "A standalone Story Mode suppressor simulation managed by the ALLIN1 launcher.",
+  "name": "Suppressors Enhanced",
+  "version": "1.1.0",
+  "description": "An independent Story Mode suppressor simulation with recommended ALLIN1 integration and an optional launcher-free build.",
   "capabilities": [
     "launcher.settings",
     "story-save.transactions",
@@ -13,9 +13,9 @@
   "systems": [
     {
       "id": "realistic-suppressors",
-      "name": "Realistic Suppressors",
+      "name": "Suppressors Enhanced",
       "category": "Weapons",
-      "description": "Witness-aware stealth plus weapon-specific suppressor heat, glow, wear, and replacement behavior.",
+      "description": "Witness-aware stealth plus weapon-specific suppressor heat, gradual center-out glow, critical smoke, wear, spark-pop failure, and replacement behavior.",
       "experimental": false,
       "enabled_by_default": true,
       "settings": [
@@ -33,7 +33,7 @@
           "type": "boolean",
           "default": true,
           "group": "Condition",
-          "description": "Rapid overheating damages suppressors until they fail and must be replaced. Disable this to retain heat and glow without permanent condition loss."
+          "description": "Rapid overheating damages suppressors until they fail with a cosmetic spark and metallic pop, then must be replaced. Disable this to retain heat, glow, and smoke without permanent condition loss."
         },
         {
           "key": "suppressor_durability_scale",
@@ -45,6 +45,33 @@
           "step": 0.25,
           "group": "Condition",
           "description": "Scales suppressor life when breakage is enabled."
+        },
+        {
+          "key": "suppressor_heat_smoke",
+          "label": "Suppressor heat smoke",
+          "type": "boolean",
+          "default": true,
+          "group": "Visuals",
+          "description": "Adds can-attached barrel smoke with a pronounced density boost near critical suppressor temperature."
+        },
+        {
+          "key": "suppressor_smoke_intensity",
+          "label": "Heat smoke intensity",
+          "type": "number",
+          "default": 1.0,
+          "minimum": 0.5,
+          "maximum": 2.0,
+          "step": 0.25,
+          "group": "Visuals",
+          "description": "Scales the size and density of suppressor heat-smoke trails."
+        },
+        {
+          "key": "suppressor_temperature_debug",
+          "label": "Temperature debug",
+          "type": "boolean",
+          "default": false,
+          "group": "Diagnostics",
+          "description": "Shows the equipped suppressor's live can temperature as a small HUD readout."
         }
       ]
     }

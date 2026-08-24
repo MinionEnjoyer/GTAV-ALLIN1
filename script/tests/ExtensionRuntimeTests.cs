@@ -161,6 +161,57 @@ namespace ALLIN1.Tests
         }
 
         [Fact]
+        public void OriginalCodeBaseWinsOverShadowCopyLocation()
+        {
+            string root = Path.Combine(
+                Path.GetTempPath(), "allin1 original path");
+            string scripts = Path.Combine(root, "scripts");
+            string original = Path.Combine(scripts, "ALLIN1.dll");
+            string shadow = Path.Combine(
+                Path.GetTempPath(), "allin1-shadow-cache", "ALLIN1.dll");
+            string codeBase = new Uri(original).AbsoluteUri;
+
+            string resolved = Allin1ExtensionApi.ResolveAssemblySourcePath(
+                codeBase, shadow);
+
+            Assert.Equal(Path.GetFullPath(original), resolved);
+            Assert.Equal(Path.GetFullPath(scripts),
+                Allin1ExtensionApi.ResolveScriptsDirectory(resolved, root));
+        }
+
+        [Fact]
+        public void NonFileCodeBaseFallsBackToAssemblyLocation()
+        {
+            string location = Path.Combine(
+                Path.GetTempPath(), "allin1-location", "Package.dll");
+
+            Assert.Equal(Path.GetFullPath(location),
+                Allin1ExtensionApi.ResolveAssemblySourcePath(
+                    "https://example.invalid/Package.dll", location));
+        }
+
+        [Fact]
+        public void AssemblySourceResolverFailsClosedWithoutAUsablePath()
+        {
+            Assert.Null(Allin1ExtensionApi.ResolveAssemblySourcePath(
+                "https://example.invalid/Package.dll", "\0"));
+            Assert.Null(Allin1ExtensionApi.ResolveAssemblySourcePath(
+                (System.Reflection.Assembly)null));
+        }
+
+        [Fact]
+        public void AssemblySourceResolverHandlesTheCurrentLoadContext()
+        {
+            System.Reflection.Assembly assembly =
+                typeof(ExtensionRuntimeTests).Assembly;
+            string original = Path.GetFullPath(
+                new Uri(assembly.CodeBase).LocalPath);
+
+            Assert.Equal(original,
+                Allin1ExtensionApi.ResolveAssemblySourcePath(assembly));
+        }
+
+        [Fact]
         public void PackageCannotClaimAnOfficialBuiltInId()
         {
             string json = @"{

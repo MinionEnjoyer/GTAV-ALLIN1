@@ -112,16 +112,16 @@ Enhanced. Its receipt-owned content descriptor supplies package-namespaced
 flight, controller, OSD/color, proximity-mine, and grenade-bomber settings;
 none of its runtime code or configuration is compiled into `ALLIN1.dll`.
 
-## Standalone Realistic Suppressors mod
+## Standalone Suppressors Enhanced mod
 
-Realistic Suppressors is developed as a separate managed package, not as an
+Suppressors Enhanced is developed as a separate managed package, not as an
 ALLIN1 or ALLIN1 Online Content feature. Import
 `mods/realistic-suppressors/mod.toml` from the launcher's **Packages** workspace
 to install, configure, disable, re-enable, or uninstall its independent DLL.
 Its weapon-by-weapon model covers the removable suppressors on vanilla weapons,
 including ones bought at Ammu-Nation, and offers witness-aware stealth, heat,
 glow, and customizable wear/breakage. See the
-[Realistic Suppressors guide](docs/realistic-suppressors.md).
+[Suppressors Enhanced guide](docs/realistic-suppressors.md).
 
 Uninstall removes only receipt-owned package files. Saved condition in
 `%LOCALAPPDATA%\RealisticSuppressors\condition.json` is intentionally retained
@@ -148,7 +148,7 @@ GTA V Story Mode
         NPC physics and coordinated police systems
     Receipt-authorized standalone packages (installed separately)
       GTA-V-FPV
-      Realistic Suppressors
+      Suppressors Enhanced
 ```
 
 The Python launcher owns configuration, installation, backups, archive packaging, diagnostics,

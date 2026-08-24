@@ -1,11 +1,12 @@
 schema_version = 2
 id = "realistic-suppressors"
-name = "Realistic Suppressors"
-version = "1.0.0"
-type = "script"
-description = "Witness-aware suppressor stealth with weapon-specific heat, glow, wear, and optional breakage."
-editions = ["legacy", "enhanced"]
-dependencies = ["shvdn"]
+name = "Suppressors Enhanced"
+version = "1.1.0"
+type = "mixed"
+description = "Witness-aware suppressor stealth with gradual center-out heat, critical smoke, weapon-specific wear, and spark-pop breakage."
+editions = ["enhanced"]
+dependencies = ["shvdn", "openrpf"]
+dlc_packs = ["rs_suppressor_heat"]
 conflicts = []
 
 [allin1]
@@ -20,3 +21,7 @@ destination = "scripts/RealisticSuppressors/RealisticSuppressors.dll"
 [[files]]
 source = "allin1.content.json"
 destination = "scripts/RealisticSuppressors/allin1.content.json"
+
+[[files]]
+source = "payload/rs_suppressor_heat/dlc.rpf"
+destination = "mods/update/x64/dlcpacks/rs_suppressor_heat/dlc.rpf"

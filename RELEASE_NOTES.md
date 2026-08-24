@@ -54,9 +54,9 @@ release pipeline.
   so authorized standalone payload mods can keep ALLIN1's optional character
   inventory synchronized after a native ammo transaction.
 
-## Standalone Realistic Suppressors package
+## Standalone Suppressors Enhanced package
 
-- Added Realistic Suppressors as its own imported `realistic-suppressors`
+- Added Suppressors Enhanced (formerly Realistic Suppressors) as its own imported `realistic-suppressors`
   package and independent DLL. It is lifecycle-managed by the ALLIN1 launcher,
   but is not compiled into ALLIN1 or included in ALLIN1 Online Content.
 - Added witness-aware suppressed-fire stealth without globally muting player

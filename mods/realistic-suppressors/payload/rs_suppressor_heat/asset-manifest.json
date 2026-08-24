@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "asset": "rs_suppressor_heat",
+  "edition": "enhanced",
+  "dlc_sha256": "ee3e1037ff44e92496a9804755e54a15128618bda588bff2a8bb5d58fa09081a",
+  "dlc_size": 78336,
+  "geometry": {
+    "radial_segments": 64,
+    "axial_rings": 17,
+    "vertices_per_model": 1105,
+    "indices_per_model": 6144,
+    "triangle_order": ["a", "c", "b", "c", "d", "b"],
+    "first_triangle": [0, 1, 65],
+    "face_orientation": "outward",
+    "radial_cross_dot": "positive"
+  },
+  "gradient": {
+    "end_rgba": [176, 4, 1, 58],
+    "center_rgba": [255, 115, 21, 255],
+    "shape": "center_first_diffusion",
+    "opacity_stages": [
+      {"intensity": 0.00, "opacity": 0},
+      {"intensity": 0.01, "opacity": 51},
+      {"intensity": 0.38, "opacity": 102},
+      {"intensity": 0.60, "opacity": 153},
+      {"intensity": 0.80, "opacity": 204},
+      {"intensity": 0.96, "opacity": 255}
+    ]
+  },
+  "models": {
+    "rs_suppressor_heat_ar": "0x6D867623",
+    "rs_suppressor_heat_ar02": "0x97A97219",
+    "rs_suppressor_heat_pi": "0xC1C50E23",
+    "rs_suppressor_heat_sr": "0xD25F304B",
+    "rs_suppressor_heat_sr03": "0x3B0D8076"
+  }
+}

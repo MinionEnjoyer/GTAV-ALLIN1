@@ -3,6 +3,58 @@ using Xunit;
 
 namespace RealisticSuppressors.Tests
 {
+    public sealed class SuppressorShotObservationTests
+    {
+        [Fact]
+        public void AmmoDeltaCountsAQuickShotAfterShootingFlagClears()
+        {
+            Assert.Equal(1, RealisticSuppressorController.CountRoundsFired(
+                12, 11, false, true, false));
+        }
+
+        [Fact]
+        public void AmmoDeltaCountsEveryRoundInAFrame()
+        {
+            Assert.Equal(4, RealisticSuppressorController.CountRoundsFired(
+                30, 26, true, true, false));
+        }
+
+        [Fact]
+        public void WeaponChangeNeverTreatsDifferentClipsAsShots()
+        {
+            Assert.Equal(0, RealisticSuppressorController.CountRoundsFired(
+                30, 12, false, false, true));
+        }
+
+        [Fact]
+        public void ShootingEdgeFallsBackWhenAmmoCannotBeRead()
+        {
+            Assert.Equal(1, RealisticSuppressorController.CountRoundsFired(
+                -1, -1, true, false, false));
+        }
+
+        [Theory]
+        [InlineData(20f, "SUPPRESSOR 20 °C")]
+        [InlineData(525.4f, "SUPPRESSOR 525 °C")]
+        [InlineData(-10f, "SUPPRESSOR 20 °C")]
+        [InlineData(2000f, "SUPPRESSOR 1600 °C")]
+        public void TemperatureDebugUsesACompactBoundedCelsiusReadout(
+            float temperature, string expected)
+        {
+            Assert.Equal(expected,
+                RealisticSuppressorController.TemperatureDebugText(
+                    temperature));
+        }
+
+        [Fact]
+        public void TemperatureDebugNormalizesInvalidValuesToAmbient()
+        {
+            Assert.Equal("SUPPRESSOR 20 °C",
+                RealisticSuppressorController.TemperatureDebugText(
+                    float.NaN));
+        }
+    }
+
     public sealed class RealisticSuppressorPolicyTests
     {
         [Theory]
@@ -360,6 +412,261 @@ namespace RealisticSuppressors.Tests
                 SuppressorThermalPolicy.GlowOnsetCelsius + 1f) > 0f);
             Assert.Equal(1f, SuppressorThermalPolicy.GlowIntensity(
                 profile, profile.CriticalCelsius));
+        }
+
+        [Fact]
+        public void Glow_visual_starts_with_the_dim_attached_overlay_level()
+        {
+            SuppressorThermalProfile profile = StandardCarbine();
+            SuppressorGlowVisual hidden = SuppressorThermalPolicy.GlowVisual(
+                profile, SuppressorThermalPolicy.GlowOnsetCelsius - 0.01f);
+            SuppressorGlowVisual onset = SuppressorThermalPolicy.GlowVisual(
+                profile, SuppressorThermalPolicy.GlowOnsetCelsius);
+            SuppressorGlowVisual faint = SuppressorThermalPolicy.GlowVisual(
+                profile, SuppressorThermalPolicy.GlowOnsetCelsius + 20f);
+
+            Assert.False(hidden.Visible);
+            Assert.False(onset.Visible);
+            Assert.True(faint.Visible);
+            Assert.Equal("rs_suppressor_heat_ar",
+                faint.OverlayModelName);
+            Assert.Equal(51, faint.Opacity);
+        }
+
+        [Fact]
+        public void Glow_visual_strength_is_monotonic_to_critical()
+        {
+            SuppressorThermalProfile profile = StandardCarbine();
+            SuppressorGlowVisual onset = SuppressorThermalPolicy.GlowVisual(
+                profile, SuppressorThermalPolicy.GlowOnsetCelsius);
+            SuppressorGlowVisual middle = SuppressorThermalPolicy.GlowVisual(
+                profile, (SuppressorThermalPolicy.GlowOnsetCelsius +
+                    profile.CriticalCelsius) * 0.5f);
+            SuppressorGlowVisual critical = SuppressorThermalPolicy.GlowVisual(
+                profile, profile.CriticalCelsius);
+            Assert.Equal(0, onset.Opacity);
+            Assert.True(middle.Opacity > onset.Opacity);
+            Assert.True(critical.Opacity >= middle.Opacity);
+            Assert.Equal(255, critical.Opacity);
+            Assert.Equal(1f, critical.Intensity, 5);
+        }
+
+        [Theory]
+        [InlineData(0f, 0)]
+        [InlineData(0.01f, 51)]
+        [InlineData(0.379f, 51)]
+        [InlineData(0.38f, 102)]
+        [InlineData(0.60f, 153)]
+        [InlineData(0.80f, 204)]
+        [InlineData(0.959f, 204)]
+        [InlineData(0.96f, 255)]
+        [InlineData(1f, 255)]
+        public void Glow_opacity_holds_low_levels_until_near_critical(
+            float intensity, int expectedOpacity)
+        {
+            Assert.Equal(expectedOpacity,
+                SuppressorThermalPolicy.HeatOverlayOpacity(intensity));
+        }
+
+        [Fact]
+        public void Heat_smoke_begins_above_the_profile_damage_onset()
+        {
+            SuppressorThermalProfile profile = StandardCarbine();
+            SuppressorSmokeVisual below = SuppressorThermalPolicy
+                .SmokeVisual(profile,
+                    profile.DamageOnsetCelsius - 0.01f, 1f);
+            SuppressorSmokeVisual onset = SuppressorThermalPolicy
+                .SmokeVisual(profile, profile.DamageOnsetCelsius, 1f);
+            SuppressorSmokeVisual above = SuppressorThermalPolicy
+                .SmokeVisual(profile,
+                    profile.DamageOnsetCelsius + 1f, 1f);
+
+            Assert.False(below.Visible);
+            Assert.False(onset.Visible);
+            Assert.True(above.Visible);
+            Assert.Equal(1, above.EmitterCount);
+            Assert.True(above.PrimaryScale > 0f);
+            Assert.True(above.Alpha > 0f);
+        }
+
+        [Fact]
+        public void Heat_smoke_becomes_denser_and_adds_a_hot_emitter()
+        {
+            SuppressorThermalProfile profile = StandardCarbine();
+            float range = profile.CriticalCelsius -
+                profile.DamageOnsetCelsius;
+            SuppressorSmokeVisual warm = SuppressorThermalPolicy
+                .SmokeVisual(profile,
+                    profile.DamageOnsetCelsius + range * 0.10f, 1f);
+            SuppressorSmokeVisual hot = SuppressorThermalPolicy
+                .SmokeVisual(profile,
+                    profile.DamageOnsetCelsius + range * 0.60f, 1f);
+            SuppressorSmokeVisual critical = SuppressorThermalPolicy
+                .SmokeVisual(profile, profile.CriticalCelsius, 1f);
+
+            Assert.Equal(1, warm.EmitterCount);
+            Assert.Equal(2, hot.EmitterCount);
+            Assert.Equal(2, critical.EmitterCount);
+            Assert.True(hot.Intensity > warm.Intensity);
+            Assert.True(hot.PrimaryScale > warm.PrimaryScale);
+            Assert.True(hot.Alpha > warm.Alpha);
+            Assert.True(critical.PrimaryScale > hot.PrimaryScale);
+            Assert.True(critical.SecondaryScale > hot.SecondaryScale);
+            Assert.True(critical.Alpha > hot.Alpha);
+            Assert.True(critical.PrimaryScale > hot.PrimaryScale * 2f);
+        }
+
+        [Fact]
+        public void Critical_smoke_boost_is_smooth_and_reserved_for_high_heat()
+        {
+            Assert.Equal(0f, SuppressorThermalPolicy
+                .CriticalSmokeBoost(0.82f), 5);
+            float rising = SuppressorThermalPolicy
+                .CriticalSmokeBoost(0.91f);
+            Assert.InRange(rising, 0.49f, 0.51f);
+            Assert.Equal(1f, SuppressorThermalPolicy
+                .CriticalSmokeBoost(1f), 5);
+        }
+
+        [Fact]
+        public void Secondary_heat_smoke_uses_hysteresis_to_avoid_popping()
+        {
+            Assert.False(SuppressorThermalPolicy
+                .ShouldUseSecondarySmoke(0.59f, false));
+            Assert.True(SuppressorThermalPolicy
+                .ShouldUseSecondarySmoke(0.60f, false));
+            Assert.True(SuppressorThermalPolicy
+                .ShouldUseSecondarySmoke(0.46f, true));
+            Assert.False(SuppressorThermalPolicy
+                .ShouldUseSecondarySmoke(0.45f, true));
+        }
+
+        [Fact]
+        public void Heat_smoke_intensity_setting_is_bounded_and_cosmetic()
+        {
+            SuppressorThermalProfile profile = StandardCarbine();
+            SuppressorSmokeVisual minimum = SuppressorThermalPolicy
+                .SmokeVisual(profile, profile.CriticalCelsius, 0.1f);
+            SuppressorSmokeVisual maximum = SuppressorThermalPolicy
+                .SmokeVisual(profile, profile.CriticalCelsius, 9f);
+            SuppressorSmokeVisual clampedMinimum = SuppressorThermalPolicy
+                .SmokeVisual(profile, profile.CriticalCelsius, 0.5f);
+            SuppressorSmokeVisual clampedMaximum = SuppressorThermalPolicy
+                .SmokeVisual(profile, profile.CriticalCelsius, 2f);
+
+            Assert.Equal(clampedMinimum.PrimaryScale,
+                minimum.PrimaryScale, 5);
+            Assert.Equal(clampedMinimum.Alpha, minimum.Alpha, 5);
+            Assert.Equal(clampedMaximum.PrimaryScale,
+                maximum.PrimaryScale, 5);
+            Assert.Equal(clampedMaximum.Alpha, maximum.Alpha, 5);
+            Assert.Equal(minimum.Intensity, maximum.Intensity, 5);
+            Assert.Equal(minimum.EmitterCount, maximum.EmitterCount);
+        }
+
+        [Fact]
+        public void A_hotter_can_remains_smoky_longer_while_cooling()
+        {
+            SuppressorThermalProfile profile = StandardCarbine();
+            float range = profile.CriticalCelsius -
+                profile.DamageOnsetCelsius;
+            float warm = profile.DamageOnsetCelsius + range * 0.35f;
+            float critical = profile.CriticalCelsius;
+            int warmSeconds = 0;
+            int criticalSeconds = 0;
+            while (SuppressorThermalPolicy.SmokeIntensity(
+                    profile, warm) > 0f && warmSeconds < 10000)
+            {
+                warm = SuppressorThermalPolicy.CoolTemperature(
+                    warm, 1000, profile.CoolingHalfLifeSeconds);
+                warmSeconds++;
+            }
+            while (SuppressorThermalPolicy.SmokeIntensity(
+                    profile, critical) > 0f && criticalSeconds < 10000)
+            {
+                critical = SuppressorThermalPolicy.CoolTemperature(
+                    critical, 1000, profile.CoolingHalfLifeSeconds);
+                criticalSeconds++;
+            }
+
+            Assert.InRange(warmSeconds, 1, 9999);
+            Assert.InRange(criticalSeconds, 1, 9999);
+            Assert.True(criticalSeconds > warmSeconds);
+        }
+
+        [Fact]
+        public void Invalid_smoke_input_is_safely_hidden()
+        {
+            SuppressorThermalProfile profile = StandardCarbine();
+            Assert.False(SuppressorThermalPolicy.SmokeVisual(
+                profile, float.NaN, 1f).Visible);
+            Assert.False(SuppressorThermalPolicy.SmokeVisual(
+                null, profile.CriticalCelsius, 1f).Visible);
+        }
+
+        [Theory]
+        [InlineData(0x837445AAu, "rs_suppressor_heat_ar")]
+        [InlineData(0xA73D4664u, "rs_suppressor_heat_ar02")]
+        [InlineData(0xC304849Au, "rs_suppressor_heat_pi")]
+        [InlineData(0x65EA7EBBu, "rs_suppressor_heat_pi")]
+        [InlineData(0x9307D6FAu, "rs_suppressor_heat_pi")]
+        [InlineData(0x1E02B7E0u, "rs_suppressor_heat_pi")]
+        [InlineData(0xE608B35Eu, "rs_suppressor_heat_sr")]
+        [InlineData(0xAC42DF71u, "rs_suppressor_heat_sr03")]
+        public void Every_stock_component_maps_to_a_sized_overlay(
+            uint componentHash, string expectedModel)
+        {
+            Assert.Equal(expectedModel,
+                SuppressorThermalPolicy.HeatOverlayModelName(
+                    componentHash));
+        }
+
+        [Fact]
+        public void Unknown_component_has_no_overlay_model()
+        {
+            Assert.Null(SuppressorThermalPolicy.HeatOverlayModelName(
+                0xDEADBEEFu));
+        }
+
+        [Theory]
+        [InlineData(true, false, true)]
+        [InlineData(true, true, false)]
+        [InlineData(false, false, false)]
+        [InlineData(false, true, false)]
+        public void Break_effect_is_latched_to_the_first_failure_only(
+            bool requested, bool alreadyLogged, bool expected)
+        {
+            Assert.Equal(expected,
+                SuppressorThermalPolicy.ShouldBeginBreakEvent(
+                    requested, alreadyLogged));
+        }
+
+        [Theory]
+        [InlineData(0x837445AAu, 0.222f)]
+        [InlineData(0xA73D4664u, 0.195f)]
+        [InlineData(0xC304849Au, 0.135f)]
+        [InlineData(0x65EA7EBBu, 0.135f)]
+        [InlineData(0x9307D6FAu, 0.135f)]
+        [InlineData(0x1E02B7E0u, 0.135f)]
+        [InlineData(0xE608B35Eu, 0.324f)]
+        [InlineData(0xAC42DF71u, 0.312f)]
+        public void Break_effect_uses_a_can_specific_front_cap_offset(
+            uint componentHash, float expected)
+        {
+            Assert.Equal(expected,
+                SuppressorThermalPolicy.BreakEffectAxialOffset(
+                    componentHash), 3);
+        }
+
+        [Fact]
+        public void Every_profile_can_place_its_break_effect_on_the_can()
+        {
+            Assert.All(SuppressorThermalProfiles.All, profile =>
+                Assert.True(SuppressorThermalPolicy
+                    .BreakEffectAxialOffset(profile.ComponentHash) > 0f,
+                    profile.WeaponName));
+            Assert.Equal(0f, SuppressorThermalPolicy
+                .BreakEffectAxialOffset(0xDEADBEEFu));
         }
 
         [Fact]

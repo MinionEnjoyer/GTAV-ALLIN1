@@ -67,11 +67,54 @@ namespace RealisticSuppressors
         internal bool Broke => Durability <= 0f;
     }
 
+    internal readonly struct SuppressorGlowVisual
+    {
+        internal SuppressorGlowVisual(
+            bool visible, float intensity, string overlayModelName,
+            int opacity)
+        {
+            Visible = visible;
+            Intensity = intensity;
+            OverlayModelName = overlayModelName;
+            Opacity = opacity;
+        }
+
+        internal bool Visible { get; }
+        internal float Intensity { get; }
+        internal string OverlayModelName { get; }
+        internal int Opacity { get; }
+    }
+
+    internal readonly struct SuppressorSmokeVisual
+    {
+        internal SuppressorSmokeVisual(
+            bool visible, float intensity, float primaryScale,
+            float secondaryScale, float alpha, int emitterCount)
+        {
+            Visible = visible;
+            Intensity = intensity;
+            PrimaryScale = primaryScale;
+            SecondaryScale = secondaryScale;
+            Alpha = alpha;
+            EmitterCount = emitterCount;
+        }
+
+        internal bool Visible { get; }
+        internal float Intensity { get; }
+        internal float PrimaryScale { get; }
+        internal float SecondaryScale { get; }
+        internal float Alpha { get; }
+        internal int EmitterCount { get; }
+    }
+
     internal static class SuppressorThermalPolicy
     {
         internal const float AmbientCelsius = 20f;
         internal const float GlowOnsetCelsius = 525f;
         internal const float MaximumTrackedCelsius = 1600f;
+        internal const float SecondarySmokeStartIntensity = 0.60f;
+        internal const float SecondarySmokeStopIntensity = 0.45f;
+        internal const float CriticalSmokeBoostOnset = 0.82f;
         private const float HotWearFactor = 24f;
 
         internal static float CoolTemperature(
@@ -161,6 +204,162 @@ namespace RealisticSuppressors
                 (temperatureCelsius - GlowOnsetCelsius) / range));
         }
 
+        internal static SuppressorGlowVisual GlowVisual(
+            SuppressorThermalProfile profile, float temperatureCelsius)
+        {
+            if (profile == null || temperatureCelsius <= GlowOnsetCelsius)
+                return new SuppressorGlowVisual(
+                    false, 0f, null, 0);
+
+            float physical = GlowIntensity(profile, temperatureCelsius);
+            string modelName = HeatOverlayModelName(profile.ComponentHash);
+            if (modelName == null)
+                return new SuppressorGlowVisual(
+                    false, physical, null, 0);
+
+            return new SuppressorGlowVisual(
+                true, physical, modelName,
+                HeatOverlayOpacity(physical));
+        }
+
+        internal static float SmokeIntensity(
+            SuppressorThermalProfile profile, float temperatureCelsius)
+        {
+            if (profile == null) return 0f;
+            float temperature = ClampFinite(
+                temperatureCelsius, AmbientCelsius,
+                MaximumTrackedCelsius, AmbientCelsius);
+            if (temperature <= profile.DamageOnsetCelsius) return 0f;
+            float range = Math.Max(1f,
+                profile.CriticalCelsius - profile.DamageOnsetCelsius);
+            return Clamp01(
+                (temperature - profile.DamageOnsetCelsius) / range);
+        }
+
+        internal static SuppressorSmokeVisual SmokeVisual(
+            SuppressorThermalProfile profile, float temperatureCelsius,
+            float intensityScale)
+        {
+            float physical = SmokeIntensity(profile, temperatureCelsius);
+            if (physical <= 0f)
+                return new SuppressorSmokeVisual(
+                    false, 0f, 0f, 0f, 0f, 0);
+
+            // The stock barrel-smoke effect already owns particle lifetime
+            // and buoyancy. Scaling its loop makes the plume denser, while a
+            // second emitter along the hot can adds the long, turbulent trail
+            // only at sustained high temperatures. A hotter can also remains
+            // above the smoke onset longer as the thermal model cools.
+            float userScale = ClampFinite(
+                intensityScale, 0.5f, 2f, 1f);
+            float eased = SmoothStep(physical);
+            float density = (float)Math.Sqrt(eased);
+            float criticalBoost = CriticalSmokeBoost(physical);
+            float alpha = Math.Min(1f,
+                (0.04f + 0.56f * density +
+                    0.40f * criticalBoost) *
+                (float)Math.Sqrt(userScale));
+            float primaryScale = Math.Min(2.75f,
+                (0.18f + 0.62f * eased +
+                    0.72f * criticalBoost) * userScale);
+            int emitterCount = ShouldUseSecondarySmoke(
+                physical, false) ? 2 : 1;
+            float secondaryScale = Math.Min(2.25f,
+                (0.16f + 0.48f * eased +
+                    0.58f * criticalBoost) * userScale);
+            return new SuppressorSmokeVisual(
+                true, physical, primaryScale,
+                secondaryScale, alpha, emitterCount);
+        }
+
+        internal static bool ShouldUseSecondarySmoke(
+            float physicalIntensity, bool alreadyRunning)
+        {
+            float physical = ClampFinite(
+                physicalIntensity, 0f, 1f, 0f);
+            return alreadyRunning
+                ? physical > SecondarySmokeStopIntensity
+                : physical >= SecondarySmokeStartIntensity;
+        }
+
+        internal static float CriticalSmokeBoost(float physicalIntensity)
+        {
+            float physical = ClampFinite(
+                physicalIntensity, 0f, 1f, 0f);
+            float range = 1f - CriticalSmokeBoostOnset;
+            return SmoothStep((physical - CriticalSmokeBoostOnset) /
+                Math.Max(0.001f, range));
+        }
+
+        internal static string HeatOverlayModelName(uint componentHash)
+        {
+            switch (componentHash)
+            {
+                case 0x837445AA: // w_at_ar_supp
+                    return "rs_suppressor_heat_ar";
+                case 0xA73D4664: // w_at_ar_supp_02
+                    return "rs_suppressor_heat_ar02";
+                case 0xC304849A: // w_at_pi_supp
+                case 0x65EA7EBB: // w_at_pi_supp_02
+                case 0x9307D6FA: // w_pi_ceramic_supp
+                case 0x1E02B7E0: // w_pi_pistol_xm3_supp
+                    return "rs_suppressor_heat_pi";
+                case 0xE608B35E: // w_at_sr_supp
+                    return "rs_suppressor_heat_sr";
+                case 0xAC42DF71: // w_at_sr_supp_03
+                    return "rs_suppressor_heat_sr03";
+                default:
+                    return null;
+            }
+        }
+
+        internal static bool ShouldBeginBreakEvent(
+            bool requested, bool alreadyLogged)
+        {
+            return requested && !alreadyLogged;
+        }
+
+        internal static float BreakEffectAxialOffset(uint componentHash)
+        {
+            // Local +X distances place the cosmetic failure burst just
+            // inside each suppressor's front cap. They match the authored
+            // heat-sleeve lengths while leaving the weapon and player clear.
+            switch (componentHash)
+            {
+                case 0x837445AA: // w_at_ar_supp
+                    return 0.222f;
+                case 0xA73D4664: // w_at_ar_supp_02
+                    return 0.195f;
+                case 0xC304849A: // w_at_pi_supp
+                case 0x65EA7EBB: // w_at_pi_supp_02
+                case 0x9307D6FA: // w_pi_ceramic_supp
+                case 0x1E02B7E0: // w_pi_pistol_xm3_supp
+                    return 0.135f;
+                case 0xE608B35E: // w_at_sr_supp
+                    return 0.324f;
+                case 0xAC42DF71: // w_at_sr_supp_03
+                    return 0.312f;
+                default:
+                    return 0f;
+            }
+        }
+
+        internal static int HeatOverlayOpacity(float physicalIntensity)
+        {
+            float physical = Clamp01(physicalIntensity);
+            if (physical <= 0f) return 0;
+
+            // SET_ENTITY_ALPHA is quantized by GTA to five useful visible
+            // levels. Hold each lower level longer so the texture's bright
+            // center appears first and the shoulders spread toward the ends
+            // instead of the whole can becoming opaque midway to critical.
+            int level = physical >= 0.96f ? 5 :
+                physical >= 0.80f ? 4 :
+                physical >= 0.60f ? 3 :
+                physical >= 0.38f ? 2 : 1;
+            return level * 51;
+        }
+
         internal static int ContinuousRoundsToGlow(
             SuppressorThermalProfile profile)
         {
@@ -191,6 +390,12 @@ namespace RealisticSuppressors
 
         private static float Clamp01(float value) =>
             ClampFinite(value, 0f, 1f, 1f);
+
+        private static float SmoothStep(float value)
+        {
+            float bounded = Clamp01(value);
+            return bounded * bounded * (3f - 2f * bounded);
+        }
 
         private static float ClampFinite(
             float value, float minimum, float maximum,

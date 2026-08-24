@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<package version="2.2">
+  <metadata>
+    <name>Suppressors Enhanced — Standalone</name>
+    <version>
+      <major>1</major>
+      <minor>1</minor>
+      <tag>1.1.0</tag>
+    </version>
+    <description>Launcher-independent GTA V Enhanced Story Mode build. The ALLIN1 launcher remains the recommended installation and configuration path.</description>
+    <largeDescription>Installs the standalone RealisticSuppressors.dll, a settings example, and the rs_suppressor_heat add-on DLC. Requires ScriptHookV, ScriptHookVDotNet 3, and OpenRPF. This build does not load or reference ALLIN1.dll.</largeDescription>
+    <author>
+      <displayName>MinionEnjoyer</displayName>
+    </author>
+    <gameversion>Enhanced</gameversion>
+  </metadata>
+  <content>
+    <add source="scripts/RealisticSuppressors/RealisticSuppressors.dll">scripts/RealisticSuppressors/RealisticSuppressors.dll</add>
+    <add source="scripts/RealisticSuppressors/RealisticSuppressors.ini.example">scripts/RealisticSuppressors/RealisticSuppressors.ini.example</add>
+    <add source="mods/update/x64/dlcpacks/rs_suppressor_heat/dlc.rpf">mods/update/x64/dlcpacks/rs_suppressor_heat/dlc.rpf</add>
+    <archive path="update/update.rpf" type="RPF7" createIfNotExist="false">
+      <xml path="common/data/dlclist.xml">
+        <add xpath="/SMandatoryPacksData/Paths" append="Last"><Item>dlcpacks:/rs_suppressor_heat/</Item></add>
+      </xml>
+    </archive>
+  </content>
+</package>

@@ -12,7 +12,6 @@ using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
-using System.Web.Script.Serialization;
 using GTA;
 
 namespace ALLIN1
@@ -136,7 +135,7 @@ namespace ALLIN1
 
         private static readonly object Sync = new object();
         private static readonly string ScriptsDirectory = ResolveScriptsDirectory(
-            typeof(Allin1ExtensionApi).Assembly.Location,
+            ResolveAssemblySourcePath(typeof(Allin1ExtensionApi).Assembly),
             AppDomain.CurrentDomain.BaseDirectory);
         private static readonly string RegistryPath = Path.Combine(
             ScriptsDirectory, ".allin1", "extensions", "registry.json");
@@ -549,6 +548,49 @@ namespace ALLIN1
             }
             catch (Exception) { }
             return Path.GetFullPath(fallbackBaseDirectory);
+        }
+
+        /// <summary>
+        /// Return the original on-disk source of an assembly. ScriptHookVDotNet
+        /// shadow-copies script assemblies, so Location can name its cache while
+        /// CodeBase still names the launcher-authorized file under scripts.
+        /// </summary>
+        internal static string ResolveAssemblySourcePath(Assembly assembly)
+        {
+            if (assembly == null) return null;
+            string codeBase = null;
+            string location = null;
+            try { codeBase = assembly.CodeBase; }
+            catch (Exception) { }
+            try { location = assembly.Location; }
+            catch (Exception) { }
+            return ResolveAssemblySourcePath(codeBase, location);
+        }
+
+        internal static string ResolveAssemblySourcePath(
+            string codeBase, string location)
+        {
+            if (!string.IsNullOrWhiteSpace(codeBase))
+            {
+                try
+                {
+                    Uri source;
+                    if (Uri.TryCreate(codeBase, UriKind.Absolute, out source) &&
+                        source.IsFile)
+                    {
+                        string localPath = source.LocalPath;
+                        if (!string.IsNullOrWhiteSpace(localPath))
+                            return Path.GetFullPath(localPath);
+                    }
+                }
+                catch (Exception) { }
+            }
+            if (!string.IsNullOrWhiteSpace(location))
+            {
+                try { return Path.GetFullPath(location); }
+                catch (Exception) { }
+            }
+            return null;
         }
 
         private static Assembly ParticipantImplementationAssembly(
@@ -1035,7 +1077,8 @@ namespace ALLIN1
                     string documents = Environment.GetFolderPath(
                         Environment.SpecialFolder.MyDocuments);
                     string scripts = Allin1ExtensionApi.ResolveScriptsDirectory(
-                        typeof(Allin1ExtensionApi).Assembly.Location,
+                        Allin1ExtensionApi.ResolveAssemblySourcePath(
+                            typeof(Allin1ExtensionApi).Assembly),
                         AppDomain.CurrentDomain.BaseDirectory);
                     _activeScope = CreateActiveScope(documents, scripts);
                 }
@@ -1182,9 +1225,8 @@ namespace ALLIN1
 
         internal bool AuthorizesAssembly(Assembly assembly, string scriptsDirectory)
         {
-            string location;
-            try { location = Path.GetFullPath(assembly.Location); }
-            catch (Exception) { return false; }
+            string location = Allin1ExtensionApi.ResolveAssemblySourcePath(assembly);
+            if (string.IsNullOrWhiteSpace(location)) return false;
             if (string.Equals(Source, "built-in", StringComparison.OrdinalIgnoreCase))
             {
                 return assembly == typeof(Allin1ExtensionApi).Assembly;
@@ -1276,11 +1318,7 @@ namespace ALLIN1
         internal static RuntimeExtensionRegistry Parse(
             string json, string scriptsDirectory)
         {
-            var serializer = new JavaScriptSerializer {
-                MaxJsonLength = 4 * 1024 * 1024,
-                RecursionLimit = 64,
-            };
-            object rootValue = serializer.DeserializeObject(json);
+            object rootValue = PortableJsonParser.Parse(json);
             Dictionary<string, object> root = AsObject(rootValue, "registry");
             if (Integer(root, "schema_version") != 1 ||
                 Integer(root, "api_version") != Allin1ExtensionApi.ApiVersion)
