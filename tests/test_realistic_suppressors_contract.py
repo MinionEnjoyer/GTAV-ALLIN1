@@ -367,7 +367,7 @@ def test_glow_renderer_is_a_bone_attached_asset_not_world_geometry() -> None:
     assert "Hash.DRAW_POLY" not in controller
     assert "World.CreatePropNoOffset" in controller
     assert "overlay.AttachTo" in controller
-    assert '"bone_attached_emissive_overlay"' in controller
+    assert '"bone_attached_steady_material_overlay"' in controller
     assert "SET_ENTITY_FLAG_SUPPRESS_SHADOW" in controller
     assert '"suppressor_temperature_debug", false' in controller
     assert "BEGIN_TEXT_COMMAND_DISPLAY_TEXT" in controller
@@ -441,7 +441,7 @@ def test_heat_asset_is_the_validated_outward_facing_tarkov_style_build() -> None
     payload = HEAT_DLC.read_bytes()
 
     assert asset["edition"] == "enhanced"
-    assert asset["dlc_size"] == len(payload) == 78_336
+    assert asset["dlc_size"] == len(payload) == 1_805_824
     assert asset["dlc_sha256"] == hashlib.sha256(payload).hexdigest()
     assert asset["geometry"] == {
         "radial_segments": 64,
@@ -454,18 +454,63 @@ def test_heat_asset_is_the_validated_outward_facing_tarkov_style_build() -> None
         "radial_cross_dot": "positive",
     }
     assert asset["gradient"] == {
-        "end_rgba": [176, 4, 1, 58],
-        "center_rgba": [255, 115, 21, 255],
+        "end_rgba_at_level_24": [101, 11, 1, 56],
+        "center_rgba_at_level_24": [255, 150, 28, 255],
         "shape": "center_first_diffusion",
-        "opacity_stages": [
-            {"intensity": 0.00, "opacity": 0},
-            {"intensity": 0.01, "opacity": 51},
-            {"intensity": 0.38, "opacity": 102},
-            {"intensity": 0.60, "opacity": 153},
-            {"intensity": 0.80, "opacity": 204},
-            {"intensity": 0.96, "opacity": 255},
+        "texture_levels": 24,
+        "tier_texture_samples": [
+            {
+                "level": 1,
+                "center_rgba": [7, 0, 0, 1],
+                "emissive_multiplier": 0.0045044404,
+            },
+            {
+                "level": 6,
+                "center_rgba": [54, 2, 0, 20],
+                "emissive_multiplier": 0.09473228,
+            },
+            {
+                "level": 12,
+                "center_rgba": [117, 16, 1, 72],
+                "emissive_multiplier": 0.3077861,
+            },
+            {
+                "level": 18,
+                "center_rgba": [185, 60, 7, 151],
+                "emissive_multiplier": 0.6132028,
+            },
+            {
+                "level": 24,
+                "center_rgba": [255, 150, 28, 255],
+                "emissive_multiplier": 1.0,
+            },
         ],
+        "opacity_curve": {
+            "type": "quadratic_ease_in",
+            "formula": "round(255 * intensity^2)",
+            "samples": [
+                {"intensity": 0.00, "opacity": 0},
+                {"intensity": 0.10, "opacity": 3},
+                {"intensity": 0.25, "opacity": 16},
+                {"intensity": 0.50, "opacity": 64},
+                {"intensity": 0.75, "opacity": 143},
+                {"intensity": 0.90, "opacity": 207},
+                {"intensity": 1.00, "opacity": 255},
+            ],
+        },
+        "runtime_fade": {
+            "fade_in_half_life_seconds": 4.0,
+            "fade_out_half_life_seconds": 6.0,
+            "material_levels": 24,
+            "material_level_hysteresis": 0.65,
+            "entity_alpha": 255,
+            "brightness_driver": (
+                "steady_authored_emissive_multiplier_and_tier_texture"
+            ),
+            "temporal_dithering": False,
+        },
     }
+    assert asset["archive_model_count"] == 120
     assert set(asset["models"]) == {
         "rs_suppressor_heat_ar",
         "rs_suppressor_heat_ar02",

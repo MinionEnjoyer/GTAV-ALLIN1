@@ -53,6 +53,22 @@ namespace RealisticSuppressors.Tests
                 RealisticSuppressorController.TemperatureDebugText(
                     float.NaN));
         }
+
+        [Theory]
+        [InlineData(true, true, true, false, true)]
+        [InlineData(false, true, true, false, false)]
+        [InlineData(true, false, true, false, false)]
+        [InlineData(true, true, false, false, false)]
+        [InlineData(true, true, true, true, false)]
+        public void TemperatureDebugRequiresALiveAttachedSuppressor(
+            bool debugEnabled, bool suppressorAttached,
+            bool hasThermalState, bool suppressorBroken, bool expected)
+        {
+            Assert.Equal(expected,
+                RealisticSuppressorController.ShouldRenderTemperatureDebug(
+                    debugEnabled, suppressorAttached, hasThermalState,
+                    suppressorBroken));
+        }
     }
 
     public sealed class RealisticSuppressorPolicyTests
@@ -415,7 +431,7 @@ namespace RealisticSuppressors.Tests
         }
 
         [Fact]
-        public void Glow_visual_starts_with_the_dim_attached_overlay_level()
+        public void Glow_visual_starts_with_a_barely_visible_attached_overlay()
         {
             SuppressorThermalProfile profile = StandardCarbine();
             SuppressorGlowVisual hidden = SuppressorThermalPolicy.GlowVisual(
@@ -430,7 +446,7 @@ namespace RealisticSuppressors.Tests
             Assert.True(faint.Visible);
             Assert.Equal("rs_suppressor_heat_ar",
                 faint.OverlayModelName);
-            Assert.Equal(51, faint.Opacity);
+            Assert.Equal(1, faint.Opacity);
         }
 
         [Fact]
@@ -453,18 +469,109 @@ namespace RealisticSuppressors.Tests
 
         [Theory]
         [InlineData(0f, 0)]
-        [InlineData(0.01f, 51)]
-        [InlineData(0.379f, 51)]
-        [InlineData(0.38f, 102)]
-        [InlineData(0.60f, 153)]
-        [InlineData(0.80f, 204)]
-        [InlineData(0.959f, 204)]
-        [InlineData(0.96f, 255)]
+        [InlineData(0.01f, 0)]
+        [InlineData(0.05f, 1)]
+        [InlineData(0.10f, 3)]
+        [InlineData(0.25f, 16)]
+        [InlineData(0.50f, 64)]
+        [InlineData(0.75f, 143)]
+        [InlineData(0.90f, 207)]
         [InlineData(1f, 255)]
-        public void Glow_opacity_holds_low_levels_until_near_critical(
+        public void Glow_opacity_uses_a_continuous_quadratic_fade(
             float intensity, int expectedOpacity)
         {
             Assert.Equal(expectedOpacity,
+                SuppressorThermalPolicy.HeatOverlayOpacity(intensity));
+        }
+
+        [Fact]
+        public void Glow_opacity_has_no_large_step_between_adjacent_samples()
+        {
+            int previous = 0;
+            for (int sample = 1; sample <= 100; sample++)
+            {
+                int opacity = SuppressorThermalPolicy.HeatOverlayOpacity(
+                    sample / 100f);
+                Assert.InRange(opacity - previous, 0, 6);
+                previous = opacity;
+            }
+        }
+
+        [Fact]
+        public void Glow_display_fades_in_and_out_instead_of_snapping()
+        {
+            float heating = SuppressorThermalPolicy
+                .SmoothHeatOverlayOpacity(0f, 255f, 1000);
+            float cooling = SuppressorThermalPolicy
+                .SmoothHeatOverlayOpacity(255f, 0f, 1000);
+
+            Assert.InRange(heating, 40f, 41f);
+            Assert.InRange(cooling, 226f, 228f);
+            Assert.Equal(127.5f, SuppressorThermalPolicy
+                .SmoothHeatOverlayOpacity(0f, 255f, 4000), 3);
+            Assert.Equal(127.5f, SuppressorThermalPolicy
+                .SmoothHeatOverlayOpacity(255f, 0f, 6000), 3);
+        }
+
+        [Fact]
+        public void Glow_display_smoothing_is_monotonic_across_frames()
+        {
+            float opacity = 0f;
+            for (int frame = 0; frame < 600; frame++)
+            {
+                float next = SuppressorThermalPolicy
+                    .SmoothHeatOverlayOpacity(opacity, 255f, 16);
+                Assert.True(next >= opacity);
+                opacity = next;
+            }
+            Assert.InRange(opacity, 206f, 208f);
+
+            for (int frame = 0; frame < 600; frame++)
+            {
+                float next = SuppressorThermalPolicy
+                    .SmoothHeatOverlayOpacity(opacity, 0f, 16);
+                Assert.True(next <= opacity);
+                opacity = next;
+            }
+            Assert.InRange(opacity, 68f, 69f);
+        }
+
+        [Theory]
+        [InlineData(0f, 0)]
+        [InlineData(10.625f, 1)]
+        [InlineData(63.75f, 6)]
+        [InlineData(127.5f, 12)]
+        [InlineData(255f, 24)]
+        public void Glow_uses_steady_material_levels_without_frame_dither(
+            float opacity, int expectedLevel)
+        {
+            Assert.Equal(expectedLevel, SuppressorThermalPolicy
+                .HeatOverlayMaterialLevel(opacity, 0));
+        }
+
+        [Fact]
+        public void Glow_material_levels_have_hysteresis_and_stable_names()
+        {
+            Assert.Equal(10, SuppressorThermalPolicy
+                .HeatOverlayMaterialLevel(110f, 10));
+            Assert.Equal("rs_suppressor_heat_ar_01",
+                SuppressorThermalPolicy.HeatOverlayMaterialModelName(
+                    "rs_suppressor_heat_ar", 1));
+            Assert.Equal("rs_suppressor_heat_ar_12",
+                SuppressorThermalPolicy.HeatOverlayMaterialModelName(
+                    "rs_suppressor_heat_ar", 12));
+            Assert.Equal("rs_suppressor_heat_ar",
+                SuppressorThermalPolicy.HeatOverlayMaterialModelName(
+                    "rs_suppressor_heat_ar", 24));
+        }
+
+        [Theory]
+        [InlineData(float.NaN)]
+        [InlineData(float.NegativeInfinity)]
+        [InlineData(-1f)]
+        public void Invalid_glow_intensity_stays_transparent(float intensity)
+        {
+            Assert.Equal(0,
                 SuppressorThermalPolicy.HeatOverlayOpacity(intensity));
         }
 

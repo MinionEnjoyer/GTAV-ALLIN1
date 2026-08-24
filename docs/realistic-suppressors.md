@@ -124,10 +124,10 @@ materials cannot be changed safely at runtime, the Enhanced package supplies
 five collisionless emissive sleeve assets sized to the stock AR, AR02, pistol,
 sniper, and Mk II sniper suppressor families. Each sleeve has 64 radial sides,
 17 axial rings, outward-facing triangles, and a stock-envelope clearance of
-1.5 mm. Its low-alpha end colors and concentrated orange center are revealed in
-five deliberately spaced opacity stages: a faint center band appears first,
-then gradually spreads outward, with full opacity withheld until the final 4%
-of the path to critical heat. The controller creates
+1.5 mm. Its low-alpha end colors and concentrated orange center are revealed by
+a continuous quadratic fade: the first quarter of the glow range remains very
+faint, the midpoint uses only 25% overlay opacity, and full opacity is withheld
+until critical temperature. The controller creates
 only the matching sleeve and attaches it directly to `WAPSupp` or `WAPSupp_2`;
 GTA's entity hierarchy therefore moves
 it with weapon sway, recoil, reloads, and camera transitions. The old

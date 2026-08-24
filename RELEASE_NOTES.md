@@ -1,3 +1,26 @@
+# GTA V ALLIN1 0.5.4
+
+Version 0.5.4 keeps the launcher, in-game client, content packages, and SDK on
+one package contract while expanding script-driven weapon and material support.
+
+## Launcher and package platform
+
+- Unified schema-1/schema-2 validation with the standalone SDK and added typed
+  declarations linking vanilla weapons, components, script entry points, and
+  package-owned visual assets.
+- Hardened extension loading and package inspection for script-driven vanilla
+  weapon enhancements that intentionally do not replace `weapons.meta`.
+- Updated the coordinated launcher, client, Online Content, and optional
+  Experimental Gameplay version surfaces to 0.5.4.
+
+## Suppressors Enhanced and SDK integration
+
+- Expanded the standalone Suppressors Enhanced package, heat materials,
+  lifecycle behavior, documentation, tests, and distributable packages.
+- Added recursive package-RPF inspection, resolved native shader identities,
+  material-progression rendering and diagnostics, and matching structured API
+  output in ALLIN1 SDK 0.5.4.
+
 # GTA V ALLIN1 0.5.3
 
 Version 0.5.3 keeps the launcher, in-game client, official content packs, and

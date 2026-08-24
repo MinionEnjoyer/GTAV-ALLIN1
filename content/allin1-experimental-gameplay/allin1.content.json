@@ -3,7 +3,7 @@
   "api_version": 1,
   "id": "allin1.experimental-gameplay",
   "name": "ALLIN1 Experimental Gameplay",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Optional NPC physics and coordinated police-response experiments. Every feature remains off until explicitly enabled.",
   "capabilities": [
     "launcher.settings",

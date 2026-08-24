@@ -17,6 +17,11 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping
 
+from allin1.mod_package_contract import (
+    WeaponEnhancementContract,
+    parse_workbench_contract,
+)
+
 
 EXTENSION_SCHEMA_VERSION = 1
 EXTENSION_API_VERSION = 1
@@ -43,7 +48,7 @@ _WINDOWS_DEVICE_NAMES = frozenset({
 })
 _MANIFEST_FIELDS = frozenset({
     "schema_version", "api_version", "id", "name", "version",
-    "description", "capabilities", "systems", "gbay", "runtime",
+    "description", "capabilities", "systems", "gbay", "runtime", "workbench",
 })
 
 
@@ -459,6 +464,7 @@ class ExtensionManifest:
     gbay_sections: tuple[GbaySection, ...]
     gbay_catalogs: tuple[GbayCatalog, ...]
     runtime_assemblies: tuple[RuntimeAssembly, ...]
+    workbench_weapon_enhancements: tuple[WeaponEnhancementContract, ...] = ()
 
     @classmethod
     def load(cls, manifest_path: str | Path) -> "ExtensionManifest":
@@ -544,6 +550,13 @@ class ExtensionManifest:
         paths = [assembly.path.as_posix().casefold() for assembly in assemblies]
         if len(paths) != len(set(paths)):
             raise ValueError("content manifest contains duplicate runtime assemblies")
+        workbench_weapon_enhancements = parse_workbench_contract(
+            data.get("workbench"),
+            runtime_entry_points=(
+                assembly.entry_point for assembly in assemblies
+                if assembly.entry_point
+            ),
+        )
         capabilities = tuple(
             value.lower() for value in _string_tuple(
                 data.get("capabilities"), "capabilities",
@@ -577,6 +590,7 @@ class ExtensionManifest:
             gbay_sections=sections,
             gbay_catalogs=catalogs,
             runtime_assemblies=assemblies,
+            workbench_weapon_enhancements=workbench_weapon_enhancements,
         )
 
     @classmethod
@@ -636,6 +650,12 @@ class ExtensionManifest:
             },
             "runtime": {
                 "assemblies": [assembly.to_dict() for assembly in self.runtime_assemblies],
+            },
+            "workbench": {
+                "weapon_enhancements": [
+                    enhancement.to_dict()
+                    for enhancement in self.workbench_weapon_enhancements
+                ],
             },
         }
 

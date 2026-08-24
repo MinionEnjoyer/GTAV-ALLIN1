@@ -23,6 +23,7 @@ from allin1.extensions import (
     ExtensionRegistry,
 )
 from allin1.processes import run_hidden
+from allin1.mod_package_contract import validate_mod_schema_envelope
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -253,9 +254,7 @@ class ModManifest:
         except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
             raise ValueError(f"Invalid mod.toml manifest: {exc}") from exc
 
-        schema_version = data.get("schema_version")
-        if schema_version not in {1, 2}:
-            raise ValueError("mod.toml schema_version must be 1 or 2")
+        schema_version, raw_allin1 = validate_mod_schema_envelope(data)
         mod_id = str(data.get("id", "")).strip().lower()
         if not _ID_PATTERN.fullmatch(mod_id):
             raise ValueError("Mod id must be 2-64 lowercase letters, numbers, dots, dashes, or underscores")
@@ -358,27 +357,7 @@ class ModManifest:
 
         extension: ExtensionManifest | None = None
         package_requirements: tuple[PackageRequirement, ...] = ()
-        raw_allin1 = data.get("allin1")
-        if schema_version == 1 and raw_allin1 is not None:
-            raise ValueError(
-                "ALLIN1 extension declarations require mod.toml schema_version = 2"
-            )
-        if schema_version == 2 and raw_allin1 is None:
-            raise ValueError(
-                "mod.toml schema_version 2 requires an [allin1] extension table"
-            )
         if raw_allin1 is not None:
-            if not isinstance(raw_allin1, dict):
-                raise ValueError("[allin1] must be a table")
-            unknown = set(raw_allin1) - {"api_version", "content", "requires"}
-            if unknown:
-                raise ValueError(
-                    "Unsupported [allin1] field(s): " + ", ".join(sorted(unknown))
-                )
-            if raw_allin1.get("api_version") != EXTENSION_API_VERSION:
-                raise ValueError(
-                    f"[allin1].api_version must be {EXTENSION_API_VERSION}"
-                )
             content_path = _relative_path(
                 raw_allin1.get("content"), "[allin1].content"
             )

@@ -115,6 +115,9 @@ namespace RealisticSuppressors
         internal const float SecondarySmokeStartIntensity = 0.60f;
         internal const float SecondarySmokeStopIntensity = 0.45f;
         internal const float CriticalSmokeBoostOnset = 0.82f;
+        internal const float GlowFadeInHalfLifeSeconds = 4f;
+        internal const float GlowFadeOutHalfLifeSeconds = 6f;
+        internal const int HeatOverlayMaterialLevels = 24;
         private const float HotWearFactor = 24f;
 
         internal static float CoolTemperature(
@@ -346,18 +349,74 @@ namespace RealisticSuppressors
 
         internal static int HeatOverlayOpacity(float physicalIntensity)
         {
-            float physical = Clamp01(physicalIntensity);
+            float physical = ClampFinite(
+                physicalIntensity, 0f, 1f, 0f);
             if (physical <= 0f) return 0;
 
-            // SET_ENTITY_ALPHA is quantized by GTA to five useful visible
-            // levels. Hold each lower level longer so the texture's bright
-            // center appears first and the shoulders spread toward the ends
-            // instead of the whole can becoming opaque midway to critical.
-            int level = physical >= 0.96f ? 5 :
-                physical >= 0.80f ? 4 :
-                physical >= 0.60f ? 3 :
-                physical >= 0.38f ? 2 : 1;
-            return level * 51;
+            // Do not snap to the old 20% alpha bands: the first non-zero
+            // band made an otherwise cold can become visibly red in one
+            // frame. A quadratic ease-in keeps the center barely perceptible
+            // through early incandescence, then increases in small integer
+            // steps all the way to critical temperature.
+            return (int)Math.Round(
+                255f * physical * physical,
+                MidpointRounding.AwayFromZero);
+        }
+
+        internal static float SmoothHeatOverlayOpacity(
+            float currentOpacity, float targetOpacity,
+            int elapsedMilliseconds)
+        {
+            float current = ClampFinite(
+                currentOpacity, 0f, 255f, 0f);
+            float target = ClampFinite(
+                targetOpacity, 0f, 255f, 0f);
+            if (elapsedMilliseconds <= 0 || current == target)
+                return current;
+
+            float halfLifeSeconds = target > current
+                ? GlowFadeInHalfLifeSeconds
+                : GlowFadeOutHalfLifeSeconds;
+            double halfLives = elapsedMilliseconds /
+                (halfLifeSeconds * 1000d);
+            double decay = Math.Pow(0.5d, halfLives);
+            return target + (current - target) * (float)decay;
+        }
+
+        internal static int HeatOverlayMaterialLevel(
+            float smoothedOpacity, int currentLevel)
+        {
+            float target = ClampFinite(
+                smoothedOpacity, 0f, 255f, 0f);
+            int boundedCurrent = Math.Max(0, Math.Min(
+                HeatOverlayMaterialLevels, currentLevel));
+            float scaled = target / 255f * HeatOverlayMaterialLevels;
+            int nearest = Math.Max(0, Math.Min(
+                HeatOverlayMaterialLevels,
+                (int)Math.Round(scaled,
+                    MidpointRounding.AwayFromZero)));
+            if (boundedCurrent == 0) return nearest;
+
+            // The wider enter/leave boundaries stop adjacent steady models
+            // from swapping back and forth when a shot lands near a tier.
+            const float hysteresis = 0.65f;
+            if (scaled > boundedCurrent + hysteresis ||
+                scaled < boundedCurrent - hysteresis)
+                return nearest;
+            return boundedCurrent;
+        }
+
+        internal static string HeatOverlayMaterialModelName(
+            string baseModelName, int materialLevel)
+        {
+            if (string.IsNullOrWhiteSpace(baseModelName) ||
+                materialLevel <= 0) return null;
+            int bounded = Math.Min(
+                HeatOverlayMaterialLevels, materialLevel);
+            if (bounded == HeatOverlayMaterialLevels)
+                return baseModelName;
+            return baseModelName + "_" +
+                (bounded < 10 ? "0" : string.Empty) + bounded;
         }
 
         internal static int ContinuousRoundsToGlow(

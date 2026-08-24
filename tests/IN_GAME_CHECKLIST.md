@@ -102,10 +102,11 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   per-shot heat rates. Sustain fire with the Heavy Sniper Mk II; from a cold
   start, physical glow begins on the 34th uninterrupted round. Confirm the first
   visible heat is a faint red-orange band at the can's center, not a uniformly
-  orange tube. The band should casually diffuse toward the ends as temperature
-  rises: low opacity below 38% of the glow-to-critical range, broader shoulders
-  above 60%, most of the sleeve visible above 80%, and full opacity only in the
-  final 4% before critical. In particular, short rifle cans around 613–631 °C
+  orange tube. The band should casually fade in and diffuse toward the ends as
+  temperature rises: it should remain barely visible through the first quarter
+  of the glow-to-critical range, use roughly 25% opacity at the midpoint, and
+  reach full opacity only at critical temperature. In particular, short rifle
+  cans around 613–631 °C
   must still retain dark ends and a clear center-to-end gradient. Test fast
   pans, strafing, sprinting, jumping, recoil, hip fire, ADS transitions, and
   reloads in first and third person; the sleeve must remain attached and the

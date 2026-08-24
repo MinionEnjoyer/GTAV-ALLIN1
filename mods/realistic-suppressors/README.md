@@ -38,11 +38,12 @@ enable/disable controls, Story-save rollback, and GBAY purchase-event bridge.
 See `standalone/README.md` for installation and removal details.
 
 The heat visual is a 64-sided, outward-facing emissive sleeve attached directly
-to the active suppressor bone. A faint red-orange band first appears at the
-center of the can, then diffuses toward its low-alpha ends over five deliberately
-spaced opacity stages; full opacity is reserved for the last 4% of the path to
-critical heat. The sleeve has 1.5 mm of clearance so the stock model cannot hide
-it. Because GTA parents the sleeve to the weapon, it follows sway, recoil,
+to the active suppressor bone. A barely visible red-orange band first appears at
+the center of the can, then diffuses toward its low-alpha ends over a continuous
+quadratic fade. Early incandescence stays especially restrained: half of the
+glow-to-critical temperature range uses only 25% overlay opacity, while full
+opacity is reached only at critical heat. The sleeve has 1.5 mm of clearance so
+the stock model cannot hide it. Because GTA parents the sleeve to the weapon, it follows sway, recoil,
 reloads, and camera movement without painting the receiver, optic, sight
 picture, or the player's hands.
 
@@ -59,9 +60,10 @@ produces one small front-cap spark burst and spatial metallic pop before the
 component is removed. The effect uses no explosion, damage, bullet, force, or
 camera-shake native and cannot harm nearby characters or props.
 
-Normal gameplay is notification-free. The optional **Temperature debug**
-setting draws a compact live Celsius readout for the equipped can without using
-GTA's subtitle, help, or notification queues.
+Normal gameplay is notification-free. **Temperature debug** is off by default.
+When explicitly enabled, it draws a compact live Celsius readout only while a
+supported suppressor is attached to the equipped weapon, without using GTA's
+subtitle, help, or notification queues.
 
 ## Credits and license
 

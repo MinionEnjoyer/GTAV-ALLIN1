@@ -1,7 +1,7 @@
 # Suppressors Enhanced credits
 
 **Creator and maintainer:** MinionEnjoyer
-**Project repository:** https://github.com/MinionEnjoyer/GTAV-ALLIN1
+**Project repository:** https://github.com/MinionEnjoyer/GTAV-SUPPRESSORS-ENHANCED
 
 Gameplay direction, visual direction, testing, and release artwork were led by
 MinionEnjoyer. The mod is an independent package and is not affiliated with or

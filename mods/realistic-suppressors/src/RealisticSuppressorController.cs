@@ -327,8 +327,11 @@ namespace RealisticSuppressors
         private Prop _heatOverlay;
         private int _heatOverlayWeaponEntity;
         private int _heatOverlayBoneIndex = -1;
+        private string _heatOverlayBaseModelName = "none";
         private string _heatOverlayModelName = "none";
-        private int _heatOverlayOpacity;
+        private int _heatOverlayMaterialLevel;
+        private float _heatOverlaySmoothedOpacity;
+        private int _heatOverlayLastFadeAt = int.MinValue / 2;
         private int _primaryHeatSmokeHandle;
         private int _secondaryHeatSmokeHandle;
         private int _heatSmokeWeaponEntity;
@@ -637,12 +640,14 @@ namespace RealisticSuppressors
                         });
                 }
 
-                if (thermalState != null && !thermalState.Broken)
+                if (knownSuppressorAttached && thermalState != null &&
+                    !thermalState.Broken)
                 {
                     UpdateHeatStage(thermalState);
                     RenderSuppressorGlow(player, thermalState);
                     TryRenderSuppressorSmoke(player, thermalState, now);
-                    RenderTemperatureDebug(thermalState);
+                    RenderTemperatureDebug(
+                        knownSuppressorAttached, thermalState);
                     MaybePersistThermalState(
                         thermalState, now, false);
                 }
@@ -1098,6 +1103,11 @@ namespace RealisticSuppressors
                     state.ObservedAbsentAfterBreak = true;
                 }
                 _activeThermalState = null;
+                // The cached per-weapon state remains in _thermalStates so a
+                // reattached can can resume cooling and durability, but it is
+                // not the active suppressor for this frame. Clearing the out
+                // value prevents stale heat/HUD state on an unsuppressed gun.
+                state = null;
                 return false;
             }
             bool replacementObserved = state.Broken &&
@@ -1573,9 +1583,12 @@ namespace RealisticSuppressors
             state.Stage = next;
         }
 
-        private void RenderTemperatureDebug(ThermalRuntimeState state)
+        private void RenderTemperatureDebug(
+            bool suppressorAttached, ThermalRuntimeState state)
         {
-            if (!_temperatureDebugEnabled || state == null || state.Broken)
+            if (!ShouldRenderTemperatureDebug(
+                    _temperatureDebugEnabled, suppressorAttached,
+                    state != null, state != null && state.Broken))
                 return;
 
             int red = 225;
@@ -1614,6 +1627,14 @@ namespace RealisticSuppressors
             Function.Call(Hash.END_TEXT_COMMAND_DISPLAY_TEXT, 0.985f, 0.915f);
         }
 
+        internal static bool ShouldRenderTemperatureDebug(
+            bool debugEnabled, bool suppressorAttached,
+            bool hasThermalState, bool suppressorBroken)
+        {
+            return debugEnabled && suppressorAttached && hasThermalState &&
+                !suppressorBroken;
+        }
+
         internal static string TemperatureDebugText(
             float temperatureCelsius)
         {
@@ -1630,9 +1651,12 @@ namespace RealisticSuppressors
         private void RenderSuppressorGlow(
             Ped player, ThermalRuntimeState state)
         {
+            int now = Game.GameTime;
             SuppressorGlowVisual visual = SuppressorThermalPolicy
                 .GlowVisual(state.Profile, state.TemperatureCelsius);
-            if (!visual.Visible)
+            bool overlayExists = _heatOverlay != null &&
+                _heatOverlay.Exists();
+            if (!visual.Visible && !overlayExists)
             {
                 DestroyHeatOverlay();
                 return;
@@ -1645,9 +1669,16 @@ namespace RealisticSuppressors
                 DestroyHeatOverlay();
                 return;
             }
+            string baseModelName = visual.OverlayModelName ??
+                SuppressorThermalPolicy.HeatOverlayModelName(
+                    state.Profile.ComponentHash);
             if (!EnsureHeatOverlay(
-                    heldWeapon, attachmentBone, visual))
+                    heldWeapon, attachmentBone, baseModelName,
+                    visual.Visible ? visual.Opacity : 0f,
+                    visual.Visible, now))
                 return;
+
+            if (!visual.Visible) return;
 
             if (!state.GlowStartedLogged)
             {
@@ -1660,40 +1691,84 @@ namespace RealisticSuppressors
                         { "physical_intensity", visual.Intensity },
                         { "pose_source", poseSource },
                         { "renderer",
-                            "bone_attached_emissive_overlay" },
-                        { "overlay_model", visual.OverlayModelName },
-                        { "overlay_opacity", visual.Opacity },
+                            "bone_attached_steady_material_overlay" },
+                        { "overlay_model", _heatOverlayModelName },
+                        { "target_opacity", visual.Opacity },
+                        { "material_level", _heatOverlayMaterialLevel },
                     });
             }
         }
 
         private bool EnsureHeatOverlay(
             Entity heldWeapon, EntityBone attachmentBone,
-            SuppressorGlowVisual visual)
+            string baseModelName, float targetOpacity,
+            bool forceVisible, int now)
         {
+            if (string.IsNullOrWhiteSpace(baseModelName))
+            {
+                DestroyHeatOverlay();
+                return false;
+            }
+
             bool overlayExists = _heatOverlay != null &&
                 _heatOverlay.Exists();
-            bool identityMatches = overlayExists &&
+            bool fadeIdentityMatches =
                 _heatOverlayWeaponEntity == heldWeapon.Handle &&
                 _heatOverlayBoneIndex == attachmentBone.Index &&
+                string.Equals(_heatOverlayBaseModelName,
+                    baseModelName,
+                    StringComparison.OrdinalIgnoreCase);
+            if (!fadeIdentityMatches)
+            {
+                _heatOverlayWeaponEntity = heldWeapon.Handle;
+                _heatOverlayBoneIndex = attachmentBone.Index;
+                _heatOverlayBaseModelName = baseModelName;
+                _heatOverlaySmoothedOpacity = 0f;
+                _heatOverlayMaterialLevel = 0;
+                _heatOverlayLastFadeAt = now;
+            }
+
+            int elapsedMilliseconds = _heatOverlayLastFadeAt > 0
+                ? Math.Max(0, now - _heatOverlayLastFadeAt)
+                : 0;
+            _heatOverlayLastFadeAt = now;
+            _heatOverlaySmoothedOpacity = SuppressorThermalPolicy
+                .SmoothHeatOverlayOpacity(
+                    _heatOverlaySmoothedOpacity, targetOpacity,
+                    elapsedMilliseconds);
+            int materialLevel = SuppressorThermalPolicy
+                .HeatOverlayMaterialLevel(
+                    _heatOverlaySmoothedOpacity,
+                    _heatOverlayMaterialLevel);
+            if (forceVisible && materialLevel == 0)
+                materialLevel = 1;
+            if (materialLevel == 0)
+            {
+                DestroyHeatOverlay();
+                return true;
+            }
+
+            string desiredModelName = SuppressorThermalPolicy
+                .HeatOverlayMaterialModelName(
+                    baseModelName, materialLevel);
+            bool identityMatches = overlayExists &&
                 string.Equals(_heatOverlayModelName,
-                    visual.OverlayModelName,
+                    desiredModelName,
                     StringComparison.OrdinalIgnoreCase) &&
                 _heatOverlay.IsAttachedTo(heldWeapon);
             if (!identityMatches)
             {
-                DestroyHeatOverlay();
-                Model model = new Model(visual.OverlayModelName);
+                Model model = new Model(desiredModelName);
                 if (!model.IsValid || !model.IsInCdImage)
                 {
                     if (_unavailableHeatOverlayModelsLogged.Add(
-                            visual.OverlayModelName))
+                            desiredModelName))
                     {
                         ClientLog.Warn("SUPPRESSORS",
                             "heat_overlay_model_unavailable",
                             new Dictionary<string, object>
                             {
-                                { "model", visual.OverlayModelName },
+                                { "model", desiredModelName },
                                 { "model_hash",
                                     unchecked((uint)model.Hash) },
                                 { "effect",
@@ -1711,27 +1786,36 @@ namespace RealisticSuppressors
                 if (overlay == null || !overlay.Exists())
                     return false;
 
+                Prop previousOverlay = _heatOverlay;
                 _heatOverlay = overlay;
                 _heatOverlayWeaponEntity = heldWeapon.Handle;
                 _heatOverlayBoneIndex = attachmentBone.Index;
-                _heatOverlayModelName = visual.OverlayModelName;
-                _heatOverlayOpacity = visual.Opacity;
+                _heatOverlayBaseModelName = baseModelName;
+                _heatOverlayModelName = desiredModelName;
+                _heatOverlayMaterialLevel = materialLevel;
                 overlay.IsPersistent = true;
                 overlay.IsInvincible = true;
                 overlay.IsCollisionEnabled = false;
                 Function.Call(Hash.SET_ENTITY_FLAG_SUPPRESS_SHADOW,
                     overlay.Handle, true);
-                overlay.Opacity = visual.Opacity;
+                overlay.Opacity = 255;
                 overlay.AttachTo(
                     attachmentBone, Vector3.Zero, Vector3.Zero);
+                try
+                {
+                    if (previousOverlay != null &&
+                        previousOverlay.Exists())
+                        previousOverlay.Delete();
+                }
+                catch (Exception ex)
+                {
+                    ClientLog.Error("SUPPRESSORS",
+                        "heat_overlay_replacement_cleanup_failed", ex);
+                }
                 return true;
             }
 
-            if (_heatOverlayOpacity != visual.Opacity)
-            {
-                _heatOverlay.Opacity = visual.Opacity;
-                _heatOverlayOpacity = visual.Opacity;
-            }
+            _heatOverlayMaterialLevel = materialLevel;
             return true;
         }
 
@@ -1741,8 +1825,11 @@ namespace RealisticSuppressors
             _heatOverlay = null;
             _heatOverlayWeaponEntity = 0;
             _heatOverlayBoneIndex = -1;
+            _heatOverlayBaseModelName = "none";
             _heatOverlayModelName = "none";
-            _heatOverlayOpacity = 0;
+            _heatOverlayMaterialLevel = 0;
+            _heatOverlaySmoothedOpacity = 0f;
+            _heatOverlayLastFadeAt = int.MinValue / 2;
             try
             {
                 if (overlay != null && overlay.Exists())
