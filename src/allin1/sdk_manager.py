@@ -20,7 +20,9 @@ from allin1.versioning import is_newer, normalize_version
 
 SDK_REPOSITORY_URL = "https://github.com/MinionEnjoyer/ALLIN1-SDK"
 SDK_RELEASES_API = "https://api.github.com/repos/MinionEnjoyer/ALLIN1-SDK/releases/latest"
-SDK_EXECUTABLE = "ALLIN1-SDK.exe"
+SDK_EXECUTABLE = "ALLIN1-SDK-Desktop.exe"
+SDK_CLI_EXECUTABLE = "allin1-sdk.exe"
+SDK_AGENT_EXECUTABLE = "ALLIN1-SDK-Agent.exe"
 SDK_RELEASE_METADATA = "release.json"
 SDK_CHECKSUMS = "checksums.json"
 APPLICATION_CONTROL_WINERROR = 4551
@@ -90,6 +92,58 @@ def default_sdk_root(environment: Mapping[str, str] | None = None) -> Path:
     return Path.home().resolve() / ".allin1" / "SDK"
 
 
+def _normalized_path_entry(value: str) -> str:
+    return os.path.normcase(os.path.normpath(os.path.expandvars(value.strip().strip('"'))))
+
+
+def updated_sdk_user_path(value: str, root: Path, *, remove: bool = False) -> str:
+    """Return a de-duplicated user PATH with the managed SDK root added or removed."""
+    target = _normalized_path_entry(str(root.resolve()))
+    entries = [item.strip() for item in value.split(os.pathsep) if item.strip()]
+    filtered = [item for item in entries if _normalized_path_entry(item) != target]
+    if not remove:
+        filtered.append(str(root.resolve()))
+    return os.pathsep.join(filtered)
+
+
+def _broadcast_environment_change() -> None:
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        result = ctypes.c_ulong()
+        ctypes.windll.user32.SendMessageTimeoutW(
+            0xFFFF, 0x001A, 0, "Environment", 0x0002, 5000, ctypes.byref(result),
+        )
+    except (AttributeError, OSError):
+        pass
+
+
+def register_sdk_cli(root: Path, *, remove: bool = False) -> None:
+    """Register the frozen console command for future clean PowerShell sessions."""
+    if os.name != "nt":
+        return
+    import winreg
+
+    key = winreg.CreateKeyEx(
+        winreg.HKEY_CURRENT_USER, "Environment", 0,
+        winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE,
+    )
+    with key:
+        try:
+            current, value_type = winreg.QueryValueEx(key, "Path")
+        except FileNotFoundError:
+            current, value_type = "", winreg.REG_EXPAND_SZ
+        updated = updated_sdk_user_path(str(current), root, remove=remove)
+        if updated != str(current):
+            winreg.SetValueEx(key, "Path", 0, value_type, updated)
+    os.environ["PATH"] = updated_sdk_user_path(
+        os.environ.get("PATH", ""), root, remove=remove,
+    )
+    _broadcast_environment_change()
+
+
 def read_sdk_status(root: Path | None = None) -> SdkStatus:
     root = (root or default_sdk_root()).resolve()
     executable = root / SDK_EXECUTABLE
@@ -102,6 +156,9 @@ def read_sdk_status(root: Path | None = None) -> SdkStatus:
             return SdkStatus(root, executable, None, False, "SDK executable is invalid")
     except OSError as exc:
         return SdkStatus(root, executable, None, False, f"SDK executable cannot be read: {exc}")
+    cli = root / SDK_CLI_EXECUTABLE
+    if not cli.is_file():
+        return SdkStatus(root, executable, None, False, "SDK console executable is missing")
     metadata = root / SDK_RELEASE_METADATA
     if not metadata.is_file():
         return SdkStatus(root, executable, None, False, "Installation metadata is missing")
@@ -221,7 +278,10 @@ def inspect_sdk_archive(archive_path: Path, expected_version: str | None = None)
         if unpacked > MAX_EXTRACTED_BYTES:
             raise ValueError("SDK archive expands beyond the allowed size")
         names = {_safe_member(item).as_posix(): item for item in files}
-        required = {SDK_EXECUTABLE, SDK_RELEASE_METADATA, SDK_CHECKSUMS}
+        required = {
+            SDK_EXECUTABLE, SDK_CLI_EXECUTABLE, SDK_AGENT_EXECUTABLE,
+            SDK_RELEASE_METADATA, SDK_CHECKSUMS,
+        }
         missing = required - names.keys()
         if missing:
             raise ValueError("SDK archive is missing: " + ", ".join(sorted(missing)))
@@ -231,6 +291,10 @@ def inspect_sdk_archive(archive_path: Path, expected_version: str | None = None)
             normalize_version(version)
             if str(metadata.get("product", "")) != "ALLIN1-SDK":
                 raise ValueError("release metadata names the wrong product")
+            if metadata.get("entrypoint") != SDK_EXECUTABLE:
+                raise ValueError("SDK release metadata names the wrong desktop entrypoint")
+            if metadata.get("cli_entrypoint") != SDK_CLI_EXECUTABLE:
+                raise ValueError("SDK release metadata names the wrong console entrypoint")
             checksums = json.loads(archive.read(names[SDK_CHECKSUMS]).decode("utf-8"))
         except (KeyError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("SDK release metadata is invalid") from exc
@@ -248,8 +312,9 @@ def inspect_sdk_archive(archive_path: Path, expected_version: str | None = None)
             actual = hashlib.sha256(archive.read(names[name])).hexdigest()
             if actual != digest:
                 raise ValueError(f"SDK checksum mismatch: {name}")
-        if archive.read(names[SDK_EXECUTABLE])[:2] != b"MZ":
-            raise ValueError("SDK executable is not a Windows PE file")
+        for executable in (SDK_EXECUTABLE, SDK_CLI_EXECUTABLE, SDK_AGENT_EXECUTABLE):
+            if archive.read(names[executable])[:2] != b"MZ":
+                raise ValueError(f"SDK executable is not a Windows PE file: {executable}")
     return SdkPackageInfo(version, len(payload_names), unpacked)
 
 
@@ -297,6 +362,14 @@ def install_sdk_archive(
     status = read_sdk_status(root)
     if not status.healthy or status.version != package.version:
         raise RuntimeError("SDK installation did not pass its post-install verification")
+    if root == default_sdk_root():
+        try:
+            register_sdk_cli(root)
+        except OSError as exc:
+            raise RuntimeError(
+                "SDK installed, but Windows could not register the allin1-sdk console command "
+                f"for the current user: {exc}"
+            ) from exc
     return status
 
 
@@ -347,5 +420,10 @@ def uninstall_sdk(root: Path | None = None) -> bool:
     root = (root or default_sdk_root()).resolve()
     if not root.exists():
         return False
+    if root == default_sdk_root():
+        try:
+            register_sdk_cli(root, remove=True)
+        except OSError:
+            pass
     shutil.rmtree(root)
     return True

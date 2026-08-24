@@ -1,3 +1,65 @@
+# GTA V ALLIN1 0.5.2
+
+Version 0.5.2 expands ALLIN1's package platform and standalone SDK while
+hardening the optional local assistant, authoring workspaces, and public
+release pipeline.
+
+## Package platform and launcher
+
+- Added schema-1/schema-2 package parity across the launcher and SDK, including
+  cross-repository contract fixtures and safe direct ZIP import with one
+  unambiguous nested `mod.toml`.
+- Added typed, advisory-only package settings proposals. The launcher validates
+  package identity, types, ranges, enabled state, receipts, and file hashes,
+  always previews the diff, and requires the exact proposal ID before applying.
+- Added provider capability and thinking controls to SDK Manager, along with
+  model SHA-256, llama.cpp revision, assistant schema, and SDK build identity.
+- Hardened package extraction, executable ownership, operation risk
+  classification, invalid command handling, and release qualification.
+
+## SDK workspaces and rendering
+
+- Consolidated vehicle, weapon, and ped authoring into a shared Content
+  Workbench with improved navigation, collapsible side panels, clearer tables,
+  keyboard access, and fewer detached windows.
+- Expanded archive graphs, persistent package programs, semantic dependency
+  inspection, guarded RPF change sets, native/binary workspaces, texture tools,
+  and console/Agent API coverage.
+- Added optimized interactive model previews, shaded viewport modes, compiled
+  studio rendering, Blender integration, and fullscreen render workflows.
+- Added an optional locally managed Qwen assistant with checksum-pinned model
+  packages, hardware checks, strict bounded JSON Schema responses, one repair
+  pass, and no model write authority.
+
+## Standalone GTA-V-FPV compatibility
+
+- GTA-V-FPV is distributed as an independent package and DLL. The generic
+  launcher package lifecycle can install, configure, disable, update, and
+  uninstall its receipt-owned files without embedding FPV code in ALLIN1.
+- Added a narrow receipt/capability/assembly-validated weapon-ammo ledger bridge
+  so authorized standalone payload mods can keep ALLIN1's optional character
+  inventory synchronized after a native ammo transaction.
+
+## Standalone Realistic Suppressors package
+
+- Added Realistic Suppressors as its own imported `realistic-suppressors`
+  package and independent DLL. It is lifecycle-managed by the ALLIN1 launcher,
+  but is not compiled into ALLIN1 or included in ALLIN1 Online Content.
+- Added witness-aware suppressed-fire stealth without globally muting player
+  noise or overriding missions, cutscenes, existing wanted levels, nearby
+  witnesses, line-of-fire cues, impacts, or sustained-fire detection.
+- Added research-calibrated per-weapon heat and persistent durability for all
+  39 stock removable-suppressor combinations, including cooling, visible glow
+  from 525 °C, accelerated hot wear, permanent component failure, and charged
+  replacement purchases through either vanilla Ammu-Nation or GBAY.
+- Added package-owned launcher controls for stealth, wear/breakage, and a
+  0.5×–3.0× durability multiplier. Disabling breakage preserves heat, cooling,
+  warnings, and glow without condition loss.
+- Added receipt-authorized, generic weapon-component lifecycle integration for
+  successful GBAY replacement purchases and verified launcher install, disable,
+  re-enable, and uninstall isolation. Uninstall removes only package-owned files
+  and intentionally retains condition under `%LOCALAPPDATA%\RealisticSuppressors`.
+
 # GTA V ALLIN1 0.5.1
 
 Version 0.5.1 completes the transition to a package-driven launcher and gives

@@ -104,8 +104,12 @@ ALLIN1 validates manifests, records installed files, and backs up replaced files
 
 The Add-on SDK links authored package fields to metadata, native UI text, animations, runtime behavior, packaging, and rollback expectations.
 
-Import a DLC folder or archive, inspect its integration graph, then select nodes and fields for explanations. Package Intelligence contains OIV preview, DLC inventory, and vehicle-data compilation tools.""",
-        ("authoring", "addon", "dlc", "audit", "linker", "developer", "install", "update"),
+Import a DLC folder or archive, inspect its integration graph, then select nodes and fields for explanations. Package Intelligence contains OIV preview, DLC inventory, and vehicle-data compilation tools.
+
+The Optional assistant tab configures local-first help for installation and diagnostics. It is disabled by default, runs separately from GTA V, and can be uninstalled without removing the SDK. Before downloading Qwen, ALLIN1 checks 64-bit Windows support, RAM, free disk space, CPU threads, and CPU acceleration, then recommends the Qwen3.5 4B or 9B profile. Qwen and llama.cpp are downloaded separately from revision-pinned upstream sources and verified by exact size and SHA-256 before installation; they are not bundled with ALLIN1. The official Qwen base model and license are recorded separately from the GGUF conversion. A dedicated GPU is not required. Existing GGUF runtimes/models and compatible local APIs are also supported; API keys are referenced only through environment-variable names.
+
+After saving an enabled mode, use assistant prompt followed by a question in the SDK's bottom console. assistant context shows the exact repository, manifest, game path, policy, and live command evidence without starting the model. Responses are structured and deterministically screened for invented operations, manual-copy instructions, and destructive guidance. assistant status inspects the provider without starting it, and assistant stop closes a local model server. Prompts are read-only and cannot approve or perform an installation.""",
+        ("authoring", "addon", "dlc", "audit", "linker", "developer", "install", "update", "assistant", "model", "hardware"),
     ),
     HelpTopic(
         "asset-viewer", "Inspectors", "Native Asset Viewer",

@@ -5,12 +5,15 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import zipfile
 from pathlib import Path
 
 import pytest
 
 from allin1.sdk_manager import (
+    SDK_AGENT_EXECUTABLE,
+    SDK_CLI_EXECUTABLE,
     SDK_EXECUTABLE,
     SdkRelease,
     default_sdk_root,
@@ -22,6 +25,7 @@ from allin1.sdk_manager import (
     sdk_launch_error_message,
     sdk_update_available,
     uninstall_sdk,
+    updated_sdk_user_path,
     _safe_member,
 )
 
@@ -37,7 +41,12 @@ class _Response(io.BytesIO):
 def _sdk_archive(path: Path, version: str = "0.4.8", *, tamper: bool = False) -> bytes:
     payload = {
         SDK_EXECUTABLE: b"MZ" + b"sdk-client",
-        "release.json": json.dumps({"product": "ALLIN1-SDK", "version": version}).encode(),
+        SDK_CLI_EXECUTABLE: b"MZ" + b"sdk-cli",
+        SDK_AGENT_EXECUTABLE: b"MZ" + b"sdk-agent",
+        "release.json": json.dumps({
+            "product": "ALLIN1-SDK", "version": version,
+            "entrypoint": SDK_EXECUTABLE, "cli_entrypoint": SDK_CLI_EXECUTABLE,
+        }).encode(),
         "sdk/example.json": b'{"example":true}',
     }
     checksums = {name: hashlib.sha256(content).hexdigest() for name, content in payload.items()}
@@ -55,6 +64,9 @@ def test_default_sdk_root_is_per_user_and_separate_from_game(tmp_path):
     root = default_sdk_root({"LOCALAPPDATA": str(tmp_path)})
     assert root == tmp_path / "ALLIN1" / "SDK"
     assert default_sdk_root({}).name == "SDK"
+    value = os.pathsep.join(("C:\\Tools", str(root), str(root)))
+    assert updated_sdk_user_path(value, root).split(os.pathsep).count(str(root.resolve())) == 1
+    assert str(root.resolve()) not in updated_sdk_user_path(value, root, remove=True)
 
 
 def test_launch_error_explains_enforced_application_control_policy():
@@ -79,6 +91,7 @@ def test_status_reports_invalid_partial_installations(tmp_path):
     executable.write_bytes(b"not-pe")
     assert "invalid" in read_sdk_status(root).detail
     executable.write_bytes(b"MZvalid")
+    (root / SDK_CLI_EXECUTABLE).write_bytes(b"MZcli")
     assert "metadata is missing" in read_sdk_status(root).detail
     (root / "release.json").write_text("not-json")
     assert "metadata is invalid" in read_sdk_status(root).detail
@@ -139,7 +152,7 @@ def test_archive_install_status_repair_and_uninstall(tmp_path):
     assert read_sdk_status(root).installed is False
 
     info = inspect_sdk_archive(package, "0.4.8")
-    assert info.version == "0.4.8" and info.file_count == 3
+    assert info.version == "0.4.8" and info.file_count == 5
     status = install_sdk_archive(package, root, expected_version="0.4.8")
     assert status.healthy and status.version == "0.4.8"
     assert status.executable == root / SDK_EXECUTABLE
@@ -182,13 +195,18 @@ def test_archive_rejects_tampering_unsafe_paths_and_wrong_version(tmp_path):
 
 @pytest.mark.parametrize(("metadata", "checksums", "match"), [
     (b"[]", {}, "metadata is invalid"),
-    (b'{"product":"ALLIN1-SDK","version":"0.4.8"}', [], "must be an object"),
+    (json.dumps({
+        "product": "ALLIN1-SDK", "version": "0.4.8",
+        "entrypoint": SDK_EXECUTABLE, "cli_entrypoint": SDK_CLI_EXECUTABLE,
+    }).encode(), [], "must be an object"),
 ])
 def test_archive_rejects_malformed_internal_json(tmp_path, metadata, checksums, match):
     executable = b"MZsdk"
     archive_path = tmp_path / "malformed.zip"
     with zipfile.ZipFile(archive_path, "w") as archive:
         archive.writestr(SDK_EXECUTABLE, executable)
+        archive.writestr(SDK_CLI_EXECUTABLE, executable)
+        archive.writestr(SDK_AGENT_EXECUTABLE, executable)
         archive.writestr("release.json", metadata)
         archive.writestr("checksums.json", json.dumps(checksums))
     with pytest.raises(ValueError, match=match):
@@ -244,14 +262,18 @@ def test_archive_enforces_resource_limits(tmp_path, monkeypatch, constant, value
 def test_archive_rejects_invalid_release_contract(tmp_path, mutation, match):
     payload = {
         SDK_EXECUTABLE: b"MZsdk",
-        "release.json": b'{"product":"ALLIN1-SDK","version":"0.4.8"}',
+        SDK_CLI_EXECUTABLE: b"MZcli",
+        SDK_AGENT_EXECUTABLE: b"MZagent",
+        "release.json": json.dumps({
+            "product": "ALLIN1-SDK", "version": "0.4.8",
+            "entrypoint": SDK_EXECUTABLE, "cli_entrypoint": SDK_CLI_EXECUTABLE,
+        }).encode(),
     }
     checksums = {name: hashlib.sha256(value).hexdigest() for name, value in payload.items()}
     mutation(payload, checksums)
-    if SDK_EXECUTABLE in payload and checksums.get(SDK_EXECUTABLE) != "invalid":
-        checksums[SDK_EXECUTABLE] = hashlib.sha256(payload[SDK_EXECUTABLE]).hexdigest()
-    if "release.json" in payload:
-        checksums["release.json"] = hashlib.sha256(payload["release.json"]).hexdigest()
+    for name, value in payload.items():
+        if checksums.get(name) != "invalid":
+            checksums[name] = hashlib.sha256(value).hexdigest()
     archive_path = tmp_path / "invalid.zip"
     with zipfile.ZipFile(archive_path, "w") as archive:
         for name, value in payload.items():

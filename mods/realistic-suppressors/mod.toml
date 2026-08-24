@@ -1,0 +1,22 @@
+schema_version = 2
+id = "realistic-suppressors"
+name = "Realistic Suppressors"
+version = "1.0.0"
+type = "script"
+description = "Witness-aware suppressor stealth with weapon-specific heat, glow, wear, and optional breakage."
+editions = ["legacy", "enhanced"]
+dependencies = ["shvdn"]
+conflicts = []
+
+[allin1]
+api_version = 1
+content = "allin1.content.json"
+requires = []
+
+[[files]]
+source = "payload/RealisticSuppressors.dll"
+destination = "scripts/RealisticSuppressors/RealisticSuppressors.dll"
+
+[[files]]
+source = "allin1.content.json"
+destination = "scripts/RealisticSuppressors/allin1.content.json"

@@ -1,0 +1,27 @@
+{
+  "package_id": "gta-v-fpv",
+  "package_name": "GTA-V-FPV",
+  "package_version": "0.1.0",
+  "source_artifact": "GTA-V-FPV-0.1.0/allin1.content.json",
+  "source_descriptor_sha256": "dbc8e785891c04305f622b143b32d0e1b70a463e58a57a2a11d94be14192aa3d",
+  "receipt_schema_version": 2,
+  "receipt_enabled": true,
+  "system_count": 8,
+  "setting_count": 87,
+  "type_counts": {
+    "boolean": 19,
+    "choice": 36,
+    "integer": 4,
+    "number": 28
+  },
+  "receipt_files": [
+    {
+      "destination": "scripts/GTA-V-FPV/GTA-V-FPV.dll",
+      "sha256": "662253c3bd25092fbeacd76fe2ba177a2d9232d7fb4e5011c6ca13b46dbd2f06"
+    },
+    {
+      "destination": "scripts/GTA-V-FPV/allin1.content.json",
+      "sha256": "dbc8e785891c04305f622b143b32d0e1b70a463e58a57a2a11d94be14192aa3d"
+    }
+  ]
+}

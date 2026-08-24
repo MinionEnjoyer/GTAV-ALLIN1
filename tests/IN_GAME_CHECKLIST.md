@@ -2,7 +2,15 @@
 
 Run this checklist on both Legacy and Enhanced after automated tests pass.
 
+- With GTA V closed, open the launcher's **Packages** workspace, import the
+  standalone `realistic-suppressors/mod.toml`, and install it for the selected
+  edition. Confirm the launcher reports **Realistic Suppressors** as installed
+  and enabled, and that it creates
+  `scripts/RealisticSuppressors/RealisticSuppressors.dll` plus
+  `scripts/RealisticSuppressors/allin1.content.json` without replacing
+  `scripts/ALLIN1.dll` or another mod's files.
 - Start Story Mode with BattlEye disabled; confirm no ScriptHook or SHVDN load errors.
+- Import the standalone GTA-V-FPV release's `mod.toml`, install it for the selected edition, and confirm its independent DLL and descriptor appear under `scripts/GTA-V-FPV` without changing `scripts/ALLIN1.dll`. Confirm its package-owned Flight, Controls, OSD, and Payload settings render in Content; then disable, re-enable, and uninstall it and verify only its receipt-owned files change.
 - Open GBAY with F9 and navigate every vehicle, weapons, gear, and garage screen.
 - Purchase, spawn, customize, store, retrieve, sell, and remove a vehicle.
 - Try each story-owned personal vehicle at every ALLIN1 vehicle entrance:
@@ -70,6 +78,50 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
 - Open Customize Weapons and verify the active attachment or finish has a green
   **EQUIPPED** badge and green row accent, purchased alternatives show **OWNED**,
   and a fully stocked ammunition row shows **FULL** rather than **EQUIPPED**.
+- In **Content**, select the separately installed **Realistic Suppressors**
+  package and enable **Realistic suppressor stealth**. Do not enable it through
+  ALLIN1 Online Content; the mod owns its own settings namespace.
+  With no wanted level and outside a mission, fire one suppressed pistol shot in
+  an isolated outdoor location with no NPC looking toward the player; confirm no
+  wanted level or distant crowd panic appears. Repeat with the suppressor removed
+  and confirm the ordinary report remains. Equip a Mk II muzzle brake and confirm
+  it behaves as unsuppressed. Then repeat suppressed fire beside an NPC, in the
+  NPC's clear view, indoors, and with the bullet striking near an NPC; each must
+  remain detectable. Fire a sustained suppressed burst and confirm its effective
+  hearing radius expands rather than granting silent automatic fire. Start a
+  mission and separately gain a wanted level; confirm the mod does not suppress or
+  unwind either authored response. Review sampled `shot_evaluated` records in
+  `%LOCALAPPDATA%\RealisticSuppressors\RealisticSuppressors.log`, including
+  `witness_reason` and `crime_suppressed`.
+- Enable **Suppressor wear and breakage**, set **Suppressor durability
+  multiplier** to 0.5×, and purchase fresh suppressors for a Pistol and Heavy
+  Sniper Mk II. Confirm detailed logs identify different thermal profiles and
+  per-shot heat rates. Sustain fire with the Heavy Sniper Mk II until its can
+  first warns, then visibly glows orange/red; pause and confirm logged
+  temperature falls before firing again. Continue the abusive firing cycle
+  until failure. Confirm a failure notification appears, the component is
+  physically removed, subsequent fire is unsuppressed, and the suppressor no
+  longer has an **OWNED** price bypass in GBAY. Replace one failed suppressor
+  through vanilla Ammu-Nation and another through GBAY. In each storefront,
+  preview the failed suppressor and back out once before buying it; confirm a
+  preview alone does not restore condition. Then complete each purchase and
+  confirm both attach at full condition and produce a
+  `replacement_registered` log. Reload the same
+  character and switch protagonists to confirm remaining condition stays with
+  the correct character and weapon.
+- Disable **Suppressor wear and breakage**, reload scripts, and repeat sustained
+  fire with a fresh suppressor. Confirm heating, warnings, cooling, and glow
+  still occur but `durability` does not fall and the component never breaks.
+  Restore the durability multiplier to 1.0× after testing.
+- With GTA V closed, disable the **Realistic Suppressors** package in the
+  launcher, start Story Mode, and confirm its stealth/thermal behavior is absent
+  while ALLIN1 and unrelated mods still load. Re-enable it and confirm the
+  behavior returns. Then uninstall it from **Packages** and verify its DLL,
+  descriptor, receipt, and registry entry are removed while `scripts/ALLIN1.dll`
+  and unrelated mod files remain byte-for-byte unchanged. Confirm
+  `%LOCALAPPDATA%\RealisticSuppressors\condition.json` remains, reinstall the
+  package through the launcher, and verify the correct protagonist/weapon
+  condition resumes. Repeat this lifecycle round trip for both editions.
 - Open Gear from the GBAY top menu, visit All/Protection/Equipment, verify all
   12 cards and previews are reachable, and purchase at least one item from each tab.
   Confirm equipped cards say **EQUIPPED**. Press Y and separately click the

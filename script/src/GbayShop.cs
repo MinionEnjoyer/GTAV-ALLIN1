@@ -16,6 +16,12 @@ namespace ALLIN1
 {
     public class GbayShop : Script
     {
+        private static GbayShop _current;
+
+        internal static bool IsMenuActive =>
+            _current != null && _current._browser != null &&
+            _current._browser.IsOpen;
+
         // --- Config ---
         private static readonly string SCRIPTS_DIR =
             AppDomain.CurrentDomain.BaseDirectory;
@@ -57,6 +63,7 @@ namespace ALLIN1
 
         public GbayShop()
         {
+            _current = this;
             _onlineContentEnabled = Allin1ExtensionApi.IsPackageEnabled(
                 Allin1ExtensionApi.OnlineContentPackageId);
             Tick += OnTick;
@@ -68,6 +75,7 @@ namespace ALLIN1
         private void OnAborted(object sender, EventArgs args)
         {
             _browser?.Close();
+            if (ReferenceEquals(_current, this)) _current = null;
             if (_onlineContentEnabled)
             {
                 GarageManager.OnScriptAborted();
@@ -784,10 +792,14 @@ namespace ALLIN1
                 return false;
             }
 
-            bool owned = CharacterInventory.IsWeaponComponentOwned(
-                weaponName, componentHash) || Function.Call<bool>(
-                    Hash.HAS_PED_GOT_WEAPON_COMPONENT,
-                    player.Handle, weaponHash, componentHash);
+            bool inventoryOwned = CharacterInventory.IsWeaponComponentOwned(
+                weaponName, componentHash);
+            bool liveOwned = Function.Call<bool>(
+                Hash.HAS_PED_GOT_WEAPON_COMPONENT,
+                player.Handle, weaponHash, componentHash);
+            bool consumed = Allin1ExtensionApi.IsWeaponComponentConsumed(
+                weaponName, componentHash);
+            bool owned = !consumed && (inventoryOwned || liveOwned);
             int charge = _freeMode || owned ? 0 : Math.Max(0, price);
             if (charge > 0 && Game.Player.Money < charge)
             {
@@ -810,6 +822,8 @@ namespace ALLIN1
             }
             if (charge > 0) Game.Player.Money -= charge;
             CharacterInventory.RecordWeaponComponent(
+                weaponName, componentHash, attachmentPoint);
+            Allin1ExtensionApi.NotifyWeaponComponentPurchased(
                 weaponName, componentHash, attachmentPoint);
             GTA.UI.Screen.ShowSubtitle(charge > 0
                 ? $"~g~Weapon upgrade~w~ purchased for ~g~${charge:N0}~w~."

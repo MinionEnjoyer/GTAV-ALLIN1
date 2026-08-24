@@ -191,8 +191,9 @@ configuration field.
 ## Capability identifiers
 
 `capabilities` is an optional list of lowercase, identifier-like strings such
-as `launcher.settings` or `gbay.catalogs`. Capability identifiers describe what
-a package expects to contribute so tools and users can inspect it.
+as `launcher.settings`, `gbay.catalogs`, `story-save.transactions`, or
+`weapon.components.lifecycle`. Capability identifiers describe what a package
+expects to contribute so tools and users can inspect it.
 
 Capabilities are declarative permission requests and discovery hints, not
 executable hooks or proof that a consumer implements the feature. Typed
@@ -317,12 +318,26 @@ surface is exposed by `ALLIN1.Allin1ExtensionApi`:
   non-built-in GBAY route to one callback.
 - `RegisterStorySaveParticipant(packageId, participantId, participant)` joins
   the Story-save transaction lifecycle.
+- `RecordWeaponAmmo(packageId, weaponName, ammo, authorizationProof)` mirrors a
+  native absolute-ammo mutation into ALLIN1's optional character inventory
+  ledger. The proof delegate is not invoked; its declaring assembly supplies
+  receipt authorization.
+- `RegisterWeaponComponentLifecycleParticipant(packageId, participantId,
+  participant)` joins the generic GBAY component-pricing and completed-purchase
+  lifecycle.
+- `IsGbayMenuActive` reports whether GBAY is open so an external gameplay mod
+  can ignore transient workbench previews.
 
 The game runtime accepts a registration only when the package is enabled, the
 required capability and route were declared, and the registering assembly's
 path and SHA-256 match its launcher receipt. A package cannot replace a
 `builtin:` route. Keep the returned registration handles alive and dispose them
 when the script stops.
+
+`RecordWeaponAmmo` requires `story-save.transactions` plus the same enabled,
+receipt-matched assembly authorization. It does not grant inventory or perform
+the GTA native mutation; it is a narrow synchronization bridge that lets a
+standalone mod coexist with ALLIN1 without becoming part of `ALLIN1.dll`.
 
 ```csharp
 using System;
@@ -377,6 +392,35 @@ The registered route owns the meaning and presentation of its catalog JSON;
 the launcher owns validation, installation, containment, discovery, settings,
 and lifecycle. This keeps the launcher extensible without accepting arbitrary
 third-party Python, shell commands, or widget injection.
+
+### Weapon-component lifecycle bridge
+
+The `weapon.components.lifecycle` capability is a narrow, generic bridge for a
+standalone weapon mod that tracks component ownership or consumption. A
+receipt-authorized implementation of
+`IWeaponComponentLifecycleParticipant` supplies two methods:
+
+```csharp
+bool IsComponentConsumed(string weaponName, int componentHash);
+void OnComponentPurchased(
+    string weaponName, int componentHash, int attachmentPoint);
+```
+
+Before showing an owned-price bypass, GBAY asks registered participants whether
+the exact weapon/component pair has been consumed. After a purchase has been
+charged, applied to the live weapon, and recorded successfully, GBAY sends the
+completed-purchase notification. Browsing or previewing a component does not
+send that notification. Implementations should keep the consumed-state query
+side-effect free, validate the exact weapon/component pairs they own, and use
+`IsGbayMenuActive` to avoid interpreting temporary workbench previews as native
+reattachments.
+
+Registration requires the package to declare
+`weapon.components.lifecycle`. The runtime also verifies that the registering
+assembly path and SHA-256 match the launcher's package receipt, and drops the
+participant when that authorization is revoked. This bridge does not make the
+weapon mod part of ALLIN1 and does not give it a custom launcher page or a way
+to synthesize GBAY transactions.
 
 ## Package requirements
 
@@ -438,6 +482,13 @@ These locations are launcher-owned. A package cannot declare a destination
 below `scripts/.allin1/` and should never edit registry, settings, or receipt
 files directly.
 
+Mutable gameplay state should likewise not be written into a receipt-owned DLL
+or descriptor path. A package may keep documented user state outside the game
+installation, for example below `%LOCALAPPDATA%\<PackageName>`. Because that
+state is not in the managed file list, disable and uninstall operations do not
+delete it. Packages that intentionally retain such state must say so clearly
+and document its location.
+
 ## Security model
 
 The content API reduces accidental and hidden behavior by keeping launcher
@@ -451,6 +502,9 @@ integration declarative:
   again whenever the game-runtime API exposes them;
 - enabled runtime assemblies must match their receipt hashes to be authorized
   in the generated registry;
+- Story-save and weapon-component callbacks are accepted only from an enabled,
+  capability-declaring, receipt-matched assembly and are dropped after
+  authorization is revoked;
 - corrupt receipts are ignored rather than authorizing executable content;
 - settings are type-checked and namespaced; and
 - the launcher does not execute extension-supplied Python or shell commands.

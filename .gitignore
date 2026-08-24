@@ -53,6 +53,7 @@ tools/RpfPatcher/SharpDX*.dll
 # Local investigation and visual QA scratch data
 .artifacts/
 work/
+F80-*-Render-Workflow/
 .codex_video_*/
 .codex-*/
 .tmp*/

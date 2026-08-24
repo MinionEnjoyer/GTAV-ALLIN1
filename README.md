@@ -14,7 +14,7 @@ ALLIN1 supports both GTA V Legacy and GTA V Enhanced. It is designed exclusively
 Mode**; the installer configures the game to launch without BattlEye and should never be used in
 GTA Online.
 
-> **Current public release:** **0.5.1**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
+> **Current public release:** **0.5.2**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
 > highlights and hardening work included in this build.
 
 ## Support
@@ -76,6 +76,14 @@ for official and third-party extensions.
   complete example. Its live package index also combines remembered external SDK drafts, local
   catalog manifests, and receipt-backed packages from every configured Legacy and Enhanced
   installation without copying third-party payloads.
+- **Optional SDK assistant** — configure local-first help for package installation and diagnostics
+  from the launcher's SDK Manager. It is disabled by default and installs separately from the
+  launcher, SDK, and game. Hardware checks run before a managed CPU model pack is downloaded;
+  advanced users can instead select an existing Windows GGUF runtime/model or a compatible local
+  API. Prompt the configured Qwen/compatible model with `assistant prompt` in the SDK's bottom
+  console; plain prompts are read-only and carry no install authority. API secrets are referenced
+  by environment-variable name and are never stored in ALLIN1.
+  See [the optional assistant contract](docs/optional-assistant.md).
 - **Package and native asset viewer** — safely browse loose DLC folders and OIV/ZIP/RAR/7z
   packages, preview images and authored text, parse GTA binary headers, convert supported RAGE
   resources to structured CodeWalker XML, and render YTD texture contact sheets without installing
@@ -94,6 +102,32 @@ for official and third-party extensions.
 - **Recovery-minded operation** — backs up replaced files, preserves garage recovery copies,
   detects unclean sessions, offers a safe mode, and writes structured client diagnostics.
 
+## Standalone GTA-V-FPV mod
+
+GTA-V-FPV is developed and released as a separate mod, not as an ALLIN1 or
+ALLIN1 Experimental Gameplay feature. Import the GTA-V-FPV download's
+`mod.toml` from the launcher's **Packages** workspace to install, configure,
+disable, re-enable, update, or uninstall its independent DLL on Legacy or
+Enhanced. Its receipt-owned content descriptor supplies package-namespaced
+flight, controller, OSD/color, proximity-mine, and grenade-bomber settings;
+none of its runtime code or configuration is compiled into `ALLIN1.dll`.
+
+## Standalone Realistic Suppressors mod
+
+Realistic Suppressors is developed as a separate managed package, not as an
+ALLIN1 or ALLIN1 Online Content feature. Import
+`mods/realistic-suppressors/mod.toml` from the launcher's **Packages** workspace
+to install, configure, disable, re-enable, or uninstall its independent DLL.
+Its weapon-by-weapon model covers the removable suppressors on vanilla weapons,
+including ones bought at Ammu-Nation, and offers witness-aware stealth, heat,
+glow, and customizable wear/breakage. See the
+[Realistic Suppressors guide](docs/realistic-suppressors.md).
+
+Uninstall removes only receipt-owned package files. Saved condition in
+`%LOCALAPPDATA%\RealisticSuppressors\condition.json` is intentionally retained
+as user data for a later reinstall; `ALLIN1.dll` and unrelated mods are not
+changed.
+
 ## How it fits together
 
 ```text
@@ -111,6 +145,10 @@ GTA V Story Mode
       Persistent garages and floor customization
       Character loadouts, progress, outfits, and seat selector
       ALLIN1 Experimental Gameplay (optional, off by default)
+        NPC physics and coordinated police systems
+    Receipt-authorized standalone packages (installed separately)
+      GTA-V-FPV
+      Realistic Suppressors
 ```
 
 The Python launcher owns configuration, installation, backups, archive packaging, diagnostics,
@@ -128,6 +166,13 @@ the registry is already the authority for enablement and third-party runtime own
 - Python 3.10 or newer when installing from source.
 - A compatible RPF loader when GBAY preview artwork is enabled. Install / Repair can offer to
   download the pinned official RageOpenV release after asking for permission.
+
+The optional SDK assistant is not required. Managed Qwen installs require 64-bit Windows and are
+offered only after checking RAM, free disk space, CPU threads, and available CPU acceleration.
+The 4B profile targets PCs with at least 8 GB RAM (12 GB recommended); the 8B profile targets at
+least 16 GB RAM (24 GB recommended). A dedicated GPU is not required. Qwen and llama.cpp are not
+bundled with ALLIN1: the optional installer downloads pinned files directly from their official
+upstream projects and verifies exact SHA-256 hashes before activation.
 
 ScriptHookV and ScriptHookVDotNet Enhanced must be installed in the directory containing
 `GTA5.exe` or `GTA5_Enhanced.exe` before ALLIN1 is installed.
@@ -249,6 +294,14 @@ points, user state, CodeWalker submodule, and RPF helper build. Package importin
 management remain in the launcher, while integration linking, native asset inspection, RPF
 exploration, OIV auditing, DLC inventory, vehicle-data compilation, and the structured local
 AI-agent command API belong to the SDK.
+
+The SDK Manager also contains an **Optional assistant** tab. Managed model packs use a verified
+archive contract with a retained runtime/model license record, exact internal checksums, a public
+release checksum, hardware requirements, and an independent uninstall. Installation never enables
+the assistant automatically. The same configuration can point to user-owned GGUF files or a
+compatible API, so future assistant workflows do not depend on one model vendor.
+The SDK console exposes `assistant status`, `assistant prompt <question>`, and `assistant stop`.
+The launcher CLI can forward the same read-only prompt through the installed structured SDK Agent.
 
 ## Tech stack
 

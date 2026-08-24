@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "api_version": 1,
+  "id": "realistic-suppressors",
+  "name": "Realistic Suppressors",
+  "version": "1.0.0",
+  "description": "A standalone Story Mode suppressor simulation managed by the ALLIN1 launcher.",
+  "capabilities": [
+    "launcher.settings",
+    "story-save.transactions",
+    "weapon.components.lifecycle"
+  ],
+  "systems": [
+    {
+      "id": "realistic-suppressors",
+      "name": "Realistic Suppressors",
+      "category": "Weapons",
+      "description": "Witness-aware stealth plus weapon-specific suppressor heat, glow, wear, and replacement behavior.",
+      "experimental": false,
+      "enabled_by_default": true,
+      "settings": [
+        {
+          "key": "realistic_suppressors",
+          "label": "Realistic suppressor stealth",
+          "type": "boolean",
+          "default": true,
+          "group": "Stealth",
+          "description": "Suppressors reduce actionable gunshot noise without hiding close, visible, alerted, impact-adjacent, or sustained fire."
+        },
+        {
+          "key": "suppressor_breakage",
+          "label": "Suppressor wear and breakage",
+          "type": "boolean",
+          "default": true,
+          "group": "Condition",
+          "description": "Rapid overheating damages suppressors until they fail and must be replaced. Disable this to retain heat and glow without permanent condition loss."
+        },
+        {
+          "key": "suppressor_durability_scale",
+          "label": "Suppressor durability multiplier",
+          "type": "number",
+          "default": 1.0,
+          "minimum": 0.5,
+          "maximum": 3.0,
+          "step": 0.25,
+          "group": "Condition",
+          "description": "Scales suppressor life when breakage is enabled."
+        }
+      ]
+    }
+  ],
+  "gbay": {
+    "sections": [],
+    "catalogs": []
+  },
+  "runtime": {
+    "assemblies": [
+      {
+        "path": "scripts/RealisticSuppressors/RealisticSuppressors.dll",
+        "entry_point": "RealisticSuppressors.RealisticSuppressorController"
+      }
+    ]
+  }
+}

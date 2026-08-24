@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import json
+import os
 from pathlib import Path
 
 import click
@@ -318,15 +319,46 @@ def content_list(ctx: click.Context, gta_path: Path | None, json_output: bool) -
 
 
 @content_group.command("validate")
-@click.argument("manifest", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("manifest", type=click.Path(exists=True, path_type=Path))
 def content_validate(manifest: Path) -> None:
-    """Validate an allin1.content.json descriptor without loading its code."""
-    descriptor = ExtensionManifest.load(manifest)
+    """Validate a content descriptor, mod.toml, package folder, or ZIP."""
+    from allin1.mods import open_mod_package
+
+    if manifest.is_file() and manifest.name.casefold().endswith(".json"):
+        descriptor = ExtensionManifest.load(manifest)
+        click.echo(
+            f"PASS: {descriptor.extension_id} API {descriptor.api_version}; "
+            f"{len(descriptor.systems)} system(s), "
+            f"{len(descriptor.gbay_sections)} GBAY route(s), "
+            f"{len(descriptor.runtime_assemblies)} runtime assembly declaration(s)"
+        )
+        return
+    with open_mod_package(manifest) as package:
+        click.echo(
+            f"PASS: {package.mod_id} schema {package.schema_version}; "
+            f"{len(package.files)} file(s), {len(package.rpf_entries)} RPF patch(es)"
+        )
+
+
+@content_group.command("install-package")
+@click.argument("source", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--gta-path", type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--yes", is_flag=True, help="Approve installing the validated package.")
+@click.pass_context
+def content_install_package(
+    ctx: click.Context, source: Path, gta_path: Path | None, yes: bool,
+) -> None:
+    """Install a validated mod.toml, package folder, or bounded ZIP package."""
+    from allin1.mods import ModIntegrationService, open_mod_package
+
+    game = _content_game_path(ctx, gta_path)
+    with open_mod_package(source) as package:
+        _confirm_content_change(yes, f"Install {package.name} {package.version}?")
+        status = ModIntegrationService(game).install(package)
     click.echo(
-        f"PASS: {descriptor.extension_id} API {descriptor.api_version}; "
-        f"{len(descriptor.systems)} system(s), "
-        f"{len(descriptor.gbay_sections)} GBAY route(s), "
-        f"{len(descriptor.runtime_assemblies)} runtime assembly declaration(s)"
+        f"Installed {status.name} {status.version} ({status.mod_id})."
     )
 
 
@@ -451,6 +483,624 @@ def content_set(
         f"{manifest.extension_id}:{setting.key} = "
         f"{json.dumps(effective[setting.key], allow_nan=False)}"
     )
+
+
+def _read_settings_proposal(path: Path) -> dict:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise click.ClickException(f"Invalid settings proposal JSON: {path}") from exc
+    if not isinstance(payload, dict):
+        raise click.ClickException("Settings proposal must be a JSON object")
+    return payload
+
+
+@content_group.command("settings-catalog")
+@click.argument("extension_id")
+@click.option(
+    "--gta-path", type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.pass_context
+def content_settings_catalog(
+    ctx: click.Context, extension_id: str, gta_path: Path | None,
+) -> None:
+    """Print the compact typed catalog and live package-state hashes."""
+    from allin1.settings_assistant import build_settings_catalog
+
+    try:
+        payload = build_settings_catalog(
+            _content_game_path(ctx, gta_path), extension_id,
+        )
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
+@content_group.command("settings-preview")
+@click.argument(
+    "proposal", type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--gta-path", type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.pass_context
+def content_settings_preview(
+    ctx: click.Context, proposal: Path, gta_path: Path | None,
+) -> None:
+    """Preview a typed proposal without writing package settings."""
+    from allin1.settings_assistant import preview_settings_proposal
+
+    try:
+        payload = preview_settings_proposal(
+            _content_game_path(ctx, gta_path), _read_settings_proposal(proposal),
+        )
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
+@content_group.command("settings-apply")
+@click.argument(
+    "proposal", type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--gta-path", type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option(
+    "--confirm-proposal-id",
+    help="Exact proposal_id shown by settings-preview; required with --yes.",
+)
+@click.option("--yes", is_flag=True, help="Apply the exact previewed proposal.")
+@click.pass_context
+def content_settings_apply(
+    ctx: click.Context, proposal: Path, gta_path: Path | None,
+    confirm_proposal_id: str | None, yes: bool,
+) -> None:
+    """Explicitly apply an exact previewed proposal through the launcher writer."""
+    from allin1.settings_assistant import (
+        apply_settings_proposal, preview_settings_proposal,
+    )
+
+    game = _content_game_path(ctx, gta_path)
+    raw = _read_settings_proposal(proposal)
+    try:
+        preview = preview_settings_proposal(game, raw)
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    # Preview is always emitted before authorization or mutation, including
+    # non-interactive API use.
+    click.echo(json.dumps(preview, indent=2, ensure_ascii=False))
+    proposal_id = str(preview["proposal_id"])
+    if yes:
+        if confirm_proposal_id != proposal_id:
+            raise click.ClickException(
+                "--yes also requires --confirm-proposal-id matching the preview"
+            )
+    else:
+        if confirm_proposal_id is not None:
+            raise click.ClickException("--confirm-proposal-id is valid only with --yes")
+        if not click.confirm(
+            f"Apply exact proposal {proposal_id} to {preview['package_id']}?",
+            default=False,
+        ):
+            raise click.Abort()
+        confirm_proposal_id = proposal_id
+    try:
+        applied = apply_settings_proposal(
+            game, raw, confirmed_proposal_id=confirm_proposal_id,
+        )
+    except (KeyError, OSError, PermissionError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(applied, indent=2, ensure_ascii=False))
+
+
+@main.group("assistant")
+def assistant_group() -> None:
+    """Manage the optional local or compatible-API assistant component."""
+
+
+@assistant_group.command("status")
+@click.option("--root", type=click.Path(file_okay=False, path_type=Path))
+def assistant_status(root: Path | None) -> None:
+    """Show assistant installation and configuration without starting a model."""
+    from allin1.assistant_manager import read_assistant_status
+
+    status = read_assistant_status(root)
+    payload = {
+        "root": str(status.root), "installed": status.installed,
+        "healthy": status.healthy, "enabled": status.enabled,
+        "detail": status.detail, "configuration": status.config.to_dict(),
+        "package": (
+            None if status.package is None else {
+                "id": status.package.package_id,
+                "version": status.package.version,
+                "name": status.package.display_name,
+                "profile": status.package.profile,
+                "provider": status.package.provider,
+                "backend": status.package.backend,
+                "model": status.package.model_name,
+                "quantization": status.package.quantization,
+                "minimum_ram_gb": status.package.minimum_ram_gb,
+                "recommended_ram_gb": status.package.recommended_ram_gb,
+            }
+        ),
+    }
+    click.echo(json.dumps(payload, indent=2))
+
+
+@assistant_group.command("hardware-check")
+@click.option(
+    "--profile", type=click.Choice(("low", "recommended"), case_sensitive=False),
+    default="recommended", show_default=True,
+)
+@click.option("--root", type=click.Path(file_okay=False, path_type=Path))
+def assistant_hardware_check(profile: str, root: Path | None) -> None:
+    """Check whether this PC can safely run a managed local model pack."""
+    from allin1.assistant_manager import assess_assistant_hardware
+
+    try:
+        report = assess_assistant_hardware(profile.casefold(), root)
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(report.to_dict(), indent=2))
+    if not report.compatible:
+        raise SystemExit(1)
+
+
+@assistant_group.command("prompt")
+@click.argument("prompt", nargs=-1, required=True)
+@click.option("--root", type=click.Path(file_okay=False, path_type=Path))
+@click.option(
+    "--repository-root", type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="Repository that owns the question; defaults to the current directory.",
+)
+@click.option(
+    "--workspace-root", "workspace_roots", multiple=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="Additional launcher, SDK, or package workspace root.",
+)
+@click.option(
+    "--manifest", type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Authoritative mod.toml or addon.json for the package under review.",
+)
+@click.option(
+    "--gta-path", type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="Verified GTA V path; defaults to the launcher's configured path.",
+)
+@click.option(
+    "--operation-mode", type=click.Choice(("advisory", "planning")),
+    default="advisory", show_default=True,
+)
+@click.option(
+    "--source", "sources", multiple=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Explicit source file to retrieve; repeatable.",
+)
+@click.option("--symbol", "symbols", multiple=True, help="Source symbol or text to retrieve; repeatable.")
+@click.option(
+    "--telemetry", "telemetry_files", multiple=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Explicit log or telemetry file to retrieve; repeatable.",
+)
+@click.option("--telemetry-pattern", "telemetry_patterns", multiple=True)
+@click.option(
+    "--timeout", type=click.FloatRange(1, 600), default=180.0, show_default=True,
+)
+@click.option(
+    "--startup-timeout", type=click.FloatRange(1, 300), default=90.0,
+    show_default=True,
+)
+@click.option(
+    "--max-tokens", type=click.IntRange(1, 8192), default=1024, show_default=True,
+)
+@click.pass_context
+def assistant_prompt(
+    ctx: click.Context, prompt: tuple[str, ...], root: Path | None,
+    repository_root: Path | None, workspace_roots: tuple[Path, ...],
+    manifest: Path | None, gta_path: Path | None, operation_mode: str,
+    sources: tuple[Path, ...], symbols: tuple[str, ...],
+    telemetry_files: tuple[Path, ...], telemetry_patterns: tuple[str, ...],
+    timeout: float, startup_timeout: float, max_tokens: int,
+) -> None:
+    """Forward a read-only question to the installed SDK assistant console."""
+    import subprocess
+
+    from allin1.assistant_manager import default_assistant_root
+    from allin1.sdk_manager import read_sdk_status
+
+    sdk = read_sdk_status()
+    agent = sdk.root / "ALLIN1-SDK-Agent.exe"
+    if not sdk.healthy or not agent.is_file():
+        raise click.ClickException(
+            "The managed ALLIN1 SDK Agent is not installed and healthy. Install or "
+            "repair the current SDK release in SDK Manager."
+        )
+    selected_game = gta_path
+    if selected_game is None:
+        config: Config = ctx.obj["config"]
+        configured = config.general.gta_path.strip()
+        if configured and configured.casefold() != "auto":
+            candidate = Path(configured).expanduser().resolve()
+            if candidate.is_dir():
+                selected_game = candidate
+    repository = (repository_root or Path.cwd()).expanduser().resolve()
+    context_args = [
+        "--repository-root", str(repository),
+        "--operation-mode", operation_mode,
+    ]
+    for workspace in workspace_roots:
+        context_args.extend(("--workspace-root", str(workspace.resolve())))
+    if manifest is not None:
+        context_args.extend(("--manifest", str(manifest.resolve())))
+    if selected_game is not None:
+        context_args.extend(("--gta-path", str(selected_game.resolve())))
+    for source in sources:
+        context_args.extend(("--source", str(source.resolve())))
+    for symbol in symbols:
+        context_args.extend(("--symbol", symbol))
+    for telemetry in telemetry_files:
+        context_args.extend(("--telemetry", str(telemetry.resolve())))
+    for pattern in telemetry_patterns:
+        context_args.extend(("--telemetry-pattern", pattern))
+    request = {
+        "id": "launcher-assistant-prompt", "action": "execute",
+        "command": "assistant",
+        "args": [
+            "prompt", *prompt,
+            "--root", str((root or default_assistant_root()).resolve()),
+            "--timeout", str(timeout),
+            "--startup-timeout", str(startup_timeout),
+            "--max-tokens", str(max_tokens),
+            *context_args,
+        ],
+    }
+    options: dict[str, object] = {}
+    if os.name == "nt":
+        options["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    try:
+        completed = subprocess.run(
+            [str(agent)], input=json.dumps(request) + "\n", text=True,
+            capture_output=True, timeout=timeout + startup_timeout + 15,
+            check=False, cwd=sdk.root, **options,
+        )
+        lines = [line for line in completed.stdout.splitlines() if line.strip()]
+        response = json.loads(lines[-1]) if lines else None
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+        raise click.ClickException(f"Could not contact the SDK assistant: {exc}") from exc
+    if not isinstance(response, dict):
+        detail = completed.stderr.strip() or "the SDK Agent returned no response"
+        raise click.ClickException(f"Could not contact the SDK assistant: {detail}")
+    result = response.get("result")
+    output = result.get("output", "") if isinstance(result, dict) else ""
+    if not response.get("ok"):
+        detail = str(response.get("error") or output or "assistant prompt failed").strip()
+        raise click.ClickException(detail)
+    click.echo(str(output).rstrip())
+
+
+@assistant_group.command("settings-propose")
+@click.argument("extension_id")
+@click.argument("intent", nargs=-1, required=True)
+@click.option(
+    "--gta-path", type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--root", type=click.Path(file_okay=False, path_type=Path))
+@click.option(
+    "--output", type=click.Path(dir_okay=False, path_type=Path),
+    help="Write the host-validated advisory proposal JSON to this file.",
+)
+@click.option(
+    "--timeout", type=click.FloatRange(1, 600), default=180.0, show_default=True,
+)
+@click.option(
+    "--startup-timeout", type=click.FloatRange(1, 300), default=90.0,
+    show_default=True,
+)
+@click.option(
+    "--max-tokens", type=click.IntRange(1, 4096), default=1024,
+    show_default=True,
+)
+@click.pass_context
+def assistant_settings_propose(
+    ctx: click.Context, extension_id: str, intent: tuple[str, ...],
+    gta_path: Path | None, root: Path | None, output: Path | None,
+    timeout: float, startup_timeout: float, max_tokens: int,
+) -> None:
+    """Ask Qwen for a typed advisory diff; this command never applies it."""
+    import subprocess
+    import tempfile
+
+    from allin1.assistant_manager import default_assistant_root
+    from allin1.sdk_manager import read_sdk_status
+    from allin1.settings_assistant import (
+        build_settings_request, validate_settings_proposal,
+    )
+
+    game = _content_game_path(ctx, gta_path)
+    try:
+        host_request = build_settings_request(
+            game, extension_id, " ".join(intent),
+        )
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    sdk = read_sdk_status()
+    agent = sdk.root / "ALLIN1-SDK-Agent.exe"
+    if not sdk.healthy or not agent.is_file():
+        raise click.ClickException(
+            "The managed ALLIN1 SDK Agent is not installed and healthy. Install or "
+            "repair the current SDK release in SDK Manager."
+        )
+    options: dict[str, object] = {}
+    if os.name == "nt":
+        options["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    try:
+        with tempfile.TemporaryDirectory(prefix="allin1-settings-request-") as temporary:
+            request_path = Path(temporary) / "request.json"
+            request_path.write_text(
+                json.dumps(host_request, ensure_ascii=False), encoding="utf-8",
+            )
+            api_request = {
+                "id": "launcher-settings-proposal", "action": "execute",
+                "command": "propose-package-settings",
+                "args": [
+                    str(request_path), "--root",
+                    str((root or default_assistant_root()).resolve()),
+                    "--timeout", str(timeout), "--startup-timeout",
+                    str(startup_timeout), "--max-tokens", str(max_tokens),
+                    "--no-progress",
+                ],
+            }
+            completed = subprocess.run(
+                [str(agent)], input=json.dumps(api_request) + "\n", text=True,
+                capture_output=True, timeout=timeout + startup_timeout + 15,
+                check=False, cwd=sdk.root, **options,
+            )
+        lines = [line for line in completed.stdout.splitlines() if line.strip()]
+        response = json.loads(lines[-1]) if lines else None
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+        raise click.ClickException(f"Could not contact the SDK assistant: {exc}") from exc
+    if not isinstance(response, dict) or not response.get("ok"):
+        detail = (
+            str(response.get("error", "")) if isinstance(response, dict)
+            else completed.stderr.strip()
+        ) or "the SDK Agent returned no valid proposal"
+        raise click.ClickException(detail)
+    result = response.get("result")
+    raw_output = result.get("output") if isinstance(result, dict) else None
+    try:
+        candidate = json.loads(str(raw_output))
+        validated = validate_settings_proposal(game, candidate).to_dict()
+    except (json.JSONDecodeError, KeyError, OSError, TypeError, ValueError) as exc:
+        raise click.ClickException(f"SDK assistant returned an invalid proposal: {exc}") from exc
+    rendered = json.dumps(validated, indent=2, ensure_ascii=False) + "\n"
+    if output is not None:
+        destination = output.expanduser().resolve()
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_suffix(destination.suffix + ".tmp")
+        temporary.write_text(rendered, encoding="utf-8")
+        temporary.replace(destination)
+        click.echo(str(destination))
+    else:
+        click.echo(rendered, nl=False)
+
+
+@assistant_group.command("configure")
+@click.option(
+    "--mode", type=click.Choice(
+        ("disabled", "managed_local", "custom_local", "compatible_api"),
+        case_sensitive=False,
+    ),
+)
+@click.option(
+    "--workflow", type=click.Choice(("installer", "diagnostic"), case_sensitive=False),
+)
+@click.option(
+    "--profile", type=click.Choice(("low", "recommended", "custom"), case_sensitive=False),
+)
+@click.option("--endpoint")
+@click.option("--model-name")
+@click.option("--api-key-env")
+@click.option("--runtime-path", type=click.Path(path_type=Path))
+@click.option("--model-path", type=click.Path(path_type=Path))
+@click.option("--context-tokens", type=click.IntRange(2048, 32768))
+@click.option("--temperature", type=click.FloatRange(0.0, 1.0))
+@click.option(
+    "--provider-control",
+    type=click.Choice(("qwen_template", "qwen_api", "reasoning_effort")),
+    help="Compatible-API thinking-control protocol; JSON Schema is always required.",
+)
+@click.option("--thinking", type=click.Choice(("disabled", "enabled")))
+@click.option("--model-sha256")
+@click.option("--llama-cpp-revision")
+@click.option("--root", type=click.Path(file_okay=False, path_type=Path))
+@click.option("--yes", is_flag=True, help="Approve the local configuration change.")
+def assistant_configure(
+    mode: str | None, workflow: str | None, profile: str | None,
+    endpoint: str | None, model_name: str | None, api_key_env: str | None,
+    runtime_path: Path | None, model_path: Path | None,
+    context_tokens: int | None, temperature: float | None,
+    provider_control: str | None, thinking: str | None,
+    model_sha256: str | None, llama_cpp_revision: str | None,
+    root: Path | None, yes: bool,
+) -> None:
+    """Configure an installed pack, existing local model, or compatible API."""
+    from dataclasses import replace
+
+    from allin1.assistant_manager import (
+        CAPABILITY_JSON_SCHEMA, CAPABILITY_THINKING_QWEN,
+        CAPABILITY_THINKING_REASONING, CAPABILITY_THINKING_TEMPLATE,
+        LOCAL_LLAMA_CAPABILITIES, THINKING_CAPABILITIES,
+        load_assistant_config, save_assistant_config,
+    )
+
+    if not yes:
+        raise click.ClickException("Assistant configuration requires --yes")
+    try:
+        current = load_assistant_config(root)
+        selected_mode = mode.casefold() if mode else current.mode
+        controls = {
+            "qwen_template": CAPABILITY_THINKING_TEMPLATE,
+            "qwen_api": CAPABILITY_THINKING_QWEN,
+            "reasoning_effort": CAPABILITY_THINKING_REASONING,
+        }
+        if selected_mode in {"managed_local", "custom_local"}:
+            capabilities = LOCAL_LLAMA_CAPABILITIES
+            selected_thinking = thinking or (
+                current.thinking if current.thinking != "provider_default" else "disabled"
+            )
+        elif selected_mode == "compatible_api":
+            current_control = next(
+                (item for item in current.capabilities if item in THINKING_CAPABILITIES),
+                CAPABILITY_THINKING_TEMPLATE,
+            )
+            capabilities = (
+                CAPABILITY_JSON_SCHEMA,
+                controls.get(provider_control, current_control),
+            )
+            selected_thinking = thinking or (
+                current.thinking if current.thinking != "provider_default" else "disabled"
+            )
+        else:
+            capabilities = ()
+            selected_thinking = "provider_default"
+        changes = {
+            "mode": selected_mode,
+            "workflow": workflow.casefold() if workflow else current.workflow,
+            "profile": profile.casefold() if profile else current.profile,
+            "endpoint": endpoint if endpoint is not None else current.endpoint,
+            "model_name": model_name if model_name is not None else current.model_name,
+            "api_key_env": api_key_env if api_key_env is not None else current.api_key_env,
+            "runtime_path": (
+                str(runtime_path.expanduser().resolve())
+                if runtime_path is not None else current.runtime_path
+            ),
+            "model_path": (
+                str(model_path.expanduser().resolve())
+                if model_path is not None else current.model_path
+            ),
+            "context_tokens": (
+                context_tokens if context_tokens is not None else current.context_tokens
+            ),
+            "temperature": temperature if temperature is not None else current.temperature,
+            "capabilities": capabilities,
+            "thinking": selected_thinking,
+            "model_sha256": (
+                model_sha256 if model_sha256 is not None else current.model_sha256
+            ),
+            "llama_cpp_revision": (
+                llama_cpp_revision
+                if llama_cpp_revision is not None else current.llama_cpp_revision
+            ),
+        }
+        configured = replace(current, **changes)
+        written = save_assistant_config(configured, root)
+    except (OSError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"Assistant configuration saved: {written}")
+
+
+@assistant_group.command("install-package")
+@click.argument("archive", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--root", type=click.Path(file_okay=False, path_type=Path))
+@click.option("--yes", is_flag=True, help="Approve installing the verified component.")
+def assistant_install_package(archive: Path, root: Path | None, yes: bool) -> None:
+    """Install a checksum-complete ALLIN1 assistant model pack."""
+    from allin1.assistant_manager import (
+        assess_assistant_hardware, inspect_assistant_archive,
+        install_assistant_archive,
+    )
+
+    if not yes:
+        raise click.ClickException("Assistant installation requires --yes")
+    try:
+        package = inspect_assistant_archive(archive)
+        report = assess_assistant_hardware(
+            package.profile, root, archive_size=archive.stat().st_size,
+            unpacked_size=package.unpacked_size, package=package,
+        )
+        click.echo(report.summary)
+        status = install_assistant_archive(archive, root)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    if status.package is None:
+        raise click.ClickException("Assistant installation did not produce a valid package")
+    click.echo(
+        f"Installed {status.package.display_name} {status.package.version} "
+        f"({status.package.profile}); it remains disabled until configured."
+    )
+
+
+@assistant_group.command("install-qwen")
+@click.option(
+    "--profile", type=click.Choice(("low", "recommended"), case_sensitive=False),
+    default="recommended", show_default=True,
+)
+@click.option("--root", type=click.Path(file_okay=False, path_type=Path))
+@click.option("--yes", is_flag=True, help="Approve downloading the verified component.")
+def assistant_install_qwen(profile: str, root: Path | None, yes: bool) -> None:
+    """Download and install Qwen plus llama.cpp from their upstream projects."""
+    from allin1.assistant_manager import (
+        assistant_source, assess_assistant_hardware, install_qwen_source,
+    )
+
+    if not yes:
+        raise click.ClickException("Assistant download requires --yes")
+    last_progress = {"label": "", "bucket": -1}
+
+    def show_progress(label: str, current: int, total: int) -> None:
+        percentage = int(current * 100 / total) if total else 0
+        bucket = percentage // 5
+        if label != last_progress["label"] or bucket > last_progress["bucket"]:
+            click.echo(f"{label}: {percentage}%")
+            last_progress.update(label=label, bucket=bucket)
+
+    try:
+        selected = assistant_source(profile)
+        report = assess_assistant_hardware(
+            selected.profile, root, archive_size=selected.total_download_bytes,
+            unpacked_size=selected.model.size + selected.runtime.size,
+        )
+        click.echo(report.summary)
+        status = install_qwen_source(
+            selected.profile, root, source=selected, progress=show_progress,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    if status.package is None:
+        raise click.ClickException("Assistant installation did not produce a valid package")
+    click.echo(
+        f"Installed {status.package.display_name} from its verified upstream sources; "
+        "it remains disabled until configured."
+    )
+
+
+@assistant_group.command("verify")
+@click.option("--root", type=click.Path(file_okay=False, path_type=Path))
+def assistant_verify(root: Path | None) -> None:
+    """Fully verify every managed runtime and model file against its recorded hash."""
+    from allin1.assistant_manager import verify_assistant_install
+
+    try:
+        package = verify_assistant_install(root)
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"Verified {package.display_name} {package.version} ({package.file_count} files).")
+
+
+@assistant_group.command("uninstall")
+@click.option("--root", type=click.Path(file_okay=False, path_type=Path))
+@click.option("--yes", is_flag=True, help="Approve removal of the managed component.")
+def assistant_uninstall(root: Path | None, yes: bool) -> None:
+    """Remove the managed assistant pack without touching custom model files."""
+    from allin1.assistant_manager import uninstall_assistant
+
+    if not yes:
+        raise click.ClickException("Assistant removal requires --yes")
+    try:
+        removed = uninstall_assistant(root)
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo("Managed assistant removed." if removed else "No managed assistant is installed.")
 
 
 @main.group("sdk")

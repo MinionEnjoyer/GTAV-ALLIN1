@@ -24,6 +24,9 @@ PUBLIC_ROOT_FILES = (
     "RELEASE_NOTES.md",
     "documentation.md",
     "docs/content-extension-api.md",
+    "docs/gtaiv-npc-physics-experiment.md",
+    "docs/optional-assistant.md",
+    "docs/realistic-suppressors.md",
     "config.example.toml",
     "install.bat",
     "manager.bat",
@@ -35,6 +38,10 @@ PUBLIC_ROOT_FILES = (
     "prices_vehicles.toml",
     "prices_weapons.toml",
     "mods/README.md",
+    "mods/realistic-suppressors/README.md",
+    "mods/realistic-suppressors/mod.toml",
+    "mods/realistic-suppressors/allin1.content.json",
+    "mods/realistic-suppressors/payload/RealisticSuppressors.dll",
     "sdk/examples/colored_smokes/addon.json",
 )
 

@@ -53,6 +53,18 @@ namespace ALLIN1
         void Discard(StorySessionEndContext context);
     }
 
+    /// <summary>
+    /// Optional bridge between a receipt-authorized weapon mod and GBAY's
+    /// generic component storefront. Implementations can mark a component as
+    /// consumed and observe only completed, successfully applied purchases.
+    /// </summary>
+    public interface IWeaponComponentLifecycleParticipant
+    {
+        bool IsComponentConsumed(string weaponName, int componentHash);
+        void OnComponentPurchased(
+            string weaponName, int componentHash, int attachmentPoint);
+    }
+
     /// <summary>A declarative GBAY route backed by a receipt-authorized callback.</summary>
     public sealed class GbayAddonAction
     {
@@ -136,6 +148,10 @@ namespace ALLIN1
             new Dictionary<string, GbayAddonAction>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, StorySaveParticipant> SaveParticipants =
             new Dictionary<string, StorySaveParticipant>(StringComparer.OrdinalIgnoreCase);
+        private static readonly Dictionary<string, WeaponComponentParticipant>
+            WeaponComponentParticipants =
+                new Dictionary<string, WeaponComponentParticipant>(
+                    StringComparer.OrdinalIgnoreCase);
         private static DateTime _lastNotifiedSaveUtc = DateTime.MinValue;
 
         /// <summary>True when a valid launcher-authored registry is active.</summary>
@@ -150,6 +166,12 @@ namespace ALLIN1
                 }
             }
         }
+
+        /// <summary>
+        /// True while ALLIN1's GBAY browser is open. External gameplay scripts
+        /// can use this to ignore transient workbench previews.
+        /// </summary>
+        public static bool IsGbayMenuActive => GbayShop.IsMenuActive;
 
         /// <summary>
         /// Return whether a package is enabled. Missing registry files retain
@@ -344,7 +366,7 @@ namespace ALLIN1
                 throw new ArgumentException("Invalid participant id", nameof(participantId));
             participantId = participantId.Trim().ToLowerInvariant();
             Assembly participantAssembly = ParticipantImplementationAssembly(
-                participant);
+                participant, typeof(IStorySaveParticipant));
             if (participantAssembly == null)
                 throw new ArgumentException(
                     "Commit and Discard must be implemented by the participant assembly.",
@@ -364,6 +386,86 @@ namespace ALLIN1
                 return new ExtensionRegistration(() =>
                 {
                     lock (Sync) SaveParticipants.Remove(registrationKey);
+                });
+            }
+        }
+
+        /// <summary>
+        /// Synchronize a native weapon-ammo mutation into ALLIN1's optional
+        /// per-character inventory ledger. The proof callback is not invoked;
+        /// its declaring assembly is validated against the enabled package's
+        /// receipt-owned runtime file before the ledger can be changed.
+        /// </summary>
+        public static void RecordWeaponAmmo(
+            string packageId, string weaponName, int ammo,
+            Action authorizationProof)
+        {
+            if (authorizationProof == null)
+                throw new ArgumentNullException(nameof(authorizationProof));
+            if (authorizationProof.GetInvocationList().Length != 1)
+                throw new ArgumentException(
+                    "Authorization proof must contain exactly one callback.",
+                    nameof(authorizationProof));
+            if (string.IsNullOrWhiteSpace(weaponName) ||
+                !weaponName.Trim().StartsWith(
+                    "WEAPON_", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException(
+                    "A GTA weapon name is required.", nameof(weaponName));
+            if (ammo < 0 || ammo > 99999)
+                throw new ArgumentOutOfRangeException(nameof(ammo));
+
+            Assembly callbackAssembly =
+                authorizationProof.Method.Module.Assembly;
+            lock (Sync)
+            {
+                AuthorizedPackageLocked(
+                    packageId, "story-save.transactions",
+                    callbackAssembly);
+            }
+            CharacterInventory.RecordWeaponAmmo(
+                weaponName.Trim().ToUpperInvariant(), ammo);
+        }
+
+        /// <summary>
+        /// Register a generic weapon-component lifecycle participant. GBAY
+        /// queries consumed state before pricing and reports only purchases
+        /// that were charged/applied successfully.
+        /// </summary>
+        public static IDisposable RegisterWeaponComponentLifecycleParticipant(
+            string packageId, string participantId,
+            IWeaponComponentLifecycleParticipant participant)
+        {
+            if (participant == null)
+                throw new ArgumentNullException(nameof(participant));
+            if (!RuntimeExtensionRegistry.IsSafeId(participantId))
+                throw new ArgumentException(
+                    "Invalid participant id", nameof(participantId));
+            participantId = participantId.Trim().ToLowerInvariant();
+            Assembly participantAssembly = ParticipantImplementationAssembly(
+                participant,
+                typeof(IWeaponComponentLifecycleParticipant));
+            if (participantAssembly == null)
+                throw new ArgumentException(
+                    "Lifecycle methods must be implemented by the participant assembly.",
+                    nameof(participant));
+            lock (Sync)
+            {
+                RuntimeExtensionPackage package = AuthorizedPackageLocked(
+                    packageId, "weapon.components.lifecycle",
+                    participantAssembly);
+                string registrationKey = package.Id + "\0" + participantId;
+                if (WeaponComponentParticipants.ContainsKey(registrationKey))
+                    throw new InvalidOperationException(
+                        "Weapon-component participant is already registered: " +
+                        participantId);
+                WeaponComponentParticipants[registrationKey] =
+                    new WeaponComponentParticipant(
+                        package.Id, participantId, participant,
+                        participantAssembly, _registryGeneration);
+                return new ExtensionRegistration(() =>
+                {
+                    lock (Sync)
+                        WeaponComponentParticipants.Remove(registrationKey);
                 });
             }
         }
@@ -423,6 +525,7 @@ namespace ALLIN1
             {
                 GbayActions.Clear();
                 SaveParticipants.Clear();
+                WeaponComponentParticipants.Clear();
                 _lastNotifiedSaveUtc = DateTime.MinValue;
                 _registry = null;
                 _registryWriteUtc = DateTime.MinValue;
@@ -449,14 +552,17 @@ namespace ALLIN1
         }
 
         private static Assembly ParticipantImplementationAssembly(
-            IStorySaveParticipant participant)
+            object participant, Type interfaceType)
         {
+            if (participant == null || interfaceType == null ||
+                !interfaceType.IsInstanceOfType(participant))
+                return null;
             Type participantType = participant.GetType();
             Assembly assembly = participantType.Assembly;
             try
             {
                 InterfaceMapping mapping = participantType.GetInterfaceMap(
-                    typeof(IStorySaveParticipant));
+                    interfaceType);
                 return mapping.TargetMethods.All(method =>
                     method.Module.Assembly == assembly) ? assembly : null;
             }
@@ -511,6 +617,111 @@ namespace ALLIN1
                     new Dictionary<string, object> {
                         { "package", action.PackageId }, { "route", action.Route }
                     });
+            }
+        }
+
+        internal static IDisposable
+            RegisterWeaponComponentLifecycleParticipantForTests(
+                string packageId, string participantId,
+                IWeaponComponentLifecycleParticipant participant)
+        {
+            lock (Sync)
+            {
+                RegistryLocked();
+                string key = packageId + "\0" + participantId;
+                WeaponComponentParticipants.Add(key,
+                    new WeaponComponentParticipant(
+                        packageId, participantId, participant,
+                        participant.GetType().Assembly,
+                        _registryGeneration));
+                return new ExtensionRegistration(() =>
+                {
+                    lock (Sync)
+                        WeaponComponentParticipants.Remove(key);
+                });
+            }
+        }
+
+        internal static bool IsWeaponComponentConsumed(
+            string weaponName, int componentHash)
+        {
+            if (string.IsNullOrWhiteSpace(weaponName) || componentHash == 0)
+                return false;
+            WeaponComponentParticipant[] participants;
+            lock (Sync)
+            {
+                RuntimeExtensionRegistry registry = RegistryLocked();
+                foreach (string key in
+                    WeaponComponentParticipants.Keys.ToArray())
+                {
+                    if (!AuthorizesWeaponComponentParticipant(
+                            registry, WeaponComponentParticipants[key]))
+                        WeaponComponentParticipants.Remove(key);
+                }
+                participants = WeaponComponentParticipants.Values.ToArray();
+            }
+            foreach (WeaponComponentParticipant participant in participants)
+            {
+                try
+                {
+                    if (participant.Participant.IsComponentConsumed(
+                            weaponName, componentHash))
+                        return true;
+                }
+                catch (Exception ex)
+                {
+                    ClientLog.Error("Extensions",
+                        "weapon_component_consumed_query_failed", ex,
+                        new Dictionary<string, object>
+                        {
+                            { "package", participant.PackageId },
+                            { "participant", participant.Id },
+                            { "weapon", weaponName },
+                            { "component_hash", componentHash },
+                        });
+                }
+            }
+            return false;
+        }
+
+        internal static void NotifyWeaponComponentPurchased(
+            string weaponName, int componentHash, int attachmentPoint)
+        {
+            if (string.IsNullOrWhiteSpace(weaponName) || componentHash == 0)
+                return;
+            WeaponComponentParticipant[] participants;
+            lock (Sync)
+            {
+                RuntimeExtensionRegistry registry = RegistryLocked();
+                foreach (string key in
+                    WeaponComponentParticipants.Keys.ToArray())
+                {
+                    if (!AuthorizesWeaponComponentParticipant(
+                            registry, WeaponComponentParticipants[key]))
+                        WeaponComponentParticipants.Remove(key);
+                }
+                participants = WeaponComponentParticipants.Values.ToArray();
+            }
+            foreach (WeaponComponentParticipant participant in participants)
+            {
+                try
+                {
+                    participant.Participant.OnComponentPurchased(
+                        weaponName, componentHash, attachmentPoint);
+                }
+                catch (Exception ex)
+                {
+                    ClientLog.Error("Extensions",
+                        "weapon_component_purchase_notification_failed", ex,
+                        new Dictionary<string, object>
+                        {
+                            { "package", participant.PackageId },
+                            { "participant", participant.Id },
+                            { "weapon", weaponName },
+                            { "component_hash", componentHash },
+                            { "attachment_point", attachmentPoint },
+                        });
+                }
             }
         }
 
@@ -666,6 +877,26 @@ namespace ALLIN1
             return authorized;
         }
 
+        private static bool AuthorizesWeaponComponentParticipant(
+            RuntimeExtensionRegistry registry,
+            WeaponComponentParticipant participant)
+        {
+            if (participant.AuthorizationGeneration == _registryGeneration)
+                return true;
+            RuntimeExtensionPackage package;
+            bool authorized = registry.Present && registry.Valid &&
+                registry.Packages.TryGetValue(
+                    participant.PackageId, out package) &&
+                registry.IsEnabled(participant.PackageId) &&
+                package.Capabilities.Contains(
+                    "weapon.components.lifecycle") &&
+                package.AuthorizesAssembly(
+                    participant.CallbackAssembly, ScriptsDirectory);
+            if (authorized)
+                participant.AuthorizationGeneration = _registryGeneration;
+            return authorized;
+        }
+
         private static RuntimeExtensionRegistry RegistryLocked()
         {
             FileInfo info = new FileInfo(RegistryPath);
@@ -709,6 +940,28 @@ namespace ALLIN1
             internal string PackageId { get; }
             internal string Id { get; }
             internal IStorySaveParticipant Participant { get; }
+            internal Assembly CallbackAssembly { get; }
+            internal int AuthorizationGeneration { get; set; }
+        }
+
+        private sealed class WeaponComponentParticipant
+        {
+            internal WeaponComponentParticipant(
+                string packageId, string id,
+                IWeaponComponentLifecycleParticipant participant,
+                Assembly callbackAssembly, int authorizationGeneration)
+            {
+                PackageId = packageId;
+                Id = id;
+                Participant = participant;
+                CallbackAssembly = callbackAssembly;
+                AuthorizationGeneration = authorizationGeneration;
+            }
+
+            internal string PackageId { get; }
+            internal string Id { get; }
+            internal IWeaponComponentLifecycleParticipant Participant
+                { get; }
             internal Assembly CallbackAssembly { get; }
             internal int AuthorizationGeneration { get; set; }
         }

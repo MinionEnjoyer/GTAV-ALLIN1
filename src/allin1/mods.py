@@ -8,11 +8,14 @@ import re
 import shutil
 import stat
 import sys
+import tempfile
 import uuid
+import zipfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 from allin1.extensions import (
     EXTENSION_API_VERSION,
@@ -53,6 +56,10 @@ _WINDOWS_RESERVED_STEMS = frozenset({
     *(f"com{index}" for index in range(1, 10)),
     *(f"lpt{index}" for index in range(1, 10)),
 })
+MAX_PACKAGE_ARCHIVE_MEMBERS = 4096
+MAX_PACKAGE_ARCHIVE_MEMBER_BYTES = 4 * 1024 * 1024 * 1024
+MAX_PACKAGE_ARCHIVE_BYTES = 8 * 1024 * 1024 * 1024
+MAX_PACKAGE_COMPRESSION_RATIO = 1000
 
 
 def _relative_path(value: object, label: str) -> PurePosixPath:
@@ -220,6 +227,7 @@ class ModManifest:
     rpf_entries: tuple[RpfEntryPatch, ...]
     package_requirements: tuple[PackageRequirement, ...] = ()
     extension: ExtensionManifest | None = None
+    schema_version: int = 1
 
     @property
     def package_root(self) -> Path:
@@ -417,20 +425,21 @@ class ModManifest:
                 item.destination.as_posix() for item in files
             )
         manifest = cls(
-            path,
-            mod_id,
-            name,
-            version,
-            mod_type,
-            str(data.get("description", "")).strip(),
-            editions,
-            dependencies,
-            conflicts,
-            dlc_packs,
-            tuple(files),
-            tuple(rpf_entries),
-            package_requirements,
-            extension,
+            manifest_path=path,
+            mod_id=mod_id,
+            name=name,
+            version=version,
+            mod_type=mod_type,
+            description=str(data.get("description", "")).strip(),
+            editions=editions,
+            dependencies=dependencies,
+            conflicts=conflicts,
+            dlc_packs=dlc_packs,
+            files=tuple(files),
+            rpf_entries=tuple(rpf_entries),
+            package_requirements=package_requirements,
+            extension=extension,
+            schema_version=schema_version,
         )
         if validate_payload:
             manifest.validate_payload()
@@ -486,6 +495,137 @@ class ModManifest:
                 raise FileNotFoundError(f"Package payload is missing: {item.source}")
             if item.sha256 and _sha256(source) != item.sha256:
                 raise ValueError(f"SHA-256 mismatch for {item.source}")
+
+
+def _archive_member_path(info: zipfile.ZipInfo) -> PurePosixPath | None:
+    """Validate one ZIP member without trusting the host ZIP extractor."""
+    if info.flag_bits & 0x1:
+        raise ValueError(f"Encrypted ZIP members are not supported: {info.filename}")
+    normalized = info.filename.replace("\\", "/")
+    is_directory = info.is_dir() or normalized.endswith("/")
+    normalized = normalized.rstrip("/") if is_directory else normalized
+    if not normalized:
+        return None
+    relative = _relative_path(normalized, "ZIP member path")
+    unix_mode = (info.external_attr >> 16) & 0xFFFF
+    file_kind = stat.S_IFMT(unix_mode)
+    if stat.S_ISLNK(unix_mode) or file_kind not in {0, stat.S_IFREG, stat.S_IFDIR}:
+        raise ValueError(
+            f"ZIP members may not be links or special files: {info.filename}"
+        )
+    dos_attributes = info.external_attr & 0xFFFF
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    if dos_attributes & reparse_flag:
+        raise ValueError(f"ZIP members may not be reparse points: {info.filename}")
+    return relative
+
+
+@contextmanager
+def open_mod_package(
+    source: str | Path, *, validate_payload: bool = True,
+) -> Iterator[ModManifest]:
+    """Open a folder/manifest or safely stage one unambiguous ZIP package.
+
+    ZIP imports are deliberately temporary. Every member is validated before
+    writing, only the tree containing the sole ``mod.toml`` is extracted, and
+    both declared and observed output are bounded.
+    """
+    selected = Path(source).expanduser()
+    if selected.is_dir() or (
+        selected.is_file() and selected.name.casefold() == "mod.toml"
+    ):
+        yield ModManifest.load(selected, validate_payload=validate_payload)
+        return
+    if not selected.is_file() or selected.suffix.casefold() != ".zip":
+        raise ValueError("Select a package folder, mod.toml, or .zip archive")
+    metadata = selected.lstat()
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    if selected.is_symlink() or (
+        getattr(metadata, "st_file_attributes", 0) & reparse_flag
+    ):
+        raise ValueError("Package archives may not be symbolic links or reparse points")
+
+    try:
+        with zipfile.ZipFile(selected) as package:
+            infos = package.infolist()
+            if len(infos) > MAX_PACKAGE_ARCHIVE_MEMBERS:
+                raise ValueError(
+                    f"ZIP contains too many members (maximum {MAX_PACKAGE_ARCHIVE_MEMBERS})"
+                )
+            members: list[tuple[zipfile.ZipInfo, PurePosixPath]] = []
+            seen: set[str] = set()
+            candidates: list[PurePosixPath] = []
+            for info in infos:
+                relative = _archive_member_path(info)
+                if relative is None:
+                    continue
+                key = relative.as_posix().casefold()
+                if key in seen:
+                    raise ValueError(f"ZIP contains a duplicate member path: {relative}")
+                seen.add(key)
+                members.append((info, relative))
+                if not info.is_dir() and relative.name.casefold() == "mod.toml":
+                    candidates.append(relative)
+            if not candidates:
+                raise ValueError("ZIP package does not contain a mod.toml manifest")
+            if len(candidates) != 1:
+                names = ", ".join(path.as_posix() for path in candidates)
+                raise ValueError(
+                    "ZIP package contains multiple mod.toml manifests; "
+                    f"select an unambiguous package archive ({names})"
+                )
+
+            manifest_member = candidates[0]
+            package_prefix = manifest_member.parent
+            extracted = [
+                (info, relative) for info, relative in members
+                if package_prefix == PurePosixPath(".")
+                or relative == package_prefix
+                or package_prefix in relative.parents
+            ]
+            declared_total = 0
+            for info, relative in extracted:
+                if info.is_dir():
+                    continue
+                if info.file_size < 0 or info.file_size > MAX_PACKAGE_ARCHIVE_MEMBER_BYTES:
+                    raise ValueError(f"ZIP member is too large: {relative}")
+                declared_total += info.file_size
+                if declared_total > MAX_PACKAGE_ARCHIVE_BYTES:
+                    raise ValueError("ZIP package expands beyond the allowed size limit")
+                if info.file_size and (
+                    info.compress_size == 0
+                    or info.file_size / info.compress_size
+                    > MAX_PACKAGE_COMPRESSION_RATIO
+                ):
+                    raise ValueError(f"ZIP member has an unsafe compression ratio: {relative}")
+
+            with tempfile.TemporaryDirectory(prefix="allin1-mod-") as temporary:
+                staging_root = Path(temporary).resolve()
+                observed_total = 0
+                for info, relative in extracted:
+                    target = _contained_path(staging_root, relative)
+                    if info.is_dir():
+                        target.mkdir(parents=True, exist_ok=True)
+                        continue
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    member_total = 0
+                    with package.open(info, "r") as input_stream, target.open("xb") as output:
+                        for chunk in iter(lambda: input_stream.read(1024 * 1024), b""):
+                            member_total += len(chunk)
+                            observed_total += len(chunk)
+                            if member_total > min(
+                                info.file_size, MAX_PACKAGE_ARCHIVE_MEMBER_BYTES
+                            ) or observed_total > MAX_PACKAGE_ARCHIVE_BYTES:
+                                raise ValueError("ZIP package exceeded its declared size limit")
+                            output.write(chunk)
+                    if member_total != info.file_size:
+                        raise ValueError(f"ZIP member size changed while reading: {relative}")
+                yield ModManifest.load(
+                    staging_root / Path(*manifest_member.parts),
+                    validate_payload=validate_payload,
+                )
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"Invalid ZIP package: {exc}") from exc
 
 
 @dataclass(frozen=True)

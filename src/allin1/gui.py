@@ -26,7 +26,9 @@ from allin1.extensions import (
 from allin1.game_launcher import launch_gta
 from allin1.logging import setup_logging
 from allin1.manager import InstallationStatus, ModManager
-from allin1.mods import ModCatalog, ModIntegrationService, ModManifest
+from allin1.mods import (
+    ModCatalog, ModIntegrationService, ModManifest, open_mod_package,
+)
 from allin1.customization_ui import CharacterCustomizationDialog
 from allin1.addon_sdk import AddonManifest, AddonSdkCatalog
 from allin1.asset_viewer import AssetViewerDialog
@@ -1448,7 +1450,7 @@ class ManagerWindow:
         for setting in system.settings:
             row = ttk.Frame(self.content_settings_frame, style="Surface.TFrame")
             row.pack(fill="x", pady=(0, 10))
-            value = effective.get(setting.key, setting.default)
+            value = self._content_setting_initial_value(setting, effective)
             variable = self._core_content_variable(setting.config_key)
             if variable is None:
                 variable = self._new_content_variable(setting.setting_type, value)
@@ -1481,6 +1483,19 @@ class ManagerWindow:
                     row, text=setting.description, wraplength=500,
                     foreground="#52635c", background="#ffffff",
                 ).pack(anchor="w", pady=(3, 0))
+
+    def _content_setting_initial_value(
+        self, setting, effective: dict[str, object],
+    ) -> object:
+        """Use the active profile for bound settings, registry state otherwise."""
+        if setting.config_key:
+            section_name, field_name = setting.config_key.split(".", 1)
+            section = getattr(self.config, section_name, None)
+            if section is not None and hasattr(section, field_name):
+                return getattr(section, field_name)
+        if setting.key in effective:
+            return effective[setting.key]
+        return setting.default
 
     def apply_content_settings(self) -> None:
         selected = self.content_selected_system
@@ -1721,19 +1736,43 @@ class ManagerWindow:
 
     def import_mod_package(self) -> None:
         manifest_path = filedialog.askopenfilename(
-            title="Select a local mod.toml package manifest",
-            filetypes=(("ALLIN1 mod manifest", "mod.toml"), ("TOML files", "*.toml")),
+            title="Select a local mod.toml or ZIP package",
+            filetypes=(
+                ("ALLIN1 package", "mod.toml *.zip"),
+                ("ALLIN1 mod manifest", "mod.toml"),
+                ("ZIP package", "*.zip"),
+            ),
         )
         if not manifest_path:
             return
+        source = Path(manifest_path)
         try:
             # Payload checks and hashing run in the install worker so a large RPF
             # cannot block the Tk event loop.
-            manifest = ModManifest.load(manifest_path, validate_payload=False)
+            with open_mod_package(source, validate_payload=False) as manifest:
+                package_name = manifest.name
+                package_version = manifest.version
+                package_id = manifest.mod_id
+                service = self._mod_service(manifest)
         except (OSError, ValueError) as exc:
             messagebox.showerror("Invalid mod package", str(exc))
             return
-        self._install_mod_manifest(manifest)
+        if not messagebox.askyesno(
+            "Install optional mod",
+            f"Install {package_name} {package_version}?\n\n"
+            "Only continue if you trust this package and its source.",
+        ):
+            return
+
+        def install_imported_package():
+            with open_mod_package(source) as verified:
+                if (verified.mod_id, verified.version) != (package_id, package_version):
+                    raise ValueError(
+                        "The selected package changed after confirmation; review it again"
+                    )
+                return service.install(verified)
+
+        self._run(f"Installing {package_name}", install_imported_package)
 
     def install_selected_mod(self) -> None:
         mod_id = self._selected_mod_id()

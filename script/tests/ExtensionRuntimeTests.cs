@@ -371,6 +371,78 @@ namespace ALLIN1.Tests
         }
 
         [Fact]
+        public void WeaponComponentLifecycleQueriesAndNotifiesUntilDisposed()
+        {
+            Allin1ExtensionApi.ResetCallbacksForTests();
+            var participant = new RecordingWeaponComponentParticipant
+            {
+                Consumed = true,
+            };
+            try
+            {
+                IDisposable registration = Allin1ExtensionApi
+                    .RegisterWeaponComponentLifecycleParticipantForTests(
+                        "example.content", "components", participant);
+
+                Assert.True(Allin1ExtensionApi.IsWeaponComponentConsumed(
+                    "WEAPON_PISTOL", unchecked((int)0x65EA7EBB)));
+                Assert.Equal(1, participant.QueryCount);
+
+                Allin1ExtensionApi.NotifyWeaponComponentPurchased(
+                    "WEAPON_PISTOL", unchecked((int)0x65EA7EBB), 4);
+                Assert.Equal(1, participant.PurchaseCount);
+                Assert.Equal("WEAPON_PISTOL", participant.LastWeaponName);
+                Assert.Equal(unchecked((int)0x65EA7EBB),
+                    participant.LastComponentHash);
+                Assert.Equal(4, participant.LastAttachmentPoint);
+
+                registration.Dispose();
+                Assert.False(Allin1ExtensionApi.IsWeaponComponentConsumed(
+                    "WEAPON_PISTOL", unchecked((int)0x65EA7EBB)));
+                Allin1ExtensionApi.NotifyWeaponComponentPurchased(
+                    "WEAPON_PISTOL", unchecked((int)0x65EA7EBB), 4);
+                Assert.Equal(1, participant.QueryCount);
+                Assert.Equal(1, participant.PurchaseCount);
+            }
+            finally
+            {
+                Allin1ExtensionApi.ResetCallbacksForTests();
+            }
+        }
+
+        [Fact]
+        public void WeaponComponentLifecycleIgnoresInvalidRequests()
+        {
+            Allin1ExtensionApi.ResetCallbacksForTests();
+            var participant = new RecordingWeaponComponentParticipant
+            {
+                Consumed = true,
+            };
+            try
+            {
+                using (Allin1ExtensionApi
+                    .RegisterWeaponComponentLifecycleParticipantForTests(
+                        "example.content", "components", participant))
+                {
+                    Assert.False(Allin1ExtensionApi
+                        .IsWeaponComponentConsumed("", 1));
+                    Assert.False(Allin1ExtensionApi
+                        .IsWeaponComponentConsumed("WEAPON_PISTOL", 0));
+                    Allin1ExtensionApi.NotifyWeaponComponentPurchased(
+                        null, 1, 0);
+                    Allin1ExtensionApi.NotifyWeaponComponentPurchased(
+                        "WEAPON_PISTOL", 0, 0);
+                }
+                Assert.Equal(0, participant.QueryCount);
+                Assert.Equal(0, participant.PurchaseCount);
+            }
+            finally
+            {
+                Allin1ExtensionApi.ResetCallbacksForTests();
+            }
+        }
+
+        [Fact]
         public void StorySaveScopePinsOneEditionAndOneProfile()
         {
             string root = Path.Combine(Path.GetTempPath(),
@@ -472,6 +544,36 @@ namespace ALLIN1.Tests
             {
                 DiscardCount++;
                 LastDiscardReason = context.Reason;
+            }
+        }
+
+        private sealed class RecordingWeaponComponentParticipant :
+            IWeaponComponentLifecycleParticipant
+        {
+            internal bool Consumed { get; set; }
+            internal int QueryCount { get; private set; }
+            internal int PurchaseCount { get; private set; }
+            internal string LastWeaponName { get; private set; }
+            internal int LastComponentHash { get; private set; }
+            internal int LastAttachmentPoint { get; private set; }
+
+            public bool IsComponentConsumed(
+                string weaponName, int componentHash)
+            {
+                QueryCount++;
+                LastWeaponName = weaponName;
+                LastComponentHash = componentHash;
+                return Consumed;
+            }
+
+            public void OnComponentPurchased(
+                string weaponName, int componentHash,
+                int attachmentPoint)
+            {
+                PurchaseCount++;
+                LastWeaponName = weaponName;
+                LastComponentHash = componentHash;
+                LastAttachmentPoint = attachmentPoint;
             }
         }
     }

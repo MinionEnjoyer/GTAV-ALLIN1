@@ -291,9 +291,10 @@ def test_launcher_prefers_managed_sdk_installation(tmp_path, monkeypatch):
     window.manager = SimpleNamespace(project_root=tmp_path / "ALLIN1")
     window.sdk_install_root = tmp_path / "local" / "ALLIN1" / "SDK"
     window._append_log = Mock()
-    executable = window.sdk_install_root / "ALLIN1-SDK.exe"
+    executable = window.sdk_install_root / "ALLIN1-SDK-Desktop.exe"
     executable.parent.mkdir(parents=True)
     executable.write_bytes(b"MZsdk")
+    (window.sdk_install_root / "allin1-sdk.exe").write_bytes(b"MZcli")
     (window.sdk_install_root / "release.json").write_text(
         '{"product":"ALLIN1-SDK","version":"0.4.8"}'
     )
@@ -366,7 +367,7 @@ def test_content_workspace_renders_every_declared_system():
     package_call = window.content_tree.insert.call_args_list[0]
     assert package_call.kwargs["text"] == "ALLIN1 Online Content"
     assert package_call.kwargs["values"] == (
-        "Package", "0.5.1", "Install / Repair",
+        "Package", "0.5.2", "Install / Repair",
     )
 
 
@@ -392,7 +393,7 @@ def test_content_workspace_surfaces_registry_failure():
     assert window.content_registry_error == "registry is corrupt"
     package_call = window.content_tree.insert.call_args_list[0]
     assert package_call.kwargs["values"] == (
-        "Package", "0.5.1", "Registry error",
+        "Package", "0.5.2", "Registry error",
     )
 
 

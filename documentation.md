@@ -376,6 +376,14 @@ panel so the staged character and weapon remain unobstructed.
 - LT/RT rotates the workbench camera and Back returns to the owned-weapons catalog
 - Purchase gives weapon with starter ammo
 
+**Standalone Realistic Suppressors package:**
+
+- Realistic Suppressors is an optional, separately imported script package. It is not part of `ALLIN1.dll` or ALLIN1 Online Content, and GBAY does not require it.
+- When installed, GTA's live silenced-weapon state drives witness-aware stealth, so compatible stock, DLC, and correctly authored add-on suppressors work while muzzle brakes do not. Suppressed fire remains detectable at close range, through a clear visual identification, by an already-alerted opponent, near the bullet path/impact, indoors, or during sustained fire. Missions, cutscenes, and existing wanted responses are never overridden.
+- All 39 stock weapons with removable suppressors have explicit heat and durability profiles, including vanilla combinations bought through Ammu-Nation. Sustained fire accelerates temperature and wear, and glow begins at 525 °C. Package settings can disable wear/breakage while retaining heat and glow, or scale enabled service life from 0.5× to 3.0×. The Combat PDW's integral suppressor receives stealth behavior but cannot wear out or be repurchased separately.
+- At zero condition the mod removes the live attachment and records it as consumed in its standalone condition store. Vanilla Ammu-Nation reattachment is detected directly. When GBAY is available, a generic receipt-authorized component-lifecycle participant lets GBAY price a consumed component and report only a completed, charged purchase; workbench previews cannot reset condition.
+- Import and manage the package from the launcher's **Packages** workspace. Uninstall removes only its receipt-owned DLL and descriptor; `%LOCALAPPDATA%\RealisticSuppressors\condition.json` is intentionally retained for a future reinstall. See [the research, per-weapon calibration, and full behavior guide](docs/realistic-suppressors.md).
+
 **Gear Browser:**
 - 3 category tabs: All, Protection, Equipment
 - **Protection** (6 items): Super Light Armor ($500), Light Armor ($1,000), Standard Armor ($1,500), Heavy Armor ($2,000), Super Heavy Armor ($2,500), Juggernaut Armor ($50,000)
@@ -1026,6 +1034,23 @@ Model names are stored as spawn names (e.g., `"zentorno"` not GXT labels). A mig
 
 - Check `[traffic] enabled = true` in config
 - Enable detailed logging in the launcher and check `scripts/ALLIN1.log` for suppression reasons
+
+### Standalone Realistic Suppressors does not provide a stealth bonus
+
+- In **Packages**, confirm the separately imported **Realistic Suppressors** package is installed and enabled. It is not supplied by Install / Repair or ALLIN1 Online Content.
+- Open **Content**, select **Realistic Suppressors**, enable **Realistic suppressor stealth**, apply the setting, and reload scripts or restart Story Mode.
+- Confirm `scripts/RealisticSuppressors/RealisticSuppressors.dll` is present and the attachment is a suppressor rather than a Mk II muzzle brake. The mod asks GTA whether the current weapon is silenced and uses a stock suppressor-hash fallback.
+- Test with no wanted level and outside a mission. A nearby or visible NPC, an NPC close to the bullet path/impact, an already-alerted enemy, indoor reflections, or a sustained burst can legitimately expose the shot.
+- Inspect `%LOCALAPPDATA%\RealisticSuppressors\RealisticSuppressors.log` for sampled `shot_evaluated` entries and their `witness_reason`, `audible_radius_m`, and `crime_suppressed` fields.
+
+### A suppressor does not heat, glow, or break
+
+- Heat simulation requires the standalone **Realistic Suppressors** package, but it does not require its **Realistic suppressor stealth** setting. Apply the package settings and reload scripts or restart Story Mode.
+- Glow starts at 525 °C and normally requires a long uninterrupted string of fire; the exact threshold is weapon-specific. Temperature and `heat_stage` are included in detailed `shot_evaluated` logs.
+- **Suppressor wear and breakage** intentionally controls only condition loss and permanent failure. When it is off, temperature, cooling, warnings, and glow continue while durability remains unchanged.
+- A failed suppressor is consumed. Purchase and attach a replacement through vanilla Ammu-Nation or, when ALLIN1 is also installed, GBAY → Weapons → Customize Weapons; either completed storefront path resets the newly attached component to full condition.
+- Condition is stored in `%LOCALAPPDATA%\RealisticSuppressors\condition.json`. The launcher intentionally leaves this user data in place when the package is uninstalled.
+- See [the realistic-suppressor guide](docs/realistic-suppressors.md) for all 39 weapon mappings, profile values, equations, and research sources.
 
 ### Vehicles are free / wrong prices
 
