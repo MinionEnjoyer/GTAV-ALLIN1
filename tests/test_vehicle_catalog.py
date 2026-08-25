@@ -7,7 +7,13 @@ import pytest
 
 from allin1.mods import ModManifest
 from allin1.generators.story_vehicle_catalog import build_story_catalog
-from allin1.vehicle_catalog import VehicleCatalog, vehicle_model_hash
+from allin1.vehicle_catalog import (
+    MAX_VEHICLE_CATALOG_BYTES,
+    MAX_VEHICLE_CATALOG_ENTRIES,
+    VehicleCatalog,
+    VehicleTrafficPolicy,
+    vehicle_model_hash,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -125,6 +131,155 @@ def test_vehicle_catalog_round_trips_preview_and_independent_traffic() -> None:
     assert vehicle.preview_texture == "examplecar_card"
     assert vehicle.traffic.enabled is True
     assert VehicleCatalog.from_dict(catalog.to_dict()) == catalog
+
+
+@pytest.mark.parametrize(
+    ("traffic", "message"),
+    [
+        ([], "must be an object"),
+        ({"enabled": "yes"}, "enabled must be a boolean"),
+        ({"weight": True}, "weight must be a number"),
+        ({"weight": float("inf")}, "weight must be between"),
+        ({"weight": 0.09}, "weight must be between"),
+        ({"weight": 20.01}, "weight must be between"),
+    ],
+)
+def test_vehicle_traffic_policy_rejects_unsafe_values(
+    traffic: object, message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        VehicleTrafficPolicy.from_dict(traffic, "vehicle.traffic")
+
+
+def test_vehicle_traffic_policy_and_minimal_entry_use_safe_defaults() -> None:
+    assert VehicleTrafficPolicy.from_dict(None, "vehicle.traffic") == (
+        VehicleTrafficPolicy()
+    )
+    payload = _catalog()
+    vehicle = payload["vehicles"][0]
+    vehicle.pop("traffic")
+    vehicle.pop("manufacturer")
+    vehicle.pop("size_tier")
+    vehicle.pop("preview_dictionary")
+    vehicle.pop("preview_texture")
+
+    serialized = VehicleCatalog.from_dict(payload).to_dict()["vehicles"][0]
+
+    assert serialized["manufacturer"] == ""
+    assert serialized["size_tier"] == 0
+    assert serialized["traffic"] == {"enabled": False, "weight": 1.0}
+    assert "preview_dictionary" not in serialized
+    assert "preview_texture" not in serialized
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (lambda value: value["vehicles"].__setitem__(0, "car"), "must be an object"),
+        (
+            lambda value: value["vehicles"][0].pop("model"),
+            "model must be a non-empty string",
+        ),
+        (
+            lambda value: value["vehicles"][0].update(model="bad model"),
+            "model is invalid",
+        ),
+        (
+            lambda value: value["vehicles"][0].update(category="unknown"),
+            "category must be one of",
+        ),
+        (
+            lambda value: value["vehicles"][0].update(storage="dock"),
+            "storage must be one of",
+        ),
+        (
+            lambda value: value["vehicles"][0].update(storage="helipad"),
+            "storage must be garage",
+        ),
+        (
+            lambda value: value["vehicles"][0].update(source_pack="bad pack"),
+            "source_pack is invalid",
+        ),
+        (lambda value: value["vehicles"][0].update(size_tier=True), "size_tier must be"),
+        (
+            lambda value: value["vehicles"][0].update(manufacturer=7),
+            "manufacturer must be a string",
+        ),
+        (
+            lambda value: value["vehicles"][0].update(name="N" * 129),
+            "name must not exceed",
+        ),
+        (
+            lambda value: value["vehicles"][0].update(manufacturer="M" * 97),
+            "manufacturer must not exceed",
+        ),
+        (
+            lambda value: value["vehicles"][0].update(
+                preview_dictionary="bad preview",
+            ),
+            "preview_dictionary is invalid",
+        ),
+        (
+            lambda value: value["vehicles"][0].update(
+                preview_texture="bad preview",
+            ),
+            "preview_texture is invalid",
+        ),
+    ],
+)
+def test_vehicle_catalog_rejects_invalid_entry_fields(mutate, message: str) -> None:
+    payload = _catalog()
+    mutate(payload)
+    with pytest.raises(ValueError, match=message):
+        VehicleCatalog.from_dict(payload)
+
+
+def test_vehicle_catalog_rejects_invalid_files_and_envelopes(tmp_path: Path) -> None:
+    malformed = tmp_path / "malformed.json"
+    malformed.write_text("{", encoding="utf-8")
+    with pytest.raises(ValueError, match="Invalid GBAY vehicle catalog"):
+        VehicleCatalog.load(malformed)
+
+    oversized = tmp_path / "oversized.json"
+    oversized.write_bytes(b" " * (MAX_VEHICLE_CATALOG_BYTES + 1))
+    with pytest.raises(ValueError, match="4 MiB safety limit"):
+        VehicleCatalog.load(oversized)
+
+    with pytest.raises(ValueError, match="must be a JSON object"):
+        VehicleCatalog.from_dict([])
+
+    bad_id = _catalog()
+    bad_id["id"] = "Invalid ID"
+    with pytest.raises(ValueError, match="catalog.id is invalid"):
+        VehicleCatalog.from_dict(bad_id)
+
+    empty = _catalog()
+    empty["vehicles"] = []
+    with pytest.raises(ValueError, match="non-empty array"):
+        VehicleCatalog.from_dict(empty)
+
+    too_many = _catalog()
+    too_many["vehicles"] = [too_many["vehicles"][0]] * (
+        MAX_VEHICLE_CATALOG_ENTRIES + 1
+    )
+    with pytest.raises(ValueError, match="more than"):
+        VehicleCatalog.from_dict(too_many)
+
+    long_name = _catalog()
+    long_name["name"] = "C" * 129
+    with pytest.raises(ValueError, match="catalog.name must not exceed"):
+        VehicleCatalog.from_dict(long_name)
+
+
+def test_vehicle_catalog_requires_explicit_base_game_authority() -> None:
+    payload = _catalog(model="storycar")
+    payload["vehicles"][0]["source_pack"] = "base"
+    catalog = VehicleCatalog.from_dict(payload)
+
+    with pytest.raises(ValueError, match="cannot claim base-game model"):
+        catalog.validate_package_ownership(())
+
+    catalog.validate_package_ownership((), allow_base_game=True)
 
 
 @pytest.mark.parametrize(
