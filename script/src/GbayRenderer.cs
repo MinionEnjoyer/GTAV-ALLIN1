@@ -434,21 +434,28 @@ namespace ALLIN1
         {
             if (WorldAssetList.PreviewDict.TryGetValue(model, out dict))
                 return true;
-            return VehicleList.PreviewDict.TryGetValue(model, out dict);
+            return RuntimeVehicleCatalog.TryGetPreviewDictionary(model, out dict);
         }
 
         /// <summary>Draw a vehicle preview via DRAW_SPRITE. Returns true if drawn.</summary>
         internal static bool DrawPreviewTexture(string model,
                                                  float x, float y, float w, float h)
         {
-            if (!TryGetPreviewDict(model, out string dict))
+            string texture = model;
+            string dict;
+            if (WorldAssetList.PreviewDict.TryGetValue(model, out dict))
+            {
+                texture = model;
+            }
+            else if (!RuntimeVehicleCatalog.TryGetPreview(
+                         model, out dict, out texture))
                 return false;
             if (!IsDictLoaded(dict))
             {
                 RequestDict(dict);
                 return false;
             }
-            DrawSprite(dict, model, x, y, w, h, Color.White);
+            DrawSprite(dict, texture, x, y, w, h, Color.White);
             return true;
         }
 

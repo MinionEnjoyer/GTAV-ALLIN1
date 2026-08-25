@@ -238,6 +238,7 @@ namespace ALLIN1
             GbayBrowser.ReducedMotion = _reducedMotion;
             GbayRenderer.ColorblindMode = _colorblindMode;
             GbayRenderer.UiScale = _uiScale;
+            RuntimeVehicleCatalog.Refresh();
             if (_onlineContentEnabled)
                 LoadGearPrices();
             Log($"=== GBAY Initialized: key={_openKey} freeMode={_freeMode} ===");
@@ -294,6 +295,44 @@ namespace ALLIN1
             return true;
         }
 
+        /// <summary>
+        /// Re-authorize the listing and native model immediately before GBAY
+        /// stores a vehicle or changes Story Mode money. This closes the stale
+        /// menu window when a package is disabled or its asset stops streaming.
+        /// </summary>
+        internal bool ValidateVehiclePurchase(string model, int quotedPrice)
+        {
+            RuntimeVehicleCatalog.Refresh();
+            if (!RuntimeVehicleCatalog.IsListed(model) ||
+                !RuntimeVehicleCatalog.IsModelAvailable(model))
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~That vehicle is no longer available in this installation.",
+                    3500);
+                Log($"Vehicle purchase rejected: unavailable model {model}");
+                return false;
+            }
+
+            int currentPrice = RuntimeVehicleCatalog.GetPrice(model);
+            if (!_freeMode && quotedPrice != currentPrice)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~y~That listing changed. Reopen GBAY to refresh its price.",
+                    3500);
+                Log($"Vehicle purchase rejected: stale quote {model}, " +
+                    $"quoted=${quotedPrice}, current=${currentPrice}");
+                return false;
+            }
+            if (!_freeMode && currentPrice > Game.Player.Money)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~You no longer have enough money for that vehicle.",
+                    3500);
+                return false;
+            }
+            return true;
+        }
+
         internal void ExecuteDeliverHere(string model, int price)
         {
             Ped player = Game.Player.Character;
@@ -315,8 +354,7 @@ namespace ALLIN1
 
                 veh.IsPersistent = true;
 
-                string name = VehicleList.DisplayNames.ContainsKey(model)
-                    ? VehicleList.DisplayNames[model] : model;
+                string name = RuntimeVehicleCatalog.GetDisplayName(model);
                 string msg = _freeMode || price <= 0
                     ? $"~g~{name}~w~ delivered."
                     : $"~g~{name}~w~ purchased for ~g~${price:N0}~w~.";
@@ -337,7 +375,7 @@ namespace ALLIN1
                 return;
             // The buyer explicitly selected Eclipse in the destination modal.
             // Never silently reroute the purchase to a different garage.
-            if (VehicleList.GetSizeTier(model) == 2)
+            if (GarageManager.GetGarageSizeTier(model) >= 2)
             {
                 GTA.UI.Screen.ShowSubtitle(
                     "~r~That vehicle is too large for the Eclipse Garage.", 3000);
@@ -372,8 +410,7 @@ namespace ALLIN1
                 if (!_freeMode && price > 0)
                     Game.Player.Money -= price;
 
-                string name = VehicleList.DisplayNames.ContainsKey(model)
-                    ? VehicleList.DisplayNames[model] : model;
+                string name = RuntimeVehicleCatalog.GetDisplayName(model);
                 string msg = _freeMode || price <= 0
                     ? $"~g~{name}~w~ delivered to the garage."
                     : $"~g~{name}~w~ delivered to the garage for ~g~${price:N0}~w~.";
@@ -420,8 +457,7 @@ namespace ALLIN1
                 if (!_freeMode && price > 0)
                     Game.Player.Money -= price;
 
-                string name = VehicleList.DisplayNames.ContainsKey(model)
-                    ? VehicleList.DisplayNames[model] : model;
+                string name = RuntimeVehicleCatalog.GetDisplayName(model);
                 string msg = _freeMode || price <= 0
                     ? $"~g~{name}~w~ delivered to the Harmony Garage."
                     : $"~g~{name}~w~ delivered to the Harmony Garage for ~g~${price:N0}~w~.";
@@ -440,7 +476,7 @@ namespace ALLIN1
         {
             if (RejectSpecializedVehicleFromGarage(model, "Davis Auto Shop"))
                 return;
-            if (VehicleList.GetSizeTier(model) == 2)
+            if (GarageManager.GetGarageSizeTier(model) >= 2)
             {
                 GTA.UI.Screen.ShowSubtitle(
                     "~r~That vehicle is too large for the Davis Auto Shop.", 3000);
@@ -469,8 +505,7 @@ namespace ALLIN1
                     return;
                 }
                 if (!_freeMode && price > 0) Game.Player.Money -= price;
-                string name = VehicleList.DisplayNames.TryGetValue(
-                    model, out string displayName) ? displayName : model;
+                string name = RuntimeVehicleCatalog.GetDisplayName(model);
                 GTA.UI.Screen.ShowSubtitle(
                     _freeMode || price <= 0
                         ? $"~g~{name}~w~ delivered to the Davis Auto Shop."
@@ -991,7 +1026,7 @@ namespace ALLIN1
         {
             if (RejectSpecializedVehicleFromGarage(
                     model, "Garment Factory garage")) return;
-            if (VehicleList.GetSizeTier(model) == 2)
+            if (GarageManager.GetGarageSizeTier(model) >= 2)
             {
                 GTA.UI.Screen.ShowSubtitle(
                     "~r~That vehicle is too large for the Garment Factory garage.", 3000);
@@ -1018,8 +1053,7 @@ namespace ALLIN1
                     return;
                 }
                 if (!_freeMode && price > 0) Game.Player.Money -= price;
-                string name = VehicleList.DisplayNames.TryGetValue(
-                    model, out string displayName) ? displayName : model;
+                string name = RuntimeVehicleCatalog.GetDisplayName(model);
                 GTA.UI.Screen.ShowSubtitle(
                     _freeMode || price <= 0
                         ? $"~g~{name}~w~ delivered to the Garment Factory."
@@ -1039,7 +1073,7 @@ namespace ALLIN1
         {
             if (RejectSpecializedVehicleFromGarage(model, "Grapeseed Garage"))
                 return;
-            if (VehicleList.GetSizeTier(model) == 2)
+            if (GarageManager.GetGarageSizeTier(model) >= 2)
             {
                 GTA.UI.Screen.ShowSubtitle(
                     "~r~That vehicle is too large for the Grapeseed Garage.", 3000);
@@ -1066,8 +1100,7 @@ namespace ALLIN1
                     return;
                 }
                 if (!_freeMode && price > 0) Game.Player.Money -= price;
-                string name = VehicleList.DisplayNames.TryGetValue(
-                    model, out string displayName) ? displayName : model;
+                string name = RuntimeVehicleCatalog.GetDisplayName(model);
                 GTA.UI.Screen.ShowSubtitle(
                     _freeMode || price <= 0
                         ? $"~g~{name}~w~ delivered to the Grapeseed Garage."
@@ -1087,7 +1120,7 @@ namespace ALLIN1
         {
             if (RejectSpecializedVehicleFromGarage(model, "Paleto Bay Garage"))
                 return;
-            if (VehicleList.GetSizeTier(model) == 2)
+            if (GarageManager.GetGarageSizeTier(model) >= 2)
             {
                 GTA.UI.Screen.ShowSubtitle(
                     "~r~That vehicle is too large for the Paleto Bay Garage.", 3000);
@@ -1114,8 +1147,7 @@ namespace ALLIN1
                     return;
                 }
                 if (!_freeMode && price > 0) Game.Player.Money -= price;
-                string name = VehicleList.DisplayNames.TryGetValue(
-                    model, out string displayName) ? displayName : model;
+                string name = RuntimeVehicleCatalog.GetDisplayName(model);
                 GTA.UI.Screen.ShowSubtitle(
                     _freeMode || price <= 0
                         ? $"~g~{name}~w~ delivered to the Paleto Bay Garage."
@@ -1161,8 +1193,7 @@ namespace ALLIN1
                     return;
                 }
                 if (!_freeMode && price > 0) Game.Player.Money -= price;
-                string name = VehicleList.DisplayNames.TryGetValue(
-                    model, out string displayName) ? displayName : model;
+                string name = RuntimeVehicleCatalog.GetDisplayName(model);
                 GTA.UI.Screen.ShowSubtitle(
                     _freeMode || price <= 0
                         ? $"~g~{name}~w~ delivered to Los Santos Harbour."
@@ -1227,8 +1258,7 @@ namespace ALLIN1
                     return;
                 }
                 if (!_freeMode && price > 0) Game.Player.Money -= price;
-                string name = VehicleList.DisplayNames.TryGetValue(
-                    model, out string displayName) ? displayName : model;
+                string name = RuntimeVehicleCatalog.GetDisplayName(model);
                 GTA.UI.Screen.ShowSubtitle(
                     _freeMode || price <= 0
                         ? $"~g~{name}~w~ delivered to the Vespucci Helipad."
@@ -1300,8 +1330,7 @@ namespace ALLIN1
                     return;
                 }
                 if (!_freeMode && price > 0) Game.Player.Money -= price;
-                string name = VehicleList.DisplayNames.TryGetValue(
-                    model, out string displayName) ? displayName : model;
+                string name = RuntimeVehicleCatalog.GetDisplayName(model);
                 GTA.UI.Screen.ShowSubtitle(
                     _freeMode || price <= 0
                         ? $"~g~{name}~w~ assigned to the Yacht Helipad."
@@ -1498,7 +1527,11 @@ namespace ALLIN1
             if (!CanSellVehicle(model, plateText, modelHash)) return 0;
 
             int buyPrice;
-            if (!VehicleList.Prices.TryGetValue(model, out buyPrice))
+            if (RuntimeVehicleCatalog.IsListed(model))
+            {
+                buyPrice = RuntimeVehicleCatalog.GetPrice(model);
+            }
+            else
             {
                 int resolvedHash = modelHash != 0 ? modelHash : Game.GenerateHash(model);
                 buyPrice = Function.Call<int>(Hash.GET_VEHICLE_MODEL_VALUE, resolvedHash);
@@ -1567,8 +1600,7 @@ namespace ALLIN1
             if (!_freeMode && sellPrice > 0)
                 Game.Player.Money += sellPrice;
 
-            string displayName = VehicleList.DisplayNames.ContainsKey(model)
-                ? VehicleList.DisplayNames[model] : model;
+            string displayName = RuntimeVehicleCatalog.GetDisplayName(model);
             bool helipadLocation = garageLocation == 6 || garageLocation == 7;
             bool harbourLocation = garageLocation == 8;
             string msg = _freeMode || sellPrice <= 0

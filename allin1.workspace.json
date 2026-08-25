@@ -1,0 +1,295 @@
+{
+  "schema_version": 1,
+  "id": "allin1.core",
+  "name": "ALLIN1 Core",
+  "version": "0.5.5",
+  "kind": "product_workspace",
+  "editions": [
+    "legacy",
+    "enhanced"
+  ],
+  "description": "Authoritative, data-only workspace map for the ALLIN1 launcher, shared Story Mode runtime, official content packs, supporting tools, examples, optional packages, and verification evidence.",
+  "source_policy": {
+    "inventory": "git_tracked_allowlist",
+    "follow_symlinks": false,
+    "execute_sources": false,
+    "allowlisted_roots": [
+      ".github/workflows",
+      "content",
+      "data",
+      "docs",
+      "mods/realistic-suppressors",
+      "script",
+      "sdk/examples/colored_smokes",
+      "src/allin1",
+      "tests",
+      "tools/CodeWalker",
+      "tools/RpfPatcher"
+    ],
+    "allowlisted_files": [
+      ".gitignore",
+      ".gitmodules",
+      "LICENSE",
+      "README.md",
+      "RELEASE_NOTES.md",
+      "config.example.toml",
+      "documentation.md",
+      "install.bat",
+      "install.sh",
+      "manager.bat",
+      "prices_gear.toml",
+      "prices_vehicles.toml",
+      "prices_weapons.toml",
+      "pyproject.toml",
+      "test-all.ps1",
+      "test-all.sh",
+      "uninstall.bat",
+      "uninstall.sh",
+      "update.bat",
+      "uv.lock"
+    ],
+    "excluded_roots": [
+      ".artifacts",
+      ".git",
+      ".pytest_cache",
+      ".tmp",
+      ".venv",
+      "build",
+      "dist",
+      "htmlcov",
+      "logs",
+      "output",
+      "script/bin",
+      "script/obj",
+      "script/out",
+      "mods/realistic-suppressors/bin",
+      "mods/realistic-suppressors/obj",
+      "mods/realistic-suppressors/dist",
+      "mods/realistic-suppressors/standalone/bin",
+      "mods/realistic-suppressors/standalone/obj",
+      "mods/realistic-suppressors/standalone/dist",
+      "mods/realistic-suppressors/standalone/payload"
+    ]
+  },
+  "components": [
+    {
+      "id": "launcher.host",
+      "name": "ALLIN1 Launcher Host",
+      "role": "launcher_host",
+      "paths": [
+        "pyproject.toml",
+        "uv.lock",
+        "src/allin1",
+        "config.example.toml",
+        "install.bat",
+        "install.sh",
+        "manager.bat",
+        "uninstall.bat",
+        "uninstall.sh",
+        "update.bat"
+      ]
+    },
+    {
+      "id": "runtime.shared",
+      "name": "Shared Story Mode Runtime",
+      "role": "story_runtime",
+      "paths": [
+        "script/ALLIN1.csproj",
+        "script/src",
+        "script/dist/ALLIN1.dll",
+        "script/dist/LemonUI.SHVDN3.dll"
+      ],
+      "runtime_artifact": "scripts/ALLIN1.dll",
+      "api_contract": "data/runtime_api_contract.json"
+    },
+    {
+      "id": "content.online",
+      "name": "ALLIN1 Online Content",
+      "role": "official_content_pack",
+      "package_id": "allin1.online-content",
+      "manifest": "content/allin1-online-content/allin1.content.json",
+      "package_discovery": false,
+      "paths": [
+        "content/allin1-online-content/allin1.content.json",
+        "content/allin1-content.schema.json",
+        "data/content_compatibility.toml",
+        "data/preview_pending.toml",
+        "data/templates",
+        "data/vehicle_grounding.json",
+        "data/vehicles.toml",
+        "data/weapon_compatibility.toml",
+        "data/weapons.toml",
+        "prices_gear.toml",
+        "prices_vehicles.toml",
+        "prices_weapons.toml",
+        "script/dist/equipment_previews",
+        "script/dist/previews",
+        "script/dist/weapon_previews",
+        "script/dist/world_asset_previews"
+      ],
+      "defaults": {
+        "experimental_systems_enabled": false
+      }
+    },
+    {
+      "id": "content.experimental",
+      "name": "ALLIN1 Experimental Gameplay",
+      "role": "official_content_pack",
+      "package_id": "allin1.experimental-gameplay",
+      "manifest": "content/allin1-experimental-gameplay/allin1.content.json",
+      "package_discovery": false,
+      "paths": [
+        "content/allin1-experimental-gameplay/allin1.content.json",
+        "docs/gtaiv-npc-physics-experiment.md"
+      ],
+      "experimental": true,
+      "defaults": {
+        "systems_enabled": false,
+        "diagnostics_enabled": false
+      }
+    },
+    {
+      "id": "tool.rpfpatcher",
+      "name": "RPF Patcher Toolchain",
+      "role": "build_tool",
+      "paths": [
+        "tools/RpfPatcher/RpfPatcher.csproj",
+        "tools/RpfPatcher/Program.cs",
+        "tools/RpfPatcher/SeatCatalogAudit.cs",
+        "tools/CodeWalker"
+      ],
+      "artifact_name": "RpfPatcher.exe"
+    },
+    {
+      "id": "example.colored-smokes",
+      "name": "Colored Smoke Integration Example",
+      "role": "sdk_example",
+      "package_id": "allin1.colored_smokes",
+      "manifest": "sdk/examples/colored_smokes/addon.json",
+      "paths": [
+        "sdk/examples/colored_smokes/addon.json",
+        "docs/enhanced-smoke-rpf-port.md",
+        "script/src/EnhancedSmokeController.cs",
+        "script/src/SmokeGrenadeCatalog.cs",
+        "tools/RpfPatcher/Program.cs"
+      ],
+      "experimental": true,
+      "defaults": {
+        "enabled": false
+      }
+    },
+    {
+      "id": "package.realistic-suppressors",
+      "name": "Suppressors Enhanced",
+      "role": "optional_package",
+      "package_id": "realistic-suppressors",
+      "manifest": "mods/realistic-suppressors/mod.toml",
+      "content_manifest": "mods/realistic-suppressors/allin1.content.json",
+      "package_discovery": true,
+      "paths": [
+        "mods/realistic-suppressors",
+        "mods/realistic-suppressors/mod.toml",
+        "mods/realistic-suppressors/allin1.content.json"
+      ]
+    },
+    {
+      "id": "evidence.tests",
+      "name": "Automated Verification",
+      "role": "test_evidence",
+      "paths": [
+        ".github/workflows",
+        "tests",
+        "script/tests",
+        "mods/realistic-suppressors/tests",
+        "test-all.ps1",
+        "test-all.sh"
+      ],
+      "package_discovery": false
+    },
+    {
+      "id": "evidence.docs",
+      "name": "Documentation and Release Evidence",
+      "role": "documentation_evidence",
+      "paths": [
+        "README.md",
+        "RELEASE_NOTES.md",
+        "documentation.md",
+        "docs",
+        "LICENSE"
+      ],
+      "package_discovery": false
+    }
+  ],
+  "relationships": [
+    {
+      "source": "launcher.host",
+      "target": "runtime.shared",
+      "type": "deploys"
+    },
+    {
+      "source": "launcher.host",
+      "target": "content.online",
+      "type": "registers"
+    },
+    {
+      "source": "launcher.host",
+      "target": "content.experimental",
+      "type": "registers"
+    },
+    {
+      "source": "content.online",
+      "target": "runtime.shared",
+      "type": "uses_shared_runtime"
+    },
+    {
+      "source": "content.experimental",
+      "target": "runtime.shared",
+      "type": "uses_shared_runtime"
+    },
+    {
+      "source": "tool.rpfpatcher",
+      "target": "content.online",
+      "type": "builds_install_time_assets"
+    },
+    {
+      "source": "example.colored-smokes",
+      "target": "content.online",
+      "type": "documents_system"
+    },
+    {
+      "source": "package.realistic-suppressors",
+      "target": "runtime.shared",
+      "type": "integrates_with_api"
+    },
+    {
+      "source": "evidence.tests",
+      "target": "launcher.host",
+      "type": "verifies"
+    },
+    {
+      "source": "evidence.tests",
+      "target": "runtime.shared",
+      "type": "verifies"
+    },
+    {
+      "source": "evidence.tests",
+      "target": "content.online",
+      "type": "verifies"
+    },
+    {
+      "source": "evidence.tests",
+      "target": "content.experimental",
+      "type": "verifies"
+    },
+    {
+      "source": "evidence.docs",
+      "target": "launcher.host",
+      "type": "documents"
+    },
+    {
+      "source": "evidence.docs",
+      "target": "runtime.shared",
+      "type": "documents"
+    }
+  ]
+}

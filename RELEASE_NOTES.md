@@ -1,3 +1,31 @@
+# GTA V ALLIN1 0.5.5
+
+Version 0.5.5 turns the vehicle add-on workflow into a connected but optional
+path between the standalone SDK, ALLIN1 Launcher, GBAY, and Story Mode traffic.
+
+## Vehicle catalogs and Launcher handoff
+
+- Added a versioned vehicle-catalog contract for official Story Mode vehicles
+  and package-owned add-on vehicles, including validated GBAY listings,
+  specialized storage, preview metadata, pricing, size tiers, and opt-in traffic.
+- Added a safe SDK-to-Launcher handoff that opens the Packages workspace,
+  preserves the selected package, refreshes live libraries, and presents the
+  normal trust confirmation before installation. Traffic choices are validated
+  and committed inside the same rollback boundary as the package install.
+- Hardened catalog discovery, duplicate-package handling, release contents, and
+  the separation between bundled ALLIN1 content and optional standalone mods.
+
+## Standalone SDK workflow
+
+- Added Quick Import for reviewed Legacy and Enhanced vehicle add-ons with
+  conservative metadata inference, placement-aware storage choices, explicit
+  pricing, placeholder-first previews, and safe atomic re-preparation.
+- Added deterministic Legacy OIV export through the desktop SDK, console, and
+  typed Agent API. This path works without ALLIN1 Launcher and never writes to
+  the game while authoring the package.
+- Unified the main authoring and Quick Import surfaces, tightened package/API
+  contracts, and expanded regression coverage using real-world vehicle fixtures.
+
 # GTA V ALLIN1 0.5.4
 
 Version 0.5.4 keeps the launcher, in-game client, content packages, and SDK on

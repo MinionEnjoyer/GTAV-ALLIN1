@@ -144,7 +144,7 @@ Optional RPF dependencies installed by ALLIN1 have their own receipt. Uninstall 
 
 For installation and startup failures, run Health Check and create a diagnostics bundle. For in-game behavior, reproduce the issue once with only the relevant diagnostic setting enabled, then retain the newest ScriptHookVDotNet and ALLIN1 logs.
 
-Keyboard shortcuts: Ctrl+1–9 changes workspaces, Ctrl+S saves, Ctrl+L launches, F5 refreshes, and F1 opens this embedded help workspace.""",
+Keyboard shortcuts: Ctrl+1–9 changes workspaces, Ctrl+B folds or restores the Player Workspaces sidebar, Ctrl+Tab and Ctrl+Shift+Tab cycle workspaces, Ctrl+S saves, Ctrl+L launches, F5 refreshes, and F1 opens this embedded help workspace.""",
         ("logs", "crash", "hang", "diagnostics", "shortcuts", "fatal"),
     ),
     HelpTopic(

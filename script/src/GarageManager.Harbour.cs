@@ -470,6 +470,8 @@ namespace ALLIN1
         internal static bool IsEligible(string model)
         {
             if (string.IsNullOrWhiteSpace(model)) return false;
+            if (string.Equals(RuntimeVehicleCatalog.GetStorage(model),
+                    "harbour", StringComparison.OrdinalIgnoreCase)) return true;
             foreach (string boat in VehicleList.Boats)
                 if (string.Equals(model, boat,
                     StringComparison.OrdinalIgnoreCase)) return true;

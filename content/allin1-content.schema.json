@@ -35,6 +35,9 @@
       "properties": {
         "assemblies": {"type": "array", "items": {"$ref": "#/$defs/assembly"}}
       }
+    },
+    "workbench": {
+      "$ref": "#/$defs/workbench"
     }
   },
   "$defs": {
@@ -102,6 +105,97 @@
       "properties": {
         "path": {"type": "string", "pattern": "^scripts/.+\\.dll$"},
         "entry_point": {"type": "string", "minLength": 1}
+      }
+    },
+    "workbench": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "weapon_enhancements": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/weaponEnhancement"}
+        }
+      }
+    },
+    "weaponEnhancement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "name", "mode", "weapon_components",
+        "script_entry_points", "visual_assets"
+      ],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{1,95}$"},
+        "name": {"type": "string", "minLength": 1},
+        "mode": {"const": "scripted_vanilla_components"},
+        "weapon_components": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/weaponComponentLink"}
+        },
+        "script_entry_points": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+$"
+          }
+        },
+        "visual_assets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/visualAssetProgression"}
+        }
+      }
+    },
+    "weaponComponentLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "weapon_name", "weapon_hash", "component_name", "component_hash"
+      ],
+      "properties": {
+        "weapon_name": {"type": "string", "pattern": "^WEAPON_.+"},
+        "weapon_hash": {"type": "string", "pattern": "^(0x)?[0-9A-Fa-f]{8}$"},
+        "component_name": {"type": "string", "pattern": "^COMPONENT_.+"},
+        "component_hash": {"type": "string", "pattern": "^(0x)?[0-9A-Fa-f]{8}$"}
+      }
+    },
+    "visualAssetProgression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dlc_pack", "archive", "families", "levels", "model_pattern",
+        "texture_dictionary", "texture_pattern", "archetype_dictionary"
+      ],
+      "properties": {
+        "dlc_pack": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
+        },
+        "archive": {"type": "string", "minLength": 1},
+        "families": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
+          }
+        },
+        "levels": {"type": "integer", "minimum": 2, "maximum": 256},
+        "model_pattern": {"type": "string", "minLength": 1},
+        "base_model_pattern": {
+          "anyOf": [
+            {"type": "string", "minLength": 1},
+            {"type": "null"}
+          ]
+        },
+        "texture_dictionary": {"type": "string", "minLength": 1},
+        "texture_pattern": {"type": "string", "minLength": 1},
+        "archetype_dictionary": {"type": "string", "minLength": 1},
+        "base_level_uses_unsuffixed": {"type": "boolean"}
       }
     }
   }

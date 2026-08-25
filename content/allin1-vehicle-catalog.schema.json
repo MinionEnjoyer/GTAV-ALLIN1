@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://allin1.tools/schemas/vehicle-catalog-v1.json",
+  "title": "ALLIN1 GBAY vehicle catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "name", "vehicles"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{1,95}$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 128},
+    "vehicles": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2048,
+      "items": {"$ref": "#/$defs/vehicle"}
+    }
+  },
+  "$defs": {
+    "assetId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
+    },
+    "traffic": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean", "default": false},
+        "weight": {"type": "number", "minimum": 0.1, "maximum": 20.0, "default": 1.0}
+      }
+    },
+    "vehicle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model", "name", "category", "price", "storage", "source_pack"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        },
+        "name": {"type": "string", "minLength": 1, "maxLength": 128},
+        "manufacturer": {"type": "string", "maxLength": 96},
+        "category": {
+          "enum": [
+            "compacts", "coupes", "sedans", "suvs", "muscle", "sports",
+            "sportsclassics", "super", "offroad", "motorcycles", "vans",
+            "boats", "helicopters", "planes", "military", "industrial",
+            "openwheel", "emergency", "cycles", "service", "special"
+          ]
+        },
+        "price": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2000000000
+        },
+        "storage": {"enum": ["garage", "harbour", "helipad", "hangar"]},
+        "source_pack": {
+          "type": "string",
+          "pattern": "^(base|[A-Za-z0-9][A-Za-z0-9_-]{0,63})$"
+        },
+        "size_tier": {"type": "integer", "minimum": 0, "maximum": 2},
+        "preview_dictionary": {"$ref": "#/$defs/assetId"},
+        "preview_texture": {"$ref": "#/$defs/assetId"},
+        "traffic": {"$ref": "#/$defs/traffic"}
+      },
+      "allOf": [
+        {
+          "if": {"required": ["preview_texture"]},
+          "then": {"required": ["preview_dictionary"]}
+        },
+        {
+          "if": {"properties": {"category": {"const": "boats"}}},
+          "then": {"properties": {"storage": {"const": "harbour"}}}
+        },
+        {
+          "if": {"properties": {"category": {"const": "helicopters"}}},
+          "then": {"properties": {"storage": {"const": "helipad"}}}
+        },
+        {
+          "if": {"properties": {"category": {"const": "planes"}}},
+          "then": {"properties": {"storage": {"const": "hangar"}}}
+        },
+        {
+          "if": {
+            "properties": {
+              "category": {
+                "not": {"enum": ["boats", "helicopters", "planes"]}
+              }
+            }
+          },
+          "then": {"properties": {"storage": {"const": "garage"}}}
+        },
+        {
+          "if": {
+            "required": ["traffic"],
+            "properties": {
+              "traffic": {
+                "required": ["enabled"],
+                "properties": {"enabled": {"const": true}}
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "category": {
+                "enum": [
+                  "compacts", "coupes", "sedans", "suvs", "muscle",
+                  "sports", "sportsclassics", "super", "offroad",
+                  "motorcycles", "vans"
+                ]
+              },
+              "storage": {"const": "garage"}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

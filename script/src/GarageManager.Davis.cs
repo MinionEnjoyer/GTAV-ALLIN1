@@ -287,7 +287,7 @@ namespace ALLIN1
         internal static bool DeliverToDavisGarage(
             string model, int color1, int color2)
         {
-            if (VehicleList.GetSizeTier(model) == 2) return false;
+            if (GetGarageSizeTier(model) >= 2) return false;
             if (!_davisStored.TryGetValue(CharacterKey(), out var list)) return false;
             if (list.Count >= DAVIS_SLOT_COUNT) return false;
 
@@ -496,8 +496,7 @@ namespace ALLIN1
                             "~r~The vehicle could not be saved.", 3000);
                         return;
                     }
-                    string display = VehicleList.DisplayNames.TryGetValue(
-                        modelName, out string displayName) ? displayName : modelName;
+                    string display = RuntimeVehicleCatalog.GetDisplayName(modelName);
                     confirmation = $"~g~{display}~w~ stored in the Davis Auto Shop.";
                     rideIn.IsPersistent = true;
                     rideInToDelete = rideIn;

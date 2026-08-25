@@ -187,7 +187,26 @@ namespace ALLIN1
 
         internal static bool IsAllIn1DlcModel(int modelHash)
         {
-            return DlcModelHashes.Contains(modelHash);
+            if (DlcModelHashes.Contains(modelHash)) return true;
+            return RuntimeVehicleCatalog.TryGetByHash(
+                    modelHash, out GbayVehicleRecord record) &&
+                !record.IsOfficialStoryVehicle;
+        }
+
+        private static bool TryResolveManagedModelName(
+            int modelHash, out string modelName)
+        {
+            if (DlcModelNames.TryGetValue(modelHash, out modelName))
+                return true;
+            if (RuntimeVehicleCatalog.TryGetByHash(
+                    modelHash, out GbayVehicleRecord record) &&
+                !record.IsOfficialStoryVehicle)
+            {
+                modelName = record.Model;
+                return true;
+            }
+            modelName = "";
+            return false;
         }
 
         internal static int ModelHash(string value)
@@ -236,6 +255,8 @@ namespace ALLIN1
                     ResetObservation();
                     return;
                 }
+                if (_lastMission == StoryGetawayMission.None)
+                    RuntimeVehicleCatalog.Refresh();
 
                 Ped player = Game.Player.Character;
                 if (player == null || !player.Exists() || player.IsDead ||
@@ -250,15 +271,11 @@ namespace ALLIN1
                 if (vehicle == null || !vehicle.Exists()) return;
 
                 int modelHash = vehicle.Model.Hash;
-                if (!DlcModelHashes.Contains(modelHash))
+                if (!TryResolveManagedModelName(modelHash, out string modelName))
                 {
                     ResetVehicleObservation(mission);
                     return;
                 }
-
-                string modelName = DlcModelNames.TryGetValue(modelHash,
-                    out string resolvedName) ? resolvedName :
-                    modelHash.ToString("X8");
                 bool decoratorPresent = Function.Call<bool>(
                     Hash.DECOR_EXIST_ON, vehicle.Handle, ValidDecorator);
                 if (decoratorPresent)

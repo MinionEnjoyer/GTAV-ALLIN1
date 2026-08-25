@@ -1,0 +1,3591 @@
+{
+  "schema_version": 1,
+  "id": "story-vehicles",
+  "name": "GTA V Story Vehicles",
+  "vehicles": [
+    {
+      "model": "dinghy",
+      "name": "Dinghy",
+      "manufacturer": "Nagasaki",
+      "category": "boats",
+      "price": 85000,
+      "storage": "harbour",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "dinghy2",
+      "name": "Dinghy",
+      "manufacturer": "Nagasaki",
+      "category": "boats",
+      "price": 85000,
+      "storage": "harbour",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "jetmax",
+      "name": "Jetmax",
+      "manufacturer": "Shitzu",
+      "category": "boats",
+      "price": 85000,
+      "storage": "harbour",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "marquis",
+      "name": "Marquis",
+      "manufacturer": "Dinka",
+      "category": "boats",
+      "price": 85000,
+      "storage": "harbour",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "predator",
+      "name": "Predator",
+      "manufacturer": "",
+      "category": "boats",
+      "price": 85000,
+      "storage": "harbour",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "seashark",
+      "name": "Seashark",
+      "manufacturer": "Speedoph",
+      "category": "boats",
+      "price": 85000,
+      "storage": "harbour",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "seashark2",
+      "name": "Seashark",
+      "manufacturer": "Speedoph",
+      "category": "boats",
+      "price": 85000,
+      "storage": "harbour",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "squalo",
+      "name": "Squalo",
+      "manufacturer": "Shitzu",
+      "category": "boats",
+      "price": 85000,
+      "storage": "harbour",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "suntrap",
+      "name": "Suntrap",
+      "manufacturer": "Shitzu",
+      "category": "boats",
+      "price": 85000,
+      "storage": "harbour",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "tropic",
+      "name": "Tropic",
+      "manufacturer": "Shitzu",
+      "category": "boats",
+      "price": 85000,
+      "storage": "harbour",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "blista",
+      "name": "Blista",
+      "manufacturer": "Dinka",
+      "category": "compacts",
+      "price": 18000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "dilettante",
+      "name": "Dilettan",
+      "manufacturer": "Karin",
+      "category": "compacts",
+      "price": 18000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "dilettante2",
+      "name": "Dilettan",
+      "manufacturer": "Karin",
+      "category": "compacts",
+      "price": 18000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "issi2",
+      "name": "Issi2",
+      "manufacturer": "Weeny",
+      "category": "compacts",
+      "price": 18000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "prairie",
+      "name": "Prairie",
+      "manufacturer": "Bollokan",
+      "category": "compacts",
+      "price": 18000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "cogcabrio",
+      "name": "Cogcabri",
+      "manufacturer": "Enus",
+      "category": "coupes",
+      "price": 42000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "exemplar",
+      "name": "Exemplar",
+      "manufacturer": "Dewbauch",
+      "category": "coupes",
+      "price": 42000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "f620",
+      "name": "F620",
+      "manufacturer": "Ocelot",
+      "category": "coupes",
+      "price": 42000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "felon",
+      "name": "Felon",
+      "manufacturer": "Lampada",
+      "category": "coupes",
+      "price": 42000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "felon2",
+      "name": "Felon2",
+      "manufacturer": "Lampada",
+      "category": "coupes",
+      "price": 42000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "jackal",
+      "name": "Jackal",
+      "manufacturer": "Ocelot",
+      "category": "coupes",
+      "price": 42000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "oracle",
+      "name": "Oracle2",
+      "manufacturer": "Ubermach",
+      "category": "coupes",
+      "price": 42000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "oracle2",
+      "name": "Oracle",
+      "manufacturer": "Ubermach",
+      "category": "coupes",
+      "price": 42000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "sentinel",
+      "name": "Sentinel",
+      "manufacturer": "Ubermach",
+      "category": "coupes",
+      "price": 42000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "sentinel2",
+      "name": "Sentinel2",
+      "manufacturer": "Ubermach",
+      "category": "coupes",
+      "price": 42000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "zion",
+      "name": "Zion",
+      "manufacturer": "Ubermach",
+      "category": "coupes",
+      "price": 42000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "zion2",
+      "name": "Zion2",
+      "manufacturer": "Ubermach",
+      "category": "coupes",
+      "price": 42000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "bmx",
+      "name": "Bmx",
+      "manufacturer": "",
+      "category": "cycles",
+      "price": 1000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "cruiser",
+      "name": "Cruiser",
+      "manufacturer": "",
+      "category": "cycles",
+      "price": 1000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "fixter",
+      "name": "Fixter",
+      "manufacturer": "",
+      "category": "cycles",
+      "price": 1000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "scorcher",
+      "name": "Scorcher",
+      "manufacturer": "",
+      "category": "cycles",
+      "price": 1000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "tribike",
+      "name": "Tribike",
+      "manufacturer": "",
+      "category": "cycles",
+      "price": 1000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "tribike2",
+      "name": "Tribike2",
+      "manufacturer": "",
+      "category": "cycles",
+      "price": 1000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "tribike3",
+      "name": "Tribike3",
+      "manufacturer": "",
+      "category": "cycles",
+      "price": 1000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "ambulance",
+      "name": "Ambulan",
+      "manufacturer": "",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "fbi",
+      "name": "Fbi",
+      "manufacturer": "",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "fbi2",
+      "name": "Fbi2",
+      "manufacturer": "",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "firetruk",
+      "name": "Firetruk",
+      "manufacturer": "MTL",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "lguard",
+      "name": "Lguard",
+      "manufacturer": "Declasse",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "pbus",
+      "name": "Pbus",
+      "manufacturer": "",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "police",
+      "name": "Police",
+      "manufacturer": "",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "police2",
+      "name": "Police2",
+      "manufacturer": "",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "police3",
+      "name": "Police",
+      "manufacturer": "",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "police4",
+      "name": "Police4",
+      "manufacturer": "Vapid",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "policeb",
+      "name": "Policeb",
+      "manufacturer": "",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "policeold1",
+      "name": "Policeo1",
+      "manufacturer": "",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "policeold2",
+      "name": "Policeo2",
+      "manufacturer": "",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "policet",
+      "name": "Policet",
+      "manufacturer": "",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "pranger",
+      "name": "Pranger",
+      "manufacturer": "Declasse",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "riot",
+      "name": "Riot",
+      "manufacturer": "",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "sheriff",
+      "name": "Sheriff",
+      "manufacturer": "",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "sheriff2",
+      "name": "Sheriff2",
+      "manufacturer": "",
+      "category": "emergency",
+      "price": 135000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "annihilator",
+      "name": "Annihl",
+      "manufacturer": "",
+      "category": "helicopters",
+      "price": 450000,
+      "storage": "helipad",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "buzzard",
+      "name": "Buzzard",
+      "manufacturer": "",
+      "category": "helicopters",
+      "price": 450000,
+      "storage": "helipad",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "buzzard2",
+      "name": "Buzzard2",
+      "manufacturer": "",
+      "category": "helicopters",
+      "price": 450000,
+      "storage": "helipad",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "cargobob",
+      "name": "Cargobob",
+      "manufacturer": "",
+      "category": "helicopters",
+      "price": 450000,
+      "storage": "helipad",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "cargobob2",
+      "name": "Cargobob",
+      "manufacturer": "",
+      "category": "helicopters",
+      "price": 450000,
+      "storage": "helipad",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "cargobob3",
+      "name": "Cargobob",
+      "manufacturer": "",
+      "category": "helicopters",
+      "price": 450000,
+      "storage": "helipad",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "frogger",
+      "name": "Frogger",
+      "manufacturer": "",
+      "category": "helicopters",
+      "price": 450000,
+      "storage": "helipad",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "frogger2",
+      "name": "Frogger",
+      "manufacturer": "",
+      "category": "helicopters",
+      "price": 450000,
+      "storage": "helipad",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "maverick",
+      "name": "Maverick",
+      "manufacturer": "",
+      "category": "helicopters",
+      "price": 450000,
+      "storage": "helipad",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "polmav",
+      "name": "Polmav",
+      "manufacturer": "",
+      "category": "helicopters",
+      "price": 450000,
+      "storage": "helipad",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "skylift",
+      "name": "Skylift",
+      "manufacturer": "",
+      "category": "helicopters",
+      "price": 450000,
+      "storage": "helipad",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "benson",
+      "name": "Benson",
+      "manufacturer": "Vapid",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "biff",
+      "name": "Biff",
+      "manufacturer": "HVY",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "bulldozer",
+      "name": "Bulldoze",
+      "manufacturer": "HVY",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "cutter",
+      "name": "Cutter",
+      "manufacturer": "HVY",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "dump",
+      "name": "Dump",
+      "manufacturer": "HVY",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "flatbed",
+      "name": "Flatbed",
+      "manufacturer": "MTL",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "handler",
+      "name": "Handler",
+      "manufacturer": "",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "hauler",
+      "name": "Hauler",
+      "manufacturer": "Jobuilt",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "mixer",
+      "name": "Mixer",
+      "manufacturer": "HVY",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "mixer2",
+      "name": "Mixer2",
+      "manufacturer": "HVY",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "mule",
+      "name": "Mule",
+      "manufacturer": "Maibatsu",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "mule2",
+      "name": "Mule",
+      "manufacturer": "Maibatsu",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "packer",
+      "name": "Packer",
+      "manufacturer": "MTL",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "phantom",
+      "name": "Phantom",
+      "manufacturer": "Jobuilt",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "pounder",
+      "name": "Pounder",
+      "manufacturer": "MTL",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "rubble",
+      "name": "Rubble",
+      "manufacturer": "Jobuilt",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "stockade",
+      "name": "Stockade",
+      "manufacturer": "Brute",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "stockade3",
+      "name": "Stockade",
+      "manufacturer": "Brute",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "tiptruck",
+      "name": "Tiptruck",
+      "manufacturer": "Brute",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "tiptruck2",
+      "name": "Tiptruck2",
+      "manufacturer": "",
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "barracks",
+      "name": "Barracks",
+      "manufacturer": "",
+      "category": "military",
+      "price": 650000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "barracks2",
+      "name": "Barracks2",
+      "manufacturer": "HVY",
+      "category": "military",
+      "price": 650000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "crusader",
+      "name": "Crusader",
+      "manufacturer": "Canis",
+      "category": "military",
+      "price": 650000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "rhino",
+      "name": "Rhino",
+      "manufacturer": "",
+      "category": "military",
+      "price": 650000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "akuma",
+      "name": "Akuma",
+      "manufacturer": "Dinka",
+      "category": "motorcycles",
+      "price": 25000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "bagger",
+      "name": "Bagger",
+      "manufacturer": "Western",
+      "category": "motorcycles",
+      "price": 25000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "bati",
+      "name": "Bati",
+      "manufacturer": "Pegassi",
+      "category": "motorcycles",
+      "price": 25000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "bati2",
+      "name": "Bati2",
+      "manufacturer": "Pegassi",
+      "category": "motorcycles",
+      "price": 25000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "carbonrs",
+      "name": "Carbon",
+      "manufacturer": "Nagasaki",
+      "category": "motorcycles",
+      "price": 25000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "daemon",
+      "name": "Daemon",
+      "manufacturer": "Western",
+      "category": "motorcycles",
+      "price": 25000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "double",
+      "name": "Double",
+      "manufacturer": "Dinka",
+      "category": "motorcycles",
+      "price": 25000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "faggio2",
+      "name": "Faggio",
+      "manufacturer": "Pegassi",
+      "category": "motorcycles",
+      "price": 25000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "hexer",
+      "name": "Hexer",
+      "manufacturer": "LCC",
+      "category": "motorcycles",
+      "price": 25000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "nemesis",
+      "name": "Nemesis",
+      "manufacturer": "Principl",
+      "category": "motorcycles",
+      "price": 25000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "pcj",
+      "name": "Pcj",
+      "manufacturer": "Shitzu",
+      "category": "motorcycles",
+      "price": 25000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "ruffian",
+      "name": "Ruffian",
+      "manufacturer": "Pegassi",
+      "category": "motorcycles",
+      "price": 25000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "sanchez",
+      "name": "Sanchez01",
+      "manufacturer": "Maibatsu",
+      "category": "motorcycles",
+      "price": 25000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "sanchez2",
+      "name": "Sanchez02",
+      "manufacturer": "Maibatsu",
+      "category": "motorcycles",
+      "price": 25000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "vader",
+      "name": "Vader",
+      "manufacturer": "Shitzu",
+      "category": "motorcycles",
+      "price": 25000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "buccaneer",
+      "name": "Buccanee",
+      "manufacturer": "Albany",
+      "category": "muscle",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "dominator",
+      "name": "Dominato",
+      "manufacturer": "Vapid",
+      "category": "muscle",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "gauntlet",
+      "name": "Gauntlet",
+      "manufacturer": "Bravado",
+      "category": "muscle",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "hotknife",
+      "name": "Hotknife",
+      "manufacturer": "Vapid",
+      "category": "muscle",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "phoenix",
+      "name": "Phoenix",
+      "manufacturer": "Imponte",
+      "category": "muscle",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "picador",
+      "name": "Picador",
+      "manufacturer": "Cheval",
+      "category": "muscle",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "ratloader",
+      "name": "Rloader",
+      "manufacturer": "",
+      "category": "muscle",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "ruiner",
+      "name": "Ruiner",
+      "manufacturer": "Imponte",
+      "category": "muscle",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "sabregt",
+      "name": "Sabregt",
+      "manufacturer": "Declasse",
+      "category": "muscle",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "vigero",
+      "name": "Vigero",
+      "manufacturer": "Declasse",
+      "category": "muscle",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "voodoo2",
+      "name": "Voodoo",
+      "manufacturer": "Declasse",
+      "category": "muscle",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "bfinjection",
+      "name": "Bfinject",
+      "manufacturer": "BF",
+      "category": "offroad",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "blazer",
+      "name": "Blazer",
+      "manufacturer": "Nagasaki",
+      "category": "offroad",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "blazer2",
+      "name": "Blazer2",
+      "manufacturer": "Nagasaki",
+      "category": "offroad",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "blazer3",
+      "name": "Blazer03",
+      "manufacturer": "Nagasaki",
+      "category": "offroad",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "bodhi2",
+      "name": "Bodhi2",
+      "manufacturer": "Canis",
+      "category": "offroad",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "dloader",
+      "name": "Dloader",
+      "manufacturer": "Bravado",
+      "category": "offroad",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "dune",
+      "name": "Dune",
+      "manufacturer": "BF",
+      "category": "offroad",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "dune2",
+      "name": "Dune2",
+      "manufacturer": "",
+      "category": "offroad",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "mesa3",
+      "name": "Mesa",
+      "manufacturer": "Canis",
+      "category": "offroad",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "rancherxl",
+      "name": "Rancherx",
+      "manufacturer": "Declasse",
+      "category": "offroad",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "rancherxl2",
+      "name": "Rancherx",
+      "manufacturer": "Declasse",
+      "category": "offroad",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "rebel",
+      "name": "Rebel01",
+      "manufacturer": "Karin",
+      "category": "offroad",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "rebel2",
+      "name": "Rebel02",
+      "manufacturer": "Karin",
+      "category": "offroad",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "sandking",
+      "name": "Sandking",
+      "manufacturer": "Vapid",
+      "category": "offroad",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "sandking2",
+      "name": "Sandkin2",
+      "manufacturer": "Vapid",
+      "category": "offroad",
+      "price": 55000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "asea",
+      "name": "Asea",
+      "manufacturer": "Declasse",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "asea2",
+      "name": "Asea",
+      "manufacturer": "Declasse",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "asterope",
+      "name": "Astrope",
+      "manufacturer": "Karin",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "emperor",
+      "name": "Emperor",
+      "manufacturer": "Albany",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "emperor2",
+      "name": "Emperor",
+      "manufacturer": "Albany",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "emperor3",
+      "name": "Emperor",
+      "manufacturer": "Albany",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "fugitive",
+      "name": "Fugitive",
+      "manufacturer": "Cheval",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "ingot",
+      "name": "Ingot",
+      "manufacturer": "Vulcar",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "intruder",
+      "name": "Intruder",
+      "manufacturer": "Karin",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "premier",
+      "name": "Premier",
+      "manufacturer": "Declasse",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "primo",
+      "name": "Primo",
+      "manufacturer": "Albany",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "regina",
+      "name": "Regina",
+      "manufacturer": "Dundrear",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "romero",
+      "name": "Romero",
+      "manufacturer": "Chariot",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "schafter2",
+      "name": "Schafter",
+      "manufacturer": "Benefac",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "stanier",
+      "name": "Stanier",
+      "manufacturer": "Vapid",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "stratum",
+      "name": "Stratum",
+      "manufacturer": "Zirconiu",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "stretch",
+      "name": "Stretch",
+      "manufacturer": "Dundrear",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "superd",
+      "name": "Superd",
+      "manufacturer": "Enus",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "surge",
+      "name": "Surge",
+      "manufacturer": "Cheval",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "tailgater",
+      "name": "Tailgate",
+      "manufacturer": "Obey",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "washington",
+      "name": "Washingt",
+      "manufacturer": "Albany",
+      "category": "sedans",
+      "price": 30000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "airbus",
+      "name": "Airbus",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "airtug",
+      "name": "Airtug",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "bus",
+      "name": "Bus",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "caddy",
+      "name": "Caddy",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "caddy2",
+      "name": "Caddy",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "coach",
+      "name": "Coach",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "docktug",
+      "name": "Docktug",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "forklift",
+      "name": "Fork",
+      "manufacturer": "HVY",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "mower",
+      "name": "Mower",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "rentalbus",
+      "name": "Rentbus",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "ripley",
+      "name": "Ripley",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "sadler",
+      "name": "Sadler",
+      "manufacturer": "Vapid",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "sadler2",
+      "name": "Sadler",
+      "manufacturer": "Vapid",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "scrap",
+      "name": "Scrap",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "taxi",
+      "name": "Taxi",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "tourbus",
+      "name": "Tourbus",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "towtruck",
+      "name": "Towtruck",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "towtruck2",
+      "name": "Towtruck",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "tractor",
+      "name": "Tractor",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "tractor2",
+      "name": "Tractor2",
+      "manufacturer": "Stanley",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "tractor3",
+      "name": "Tractor2",
+      "manufacturer": "Stanley",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "trash",
+      "name": "Trash",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "utillitruck",
+      "name": "Utiltruc",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "utillitruck2",
+      "name": "Utiltruc",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "utillitruck3",
+      "name": "Utiltruc",
+      "manufacturer": "",
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "banshee",
+      "name": "Banshee",
+      "manufacturer": "Bravado",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "buffalo",
+      "name": "Buffalo",
+      "manufacturer": "Bravado",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "buffalo2",
+      "name": "Buffalo02",
+      "manufacturer": "Bravado",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "carbonizzare",
+      "name": "Carboniz",
+      "manufacturer": "Grotti",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "comet2",
+      "name": "Comet2",
+      "manufacturer": "Pfister",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "coquette",
+      "name": "Coquette",
+      "manufacturer": "Inverto",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "elegy2",
+      "name": "Elegy2",
+      "manufacturer": "Annis",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "feltzer2",
+      "name": "Feltzer",
+      "manufacturer": "Benefac",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "fusilade",
+      "name": "Fusilade",
+      "manufacturer": "Schyster",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "futo",
+      "name": "Futo",
+      "manufacturer": "Karin",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "khamelion",
+      "name": "Khamel",
+      "manufacturer": "Hijak",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "ninef",
+      "name": "Ninef",
+      "manufacturer": "Obey",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "ninef2",
+      "name": "Ninef2",
+      "manufacturer": "Obey",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "penumbra",
+      "name": "Penumbra",
+      "manufacturer": "Maibatsu",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "rapidgt",
+      "name": "Rapidgt",
+      "manufacturer": "Dewbauch",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "rapidgt2",
+      "name": "Rapidgt",
+      "manufacturer": "Dewbauch",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "schwarzer",
+      "name": "Schwarze",
+      "manufacturer": "Benefac",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "sultan",
+      "name": "Sultan",
+      "manufacturer": "Karin",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "surano",
+      "name": "Surano",
+      "manufacturer": "Benefac",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "jb700",
+      "name": "Jb700",
+      "manufacturer": "Dewbauch",
+      "category": "sportsclassics",
+      "price": 165000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "manana",
+      "name": "Manana",
+      "manufacturer": "Albany",
+      "category": "sportsclassics",
+      "price": 165000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "monroe",
+      "name": "Monroe",
+      "manufacturer": "Pegassi",
+      "category": "sportsclassics",
+      "price": 165000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "peyote",
+      "name": "Peyote",
+      "manufacturer": "Vapid",
+      "category": "sportsclassics",
+      "price": 165000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "stinger",
+      "name": "Stinger",
+      "manufacturer": "Grotti",
+      "category": "sportsclassics",
+      "price": 165000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "stingergt",
+      "name": "Stingerg",
+      "manufacturer": "Grotti",
+      "category": "sportsclassics",
+      "price": 165000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "tornado",
+      "name": "Tornado",
+      "manufacturer": "Declasse",
+      "category": "sportsclassics",
+      "price": 165000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "tornado2",
+      "name": "Tornado2",
+      "manufacturer": "Declasse",
+      "category": "sportsclassics",
+      "price": 165000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "tornado3",
+      "name": "Tornado3",
+      "manufacturer": "Declasse",
+      "category": "sportsclassics",
+      "price": 165000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "tornado4",
+      "name": "Tornado",
+      "manufacturer": "Declasse",
+      "category": "sportsclassics",
+      "price": 165000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "ztype",
+      "name": "Ztype",
+      "manufacturer": "Truffade",
+      "category": "sportsclassics",
+      "price": 165000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "adder",
+      "name": "Adder",
+      "manufacturer": "Truffade",
+      "category": "super",
+      "price": 500000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "bullet",
+      "name": "Bullet",
+      "manufacturer": "Vapid",
+      "category": "super",
+      "price": 500000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "cheetah",
+      "name": "Cheetah",
+      "manufacturer": "Grotti",
+      "category": "super",
+      "price": 500000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "entityxf",
+      "name": "Entityxf",
+      "manufacturer": "Overflod",
+      "category": "super",
+      "price": 500000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "infernus",
+      "name": "Infernus",
+      "manufacturer": "Pegassi",
+      "category": "super",
+      "price": 500000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "vacca",
+      "name": "Vacca",
+      "manufacturer": "Pegassi",
+      "category": "super",
+      "price": 500000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "voltic",
+      "name": "Voltic",
+      "manufacturer": "Coil",
+      "category": "super",
+      "price": 500000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "baller",
+      "name": "Baller",
+      "manufacturer": "Gallivan",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "baller2",
+      "name": "Baller2",
+      "manufacturer": "Gallivan",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "bjxl",
+      "name": "Bjxl",
+      "manufacturer": "Karin",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "cavalcade",
+      "name": "Cavcade",
+      "manufacturer": "Albany",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "cavalcade2",
+      "name": "Cavcade",
+      "manufacturer": "Albany",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "dubsta",
+      "name": "Dubsta",
+      "manufacturer": "Benefac",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "dubsta2",
+      "name": "Dubsta",
+      "manufacturer": "Benefac",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "fq2",
+      "name": "Fq2",
+      "manufacturer": "Fathom",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "granger",
+      "name": "Granger",
+      "manufacturer": "Declasse",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "gresley",
+      "name": "Gresley",
+      "manufacturer": "Bravado",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "habanero",
+      "name": "Habanero",
+      "manufacturer": "Emperor",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "landstalker",
+      "name": "Landstal",
+      "manufacturer": "Dundrear",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "mesa",
+      "name": "Mesa",
+      "manufacturer": "Canis",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "mesa2",
+      "name": "Mesa",
+      "manufacturer": "Canis",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "patriot",
+      "name": "Patriot",
+      "manufacturer": "Mammoth",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "radi",
+      "name": "Radi",
+      "manufacturer": "Vapid",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "rocoto",
+      "name": "Rocoto",
+      "manufacturer": "Obey",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "seminole",
+      "name": "Seminole",
+      "manufacturer": "Canis",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "serrano",
+      "name": "Serrano",
+      "manufacturer": "Benefac",
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "bison",
+      "name": "Bison",
+      "manufacturer": "Bravado",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "bison2",
+      "name": "Bison",
+      "manufacturer": "Bravado",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "bison3",
+      "name": "Bison",
+      "manufacturer": "Bravado",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "bobcatxl",
+      "name": "Bobcatxl",
+      "manufacturer": "Vapid",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "boxville",
+      "name": "Boxville",
+      "manufacturer": "Brute",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "boxville2",
+      "name": "Boxville",
+      "manufacturer": "",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "boxville3",
+      "name": "Boxville",
+      "manufacturer": "Brute",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "burrito",
+      "name": "Burrito",
+      "manufacturer": "Declasse",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "burrito2",
+      "name": "Burrito2",
+      "manufacturer": "Declasse",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "burrito3",
+      "name": "Burrito",
+      "manufacturer": "Declasse",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "burrito4",
+      "name": "Burrito",
+      "manufacturer": "Declasse",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "burrito5",
+      "name": "Burrito",
+      "manufacturer": "Declasse",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "camper",
+      "name": "Camper",
+      "manufacturer": "Brute",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "gburrito",
+      "name": "Gburrito",
+      "manufacturer": "Declasse",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "journey",
+      "name": "Journey",
+      "manufacturer": "Zirconiu",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "minivan",
+      "name": "Minivan",
+      "manufacturer": "Vapid",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "pony",
+      "name": "Pony",
+      "manufacturer": "Brute",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "pony2",
+      "name": "Pony",
+      "manufacturer": "Brute",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "rumpo",
+      "name": "Rumpo",
+      "manufacturer": "Bravado",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "rumpo2",
+      "name": "Rumpo",
+      "manufacturer": "Bravado",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "speedo",
+      "name": "Speedo",
+      "manufacturer": "Vapid",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "speedo2",
+      "name": "Speedo2",
+      "manufacturer": "Vapid",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "surfer",
+      "name": "Surfer",
+      "manufacturer": "BF",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "surfer2",
+      "name": "Surfer2",
+      "manufacturer": "BF",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "taco",
+      "name": "Taco",
+      "manufacturer": "Brute",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    },
+    {
+      "model": "youga",
+      "name": "Youga",
+      "manufacturer": "Bravado",
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "source_pack": "base",
+      "size_tier": 0,
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    }
+  ]
+}

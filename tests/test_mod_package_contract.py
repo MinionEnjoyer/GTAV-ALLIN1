@@ -50,7 +50,7 @@ def test_schema_envelope_and_scripted_weapon_relationship_contract() -> None:
         "allin1": {
             "api_version": 1,
             "content": "allin1.content.json",
-            "requires": ["allin1.online-content@>=0.5.4"],
+            "requires": ["allin1.online-content>=0.5.5"],
         },
     })
     assert schema == 2

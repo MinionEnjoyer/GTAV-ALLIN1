@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using GTA;
 using GTA.Math;
@@ -178,6 +179,8 @@ namespace ALLIN1
 
         // Reverse lookup: model hash -> spawn name (built from VehicleList.All)
         private static Dictionary<int, string> _hashToSpawnName;
+        private static readonly Dictionary<long, int> EffectiveSizeTierCache =
+            new Dictionary<long, int>();
         private static readonly Dictionary<string, string> LegacyModelAliases =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -238,9 +241,11 @@ namespace ALLIN1
 
             try
             {
-                // Build reverse hash -> spawn name lookup from VehicleList
+                // Build reverse hash -> spawn name lookup from static and
+                // receipt-authorized runtime catalogs.
                 _hashToSpawnName = new Dictionary<int, string>();
-                foreach (string name in VehicleList.All)
+                foreach (string name in VehicleList.All.Concat(
+                             RuntimeVehicleCatalog.AllDynamicModels))
                 {
                     int hash = Game.GenerateHash(name);
                     if (!_hashToSpawnName.ContainsKey(hash))
@@ -550,6 +555,7 @@ namespace ALLIN1
         /// </summary>
         internal static bool DeliverVehicle(string model, int color1, int color2)
         {
+            if (GetGarageSizeTier(model) >= 2) return false;
             string key = CharacterKey();
             if (!_stored.TryGetValue(key, out var list))
                 return false;
@@ -564,7 +570,7 @@ namespace ALLIN1
             int slotIndex = FindEmptySlot(list, model, modelHash);
             if (slotIndex < 0)
             {
-                Log($"DeliverVehicle: no empty slot for {model} (sizeTier={VehicleList.GetSizeTier(model)})");
+                Log($"DeliverVehicle: no empty slot for {model} (sizeTier={GetGarageSizeTier(model, modelHash)})");
                 return false;
             }
 
@@ -947,8 +953,8 @@ namespace ALLIN1
                         return;
                     }
 
-                    string displayName = VehicleList.DisplayNames.ContainsKey(modelName)
-                        ? VehicleList.DisplayNames[modelName] : modelName;
+                    string displayName = RuntimeVehicleCatalog.GetDisplayName(
+                        modelName);
                     storedConfirmation =
                         $"~g~{displayName}~w~ stored in the Eclipse Garage " +
                         $"(slot {slotIndex + 1}).";
@@ -1448,9 +1454,8 @@ namespace ALLIN1
                 garage, vehicle, modelName, modelHash);
             if (denial == GarageEntryDenial.None) return false;
 
-            string displayName = modelName != null &&
-                VehicleList.DisplayNames.TryGetValue(modelName, out string knownName)
-                ? knownName : modelName;
+            string displayName = modelName != null
+                ? RuntimeVehicleCatalog.GetDisplayName(modelName) : modelName;
             GTA.UI.Screen.ShowSubtitle(
                 GarageEntryMessage(garage, denial, displayName), 3000);
             ClientLog.Warn("Garage", "entry_blocked",
@@ -1692,9 +1697,9 @@ namespace ALLIN1
             return -1;
         }
 
-        private static int GetGarageSizeTier(string model, int modelHash = 0)
+        internal static int GetGarageSizeTier(string model, int modelHash = 0)
         {
-            int configuredTier = VehicleList.GetSizeTier(model);
+            int configuredTier = RuntimeVehicleCatalog.GetSizeTier(model);
             if (configuredTier >= 2 || string.IsNullOrWhiteSpace(model))
                 return configuredTier;
 
@@ -1704,6 +1709,10 @@ namespace ALLIN1
             try
             {
                 int hash = modelHash != 0 ? modelHash : Game.GenerateHash(model);
+                long cacheKey = ((long)(uint)hash << 2) | (uint)configuredTier;
+                if (EffectiveSizeTierCache.TryGetValue(
+                        cacheKey, out int cachedTier))
+                    return cachedTier;
                 var minArg = new OutputArgument();
                 var maxArg = new OutputArgument();
                 Function.Call(Hash.GET_MODEL_DIMENSIONS, hash, minArg, maxArg);
@@ -1714,14 +1723,30 @@ namespace ALLIN1
                 if (float.IsNaN(width) || float.IsNaN(length) ||
                     float.IsInfinity(width) || float.IsInfinity(length))
                     return configuredTier;
-                if (width > 3.4f || length > 8.5f) return 2;
-                if (width > 2.5f || length > 6.0f)
-                    return Math.Max(1, configuredTier);
+                int effectiveTier = ResolveEffectiveGarageSizeTier(
+                    configuredTier, width, length);
+                if (EffectiveSizeTierCache.Count >= 8192)
+                    EffectiveSizeTierCache.Clear();
+                EffectiveSizeTierCache[cacheKey] = effectiveTier;
+                return effectiveTier;
             }
             catch (Exception ex)
             {
                 LogException($"GetGarageSizeTier({model})", ex);
             }
+            return configuredTier;
+        }
+
+        internal static int ResolveEffectiveGarageSizeTier(
+            int configuredTier, float width, float length)
+        {
+            if (configuredTier >= 2) return configuredTier;
+            if (float.IsNaN(width) || float.IsNaN(length) ||
+                float.IsInfinity(width) || float.IsInfinity(length))
+                return configuredTier;
+            if (width > 3.4f || length > 8.5f) return 2;
+            if (width > 2.5f || length > 6.0f)
+                return Math.Max(1, configuredTier);
             return configuredTier;
         }
 
@@ -2016,7 +2041,8 @@ namespace ALLIN1
 
             // Build a set of valid spawn names for quick lookup
             var validNames = new HashSet<string>();
-            foreach (string name in VehicleList.All)
+            foreach (string name in VehicleList.All.Concat(
+                         RuntimeVehicleCatalog.AllDynamicModels))
                 validNames.Add(name);
 
             bool changed = false;
@@ -2081,8 +2107,8 @@ namespace ALLIN1
             string model, int modelHash = 0)
         {
             if (!string.IsNullOrWhiteSpace(model) &&
-                VehicleList.DisplayNames.TryGetValue(model, out string catalogName))
-                return catalogName;
+                RuntimeVehicleCatalog.IsListed(model))
+                return RuntimeVehicleCatalog.GetDisplayName(model);
             if (!string.IsNullOrWhiteSpace(model) &&
                 LegacyModelDisplayNames.TryGetValue(model, out string legacyName))
                 return legacyName;
@@ -3548,8 +3574,8 @@ namespace ALLIN1
                     storedDuringEntry = sv;
                     storedListDuringEntry = storedList;
 
-                    string displayName = VehicleList.DisplayNames.ContainsKey(modelName)
-                        ? VehicleList.DisplayNames[modelName] : modelName;
+                    string displayName = RuntimeVehicleCatalog.GetDisplayName(
+                        modelName);
                     int floor = slotIndex / FLOOR_GARAGE_SLOTS_PER_FLOOR + 1;
                     int spotOnFloor = slotIndex % FLOOR_GARAGE_SLOTS_PER_FLOOR + 1;
                     storedConfirmation =

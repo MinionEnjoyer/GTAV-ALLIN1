@@ -98,6 +98,21 @@ namespace ALLIN1.Tests
                     present, false, known, tier));
         }
 
+        [Theory]
+        [InlineData(0, 2.0f, 4.5f, 0)]
+        [InlineData(0, 2.6f, 4.5f, 1)]
+        [InlineData(0, 2.0f, 6.1f, 1)]
+        [InlineData(0, 3.5f, 4.5f, 2)]
+        [InlineData(0, 2.0f, 8.6f, 2)]
+        [InlineData(2, 2.0f, 4.5f, 2)]
+        public void EffectiveSizeTierCannotBeUnderstatedByCatalogMetadata(
+            int configured, float width, float length, int expected)
+        {
+            Assert.Equal(expected,
+                GarageManager.ResolveEffectiveGarageSizeTier(
+                    configured, width, length));
+        }
+
         [Fact]
         public void MissingRulesFailClosed()
         {

@@ -95,6 +95,10 @@ RETIRED_DEVELOPER_DIRECTORIES = (
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _SCRIPT_DIST_DIR = _PROJECT_ROOT / "script" / "dist"
 _TOOLS_DIR = _PROJECT_ROOT / "tools"
+_BUILTIN_CATALOG_PAYLOADS = {
+    ("allin1.online-content", "story-vehicles"):
+        _PROJECT_ROOT / "data" / "story_vehicles.json",
+}
 
 def _copy_atomic(source: Path, destination: Path) -> None:
     """Replace a deployed file without exposing a partial destination."""
@@ -351,6 +355,14 @@ def uninstall(config: Config) -> list[Path]:
         registry = ExtensionRegistry(gta_path)
         for manifest in ExtensionCatalog(_PROJECT_ROOT / "content").discover():
             registry.unregister_builtin(manifest.extension_id, force=True)
+            for catalog in manifest.gbay_catalogs:
+                if (manifest.extension_id, catalog.catalog_id) not in _BUILTIN_CATALOG_PAYLOADS:
+                    continue
+                destination = gta_path / Path(*catalog.source.parts)
+                for candidate in (destination, destination.with_name(destination.name + ".bak")):
+                    if candidate.is_file():
+                        candidate.unlink()
+                        removed.append(candidate)
     except (OSError, ValueError):
         log.warning("Could not fully reconcile the content registry", exc_info=True)
 
@@ -565,6 +577,19 @@ def _deploy_content_registry(gta_path: Path, config: Config) -> None:
         return
     registry = ExtensionRegistry(gta_path)
     for manifest in manifests:
+        for catalog in manifest.gbay_catalogs:
+            source = _BUILTIN_CATALOG_PAYLOADS.get(
+                (manifest.extension_id, catalog.catalog_id)
+            )
+            if source is None:
+                continue
+            if not source.is_file():
+                raise FileNotFoundError(
+                    f"Built-in catalog payload is missing: {source}"
+                )
+            destination = gta_path / Path(*catalog.source.parts)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            _copy_atomic(source, destination)
         registry.register_builtin(
             manifest,
             enabled=None,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import stat
@@ -15,7 +16,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterable, Iterator, Mapping
 
 from allin1.extensions import (
     EXTENSION_API_VERSION,
@@ -24,6 +25,8 @@ from allin1.extensions import (
 )
 from allin1.processes import run_hidden
 from allin1.mod_package_contract import validate_mod_schema_envelope
+from allin1.vehicle_catalog import VehicleCatalog
+from allin1.vehicles.database import VehicleDatabase
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -61,6 +64,20 @@ MAX_PACKAGE_ARCHIVE_MEMBERS = 4096
 MAX_PACKAGE_ARCHIVE_MEMBER_BYTES = 4 * 1024 * 1024 * 1024
 MAX_PACKAGE_ARCHIVE_BYTES = 8 * 1024 * 1024 * 1024
 MAX_PACKAGE_COMPRESSION_RATIO = 1000
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_OFFICIAL_VEHICLE_MODELS: frozenset[str] | None = None
+
+
+def _official_vehicle_models() -> frozenset[str]:
+    global _OFFICIAL_VEHICLE_MODELS
+    if _OFFICIAL_VEHICLE_MODELS is None:
+        online = VehicleDatabase.load(_PROJECT_ROOT / "data" / "vehicles.toml")
+        story = VehicleCatalog.load(_PROJECT_ROOT / "data" / "story_vehicles.json")
+        _OFFICIAL_VEHICLE_MODELS = frozenset(
+            [vehicle.model.casefold() for vehicle in online.all_vehicles]
+            + [vehicle.model.casefold() for vehicle in story.vehicles]
+        )
+    return _OFFICIAL_VEHICLE_MODELS
 
 
 def _relative_path(value: object, label: str) -> PurePosixPath:
@@ -208,6 +225,21 @@ class PackageRequirement:
         if self.operator == "==":
             return installed == required
         return installed >= required
+
+    def guarantees_minimum(self, minimum_version: str) -> bool:
+        """Whether this declaration guarantees at least ``minimum_version``."""
+
+        if self.operator != ">=" or self.version is None:
+            return False
+        try:
+            declared = self._version_parts(self.version)
+            minimum = self._version_parts(minimum_version)
+        except ValueError:
+            return False
+        width = max(len(declared), len(minimum))
+        declared += (0,) * (width - len(declared))
+        minimum += (0,) * (width - len(minimum))
+        return declared >= minimum
 
 
 @dataclass(frozen=True)
@@ -403,6 +435,55 @@ class ModManifest:
             extension.validate_package_destinations(
                 item.destination.as_posix() for item in files
             )
+            files_by_destination = {
+                item.destination.as_posix().casefold(): item for item in files
+            }
+            for catalog in extension.gbay_catalogs:
+                if catalog.kind != "vehicle":
+                    continue
+                owned_file = files_by_destination[catalog.source.as_posix().casefold()]
+                vehicle_catalog = VehicleCatalog.load(
+                    _contained_path(path.parent, owned_file.source)
+                )
+                if vehicle_catalog.catalog_id != catalog.catalog_id:
+                    raise ValueError(
+                        "Vehicle catalog id must match its GBAY catalog declaration: "
+                        f"{catalog.catalog_id}"
+                    )
+                vehicle_catalog.validate_package_ownership(
+                    dlc_packs,
+                    allow_traffic="traffic.catalog" in extension.capabilities,
+                    reserved_models=_official_vehicle_models(),
+                )
+                if any(item.traffic.enabled for item in vehicle_catalog.vehicles):
+                    try:
+                        traffic_setting = extension.setting("traffic_enabled")
+                    except KeyError as exc:
+                        raise ValueError(
+                            "Traffic-enabled vehicle catalogs require a package-namespaced "
+                            "traffic_enabled setting"
+                        ) from exc
+                    if (
+                        traffic_setting.setting_type != "boolean"
+                        or traffic_setting.default is not False
+                    ):
+                        raise ValueError(
+                            "Vehicle catalog traffic_enabled must be a boolean setting "
+                            "that defaults to false"
+                        )
+            if any(catalog.kind == "vehicle" for catalog in extension.gbay_catalogs):
+                online_requirement = next((
+                    requirement for requirement in package_requirements
+                    if requirement.mod_id == "allin1.online-content"
+                ), None)
+                if (
+                    online_requirement is None
+                    or not online_requirement.guarantees_minimum("0.5.5")
+                ):
+                    raise ValueError(
+                        "GBAY vehicle catalogs require "
+                        "allin1.online-content>=0.5.5"
+                    )
         manifest = cls(
             manifest_path=path,
             mod_id=mod_id,
@@ -618,20 +699,103 @@ class ModStatus:
 
 
 class ModCatalog:
-    """Discovers optional packages checked into or copied beside the launcher."""
+    """Discover optional packages from trusted launcher library roots."""
 
-    def __init__(self, root: Path) -> None:
-        self.root = root
+    def __init__(
+        self, root: Path, package_library_root: Path | None = None,
+    ) -> None:
+        # ``root`` remains the primary project catalog for compatibility with
+        # existing callers. Quick Import publishes validated package folders
+        # into the optional per-user library without modifying the checkout.
+        self.root = Path(root).expanduser().resolve(strict=False)
+        roots = [self.root]
+        if package_library_root is not None:
+            library = Path(package_library_root).expanduser().resolve(strict=False)
+            if library != self.root:
+                roots.append(library)
+        self.roots = tuple(roots)
+
+    def fingerprint(self) -> tuple[tuple[str, int, int], ...]:
+        """Return a cheap snapshot suitable for an idle-time library watcher.
+
+        Only catalog roots and manifests affect package discovery, so this does
+        not hash (or even walk) large payloads such as RPF archives.
+        """
+        entries: list[tuple[str, int, int]] = []
+        for root in self.roots:
+            try:
+                stat = root.stat()
+                entries.append((str(root), stat.st_mtime_ns, stat.st_size))
+            except OSError:
+                entries.append((str(root), -1, -1))
+                continue
+            try:
+                manifests = sorted(
+                    root.glob("*/mod.toml"), key=lambda value: str(value).lower(),
+                )
+            except OSError:
+                manifests = []
+            for manifest in manifests:
+                try:
+                    stat = manifest.stat()
+                    entries.append(
+                        (str(manifest), stat.st_mtime_ns, stat.st_size),
+                    )
+                except OSError:
+                    entries.append((str(manifest), -1, -1))
+        return tuple(entries)
 
     def discover(self) -> list[ModManifest]:
-        if not self.root.is_dir():
-            return []
         manifests: list[ModManifest] = []
-        for path in sorted(self.root.glob("*/mod.toml"), key=lambda value: str(value).lower()):
-            # Defer payload existence and checksum work until installation. RPF
-            # archives can be large enough that hashing them would freeze refresh.
-            manifests.append(ModManifest.load(path, validate_payload=False))
+        package_sources: dict[str, Path] = {}
+        for root in self.roots:
+            if not root.is_dir():
+                continue
+            paths = sorted(
+                root.glob("*/mod.toml"), key=lambda value: str(value).lower(),
+            )
+            for path in paths:
+                # Defer payload existence and checksum work until installation.
+                # RPF archives can be large enough that hashing them would freeze
+                # refresh. Manifest, extension, ownership, and path contracts are
+                # still validated here.
+                manifest = ModManifest.load(path, validate_payload=False)
+                package_id = manifest.mod_id.casefold()
+                previous = package_sources.get(package_id)
+                if previous is not None:
+                    raise ValueError(
+                        f"Duplicate mod package id '{manifest.mod_id}' in catalog: "
+                        f"{previous} and {path}"
+                    )
+                package_sources[package_id] = path
+                manifests.append(manifest)
         return manifests
+
+
+def default_package_library_root(
+    environment: Mapping[str, str] | None = None,
+) -> Path:
+    """Return the shared per-user library used by SDK Quick Import."""
+    values = os.environ if environment is None else environment
+    local_appdata = values.get("LOCALAPPDATA")
+    if local_appdata:
+        return (
+            Path(local_appdata).expanduser().resolve(strict=False)
+            / "ALLIN1" / "Packages"
+        )
+    return Path.home().resolve() / ".allin1" / "packages"
+
+
+def default_mod_catalog(
+    project_root: str | Path,
+    environment: Mapping[str, str] | None = None,
+) -> ModCatalog:
+    """Build the launcher catalog over bundled and Quick Import packages."""
+    root = Path(project_root).expanduser().resolve(strict=False)
+    return ModCatalog(
+        root / "mods" / "catalog",
+        default_package_library_root(environment),
+    )
 
 
 class ModIntegrationService:
@@ -967,10 +1131,25 @@ class ModIntegrationService:
                 + ", ".join(sorted(rpf_collisions))
             )
 
-    def install(self, manifest: ModManifest) -> ModStatus:
+    def install(
+        self,
+        manifest: ModManifest,
+        *,
+        initial_settings: Mapping[str, Any] | None = None,
+    ) -> ModStatus:
         manifest.validate_payload()
         if self.edition not in manifest.editions:
             raise ValueError(f"{manifest.name} does not support GTA V {self.edition.title()}")
+        requested_settings = dict(initial_settings or {})
+        if requested_settings:
+            if manifest.extension is None:
+                raise ValueError(
+                    "Initial settings require a schema-2 ALLIN1 content package"
+                )
+            # Validate before any installation write. ExtensionRegistry validates
+            # again while atomically persisting the package-owned namespace.
+            for key, value in requested_settings.items():
+                manifest.extension.setting(key).validate(value)
         self._check_dependencies(manifest)
         self._check_conflicts(manifest)
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
@@ -1105,7 +1284,11 @@ class ModIntegrationService:
                 "rpf_entries": rpf_records,
             }
             self._write_receipt(receipt)
-            ExtensionRegistry(self.gta_path).rebuild()
+            registry = ExtensionRegistry(self.gta_path)
+            if requested_settings:
+                registry.set_settings(manifest.mod_id, requested_settings)
+            else:
+                registry.rebuild()
         except Exception:
             for pack in reversed(registered_packs):
                 try:

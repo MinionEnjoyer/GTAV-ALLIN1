@@ -191,9 +191,10 @@ configuration field.
 ## Capability identifiers
 
 `capabilities` is an optional list of lowercase, identifier-like strings such
-as `launcher.settings`, `gbay.catalogs`, `story-save.transactions`, or
-`weapon.components.lifecycle`. Capability identifiers describe what a package
-expects to contribute so tools and users can inspect it.
+as `launcher.settings`, `gbay.catalogs`, `traffic.catalog`,
+`story-save.transactions`, or `weapon.components.lifecycle`. Capability
+identifiers describe what a package expects to contribute so tools and users
+can inspect it.
 
 Capabilities are declarative permission requests and discovery hints, not
 executable hooks or proof that a consumer implements the feature. Typed
@@ -256,6 +257,89 @@ rendered. Catalog item fields are defined by the GBAY consumer for that catalog
 kind; the extension parser validates the catalog kind, path, and package
 ownership, but does not reinterpret an unknown item format.
 
+### Vehicle catalog v1
+
+A `kind = "vehicle"` catalog uses the renderer-neutral contract in
+`content/allin1-vehicle-catalog.schema.json`. The same catalog can feed the
+native GBAY menu, developer tools, or a future web-based storefront without
+giving the renderer control over purchases or saves.
+
+```json
+{
+  "schema_version": 1,
+  "id": "example-vehicles",
+  "name": "Example Vehicles",
+  "vehicles": [
+    {
+      "model": "examplecar",
+      "name": "Example Car",
+      "manufacturer": "Example Motors",
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "source_pack": "examplecars",
+      "size_tier": 1,
+      "preview_dictionary": "example_previews",
+      "preview_texture": "examplecar",
+      "traffic": {
+        "enabled": false,
+        "weight": 1.0
+      }
+    }
+  ]
+}
+```
+
+Vehicle packages must follow these rules:
+
+- the catalog source must exactly match a package-owned file destination;
+- `id` must match the catalog declaration and model names must be unique;
+- each `source_pack` must name a DLC pack installed by that package;
+- third-party packages cannot claim `source_pack = "base"` or replace an
+  official GTA model;
+- boats use `harbour`, helicopters use `helipad`, and planes use `hangar`;
+- all other categories use `garage`;
+- a listing does not enter traffic merely because it appears in GBAY; and
+- unavailable models are rejected again in game before money is charged.
+
+Each catalog may contain at most 2,048 entries. The game runtime merges up to
+8,192 receipt-authorized dynamic entries in deterministic package/catalog/model
+order, with official Story listings taking precedence over third-party names.
+
+The package must require `allin1.online-content>=0.5.5`, declare `gbay.catalogs`, and
+use a schema-2 `mixed` package when it combines an RPF DLC pack with the loose
+catalog JSON. To offer ambient traffic, it must additionally declare
+`traffic.catalog` and `launcher.settings`, then provide a boolean
+`traffic_enabled` setting whose default is `false`. A model enters the package
+traffic pool only when all three gates agree: the package setting is enabled,
+the catalog item's `traffic.enabled` is true, and the runtime confirms that the
+installed model is a road vehicle in the declared class. Boats, aircraft,
+emergency vehicles, and other specialized categories cannot opt into this
+traffic path.
+
+Traffic `weight` is relative and bounded from `0.1` through `20.0`. The runtime
+retains its mission, interior, wanted-level, visibility, road, cleanup, and
+performance safeguards. Area-specific traffic targeting is intentionally not
+part of catalog v1; an authoring field is not exposed until the runtime can
+enforce it consistently.
+
+### Optional web renderer boundary
+
+An HTML/React GBAY client can be added as an optional renderer over the same
+typed catalogs. It must receive bounded state snapshots and return typed user
+intents such as navigate, search, favorite, preview, purchase request, and back.
+It must never receive direct native, filesystem, money, delivery, package, or
+save authority. The C# runtime remains responsible for model validation,
+pricing, staged Story-save transactions, storage compatibility, and every world
+mutation.
+
+The native GBAY renderer remains the required safe fallback. A future browser
+host should load only packaged local assets, block remote navigation and script
+injection, use one controller/input abstraction, and fall back automatically if
+the host is missing, fails its health check, or stops acknowledging messages.
+React is therefore a build-time UI choice, not a new extension permission or a
+requirement for catalog authors.
+
 ### GBAY transaction rule
 
 All GBAY purchases, refunds, deliveries, ownership changes, ammunition, gear,
@@ -310,8 +394,12 @@ Managed extensions compile against the public types in `ALLIN1.dll`. The v1
 surface is exposed by `ALLIN1.Allin1ExtensionApi`:
 
 - `ApiVersion` reports the supported runtime contract.
-- `IsPackageEnabled`, `HasCapability`, and the typed setting getters expose the
+- `RegistryAvailable` reports whether the game-local registry was loaded.
+- `IsPackageEnabled`, `GetEnabledPackageIds`, and `HasCapability` expose the
   launcher's current authorization snapshot.
+- `TryGetSetting` and the typed `GetBooleanSetting`, `GetStringSetting`,
+  `GetIntegerSetting`, and `GetNumberSetting` helpers read effective,
+  package-namespaced settings.
 - `GetGbayCatalogs(packageId)` returns read-only, contained catalog declarations
   for an enabled package with `gbay.catalogs`.
 - `RegisterGbayAction(packageId, route, callback)` connects one declared,
@@ -327,6 +415,14 @@ surface is exposed by `ALLIN1.Allin1ExtensionApi`:
   lifecycle.
 - `IsGbayMenuActive` reports whether GBAY is open so an external gameplay mod
   can ignore transient workbench previews.
+- `ReloadRegistry` asks the runtime to re-read the launcher's declarative
+  registry after a supported host lifecycle event.
+
+The machine-readable v1 surface is checked in at
+`data/runtime_api_contract.json`. The SDK verifies that contract against the
+public C# declarations, then connects package API calls, capabilities,
+interfaces, settings, runtime assemblies, entry points, and Workbench
+relationships without loading either DLL.
 
 The game runtime accepts a registration only when the package is enabled, the
 required capability and route were declared, and the registering assembly's

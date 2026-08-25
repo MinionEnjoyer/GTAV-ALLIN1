@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using GTA;
 using GTA.Native;
 
@@ -152,52 +153,43 @@ namespace ALLIN1
         private struct Category
         {
             internal string Label;
-            internal string[] Models;
+            internal string Key;
             internal bool FavoritesOnly;
 
-            internal Category(string label, string[] models, bool favoritesOnly = false)
+            internal Category(string label, string key, bool favoritesOnly = false)
             {
                 Label = label;
-                Models = models;
+                Key = key;
                 FavoritesOnly = favoritesOnly;
             }
         }
 
         private static readonly Category[] CATEGORIES =
         {
-            new Category("All",             VehicleList.All),
-            new Category("Favorites",       VehicleList.All, true),
-            new Category("Compacts",        VehicleList.Compacts),
-            new Category("Coupes",          VehicleList.Coupes),
-            new Category("Sedans",          VehicleList.Sedans),
-            new Category("SUVs",            VehicleList.Suvs),
-            new Category("Muscle",          VehicleList.Muscle),
-            new Category("Sports",          VehicleList.Sports),
-            new Category("Sports Classics", VehicleList.Sportsclassics),
-            new Category("Super",           VehicleList.Super),
-            new Category("Off-Road",        VehicleList.Offroad),
-            new Category("Motorcycles",     VehicleList.Motorcycles),
-            new Category("Vans",            VehicleList.Vans),
-            new Category("Boats",           VehicleList.Boats),
-            new Category("Helicopters",     VehicleList.Helicopters),
-            new Category("Planes",          VehicleList.Planes),
-            new Category("Military",        VehicleList.Military),
-            new Category("Industrial",      VehicleList.Industrial),
-            new Category("Open Wheel",      VehicleList.Openwheel),
-            new Category("Emergency",       VehicleList.Emergency),
-            new Category("Cycles",          VehicleList.Cycles),
-            new Category("Service",         VehicleList.Service),
-            new Category("Special",         CombineModels(
-                VehicleList.Special, WorldAssetList.All)),
+            new Category("All",             "all"),
+            new Category("Favorites",       "all", true),
+            new Category("Compacts",        "compacts"),
+            new Category("Coupes",          "coupes"),
+            new Category("Sedans",          "sedans"),
+            new Category("SUVs",            "suvs"),
+            new Category("Muscle",          "muscle"),
+            new Category("Sports",          "sports"),
+            new Category("Sports Classics", "sportsclassics"),
+            new Category("Super",           "super"),
+            new Category("Off-Road",        "offroad"),
+            new Category("Motorcycles",     "motorcycles"),
+            new Category("Vans",            "vans"),
+            new Category("Boats",           "boats"),
+            new Category("Helicopters",     "helicopters"),
+            new Category("Planes",          "planes"),
+            new Category("Military",        "military"),
+            new Category("Industrial",      "industrial"),
+            new Category("Open Wheel",      "openwheel"),
+            new Category("Emergency",       "emergency"),
+            new Category("Cycles",          "cycles"),
+            new Category("Service",         "service"),
+            new Category("Special",         "special"),
         };
-
-        private static string[] CombineModels(string[] first, string[] second)
-        {
-            string[] combined = new string[first.Length + second.Length];
-            Array.Copy(first, 0, combined, 0, first.Length);
-            Array.Copy(second, 0, combined, first.Length, second.Length);
-            return combined;
-        }
 
         private struct WeaponCategory
         {
@@ -315,6 +307,7 @@ namespace ALLIN1
         {
             if (_state == BrowserState.Closed)
             {
+                RuntimeVehicleCatalog.Refresh();
                 _helipadListAccessMode = false;
                 _harbourListAccessMode = false;
                 _state = BrowserState.Loading;
@@ -1019,8 +1012,8 @@ namespace ALLIN1
 
                 string className = WorldAssetList.IsWorldAsset(card.Model)
                     ? WorldAssetList.ClassName(card.Model)
-                    : VehicleList.ClassNames.ContainsKey(card.Model)
-                        ? VehicleList.ClassNames[card.Model] : "";
+                    : CategoryDisplayName(
+                        RuntimeVehicleCatalog.GetCategory(card.Model));
                 if (className.Length > 0)
                 {
                     GbayRenderer.DrawText(className, cx, top + topAreaH * 0.35f,
@@ -1355,7 +1348,7 @@ namespace ALLIN1
             if (!GarageVehicleTypePolicy.IsRegularGarageEligible(model))
                 return false;
             int maximumSizeTier = location == HARMONY_GARAGE_INDEX ? 2 : 1;
-            return VehicleList.GetSizeTier(model) <= maximumSizeTier;
+            return GarageManager.GetGarageSizeTier(model) <= maximumSizeTier;
         }
 
         private static int CurrentGarageLocation()
@@ -1370,6 +1363,8 @@ namespace ALLIN1
 
         private void ExecuteVehicleDelivery(int location)
         {
+            if (!_shop.ValidateVehiclePurchase(_pendingModel, _pendingPrice))
+                return;
             switch (location)
             {
                 case 1:
@@ -1405,6 +1400,15 @@ namespace ALLIN1
         private void OpenDeliveryConfirm(string model, int price)
         {
             bool worldAsset = WorldAssetList.IsWorldAsset(model);
+
+            if (!worldAsset && !RuntimeVehicleCatalog.IsModelAvailable(model))
+            {
+                GbayRenderer.PlayError();
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~That vehicle model is not available in this game installation.",
+                    3500);
+                return;
+            }
 
             // Check funds
             if ((!worldAsset || !_shop.IsWorldAssetOwned(model)) &&
@@ -1458,8 +1462,7 @@ namespace ALLIN1
                 GbayRenderer.ModalBg, GbayRenderer.CardBorderSel, 0.003f);
 
             // Title
-            string displayName = VehicleList.DisplayNames.ContainsKey(_pendingModel)
-                ? VehicleList.DisplayNames[_pendingModel] : _pendingModel;
+            string displayName = RuntimeVehicleCatalog.GetDisplayName(_pendingModel);
             GbayRenderer.DrawTitleBadge(displayName, BROWSER_CX,
                 modalTop + 0.029f, 0.32f, 0.045f, 0.35f,
                 GbayRenderer.FONT_CHALET);
@@ -1518,10 +1521,14 @@ namespace ALLIN1
                 bool specializedStorageRequired = i < HELIPAD_INDEX &&
                     GarageVehicleTypePolicy.RequiresSpecializedStorage(
                         _pendingModel);
+                bool hangarUnavailable = string.Equals(
+                    RuntimeVehicleCatalog.GetStorage(_pendingModel), "hangar",
+                    StringComparison.OrdinalIgnoreCase);
                 string status = yachtLocked ? "YACHT REQUIRED"
                     : yachtWrongType ? "YACHT HELIS ONLY"
                     : helipadWrongType ? "HELICOPTERS ONLY"
                     : harbourWrongType ? "BOATS ONLY"
+                    : hangarUnavailable ? "HANGAR UNAVAILABLE"
                     : specializedStorageRequired ? "SPECIAL STORAGE"
                     : !compatibleForRow ? "TOO LARGE"
                     : fullForRow ? $"FULL {usedForRow}/{capacityForRow}"
@@ -1596,7 +1603,11 @@ namespace ALLIN1
                         ? "~r~Los Santos Harbour accepts boats only."
                         : GarageVehicleTypePolicy.RequiresSpecializedStorage(
                             _pendingModel)
-                            ? "~r~Aircraft and boats require their specialized ALLIN1 storage location."
+                            ? string.Equals(RuntimeVehicleCatalog.GetStorage(
+                                  _pendingModel), "hangar",
+                                  StringComparison.OrdinalIgnoreCase)
+                                ? "~r~ALLIN1 does not have an aircraft hangar yet."
+                                : "~r~Aircraft and boats require their specialized ALLIN1 storage location."
                         : "~r~That vehicle is too large for the selected garage."
                     : "~r~The selected garage is full.", 3000);
             }
@@ -2808,33 +2819,33 @@ namespace ALLIN1
 
         private static Color GetCategoryColor(string model, bool bright)
         {
-            string cls = VehicleList.ClassNames.ContainsKey(model)
-                ? VehicleList.ClassNames[model] : "";
+            string cls = RuntimeVehicleCatalog.GetCategory(model);
 
             // Each class gets a distinct muted color for visual variety
             int r, g, b;
             switch (cls)
             {
-                case "Compacts":       r = 100; g = 170; b = 200; break;
-                case "Coupes":         r = 160; g = 140; b = 200; break;
-                case "Sedans":         r = 140; g = 160; b = 180; break;
-                case "Suvs":           r = 120; g = 170; b = 140; break;
-                case "Muscle":         r = 200; g = 140; b = 120; break;
-                case "Sportsclassics": r = 180; g = 160; b = 120; break;
-                case "Super":          r = 200; g = 120; b = 140; break;
-                case "Offroad":        r = 160; g = 150; b = 120; break;
-                case "Motorcycles":    r = 140; g = 140; b = 160; break;
-                case "Vans":           r = 150; g = 170; b = 160; break;
-                case "Boats":          r = 100; g = 160; b = 200; break;
-                case "Helicopters":    r = 140; g = 180; b = 200; break;
-                case "Planes":         r = 160; g = 190; b = 210; break;
-                case "Military":       r = 130; g = 150; b = 120; break;
-                case "Industrial":     r = 170; g = 160; b = 140; break;
-                case "Openwheel":      r = 200; g = 160; b = 100; break;
-                case "Emergency":      r = 200; g = 130; b = 130; break;
-                case "Cycles":         r = 130; g = 180; b = 150; break;
-                case "Service":        r = 160; g = 160; b = 160; break;
-                case "Special":        r = 180; g = 140; b = 180; break;
+                case "compacts":       r = 100; g = 170; b = 200; break;
+                case "coupes":         r = 160; g = 140; b = 200; break;
+                case "sedans":         r = 140; g = 160; b = 180; break;
+                case "suvs":           r = 120; g = 170; b = 140; break;
+                case "muscle":         r = 200; g = 140; b = 120; break;
+                case "sports":         r = 120; g = 175; b = 185; break;
+                case "sportsclassics": r = 180; g = 160; b = 120; break;
+                case "super":          r = 200; g = 120; b = 140; break;
+                case "offroad":        r = 160; g = 150; b = 120; break;
+                case "motorcycles":    r = 140; g = 140; b = 160; break;
+                case "vans":           r = 150; g = 170; b = 160; break;
+                case "boats":          r = 100; g = 160; b = 200; break;
+                case "helicopters":    r = 140; g = 180; b = 200; break;
+                case "planes":         r = 160; g = 190; b = 210; break;
+                case "military":       r = 130; g = 150; b = 120; break;
+                case "industrial":     r = 170; g = 160; b = 140; break;
+                case "openwheel":      r = 200; g = 160; b = 100; break;
+                case "emergency":      r = 200; g = 130; b = 130; break;
+                case "cycles":         r = 130; g = 180; b = 150; break;
+                case "service":        r = 160; g = 160; b = 160; break;
+                case "special":        r = 180; g = 140; b = 180; break;
                 default:               r = 180; g = 190; b = 185; break;
             }
 
@@ -2848,19 +2859,37 @@ namespace ALLIN1
             return Color.FromArgb(255, r, g, b);
         }
 
+        private static string CategoryDisplayName(string category)
+        {
+            switch ((category ?? "").ToLowerInvariant())
+            {
+                case "sportsclassics": return "Sports Classics";
+                case "offroad": return "Off-Road";
+                case "openwheel": return "Open Wheel";
+                case "suvs": return "SUVs";
+                default:
+                    if (string.IsNullOrWhiteSpace(category)) return "";
+                    return char.ToUpperInvariant(category[0]) +
+                        category.Substring(1).ToLowerInvariant();
+            }
+        }
+
         private void RebuildFilteredList()
         {
             _filtered.Clear();
 
             Category activeCategory = CATEGORIES[_activeCategoryIndex];
-            string[] models = activeCategory.Models;
+            IEnumerable<string> models = RuntimeVehicleCatalog.GetCategoryModels(
+                activeCategory.Key);
+            if (string.Equals(activeCategory.Key, "special",
+                    StringComparison.OrdinalIgnoreCase))
+                models = models.Concat(WorldAssetList.All);
             foreach (string model in models)
             {
                 bool worldAsset = WorldAssetList.IsWorldAsset(model);
                 string displayName = worldAsset
                     ? WorldAssetList.DisplayName(model)
-                    : VehicleList.DisplayNames.ContainsKey(model)
-                        ? VehicleList.DisplayNames[model] : model;
+                    : RuntimeVehicleCatalog.GetDisplayName(model);
                 bool owned = worldAsset
                     ? _shop.IsWorldAssetOwned(model)
                     : GarageManager.IsVehicleOwned(model);
@@ -2875,18 +2904,13 @@ namespace ALLIN1
 
                 // Split display name into manufacturer and vehicle name
                 string mfg = worldAsset
-                    ? WorldAssetList.Manufacturer(model) : "";
-                string name = displayName;
-                int spaceIdx = worldAsset ? -1 : displayName.IndexOf(' ');
-                if (spaceIdx > 0)
-                {
-                    mfg = displayName.Substring(0, spaceIdx);
-                    name = displayName.Substring(spaceIdx + 1);
-                }
+                    ? WorldAssetList.Manufacturer(model)
+                    : RuntimeVehicleCatalog.GetManufacturer(model);
+                string name = worldAsset
+                    ? displayName : RuntimeVehicleCatalog.GetName(model);
 
-                int price = worldAsset ? WorldAssetList.Price(model) : 0;
-                if (!worldAsset && VehicleList.Prices.ContainsKey(model))
-                    price = VehicleList.Prices[model];
+                int price = worldAsset ? WorldAssetList.Price(model)
+                    : RuntimeVehicleCatalog.GetPrice(model);
 
                 _filtered.Add(new VehicleCard
                 {

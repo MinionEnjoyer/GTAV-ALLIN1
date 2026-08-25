@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import logging
 import os
 import queue
@@ -27,7 +28,12 @@ from allin1.game_launcher import launch_gta
 from allin1.logging import setup_logging
 from allin1.manager import InstallationStatus, ModManager
 from allin1.mods import (
-    ModCatalog, ModIntegrationService, ModManifest, open_mod_package,
+    ModIntegrationService, ModManifest, default_mod_catalog, open_mod_package,
+)
+from allin1.launcher_handoff import (
+    LauncherHandoff,
+    consume_launcher_handoffs,
+    publish_launcher_handoff,
 )
 from allin1.customization_ui import CharacterCustomizationDialog
 from allin1.addon_sdk import AddonManifest, AddonSdkCatalog
@@ -44,6 +50,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
 WINDOWS_APP_ID = "MinionEnjoyer.GTAVALLIN1.Launcher"
 _INSTANCE_MUTEX: int | None = None
+PACKAGE_LIBRARY_WATCH_INTERVAL_MS = 2000
+LAUNCHER_HANDOFF_POLL_INTERVAL_MS = 500
 
 
 @dataclass(frozen=True)
@@ -143,7 +151,7 @@ def _focus_existing_window(title_prefix: str) -> bool:
     return True
 
 
-def _claim_single_instance() -> bool:
+def _claim_single_instance(handoff: LauncherHandoff | None = None) -> bool:
     """Keep launcher operations in one persistent main window."""
     global _INSTANCE_MUTEX
     if os.name != "nt":
@@ -159,6 +167,13 @@ def _claim_single_instance() -> bool:
         return True
     if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
         kernel32.CloseHandle(handle)
+        if handoff is not None:
+            try:
+                publish_launcher_handoff(handoff)
+            except (OSError, ValueError) as exc:
+                logging.getLogger("allin1.gui").warning(
+                    "Could not forward Launcher package request: %s", exc,
+                )
         _focus_existing_window("ALLIN1 Launcher")
         return False
     _INSTANCE_MUTEX = int(handle)
@@ -176,6 +191,18 @@ class QueueLogHandler(logging.Handler):
 
 def _operation_progress_text(label: str, percentage: int) -> str:
     return f"{label} - {max(0, min(100, int(percentage)))}%"
+
+
+def _supports_package_traffic_intent(manifest: ModManifest) -> bool:
+    """Return whether the package owns the typed, default-off traffic gate."""
+    extension = manifest.extension
+    if extension is None or "traffic.catalog" not in extension.capabilities:
+        return False
+    try:
+        setting = extension.setting("traffic_enabled")
+    except KeyError:
+        return False
+    return setting.setting_type == "boolean" and setting.default is False
 
 
 class ScrollableFrame(ttk.Frame):
@@ -208,6 +235,18 @@ class ScrollableFrame(ttk.Frame):
 
 
 class ManagerWindow:
+    NAVIGATION = (
+        ("setup", "Setup", "Ctrl+1"),
+        ("gameplay", "Gameplay", "Ctrl+2"),
+        ("content", "Content", "Ctrl+3"),
+        ("input", "Input", "Ctrl+4"),
+        ("mods", "Packages", "Ctrl+5"),
+        ("characters", "Characters", "Ctrl+6"),
+        ("sdk", "SDK Manager", "Ctrl+7"),
+        ("activity", "Activity", "Ctrl+8"),
+        ("help", "Help Center", "Ctrl+9"),
+    )
+
     def __init__(self, root: tk.Tk, manager: ModManager) -> None:
         self.root = root
         self.manager = manager
@@ -216,8 +255,10 @@ class ManagerWindow:
         self.busy = False
         self.launch_pending = False
         self.profiles = ProfileStore(manager.project_root / "profiles")
-        self.mod_catalog = ModCatalog(manager.project_root / "mods" / "catalog")
+        self.mod_catalog = default_mod_catalog(manager.project_root)
+        self._mod_catalog_fingerprint = self.mod_catalog.fingerprint()
         self.mod_manifests: dict[str, ModManifest] = {}
+        self.package_handoff_intents: dict[str, bool] = {}
         self.builtin_package_manifests: dict[str, ExtensionManifest] = {}
         self.builtin_package_entries: dict[str, dict[str, object]] = {}
         self.content_manifests: dict[str, ExtensionManifest] = {}
@@ -235,6 +276,7 @@ class ManagerWindow:
         self.mod_action_buttons: list[tk.Widget] = []
         self.current_status: InstallationStatus | None = None
         self.settings_dirty = False
+        self.sidebar_visible = tk.BooleanVar(self.root, value=True)
 
         root.title("ALLIN1 Launcher")
         root.geometry("1240x840")
@@ -294,7 +336,9 @@ class ManagerWindow:
         self.status_text = tk.StringVar(value="Checking installation…")
         self.status_headline = tk.StringVar(value="Checking installation…")
         self.status_detail = tk.StringVar(value="Inspecting the selected GTA V folder.")
-        self.version_text = tk.StringVar(value=f"Manager {__version__} · latest not checked")
+        self.version_text = tk.StringVar(
+            value=f"Launcher {__version__} · updates not checked",
+        )
         self.notice_text = tk.StringVar(value="Ready")
         self.operation_text = tk.StringVar(value="")
         self.profile_name = tk.StringVar(value="Full ALLIN1")
@@ -335,6 +379,12 @@ class ManagerWindow:
         handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
         logging.getLogger("allin1").addHandler(handler)
         self.root.after(100, self._drain_messages)
+        self.root.after(
+            LAUNCHER_HANDOFF_POLL_INTERVAL_MS, self._poll_launcher_handoffs,
+        )
+        self.root.after(
+            PACKAGE_LIBRARY_WATCH_INTERVAL_MS, self._watch_package_library,
+        )
         self.refresh()
 
     def _apply_window_branding(self) -> None:
@@ -443,21 +493,20 @@ class ManagerWindow:
         menu.add_cascade(label="SDK", menu=sdk_menu)
 
         view_menu = tk.Menu(menu, tearoff=False)
-        for index, (key, label) in enumerate((
-            ("setup", "Setup"),
-            ("gameplay", "Gameplay"),
-            ("content", "Content"),
-            ("input", "Input"),
-            ("mods", "Packages"),
-            ("characters", "Characters"),
-            ("sdk", "SDK Manager"),
-            ("activity", "Activity"),
-            ("help", "Help Center"),
-        ), start=1):
+        for key, label, shortcut in self.NAVIGATION:
             view_menu.add_command(
-                label=label, accelerator=f"Ctrl+{index}",
+                label=label, accelerator=shortcut,
                 command=lambda selected=key: self._select_workspace(selected),
             )
+        view_menu.add_separator()
+        view_menu.add_checkbutton(
+            label="Show workspace sidebar", accelerator="Ctrl+B",
+            variable=self.sidebar_visible, onvalue=True, offvalue=False,
+            command=lambda: self._set_sidebar_visible(
+                self.sidebar_visible.get(),
+            ),
+        )
+        self.sidebar_visible.set(True)
         menu.add_cascade(label="View", menu=view_menu)
 
         help_menu = tk.Menu(menu, tearoff=False)
@@ -478,6 +527,8 @@ class ManagerWindow:
             self._ensure_character_workspace()
         elif key == "sdk":
             self._ensure_sdk_workspace()
+        elif key == "mods" and hasattr(self, "mod_tree"):
+            self._refresh_mods_if_changed()
         pages[key].tkraise()
         self.current_workspace = key
         for name, button in self.workspace_buttons.items():
@@ -485,24 +536,122 @@ class ManagerWindow:
                 style="NavSelected.TButton" if name == key else "Nav.TButton",
             )
 
+    def _refresh_mods_if_changed(self) -> bool:
+        """Refresh package rows only when the bounded catalog snapshot changed."""
+        fingerprint = self.mod_catalog.fingerprint()
+        if fingerprint == self._mod_catalog_fingerprint:
+            return False
+        self.refresh_mods()
+        return True
+
+    def _watch_package_library(self) -> None:
+        """Watch lazily while Packages is visible; never hash package payloads."""
+        if getattr(self, "current_workspace", None) == "mods":
+            self._refresh_mods_if_changed()
+        self.root.after(
+            PACKAGE_LIBRARY_WATCH_INTERVAL_MS, self._watch_package_library,
+        )
+
+    def _show_launcher_handoff(self, handoff: LauncherHandoff) -> None:
+        """Reveal a discovered package without granting any mutation authority."""
+        self._select_workspace("mods")
+        # A request may arrive just after an atomic Quick Import publish. Refresh
+        # once before resolving the ID; payload hashing remains deferred.
+        self._refresh_mods_if_changed()
+        package_id = handoff.package_id
+        if package_id is not None:
+            if package_id in self.mod_manifests and self.mod_tree.exists(package_id):
+                if handoff.traffic is not None:
+                    self.package_handoff_intents[package_id] = handoff.traffic
+                self.mod_tree.selection_set(package_id)
+                self.mod_tree.focus(package_id)
+                self.mod_tree.see(package_id)
+                self._show_mod_details()
+                traffic_note = ""
+                if handoff.traffic is True:
+                    traffic_note = (
+                        " · traffic requested"
+                        if _supports_package_traffic_intent(
+                            self.mod_manifests[package_id]
+                        )
+                        else " · traffic is not supported by this package"
+                    )
+                elif handoff.traffic is False:
+                    traffic_note = " · traffic will remain off"
+                self.notice_text.set(
+                    "Package ready to review · choose Install / update to continue"
+                    + traffic_note,
+                )
+            else:
+                self.mod_details.set(
+                    f"Package '{package_id}' is not in the shared package library. "
+                    "Prepare it in Quick Import, then try again.",
+                )
+                self.notice_text.set("Requested package was not found")
+        self.root.deiconify()
+        self.root.lift()
+        self.root.after_idle(self.root.focus_force)
+
+    def _poll_launcher_handoffs(self) -> None:
+        for handoff in consume_launcher_handoffs():
+            self._show_launcher_handoff(handoff)
+        self.root.after(
+            LAUNCHER_HANDOFF_POLL_INTERVAL_MS, self._poll_launcher_handoffs,
+        )
+
+    def _set_sidebar_visible(self, visible: bool) -> str:
+        """Fold the workspace list away without changing the current page."""
+        self.sidebar_visible.set(bool(visible))
+        if visible:
+            if not self.workspace_sidebar.winfo_manager():
+                self.workspace_sidebar.pack(
+                    side="left", fill="y", before=self.sidebar_toggle_rail,
+                )
+            self.sidebar_toggle_button.configure(
+                text="<", command=lambda: self._set_sidebar_visible(False),
+            )
+        else:
+            self.workspace_sidebar.pack_forget()
+            self.sidebar_toggle_button.configure(
+                text=">", command=lambda: self._set_sidebar_visible(True),
+            )
+        return "break"
+
+    def _toggle_sidebar(self, _event: object | None = None) -> str:
+        return self._set_sidebar_visible(not self.sidebar_visible.get())
+
+    def _cycle_workspace(
+        self, _event: object | None = None, direction: int = 1,
+    ) -> str:
+        keys = [key for key, _label, _shortcut in self.NAVIGATION]
+        current = getattr(self, "current_workspace", keys[0])
+        index = keys.index(current) if current in keys else 0
+        self._select_workspace(keys[(index + direction) % len(keys)])
+        return "break"
+
     def _build(self) -> None:
         green, dark_green, body_bg = "#2d9c50", "#1f7f42", "#f4f7f5"
         self.root.configure(background=body_bg)
+        self.root.option_add("*tearOff", False)
         style = ttk.Style(self.root)
         if "clam" in style.theme_names():
             style.theme_use("clam")
         style.configure(".", font=("Segoe UI", 10), foreground="#173d32")
         style.configure("TFrame", background=body_bg)
-        style.configure("TLabel", background=body_bg, foreground="#1e1e23")
+        style.configure("TLabel", background=body_bg, foreground="#24332d")
         style.configure("TButton", padding=(11, 7))
-        style.configure("TEntry", padding=(6, 5))
-        style.configure("TCombobox", padding=(5, 4))
+        style.configure("TEntry", padding=(7, 6))
+        style.configure("TCombobox", padding=(6, 5))
         style.configure("TCheckbutton", padding=(0, 2))
         style.configure("Surface.TFrame", background="#ffffff")
-        style.configure("TLabelframe", background="#ffffff", bordercolor="#d2dcd7")
-        style.configure("TLabelframe.Label", background=body_bg, foreground=green,
-                        font=("Segoe UI Semibold", 11))
-        style.configure("PageTitle.TLabel", font=("Segoe UI Semibold", 15),
+        style.configure(
+            "Card.TFrame", background="#ffffff", borderwidth=1,
+            relief="solid",
+        )
+        style.configure("TLabelframe", background="#ffffff", bordercolor="#d4ddd9")
+        style.configure("TLabelframe.Label", background=body_bg, foreground=dark_green,
+                        font=("Segoe UI Semibold", 10))
+        style.configure("PageTitle.TLabel", font=("Segoe UI Semibold", 17),
                         foreground="#173d32")
         style.configure("PageIntro.TLabel", foreground="#52635c")
         style.configure("Section.TLabel", font=("Segoe UI Semibold", 11),
@@ -510,101 +659,162 @@ class ManagerWindow:
         style.configure("FieldLabel.TLabel", font=("Segoe UI Semibold", 9),
                         foreground="#52635c")
         style.configure("Accent.TButton", background=green, foreground="white",
-                        font=("Segoe UI", 10, "bold"), padding=(12, 7))
+                        font=("Segoe UI Semibold", 10), padding=(13, 8))
         style.map("Accent.TButton", background=[("active", dark_green),
-                                                ("disabled", "#9bc8aa")],
-                  foreground=[("disabled", "#edf7f0")])
+                                                ("disabled", "#c8d4cc")],
+                  foreground=[("disabled", "#66756e")])
         style.configure("Quiet.TButton", padding=(10, 7))
-        style.configure("Danger.TButton", foreground="#9a3412", padding=(10, 7))
+        style.configure(
+            "Danger.TButton", background="#fff0ed", foreground="#a43a2b",
+            padding=(10, 7), font=("Segoe UI Semibold", 10),
+        )
+        style.map(
+            "Danger.TButton",
+            background=[("active", "#ffe2dc"), ("disabled", "#f1f1f1")],
+            foreground=[("disabled", "#8b9691")],
+        )
         style.configure("Nav.TButton", anchor="w", padding=(16, 11), relief="flat",
                         background="#eef3f0", foreground="#3c5048")
-        style.map("Nav.TButton", background=[("active", "#e2ebe6")])
+        style.map(
+            "Nav.TButton",
+            background=[("active", "#e2ebe6"), ("focus", "#e2ebe6")],
+            foreground=[("disabled", "#84928c")],
+        )
         style.configure("NavSelected.TButton", anchor="w", padding=(16, 11),
                         relief="flat", background="#dcefe3", foreground="#176b36",
                         font=("Segoe UI Semibold", 10))
-        style.map("NavSelected.TButton", background=[("active", "#d2e8da")])
+        style.map(
+            "NavSelected.TButton",
+            background=[("active", "#d2e8da"), ("focus", "#c9e4d3")],
+        )
         style.configure("Success.Status.TLabel", font=("Segoe UI Semibold", 15),
                         foreground="#18753a")
         style.configure("Warning.Status.TLabel", font=("Segoe UI Semibold", 15),
                         foreground="#9a6700")
         style.configure("Error.Status.TLabel", font=("Segoe UI Semibold", 15),
                         foreground="#b42318")
+        style.configure("Muted.TLabel", foreground="#52635c")
+        style.configure(
+            "Link.TButton", relief="flat", borderwidth=0, padding=(4, 3),
+            background=body_bg, foreground="#176b36",
+            font=("Segoe UI Semibold", 9, "underline"),
+        )
+        style.map(
+            "Link.TButton",
+            foreground=[("active", "#0e5228"), ("focus", "#0e5228")],
+            background=[("active", "#e2ebe6"), ("focus", "#e2ebe6")],
+        )
+        style.configure(
+            "WarningPanel.TFrame", background="#fff8e8",
+            borderwidth=1, relief="solid",
+        )
+        style.configure(
+            "WarningPanel.TLabel", background="#fff8e8", foreground="#714b00",
+        )
         style.configure("TNotebook", background=body_bg, borderwidth=0)
-        style.configure("TNotebook.Tab", font=("Segoe UI Semibold", 10), padding=(18, 9),
+        style.configure("TNotebook.Tab", font=("Segoe UI Semibold", 10), padding=(10, 6),
                         foreground="#646e69")
-        style.map("TNotebook.Tab", background=[("selected", "#ffffff")],
+        style.map("TNotebook.Tab", background=[("selected", "#ffffff"),
+                                                ("active", "#e6efe9")],
                   foreground=[("selected", green)])
         style.configure("Treeview", rowheight=28, font=("Segoe UI", 10),
                         background="#ffffff", fieldbackground="#ffffff")
         style.configure("Treeview.Heading", font=("Segoe UI Semibold", 10),
                         padding=(6, 6), foreground="#26332e")
+        style.map(
+            "Treeview", background=[("selected", "#176b36")],
+            foreground=[("selected", "#ffffff")],
+        )
         self._build_application_menu()
 
-        outer = ttk.Frame(self.root, padding=(16, 14, 16, 12))
+        outer = ttk.Frame(self.root, padding=(12, 9, 12, 10))
         outer.pack(fill="both", expand=True)
         outer.columnconfigure(0, weight=1)
         outer.rowconfigure(1, weight=1)
 
-        banner = tk.Frame(outer, background=dark_green, padx=16, pady=10)
-        banner.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        header = ttk.Frame(outer)
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         try:
             with Image.open(ASSET_DIR / "ALLIN1.png") as source:
                 logo = source.convert("RGBA")
-                logo.thumbnail((145, 82), Image.Resampling.LANCZOS)
+                logo.thumbnail((180, 88), Image.Resampling.LANCZOS)
             self._banner_logo = ImageTk.PhotoImage(logo)
-            tk.Label(banner, image=self._banner_logo, background=dark_green,
-                     borderwidth=0).pack(side="left", padx=(0, 16))
+            ttk.Label(header, image=self._banner_logo).pack(
+                side="left", padx=(0, 14), anchor="center",
+            )
         except (OSError, tk.TclError):
             self._banner_logo = None
 
-        banner_text = tk.Frame(banner, background=dark_green)
-        banner_text.pack(side="left", fill="x", expand=True)
-        tk.Label(banner_text, text="ALLIN1 · GTA V LAUNCHER", background=dark_green,
-                 foreground="white", font=("Segoe UI Semibold", 20)).pack(anchor="w")
-        tk.Label(
-            banner_text,
-            text=(
-                "Player workspace for setup, gameplay, packages, characters, "
-                "diagnostics, recovery, and Story Mode launch."
-            ),
-            background=dark_green, foreground="#d2ead9", font=("Segoe UI", 10),
-        ).pack(anchor="w", pady=(3, 0))
-
-        banner_actions = tk.Frame(banner, background=dark_green)
-        banner_actions.pack(side="right", padx=(18, 4), fill="y")
-        tk.Label(
-            banner_actions,
-            text=f"v{__version__}",
-            background="#176b36",
-            foreground="white",
-            font=("Segoe UI Semibold", 10),
-            padx=12,
-            pady=5,
-        ).pack(anchor="e")
-        support = tk.Label(
-            banner_actions, text="Support ALLIN1 ↗", background=dark_green,
-            foreground="#f3fff6", cursor="hand2",
-            font=("Segoe UI Semibold", 10, "underline"),
+        header_actions = ttk.Frame(header)
+        header_actions.pack(side="right", padx=(18, 4), fill="y")
+        self.version_badge = tk.Label(
+            header_actions, text=f"v{__version__}",
+            background="#176b36", foreground="white",
+            font=("Segoe UI Semibold", 10), padx=12, pady=5,
         )
-        support.pack(anchor="e", pady=(10, 0))
-        support.bind(
-            "<Button-1>",
-            lambda _event: webbrowser.open(
+        self.version_badge.pack(anchor="e")
+        self.support_button = ttk.Button(
+            header_actions, text="Support ALLIN1 ↗", style="Link.TButton",
+            cursor="hand2", command=lambda: webbrowser.open(
                 "https://buymeacoffee.com/minionenjoyer"
             ),
         )
+        self.support_button.pack(anchor="e", pady=(10, 0))
+
+        header_text = ttk.Frame(header)
+        header_text.pack(side="left", fill="x", expand=True, anchor="center")
+        ttk.Label(
+            header_text, text="ALLIN1 · GTA V Launcher",
+            font=("Segoe UI Semibold", 18), foreground="#173d32",
+        ).pack(anchor="w")
+        ttk.Label(
+            header_text,
+            text=(
+                "Set up Story Mode, manage content, configure controls, and "
+                "launch the game from one place."
+            ),
+            wraplength=760, justify="left",
+        ).pack(anchor="w", pady=(3, 0))
+
         shell = ttk.Frame(outer)
         shell.grid(row=1, column=0, sticky="nsew")
-        sidebar = ttk.Frame(shell, style="Surface.TFrame", padding=(8, 12))
-        sidebar.pack(side="left", fill="y", padx=(0, 12))
+        self.navigation_shell = ttk.Frame(shell)
+        self.navigation_shell.pack(side="left", fill="y")
+        sidebar = ttk.Frame(
+            self.navigation_shell, style="Surface.TFrame", padding=(8, 12),
+        )
+        self.workspace_sidebar = sidebar
+        sidebar.pack(side="left", fill="y")
+        self.sidebar_toggle_rail = tk.Frame(
+            self.navigation_shell, width=16, background="#d5ded9",
+            highlightthickness=0, borderwidth=0,
+        )
+        self.sidebar_toggle_rail.pack(side="left", fill="y", padx=(0, 12))
+        self.sidebar_toggle_rail.pack_propagate(False)
+        tk.Frame(
+            self.sidebar_toggle_rail, width=1, background="#aebdb5",
+            highlightthickness=0, borderwidth=0,
+        ).place(relx=0.5, y=0, relheight=1, anchor="n")
+        self.sidebar_toggle_button = tk.Button(
+            self.sidebar_toggle_rail, text="<",
+            background=dark_green, foreground="#ffffff",
+            activebackground="#176b36", activeforeground="#ffffff",
+            relief="flat", borderwidth=0, highlightthickness=0,
+            padx=0, pady=0, font=("Segoe UI Semibold", 9), cursor="hand2",
+            command=lambda: self._set_sidebar_visible(False),
+        )
+        self.sidebar_toggle_button.place(
+            relx=0.5, rely=0.5, anchor="center", width=16, height=30,
+        )
         ttk.Label(
-            sidebar, text="WORKSPACES", style="FieldLabel.TLabel",
+            sidebar, text="PLAYER WORKSPACES", style="FieldLabel.TLabel",
             background="#ffffff",
-        ).pack(anchor="w", padx=10, pady=(0, 6))
+        ).pack(anchor="w", padx=10, pady=(0, 7))
         workspace = ttk.Frame(shell)
         workspace.pack(side="left", fill="both", expand=True)
         workspace.rowconfigure(0, weight=1)
         workspace.columnconfigure(0, weight=1)
+        workspace.grid_propagate(False)
 
         home_view = ScrollableFrame(workspace, body_bg)
         gameplay_view = ScrollableFrame(workspace, body_bg)
@@ -630,17 +840,7 @@ class ManagerWindow:
         self.sdk_page = sdk
         self.help_page = help_page
         self.workspace_buttons: dict[str, ttk.Button] = {}
-        for key, label in (
-            ("setup", "Setup"),
-            ("gameplay", "Gameplay"),
-            ("content", "Content"),
-            ("input", "Input"),
-            ("mods", "Packages"),
-            ("characters", "Characters"),
-            ("sdk", "SDK Manager"),
-            ("activity", "Activity"),
-            ("help", "Help Center"),
-        ):
+        for key, label, shortcut in self.NAVIGATION:
             page = self.workspace_pages[key]
             page.grid(row=0, column=0, sticky="nsew")
             button = ttk.Button(
@@ -650,11 +850,19 @@ class ManagerWindow:
             )
             button.pack(fill="x", pady=1)
             self.workspace_buttons[key] = button
-        for index, key in enumerate(self.workspace_pages):
+            key_name = shortcut.removeprefix("Ctrl+").casefold()
             self.root.bind(
-                f"<Control-Key-{index + 1}>",
-                lambda _event, selected=key: self._select_workspace(selected),
+                f"<Control-Key-{key_name}>",
+                lambda _event, selected=key: (
+                    self._select_workspace(selected), "break"
+                )[1],
             )
+        self.root.bind("<Control-b>", self._toggle_sidebar)
+        self.root.bind("<Control-Tab>", self._cycle_workspace)
+        self.root.bind(
+            "<Control-Shift-Tab>",
+            lambda event: self._cycle_workspace(event, -1),
+        )
         self.current_workspace = "setup"
         self.help_workspace = HelpCenterDialog(
             help_page, initial_topic="getting-started", embedded=True,
@@ -668,27 +876,27 @@ class ManagerWindow:
 
         self._page_intro(
             home, "Game setup",
-            "Check dependencies, choose a profile, repair the installation, and launch Story Mode.",
+            "Choose your game folder, check the installation, and get ready to play.",
         )
         self._page_intro(
             gameplay, "Gameplay systems",
-            "Configure the launcher host, interface, recovery, and compatibility behavior.",
+            "Choose launcher-wide recovery, preview, and logging options.",
         )
         self._page_intro(
-            content_page, "Installed content systems",
-            "Review systems contributed by official and third-party packages, then configure them without adding new launcher windows.",
+            content_page, "Content",
+            "See what each installed content pack adds and change its settings.",
         )
         self._page_intro(
-            controls_page, "Input & filtering",
-            "Set keyboard shortcuts, controller bindings, and vehicle catalog filters.",
+            controls_page, "Controls",
+            "Set keyboard shortcuts, controller buttons, and vehicle filters.",
         )
         self._page_intro(
-            mods_page, "Packages & authoring",
-            "Install and manage validated optional content. Developer tooling lives in the separate ALLIN1 SDK.",
+            mods_page, "Packages",
+            "Add, update, enable, or remove optional Story Mode packages.",
         )
         self._page_intro(
-            activity, "Activity & diagnostics",
-            "Review launcher operations and copy useful details when troubleshooting.",
+            activity, "Activity",
+            "Review launcher work and copy useful details when something goes wrong.",
         )
 
         profiles = ttk.LabelFrame(home, text="Configuration profile", padding=12)
@@ -760,9 +968,8 @@ class ManagerWindow:
         ttk.Label(
             content_library,
             text=(
-                "ALLIN1 Online Content is the official gameplay pack. Other packages can "
-                "add their own typed settings, runtime systems, and GBAY routes through "
-                "the same versioned API. Executable packages still require explicit install approval."
+                "ALLIN1 Online Content is the main gameplay pack. Other installed "
+                "packages can add settings and features here."
             ),
             wraplength=900, justify="left",
         ).pack(fill="x", anchor="w", pady=(0, 10))
@@ -915,18 +1122,29 @@ class ManagerWindow:
         mod_library.pack(fill="x", pady=(0, 12))
         ttk.Label(
             mod_library,
-            text=("Install user-supplied ASI, script, RPF, and config/data packages from a "
-                  "validated mod.toml manifest. ALLIN1 keeps a receipt and backs up files it replaces."),
+            text=(
+                "Install validated Story Mode packages. ALLIN1 records what each "
+                "package changes and backs up files it replaces."
+            ),
             wraplength=790,
             justify="left",
         ).pack(fill="x", anchor="w", pady=(0, 10))
+        trust_panel = ttk.Frame(
+            mod_library, style="WarningPanel.TFrame", padding=(10, 8),
+        )
+        trust_panel.pack(fill="x", pady=(0, 10))
         ttk.Label(
-            mod_library,
-            text="Only install mods you trust. Optional mods are intended for Story Mode and may require ScriptHookV, ScriptHookVDotNet, or OpenRPF.",
-            foreground="#9a3412",
-            wraplength=790,
-            justify="left",
-        ).pack(fill="x", anchor="w", pady=(0, 10))
+            trust_panel, text="Before you install", style="WarningPanel.TLabel",
+            font=("Segoe UI Semibold", 9),
+        ).pack(anchor="w")
+        ttk.Label(
+            trust_panel,
+            text=(
+                "Only use packages you trust. Some packages also need ScriptHookV, "
+                "ScriptHookVDotNet, or OpenRPF."
+            ),
+            style="WarningPanel.TLabel", wraplength=790, justify="left",
+        ).pack(fill="x", anchor="w", pady=(2, 0))
 
         tree_frame = ttk.Frame(mod_library)
         tree_frame.pack(fill="both", expand=True)
@@ -957,32 +1175,30 @@ class ManagerWindow:
         ttk.Label(mod_library, textvariable=self.mod_details, wraplength=790,
                   justify="left").pack(fill="x", anchor="w", pady=(10, 0))
 
-        authoring_actions = ttk.Frame(mods_page)
-        authoring_actions.pack(fill="x", pady=(0, 8), before=mod_library)
+        package_toolbar = ttk.Frame(mods_page)
+        package_toolbar.pack(fill="x", pady=(0, 10), before=mod_library)
         add_package_button = ttk.Button(
-            authoring_actions, text="Add package…", command=self.import_mod_package,
+            package_toolbar, text="Add package…", command=self.import_mod_package,
             style="Accent.TButton",
         )
         add_package_button.pack(side="left")
         self.mod_action_buttons.append(add_package_button)
-        library_menu = tk.Menu(authoring_actions, tearoff=False)
+        library_menu = tk.Menu(package_toolbar, tearoff=False)
         library_menu.add_command(label="Refresh package library", command=self.refresh_mods)
         library_menu.add_separator()
         library_menu.add_command(label="Open ALLIN1 SDK…", command=self.open_addon_sdk)
         library_menu.add_command(label="Install / Manage SDK…", command=self.manage_addon_sdk)
         library_button = ttk.Menubutton(
-            authoring_actions, text="Library options", menu=library_menu,
+            package_toolbar, text="Library options", menu=library_menu,
         )
         library_button.pack(side="left", padx=(8, 0))
         self.mod_action_buttons.append(library_button)
 
-        package_actions = ttk.Frame(mods_page)
-        package_actions.pack(fill="x", pady=(0, 12), before=mod_library)
-        ttk.Label(
-            package_actions,
-            text="Select a package, then choose an action.", foreground="#52635c",
-        ).pack(side="left")
-        package_menu = tk.Menu(package_actions, tearoff=False)
+        package_menu = tk.Menu(
+            package_toolbar, tearoff=False,
+            postcommand=self._prepare_package_action_menu,
+        )
+        self.package_action_menu = package_menu
         package_menu.add_command(label="Install / update", command=self.install_selected_mod)
         package_menu.add_separator()
         package_menu.add_command(label="Enable", command=lambda: self.toggle_selected_mod(True))
@@ -990,26 +1206,45 @@ class ManagerWindow:
         package_menu.add_separator()
         package_menu.add_command(label="Uninstall…", command=self.uninstall_selected_mod)
         package_button = ttk.Menubutton(
-            package_actions, text="Package actions", menu=package_menu,
+            package_toolbar, text="Selected package", menu=package_menu,
         )
         package_button.pack(side="right")
         self.mod_action_buttons.append(package_button)
+        ttk.Label(
+            package_toolbar, text="Choose a package below to manage it.",
+            style="Muted.TLabel",
+        ).pack(side="right", padx=(12, 8))
 
         ttk.Label(
             mods_page,
-            text=("Package authors: place catalog packages under mods/catalog/<mod-id>/ with "
-                  "a mod.toml and payload files. See mods/examples for safe starter manifests."),
-            foreground="#3f6659",
+            text=(
+                "Want to build or inspect a package? Open the ALLIN1 SDK from "
+                "Library options."
+            ),
+            style="Muted.TLabel",
             wraplength=790,
             justify="left",
         ).pack(fill="x", anchor="w")
 
-        state = ttk.LabelFrame(home, text="Installation status", padding=14)
-        state.pack(fill="x", before=profiles, pady=(0, 10))
+        state_shell = ttk.Frame(home, style="Card.TFrame")
+        state_shell.pack(fill="x", before=profiles, pady=(0, 10))
+        self.status_accent = tk.Frame(
+            state_shell, width=5, background="#d09a22",
+            highlightthickness=0, borderwidth=0,
+        )
+        self.status_accent.pack(side="left", fill="y")
+        self.status_accent.pack_propagate(False)
+        state = ttk.Frame(state_shell, style="Surface.TFrame", padding=14)
+        state.pack(side="left", fill="both", expand=True)
+        ttk.Label(
+            state, text="INSTALLATION STATUS", style="FieldLabel.TLabel",
+            background="#ffffff",
+        ).pack(anchor="w", pady=(0, 4))
         self.status_headline_label = ttk.Label(
             state,
             textvariable=self.status_headline,
             style="Warning.Status.TLabel",
+            background="#ffffff",
         )
         self.status_headline_label.pack(anchor="w")
         ttk.Label(
@@ -1017,13 +1252,18 @@ class ManagerWindow:
             textvariable=self.status_detail,
             justify="left",
             wraplength=830,
+            background="#ffffff",
         ).pack(anchor="w", pady=(3, 10))
         ttk.Separator(state).pack(fill="x", pady=(0, 9))
-        ttk.Label(state, textvariable=self.status_text, justify="left",
-                  wraplength=830).pack(anchor="w")
+        ttk.Label(
+            state, textvariable=self.status_text, justify="left",
+            wraplength=830, background="#ffffff",
+        ).pack(anchor="w")
         ttk.Label(state, textvariable=self.version_text, justify="left",
-                  foreground="#3f6659").pack(anchor="w", pady=(5, 0))
-        status_actions = ttk.Frame(state)
+                  background="#ffffff", style="Muted.TLabel").pack(
+                      anchor="w", pady=(5, 0),
+                  )
+        status_actions = ttk.Frame(state, style="Surface.TFrame")
         status_actions.pack(fill="x", pady=(10, 0))
         self.install_repair_button = ttk.Button(
             status_actions, text="Install / Repair", command=self.install,
@@ -1062,26 +1302,31 @@ class ManagerWindow:
         self.log.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
 
-        footer = ttk.Frame(outer, padding=(0, 11, 0, 0))
-        footer.grid(row=2, column=0, sticky="ew")
-        footer_actions = ttk.Frame(footer)
+        footer = ttk.Frame(
+            outer, style="Surface.TFrame", padding=(10, 8),
+        )
+        footer.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        footer_actions = ttk.Frame(footer, style="Surface.TFrame")
         footer_actions.pack(side="right")
-        footer_left = ttk.Frame(footer)
+        footer_left = ttk.Frame(footer, style="Surface.TFrame")
         footer_left.pack(side="left", fill="x", expand=True)
         ttk.Label(
             footer_left,
             text="STORY MODE ONLY",
+            background="#ffffff",
             foreground="#9a3412",
             font=("Segoe UI Semibold", 9),
         ).pack(side="left")
-        ttk.Label(footer_left, text="  ·  ").pack(side="left")
+        ttk.Label(
+            footer_left, text="  ·  ", background="#ffffff",
+        ).pack(side="left")
         ttk.Label(footer_left, textvariable=self.notice_text,
-                  foreground="#3f6659").pack(side="left")
+                  background="#ffffff", foreground="#3f6659").pack(side="left")
         self.busy_progress = ttk.Progressbar(
             footer_left, mode="determinate", maximum=100, length=170,
         )
         ttk.Label(footer_left, textvariable=self.operation_text,
-                  foreground="#3f6659").pack(side="left")
+                  background="#ffffff", foreground="#3f6659").pack(side="left")
 
         game_action_menu = tk.Menu(footer_actions, tearoff=False)
         game_action_menu.add_command(label="Install / Repair…", command=self.install)
@@ -1103,12 +1348,13 @@ class ManagerWindow:
     @staticmethod
     def _page_intro(parent: tk.Misc, title: str, description: str) -> None:
         heading = ttk.Frame(parent)
-        heading.pack(fill="x", pady=(0, 12))
+        heading.pack(fill="x", pady=(0, 14))
         ttk.Label(heading, text=title, style="PageTitle.TLabel").pack(anchor="w")
         ttk.Label(
             heading, text=description, style="PageIntro.TLabel",
             wraplength=900, justify="left",
         ).pack(anchor="w", pady=(2, 0))
+        ttk.Separator(heading).pack(fill="x", pady=(11, 0))
 
     def _browse(self, edition: str | None = None) -> None:
         label = f"GTA V {edition.title()}" if edition else "GTA V"
@@ -1669,6 +1915,7 @@ class ManagerWindow:
                     manifest.version, "Built-in example",
                 ),
             )
+        self._mod_catalog_fingerprint = self.mod_catalog.fingerprint()
         if selected and self.mod_tree.exists(selected):
             self.mod_tree.selection_set(selected)
             self.mod_tree.focus(selected)
@@ -1684,6 +1931,41 @@ class ManagerWindow:
             return None
         selection = self.mod_tree.selection()
         return selection[0] if selection else None
+
+    def _prepare_package_action_menu(self) -> None:
+        """Disable package commands that cannot apply to the selection."""
+        mod_id = self._selected_mod_id()
+        builtin = mod_id in self.builtin_package_manifests
+        sdk_example = mod_id in self.sdk_manifests
+        available = mod_id in self.mod_manifests
+        installed = mod_id in self.installed_mod_ids
+        builtin_ready = builtin and mod_id in self.builtin_package_entries
+
+        if sdk_example:
+            install_label = "Open in ALLIN1 SDK"
+        elif builtin:
+            install_label = "Install / Repair"
+        else:
+            install_label = "Install / update"
+        self.package_action_menu.entryconfigure(0, label=install_label)
+        self.package_action_menu.entryconfigure(
+            0, state="normal" if available or builtin or sdk_example else "disabled",
+        )
+        state_change = installed or builtin_ready
+        self.package_action_menu.entryconfigure(
+            2, state="normal" if state_change else "disabled",
+        )
+        self.package_action_menu.entryconfigure(
+            3, state="normal" if state_change else "disabled",
+        )
+        self.package_action_menu.entryconfigure(
+            5,
+            state=(
+                "normal"
+                if installed and not builtin and not sdk_example
+                else "disabled"
+            ),
+        )
 
     def _show_mod_details(self, _event=None) -> None:
         mod_id = self._selected_mod_id()
@@ -1792,10 +2074,29 @@ class ManagerWindow:
         self._install_mod_manifest(manifest)
 
     def _install_mod_manifest(self, manifest: ModManifest) -> None:
+        handoff_intents = getattr(self, "package_handoff_intents", {})
+        traffic_intent = handoff_intents.get(manifest.mod_id)
+        supports_traffic = _supports_package_traffic_intent(manifest)
+        traffic_message = ""
+        if traffic_intent is True and supports_traffic:
+            traffic_message = (
+                "\n\nAfter installation, this package's eligible road vehicles "
+                "will be allowed in ambient traffic."
+            )
+        elif traffic_intent is False and supports_traffic:
+            traffic_message = (
+                "\n\nThis package's vehicles will remain disabled in ambient traffic."
+            )
+        elif traffic_intent is True:
+            traffic_message = (
+                "\n\nThe package does not expose a compatible traffic setting, so "
+                "ambient traffic will remain unchanged."
+            )
         if not messagebox.askyesno(
             "Install optional mod",
             f"Install {manifest.name} {manifest.version}?\n\n"
-            "Only continue if you trust this package and its source.",
+            "Only continue if you trust this package and its source."
+            f"{traffic_message}",
         ):
             return
         try:
@@ -1803,7 +2104,20 @@ class ManagerWindow:
         except (OSError, ValueError) as exc:
             messagebox.showerror("Game not found", str(exc))
             return
-        self._run(f"Installing {manifest.name}", lambda: service.install(manifest))
+        def install_with_preferences():
+            initial_settings = (
+                {"traffic_enabled": traffic_intent}
+                if traffic_intent is not None and supports_traffic
+                else None
+            )
+            if initial_settings is None:
+                result = service.install(manifest)
+            else:
+                result = service.install(manifest, initial_settings=initial_settings)
+            handoff_intents.pop(manifest.mod_id, None)
+            return result
+
+        self._run(f"Installing {manifest.name}", install_with_preferences)
 
     def toggle_selected_mod(self, enabled: bool) -> None:
         mod_id = self._selected_mod_id()
@@ -1895,18 +2209,24 @@ class ManagerWindow:
             "error": "Error.Status.TLabel",
         }[presentation.tone]
         self.status_headline_label.configure(style=style)
+        self.status_accent.configure(background={
+            "success": "#2d9c50",
+            "warning": "#d09a22",
+            "error": "#c94b3b",
+        }[presentation.tone])
         path = str(status.gta_path) if status.gta_path else "Not detected"
         mark = lambda value: "Installed" if value else "Missing"
         self.status_text.set(
             f"Game folder: {path}\n"
-            f"Edition: {status.edition}  ·  ALLIN1: {mark(status.mod_installed)}  ·  "
+            f"Edition: {status.edition}  ·  ALLIN1: {mark(status.mod_installed)}\n"
             f"ScriptHookV: {mark(status.scripthookv_installed)}  ·  "
-            f"ScriptHookVDotNet: {mark(status.shvdn_installed)}  ·  "
+            f"ScriptHookVDotNet: {mark(status.shvdn_installed)}\n"
             f"Preview loader: {status.rpf_loader_status}"
         )
         installed = status.installed_version or ("unknown" if status.mod_installed else "not installed")
         self.version_text.set(
-            f"Manager {status.manager_version} · Installed client {installed} · Update status not checked"
+            f"Launcher {status.manager_version} · Installed client {installed} · "
+            "updates not checked"
         )
         if not self.busy:
             self._set_actions(True)
@@ -1916,7 +2236,7 @@ class ManagerWindow:
 
     def check_for_updates(self) -> None:
         """Check releases from the persistent Setup workspace."""
-        self.version_text.set(f"Manager {__version__} · checking latest release…")
+        self.version_text.set(f"Launcher {__version__} · checking for updates…")
         self.update_button.configure(state="disabled")
 
         def worker() -> None:
@@ -2094,6 +2414,11 @@ class ManagerWindow:
         installed = shutil.which("allin1-sdk-gui")
         sdk_root = self.manager.project_root.parent / "ALLIN1-SDK"
         environment = os.environ.copy()
+        if getattr(sys, "frozen", False):
+            # Give the separately installed SDK a narrow, explicit route back
+            # to this exact Launcher build. The SDK may only use it to reveal a
+            # prepared package; normal user confirmation still owns install.
+            environment["ALLIN1_LAUNCHER_EXECUTABLE"] = sys.executable
         if managed.healthy and managed.executable is not None:
             command = [str(managed.executable)]
             working_directory = managed.root
@@ -2282,7 +2607,8 @@ class ManagerWindow:
                 state = "Update available" if release.update_available else "Up to date"
                 variable.set(f"{state}: latest release is {release.version}.")
                 self.version_text.set(
-                    f"Manager {__version__} · latest {release.version} · {state.lower()}"
+                    f"Launcher {__version__} · latest {release.version} · "
+                    f"{state.lower()}"
                 )
                 button.configure(state="normal", text="Open latest release",
                                  command=lambda url=release.url: webbrowser.open(url))
@@ -2371,13 +2697,38 @@ class ManagerWindow:
         self.log.configure(state="disabled")
 
 
-def main() -> None:
+def _parse_launcher_arguments(
+    arguments: list[str] | None = None,
+) -> LauncherHandoff | None:
+    """Parse the deliberately narrow external Launcher navigation contract."""
+    parser = argparse.ArgumentParser(prog="allin1-gui")
+    parser.add_argument("--workspace", choices=("packages",))
+    parser.add_argument("--package-id")
+    parser.add_argument("--traffic", choices=("on", "off"))
+    options = parser.parse_args(arguments)
+    if options.package_id and options.workspace != "packages":
+        parser.error("--package-id requires --workspace packages")
+    if options.traffic and not options.package_id:
+        parser.error("--traffic requires --package-id")
+    if options.workspace == "packages":
+        try:
+            traffic = None if options.traffic is None else options.traffic == "on"
+            return LauncherHandoff.create(options.package_id, traffic=traffic)
+        except ValueError as exc:
+            parser.error(str(exc))
+    return None
+
+
+def main(arguments: list[str] | None = None) -> None:
     setup_logging(PROJECT_ROOT)
     _register_windows_app()
-    if not _claim_single_instance():
+    handoff = _parse_launcher_arguments(arguments)
+    if not _claim_single_instance(handoff):
         return
     root = tk.Tk()
-    ManagerWindow(root, ModManager(PROJECT_ROOT))
+    window = ManagerWindow(root, ModManager(PROJECT_ROOT))
+    if handoff is not None:
+        root.after_idle(lambda: window._show_launcher_handoff(handoff))
     root.mainloop()
 
 

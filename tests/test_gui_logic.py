@@ -1,5 +1,7 @@
+import inspect
 import logging
 import queue
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -15,6 +17,107 @@ from allin1.manager import InstallationStatus
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_manager_window_uses_shared_project_and_quick_import_catalog() -> None:
+    initialization = inspect.getsource(ManagerWindow.__init__)
+    assert "self.mod_catalog = default_mod_catalog(manager.project_root)" in (
+        initialization
+    )
+
+
+def test_launcher_navigation_matches_the_embedded_workspace_shell() -> None:
+    assert ManagerWindow.NAVIGATION == (
+        ("setup", "Setup", "Ctrl+1"),
+        ("gameplay", "Gameplay", "Ctrl+2"),
+        ("content", "Content", "Ctrl+3"),
+        ("input", "Input", "Ctrl+4"),
+        ("mods", "Packages", "Ctrl+5"),
+        ("characters", "Characters", "Ctrl+6"),
+        ("sdk", "SDK Manager", "Ctrl+7"),
+        ("activity", "Activity", "Ctrl+8"),
+        ("help", "Help Center", "Ctrl+9"),
+    )
+    source = inspect.getsource(ManagerWindow._build)
+    assert 'text="PLAYER WORKSPACES"' in source
+    assert 'logo.thumbnail((180, 88)' in source
+    assert 'text="ALLIN1 · GTA V Launcher"' in source
+    assert 'text="Support ALLIN1 ↗"' in source
+    assert 'text="<"' in source
+    assert 'self.root.bind("<Control-b>"' in source
+    assert 'self.root.bind("<Control-Tab>"' in source
+    assert 'style="WarningPanel.TFrame"' in source
+    assert 'text="Add package…"' in source
+    assert 'text="Selected package"' in source
+    assert "typed settings" not in source
+    assert "versioned API" not in source
+
+
+def test_sidebar_toggle_preserves_the_active_workspace() -> None:
+    window = ManagerWindow.__new__(ManagerWindow)
+    window.sidebar_visible = Mock()
+    window.workspace_sidebar = Mock()
+    window.sidebar_toggle_rail = Mock()
+    window.sidebar_toggle_button = Mock()
+    window.current_workspace = "mods"
+
+    assert window._set_sidebar_visible(False) == "break"
+    window.sidebar_visible.set.assert_called_with(False)
+    window.workspace_sidebar.pack_forget.assert_called_once_with()
+    assert window.current_workspace == "mods"
+
+    window.workspace_sidebar.winfo_manager.return_value = ""
+    assert window._set_sidebar_visible(True) == "break"
+    window.workspace_sidebar.pack.assert_called_once_with(
+        side="left", fill="y", before=window.sidebar_toggle_rail,
+    )
+    assert window.current_workspace == "mods"
+
+
+def test_workspace_cycle_wraps_in_both_directions() -> None:
+    window = ManagerWindow.__new__(ManagerWindow)
+    window._select_workspace = Mock()
+    window.current_workspace = "help"
+
+    assert window._cycle_workspace() == "break"
+    window._select_workspace.assert_called_once_with("setup")
+
+    window._select_workspace.reset_mock()
+    window.current_workspace = "setup"
+    assert window._cycle_workspace(direction=-1) == "break"
+    window._select_workspace.assert_called_once_with("help")
+
+
+@pytest.mark.parametrize(
+    ("selected", "expected_label", "expected_states"),
+    [
+        (None, "Install / update", ("disabled", "disabled", "disabled", "disabled")),
+        ("available", "Install / update", ("normal", "disabled", "disabled", "disabled")),
+        ("installed", "Install / update", ("normal", "normal", "normal", "normal")),
+        ("builtin:item", "Install / Repair", ("normal", "normal", "normal", "disabled")),
+        ("sdk:item", "Open in ALLIN1 SDK", ("normal", "disabled", "disabled", "disabled")),
+    ],
+)
+def test_package_action_menu_exposes_only_valid_actions(
+    selected, expected_label, expected_states,
+) -> None:
+    window = ManagerWindow.__new__(ManagerWindow)
+    window._selected_mod_id = Mock(return_value=selected)
+    window.mod_manifests = {
+        "available": Mock(), "installed": Mock(),
+    }
+    window.installed_mod_ids = {"installed"}
+    window.builtin_package_manifests = {"builtin:item": Mock()}
+    window.builtin_package_entries = {"builtin:item": {"enabled": True}}
+    window.sdk_manifests = {"sdk:item": Mock()}
+    window.package_action_menu = Mock()
+
+    window._prepare_package_action_menu()
+
+    calls = window.package_action_menu.entryconfigure.call_args_list
+    assert calls[0].kwargs["label"] == expected_label
+    states = tuple(calls[index].kwargs["state"] for index in range(1, 5))
+    assert states == expected_states
 
 
 class Variable:
@@ -308,6 +411,29 @@ def test_launcher_prefers_managed_sdk_installation(tmp_path, monkeypatch):
     assert launched.call_args.args[0] == [str(executable)]
 
 
+def test_frozen_launcher_gives_sdk_explicit_navigation_route(tmp_path, monkeypatch):
+    window = ManagerWindow.__new__(ManagerWindow)
+    window.manager = SimpleNamespace(project_root=tmp_path / "ALLIN1")
+    window.sdk_install_root = tmp_path / "local" / "ALLIN1" / "SDK"
+    window._append_log = Mock()
+    executable = window.sdk_install_root / "ALLIN1-SDK-Desktop.exe"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"MZsdk")
+    (window.sdk_install_root / "allin1-sdk.exe").write_bytes(b"MZcli")
+    (window.sdk_install_root / "release.json").write_text(
+        '{"product":"ALLIN1-SDK","version":"0.5.4"}'
+    )
+    launched = Mock()
+    monkeypatch.setattr("allin1.gui.subprocess.Popen", launched)
+    monkeypatch.setattr("allin1.gui.shutil.which", lambda _name: None)
+    monkeypatch.setattr("allin1.gui.sys.frozen", True, raising=False)
+
+    window.open_addon_sdk()
+
+    environment = launched.call_args.kwargs["env"]
+    assert environment["ALLIN1_LAUNCHER_EXECUTABLE"] == sys.executable
+
+
 def test_repair_progress_text_clamps_percentages():
     assert _operation_progress_text("Repairing", -5) == "Repairing - 0%"
     assert _operation_progress_text("Repairing", 47) == "Repairing - 47%"
@@ -367,7 +493,7 @@ def test_content_workspace_renders_every_declared_system():
     package_call = window.content_tree.insert.call_args_list[0]
     assert package_call.kwargs["text"] == "ALLIN1 Online Content"
     assert package_call.kwargs["values"] == (
-        "Package", "0.5.4", "Install / Repair",
+        "Package", "0.5.5", "Install / Repair",
     )
 
 
@@ -393,7 +519,7 @@ def test_content_workspace_surfaces_registry_failure():
     assert window.content_registry_error == "registry is corrupt"
     package_call = window.content_tree.insert.call_args_list[0]
     assert package_call.kwargs["values"] == (
-        "Package", "0.5.4", "Registry error",
+        "Package", "0.5.5", "Registry error",
     )
 
 

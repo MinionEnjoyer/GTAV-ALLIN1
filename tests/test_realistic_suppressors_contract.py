@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import struct
 import zipfile
 from pathlib import Path
@@ -163,6 +164,78 @@ def test_realistic_suppressors_is_a_standalone_schema_v2_package() -> None:
     assert "realistic_suppressors" not in builtin_descriptor
     assert "suppressor_breakage" not in builtin_descriptor
     assert not (ROOT / "script" / "src" / "RealisticSuppressorController.cs").exists()
+
+
+def test_realistic_suppressors_declares_complete_workbench_relationships() -> None:
+    manifest = ModManifest.load(PACKAGE)
+    extension = manifest.extension
+    assert extension is not None
+    assert len(extension.workbench_weapon_enhancements) == 1
+
+    enhancement = extension.workbench_weapon_enhancements[0]
+    assert enhancement.enhancement_id == (
+        "realistic-suppressors.thermal-components"
+    )
+    assert enhancement.mode == "scripted_vanilla_components"
+    assert enhancement.script_entry_points == (
+        "RealisticSuppressors.RealisticSuppressorController",
+    )
+
+    component_names = {
+        "0x837445AA": "COMPONENT_AT_AR_SUPP",
+        "0xA73D4664": "COMPONENT_AT_AR_SUPP_02",
+        "0xC304849A": "COMPONENT_AT_PI_SUPP",
+        "0x65EA7EBB": "COMPONENT_AT_PI_SUPP_02",
+        "0xE608B35E": "COMPONENT_AT_SR_SUPP",
+        "0xAC42DF71": "COMPONENT_AT_SR_SUPP_03",
+        "0x9307D6FA": "COMPONENT_CERAMICPISTOL_SUPP",
+        "0x1E02B7E0": "COMPONENT_WM29_PISTOL_SUPP",
+    }
+    authored = {
+        (link.weapon_name, link.weapon_hash): (
+            link.component_name, link.component_hash,
+        )
+        for link in enhancement.weapon_components
+    }
+    assert len(authored) == 39
+    assert {
+        link.component_hash: link.component_name
+        for link in enhancement.weapon_components
+    } == component_names
+
+    policy = (PACKAGE / "src" / "SuppressorThermalPolicy.cs").read_text(
+        encoding="utf-8"
+    )
+    profiled = {
+        (match.group("weapon"), f'0x{match.group("weapon_hash")}'): (
+            component_names[f'0x{match.group("component_hash")}'],
+            f'0x{match.group("component_hash")}',
+        )
+        for match in re.finditer(
+            r'P\("(?P<weapon>WEAPON_[A-Z0-9_]+)",\s*'
+            r'0x(?P<weapon_hash>[0-9A-F]{8}),\s*'
+            r'0x(?P<component_hash>[0-9A-F]{8})',
+            policy,
+        )
+    }
+    assert authored == profiled
+
+    assert len(enhancement.visual_assets) == 1
+    progression = enhancement.visual_assets[0]
+    assert progression.dlc_pack == "rs_suppressor_heat"
+    assert progression.archive == "x64/models/cdimages/rs_suppressor_heat.rpf"
+    assert progression.families == ("ar", "ar02", "pi", "sr", "sr03")
+    assert progression.levels == 24
+    assert progression.model_pattern == (
+        "rs_suppressor_heat_{family}_{level:02d}.ydr"
+    )
+    assert progression.base_model_pattern == "rs_suppressor_heat_{family}.ydr"
+    assert progression.texture_dictionary == "rs_suppressor_heat.ytd"
+    assert progression.texture_pattern == (
+        "rs_suppressor_heat_gradient_{level:02d}"
+    )
+    assert progression.archetype_dictionary == "rs_suppressor_heat.ytyp"
+    assert progression.base_level_uses_unsuffixed is True
 
 
 def test_launcher_independent_build_and_oiv_are_separate_and_complete() -> None:

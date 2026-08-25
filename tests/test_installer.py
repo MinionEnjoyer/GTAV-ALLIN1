@@ -48,6 +48,33 @@ def test_resolve_gta_path_reports_failed_detection(monkeypatch):
         raise AssertionError("Expected failed auto-detection to raise")
 
 
+def test_content_registry_deploys_trusted_story_vehicle_catalog(tmp_path):
+    game = _game(tmp_path)
+    (game / "scripts").mkdir()
+
+    installer._deploy_content_registry(game, Config.default())
+
+    catalog_path = (
+        game / "scripts" / "ALLIN1" / "Catalogs" / "story-vehicles.json"
+    )
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    assert catalog["id"] == "story-vehicles"
+    assert len(catalog["vehicles"]) == 256
+    registry = json.loads(
+        (game / "scripts" / ".allin1" / "extensions" / "registry.json")
+        .read_text(encoding="utf-8")
+    )
+    online = next(
+        item for item in registry["extensions"]
+        if item["id"] == "allin1.online-content"
+    )
+    assert online["gbay"]["catalogs"] == [{
+        "id": "story-vehicles",
+        "kind": "vehicle",
+        "source": "scripts/ALLIN1/Catalogs/story-vehicles.json",
+    }]
+
+
 def test_deploy_script_copies_binaries_and_config(tmp_path, monkeypatch):
     project = tmp_path / "project"
     dist = project / "script" / "dist"
@@ -74,7 +101,7 @@ def test_deploy_script_copies_binaries_and_config(tmp_path, monkeypatch):
     assert (scripts / "LemonUI.SHVDN3.dll").read_bytes() == b"ui"
     assert (scripts / "ALLIN1.toml").exists()
     assert (scripts / "ALLIN1_vehicle_grounding.json").exists()
-    assert (scripts / "ALLIN1.version").read_text().strip() == "0.5.4"
+    assert (scripts / "ALLIN1.version").read_text().strip() == "0.5.5"
     assert not (scripts / "ALLIN1.ini").exists()
 
 
@@ -267,6 +294,12 @@ def test_uninstall_removes_owned_files_and_preserves_other_flags(tmp_path, monke
     scripts.mkdir()
     for name in ("ALLIN1.dll", "ALLIN1.toml", "ALLIN1_garage.json"):
         (scripts / name).touch()
+    story_catalog = scripts / "ALLIN1" / "Catalogs" / "story-vehicles.json"
+    story_catalog.parent.mkdir(parents=True)
+    story_catalog.write_text("{}", encoding="utf-8")
+    story_catalog.with_name(story_catalog.name + ".bak").write_text(
+        "{}", encoding="utf-8",
+    )
     (game / "commandline.txt").write_text("-windowed\n-nobattleye\n")
     config = Config.default()
     config.general.gta_path = str(game)
@@ -279,6 +312,8 @@ def test_uninstall_removes_owned_files_and_preserves_other_flags(tmp_path, monke
 
     assert not (scripts / "ALLIN1.dll").exists()
     assert not (scripts / "ALLIN1.toml").exists()
+    assert not story_catalog.exists()
+    assert not story_catalog.with_name(story_catalog.name + ".bak").exists()
     assert (game / "commandline.txt").read_text() == "-windowed\n"
     assert scripts / "ALLIN1.dll" in removed
     unpatch.assert_called_once_with(game)

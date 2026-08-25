@@ -1,4 +1,5 @@
 using ALLIN1;
+using GTA;
 using GTA.Math;
 using Xunit;
 
@@ -115,6 +116,107 @@ namespace ALLIN1.Tests
         {
             Assert.Equal(expected,
                 TrafficSpawner.IsInsideSafehouseGarageZone(new Vector3(x, y, z)));
+        }
+
+        [Theory]
+        [InlineData(false, false, false)]
+        [InlineData(false, true, false)]
+        [InlineData(true, false, false)]
+        [InlineData(true, true, true)]
+        public void Package_traffic_requires_item_and_package_opt_in(
+            bool itemEnabled, bool packageEnabled, bool expected)
+        {
+            Assert.Equal(expected, TrafficSpawner.IsPackageTrafficEnabled(
+                itemEnabled, packageEnabled));
+        }
+
+        [Fact]
+        public void Package_traffic_candidate_is_default_off_without_opt_in()
+        {
+            var decision = TrafficSpawner.EvaluatePackageTrafficCandidate(
+                false, "package_model", "sports",
+                true, true, VehicleClass.Sports, out _);
+
+            Assert.Equal(
+                TrafficSpawner.PackageTrafficCandidateDecision.TrafficDisabled,
+                decision);
+        }
+
+        [Theory]
+        [InlineData("compacts", VehicleClass.Compacts)]
+        [InlineData("coupes", VehicleClass.Coupes)]
+        [InlineData("sedans", VehicleClass.Sedans)]
+        [InlineData("suvs", VehicleClass.SUVs)]
+        [InlineData("muscle", VehicleClass.Muscle)]
+        [InlineData("sports", VehicleClass.Sports)]
+        [InlineData("sportsclassics", VehicleClass.SportsClassics)]
+        [InlineData("super", VehicleClass.Super)]
+        [InlineData("offroad", VehicleClass.OffRoad)]
+        [InlineData("motorcycles", VehicleClass.Motorcycles)]
+        [InlineData("vans", VehicleClass.Vans)]
+        public void Package_road_categories_map_to_their_exact_native_class(
+            string category, VehicleClass expected)
+        {
+            Assert.True(TrafficSpawner.TryMapPackageRoadCategory(
+                category, out VehicleClass actual));
+            Assert.Equal(expected, actual);
+        }
+
+        [Theory]
+        [InlineData("boats")]
+        [InlineData("helicopters")]
+        [InlineData("planes")]
+        [InlineData("openwheel")]
+        [InlineData("emergency")]
+        [InlineData("")]
+        public void Non_road_package_categories_are_rejected(string category)
+        {
+            var decision = TrafficSpawner.EvaluatePackageTrafficCandidate(
+                true, "package_model", category,
+                true, true, VehicleClass.Boats, out _);
+
+            Assert.Equal(
+                TrafficSpawner.PackageTrafficCandidateDecision
+                    .UnsupportedCategory,
+                decision);
+        }
+
+        [Fact]
+        public void Package_vehicle_class_must_match_its_declared_category()
+        {
+            var decision = TrafficSpawner.EvaluatePackageTrafficCandidate(
+                true, "package_model", "sports",
+                true, true, VehicleClass.Super, out VehicleClass declared);
+
+            Assert.Equal(VehicleClass.Sports, declared);
+            Assert.Equal(
+                TrafficSpawner.PackageTrafficCandidateDecision.ClassMismatch,
+                decision);
+        }
+
+        [Fact]
+        public void Unavailable_package_vehicle_is_rejected_before_pooling()
+        {
+            var decision = TrafficSpawner.EvaluatePackageTrafficCandidate(
+                true, "missing_addon_model", "sports",
+                false, true, VehicleClass.Sports, out _);
+
+            Assert.Equal(
+                TrafficSpawner.PackageTrafficCandidateDecision.ModelUnavailable,
+                decision);
+        }
+
+        [Fact]
+        public void Enabled_available_matching_package_vehicle_is_eligible()
+        {
+            var decision = TrafficSpawner.EvaluatePackageTrafficCandidate(
+                true, "package_model", "sports",
+                true, true, VehicleClass.Sports, out VehicleClass declared);
+
+            Assert.Equal(VehicleClass.Sports, declared);
+            Assert.Equal(
+                TrafficSpawner.PackageTrafficCandidateDecision.Eligible,
+                decision);
         }
     }
 }

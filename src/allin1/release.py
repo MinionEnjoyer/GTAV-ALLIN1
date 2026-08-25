@@ -18,6 +18,13 @@ from allin1 import __version__
 from allin1.updater import package_release
 
 
+PUBLIC_SMOKE_EXAMPLE_SOURCES = (
+    "docs/enhanced-smoke-rpf-port.md",
+    "script/src/EnhancedSmokeController.cs",
+    "script/src/SmokeGrenadeCatalog.cs",
+    "tools/RpfPatcher/Program.cs",
+)
+
 PUBLIC_ROOT_FILES = (
     "LICENSE",
     "README.md",
@@ -38,11 +45,8 @@ PUBLIC_ROOT_FILES = (
     "prices_vehicles.toml",
     "prices_weapons.toml",
     "mods/README.md",
-    "mods/realistic-suppressors/README.md",
-    "mods/realistic-suppressors/mod.toml",
-    "mods/realistic-suppressors/allin1.content.json",
-    "mods/realistic-suppressors/payload/RealisticSuppressors.dll",
     "sdk/examples/colored_smokes/addon.json",
+    *PUBLIC_SMOKE_EXAMPLE_SOURCES,
 )
 
 PUBLIC_TREE_RULES = {
@@ -124,6 +128,7 @@ def collect_public_files(root: Path, *, require_toolchain: bool = True) -> list[
 
 def _validate_public_path(relative: str) -> None:
     path = PurePosixPath(relative)
+    normalized = path.as_posix()
     lowered_parts = {part.lower() for part in path.parts}
     if path.is_absolute() or ".." in path.parts:
         raise ValueError(f"unsafe release path: {relative}")
@@ -131,10 +136,18 @@ def _validate_public_path(relative: str) -> None:
         raise ValueError(f"development/private file is not allowed in a release: {relative}")
     if tuple(part.lower() for part in path.parts[:2]) == ("mods", "examples"):
         raise ValueError(f"sample/test mod is not allowed in a release: {relative}")
-    if tuple(part.lower() for part in path.parts[:2]) in {
-        ("script", "src"), ("script", "tools"),
-    }:
+    if (
+        tuple(part.lower() for part in path.parts[:2]) == ("script", "src")
+        and normalized not in PUBLIC_SMOKE_EXAMPLE_SOURCES
+    ) or tuple(part.lower() for part in path.parts[:2]) == ("script", "tools"):
         raise ValueError(f"client source/tooling is not allowed in a public release: {relative}")
+    if (
+        tuple(part.lower() for part in path.parts[:2]) == ("tools", "rpfpatcher")
+        and path.suffix.lower() in TOOL_SOURCE_SUFFIXES
+        and path.suffix.lower() != ".pdb"
+        and normalized not in PUBLIC_SMOKE_EXAMPLE_SOURCES
+    ):
+        raise ValueError(f"tool source is not allowed in a public release: {relative}")
     if path.suffix.lower() == ".pdb":
         raise ValueError(f"debug symbols are not allowed in a public release: {relative}")
 
@@ -243,6 +256,8 @@ def verify_public_release(archive_path: Path, version: str = __version__) -> Rel
         if metadata.get("version") != version:
             raise ValueError(f"release metadata version is not {version}")
         required = set(PUBLIC_ROOT_FILES) | {
+            "content/allin1-vehicle-catalog.schema.json",
+            "data/story_vehicles.json",
             "data/vehicle_grounding.json",
             "script/dist/ALLIN1.dll",
             "script/dist/LemonUI.SHVDN3.dll",

@@ -14,7 +14,7 @@ ALLIN1 supports both GTA V Legacy and GTA V Enhanced. It is designed exclusively
 Mode**; the installer configures the game to launch without BattlEye and should never be used in
 GTA Online.
 
-> **Current public release:** **0.5.4**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
+> **Current public release:** **0.5.5**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
 > highlights and hardening work included in this build.
 
 ## Support
@@ -115,8 +115,9 @@ none of its runtime code or configuration is compiled into `ALLIN1.dll`.
 ## Standalone Suppressors Enhanced mod
 
 Suppressors Enhanced is developed as a separate managed package, not as an
-ALLIN1 or ALLIN1 Online Content feature. Import
-`mods/realistic-suppressors/mod.toml` from the launcher's **Packages** workspace
+ALLIN1 or ALLIN1 Online Content feature, and it is not bundled in the ALLIN1
+launcher archive. Download the standalone Suppressors Enhanced package
+separately, then import its `mod.toml` from the launcher's **Packages** workspace
 to install, configure, disable, re-enable, or uninstall its independent DLL.
 Its weapon-by-weapon model covers the removable suppressors on vanilla weapons,
 including ones bought at Ammu-Nation, and offers witness-aware stealth, heat,

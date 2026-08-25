@@ -1319,7 +1319,8 @@ def test_garage_sales_fall_back_to_native_values_for_uncatalogued_vehicles():
     assert "GET_VEHICLE_CLASS_FROM_NAME" in shop
     assert "GetFallbackVehicleValue" in shop
     assert "IS_MODEL_A_VEHICLE" in shop
-    assert "if (!VehicleList.Prices.TryGetValue(model, out buyPrice))" in shop
+    assert "if (RuntimeVehicleCatalog.IsListed(model))" in shop
+    assert "buyPrice = RuntimeVehicleCatalog.GetPrice(model);" in shop
 
 
 def test_uncatalogued_garage_vehicles_preserve_native_model_identity():

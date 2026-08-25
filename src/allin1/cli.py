@@ -18,6 +18,7 @@ from allin1.extensions import (
     apply_settings_to_config,
 )
 from allin1.installer import install, uninstall
+from allin1.launcher_handoff import open_launcher_packages
 from allin1.logging import setup_logging
 from allin1.vehicles.database import VehicleDatabase
 
@@ -54,6 +55,51 @@ def main(ctx: click.Context, config: str, verbose: bool) -> None:
         ctx.obj["config"] = Config.default()
         log.info("No config.toml found — using defaults")
     ctx.obj["config_path"] = config_path
+
+
+@main.command("open-launcher")
+@click.option(
+    "--workspace",
+    type=click.Choice(("packages",), case_sensitive=False),
+    default="packages",
+    show_default=True,
+    help="Launcher workspace to reveal.",
+)
+@click.option(
+    "--package-id",
+    help="Prepared package ID to highlight for review; this never installs it.",
+)
+@click.option(
+    "--traffic/--no-traffic",
+    default=None,
+    help=(
+        "Carry an optional traffic preference into the user-confirmed install; "
+        "opening the Launcher never applies it."
+    ),
+)
+@click.option(
+    "--launcher-path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    help="Optional explicit path to the installed Launcher executable.",
+)
+def open_launcher_cmd(
+    workspace: str,
+    package_id: str | None,
+    traffic: bool | None,
+    launcher_path: Path | None,
+) -> None:
+    """Open/focus a non-mutating Launcher workspace handoff."""
+    del workspace  # Click constrains the public route to Packages.
+    try:
+        open_launcher_packages(
+            package_id, traffic=traffic, executable=launcher_path,
+        )
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    if package_id:
+        click.echo(f"Opened Launcher Packages for '{package_id}'.")
+    else:
+        click.echo("Opened Launcher Packages.")
 
 
 @main.command()

@@ -94,32 +94,13 @@ namespace ALLIN1
         internal static bool RequiresSpecializedStorage(string model)
         {
             if (string.IsNullOrWhiteSpace(model)) return false;
-            if (Contains(VehicleList.Helicopters, model) ||
-                Contains(VehicleList.Planes, model) ||
-                Contains(VehicleList.Boats, model)) return true;
-
-            // Aircraft placed in GBAY's Military category rather than its
-            // dedicated aircraft tabs still require aircraft storage.
-            return string.Equals(model, "conada2",
-                       StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(model, "raiju",
-                       StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(model, "streamer216",
-                       StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(model, "thruster",
-                       StringComparison.OrdinalIgnoreCase);
+            return !string.Equals(RuntimeVehicleCatalog.GetStorage(model),
+                "garage", StringComparison.OrdinalIgnoreCase);
         }
 
         internal static bool IsRegularGarageEligible(string model) =>
             !RequiresSpecializedStorage(model);
 
-        private static bool Contains(string[] models, string model)
-        {
-            foreach (string candidate in models)
-                if (string.Equals(candidate, model,
-                    StringComparison.OrdinalIgnoreCase)) return true;
-            return false;
-        }
     }
 
     internal static class GarageStorySavePolicy

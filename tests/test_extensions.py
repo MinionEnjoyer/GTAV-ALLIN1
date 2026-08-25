@@ -206,6 +206,38 @@ def test_extension_package_lifecycle_authorizes_only_receipt_hashed_runtime(
     assert ExtensionRegistry(game).installed() == []
 
 
+def test_install_applies_initial_extension_settings_in_same_transaction(
+    tmp_path: Path,
+) -> None:
+    game = _game(tmp_path)
+    package = _content_package(tmp_path, "acme.initial-settings")
+    manifest = ModManifest.load(package)
+
+    status = ModIntegrationService(game).install(
+        manifest, initial_settings={"strength": 5},
+    )
+
+    assert status.installed is True
+    entry = ExtensionRegistry(game).installed()[0]
+    assert entry["settings"]["strength"] == 5
+
+
+def test_invalid_initial_extension_settings_fail_before_installation(
+    tmp_path: Path,
+) -> None:
+    game = _game(tmp_path)
+    package = _content_package(tmp_path, "acme.invalid-settings")
+    manifest = ModManifest.load(package)
+
+    with pytest.raises(ValueError, match="at most 5"):
+        ModIntegrationService(game).install(
+            manifest, initial_settings={"strength": 99},
+        )
+
+    assert not (game / "scripts" / "acme.invalid-settings.dll").exists()
+    assert ExtensionRegistry(game).installed() == []
+
+
 def test_runtime_hash_drift_blocks_loading_toggle_and_uninstall(tmp_path: Path) -> None:
     game = _game(tmp_path)
     package = _content_package(tmp_path, "acme.secure")

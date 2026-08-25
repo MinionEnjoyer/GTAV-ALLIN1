@@ -11,7 +11,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from allin1.mods import ModCatalog, ModIntegrationService, ModManifest
+from allin1.mods import (
+    ModCatalog,
+    ModIntegrationService,
+    ModManifest,
+    default_mod_catalog,
+    default_package_library_root,
+)
 
 
 def _write_pe(path: Path) -> None:
@@ -405,6 +411,81 @@ def test_catalog_discovers_sorted_packages(tmp_path: Path):
         "a-script", "z-script"
     ]
     assert ModCatalog(tmp_path / "missing").discover() == []
+
+
+def test_default_package_library_root_uses_stable_per_user_location(
+    tmp_path: Path,
+) -> None:
+    assert default_package_library_root({"LOCALAPPDATA": str(tmp_path)}) == (
+        tmp_path.resolve() / "ALLIN1" / "Packages"
+    )
+    assert default_package_library_root({}) == (
+        Path.home().resolve() / ".allin1" / "packages"
+    )
+
+
+def test_default_catalog_discovers_project_and_quick_import_packages(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    local_appdata = tmp_path / "local-appdata"
+    project_catalog = project / "mods" / "catalog"
+    package_library = local_appdata / "ALLIN1" / "Packages"
+    _package(
+        project_catalog, "bundled-script", "script", "scripts/Bundled.dll",
+    )
+    _package(
+        package_library, "quick-import-vehicle", "rpf",
+        "mods/update/x64/dlcpacks/quickcar/dlc.rpf",
+        dependencies=("openrpf",), dlc_packs=("quickcar",),
+    )
+
+    catalog = default_mod_catalog(
+        project, {"LOCALAPPDATA": str(local_appdata)},
+    )
+
+    assert catalog.root == project_catalog.resolve()
+    assert catalog.roots == (
+        project_catalog.resolve(), package_library.resolve(),
+    )
+    assert [manifest.mod_id for manifest in catalog.discover()] == [
+        "bundled-script", "quick-import-vehicle",
+    ]
+
+
+def test_catalog_rejects_duplicate_ids_across_package_roots(
+    tmp_path: Path,
+) -> None:
+    project_catalog = tmp_path / "project-catalog"
+    package_library = tmp_path / "package-library"
+    _package(
+        project_catalog, "duplicate-package", "script", "scripts/One.dll",
+    )
+    _package(
+        package_library, "duplicate-package", "script", "scripts/Two.dll",
+    )
+
+    with pytest.raises(ValueError, match="Duplicate mod package id") as error:
+        ModCatalog(project_catalog, package_library).discover()
+
+    assert str(project_catalog / "duplicate-package" / "mod.toml") in str(
+        error.value
+    )
+    assert str(package_library / "duplicate-package" / "mod.toml") in str(
+        error.value
+    )
+
+
+def test_catalog_does_not_double_scan_the_same_root(tmp_path: Path) -> None:
+    catalog_root = tmp_path / "catalog"
+    _package(catalog_root, "one-package", "script", "scripts/One.dll")
+
+    catalog = ModCatalog(catalog_root, catalog_root)
+
+    assert catalog.roots == (catalog_root.resolve(),)
+    assert [manifest.mod_id for manifest in catalog.discover()] == [
+        "one-package",
+    ]
 
 
 @pytest.mark.parametrize("dependency", ["scripthookv", "shvdn", "openrpf"])

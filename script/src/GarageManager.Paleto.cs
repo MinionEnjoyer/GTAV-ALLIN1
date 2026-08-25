@@ -130,7 +130,7 @@ namespace ALLIN1
         internal static bool DeliverToPaletoGarage(
             string model, int color1, int color2)
         {
-            if (VehicleList.GetSizeTier(model) == 2) return false;
+            if (GetGarageSizeTier(model) >= 2) return false;
             if (!_paletoStored.TryGetValue(CharacterKey(), out var list)) return false;
             if (list.Count >= PALETO_SLOT_COUNT) return false;
             int slotIndex = FindEmptyPaletoSlot(list);
@@ -332,8 +332,7 @@ namespace ALLIN1
                             "~r~The vehicle could not be saved.", 3000);
                         return;
                     }
-                    string display = VehicleList.DisplayNames.TryGetValue(
-                        modelName, out string displayName) ? displayName : modelName;
+                    string display = RuntimeVehicleCatalog.GetDisplayName(modelName);
                     confirmation = $"~g~{display}~w~ stored in the Paleto Bay Garage.";
                     rideIn.IsPersistent = true;
                     rideInToDelete = rideIn;

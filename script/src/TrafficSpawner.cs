@@ -1,9 +1,9 @@
-// TrafficSpawner.cs — Adds GTA Online DLC vehicles to Story Mode traffic.
+// TrafficSpawner.cs — Adds GTA Online and opted-in package vehicles to traffic.
 //
 // Two systems work together:
-//   1. Driven spawner — creates new DLC vehicles with AI drivers on road nodes.
+//   1. Driven spawner — creates eligible vehicles with AI drivers on road nodes.
 //   2. Replacement scanner — swaps vanilla ambient vehicles (parked or driven)
-//      with class-matched DLC equivalents while off-screen.
+//      with class-matched eligible equivalents while off-screen.
 //
 // Only road-appropriate classes are used (no planes, helis, boats, military,
 // emergency, etc.).  Replacement rate is ~30 % for a natural vanilla/DLC mix.
@@ -51,6 +51,7 @@ namespace ALLIN1
             VehicleList.Sedans,
             VehicleList.Suvs,
             VehicleList.Muscle,
+            VehicleList.Sports,
             VehicleList.Sportsclassics,
             VehicleList.Super,
             VehicleList.Offroad,
@@ -68,12 +69,45 @@ namespace ALLIN1
             { VehicleClass.SUVs,           VehicleList.Suvs },
             { VehicleClass.Muscle,         VehicleList.Muscle },
             { VehicleClass.SportsClassics, VehicleList.Sportsclassics },
-            { VehicleClass.Sports,         VehicleList.Sportsclassics }, // shared
+            { VehicleClass.Sports,         VehicleList.Sports },
             { VehicleClass.Super,          VehicleList.Super },
             { VehicleClass.OffRoad,        VehicleList.Offroad },
             { VehicleClass.Motorcycles,    VehicleList.Motorcycles },
             { VehicleClass.Vans,           VehicleList.Vans },
         };
+
+        // Package catalog categories are deliberately mapped through a strict
+        // allow-list. Add-on aircraft, boats, emergency vehicles, and other
+        // non-road content must never enter either traffic path by accident.
+        private static readonly Dictionary<string, VehicleClass>
+            PACKAGE_ROAD_CLASS_MAP =
+                new Dictionary<string, VehicleClass>(
+                    StringComparer.OrdinalIgnoreCase)
+        {
+            { "compacts",       VehicleClass.Compacts },
+            { "coupes",         VehicleClass.Coupes },
+            { "sedans",         VehicleClass.Sedans },
+            { "suvs",           VehicleClass.SUVs },
+            { "muscle",         VehicleClass.Muscle },
+            { "sports",         VehicleClass.Sports },
+            { "sportsclassics", VehicleClass.SportsClassics },
+            { "super",          VehicleClass.Super },
+            { "offroad",        VehicleClass.OffRoad },
+            { "motorcycles",    VehicleClass.Motorcycles },
+            { "vans",           VehicleClass.Vans },
+        };
+
+        internal enum PackageTrafficCandidateDecision
+        {
+            Eligible,
+            TrafficDisabled,
+            MissingModel,
+            UnsupportedCategory,
+            ModelUnavailable,
+            NotVehicle,
+            ClassMismatch,
+            DuplicateModel,
+        }
 
         // --- Logging ---
         private static readonly string LOG_PATH = Path.Combine(
@@ -85,6 +119,8 @@ namespace ALLIN1
         private readonly List<string> _validModels = new List<string>();
         private readonly Dictionary<VehicleClass, List<string>> _classPools =
             new Dictionary<VehicleClass, List<string>>();
+        private readonly Dictionary<string, double> _trafficWeights =
+            new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<int> _seenVehicleHandles = new HashSet<int>();
         private readonly Queue<KeyValuePair<int, int>> _seenVehicleOrder =
             new Queue<KeyValuePair<int, int>>();
@@ -338,6 +374,99 @@ namespace ALLIN1
                 || suppression == "wanted_level";
         }
 
+        internal static bool IsPackageTrafficEnabled(
+            bool itemTrafficEnabled, bool packageTrafficEnabled)
+        {
+            return itemTrafficEnabled && packageTrafficEnabled;
+        }
+
+        internal static bool TryMapPackageRoadCategory(
+            string category, out VehicleClass vehicleClass)
+        {
+            vehicleClass = default(VehicleClass);
+            if (string.IsNullOrWhiteSpace(category)) return false;
+            return PACKAGE_ROAD_CLASS_MAP.TryGetValue(
+                category.Trim(), out vehicleClass);
+        }
+
+        internal static PackageTrafficCandidateDecision
+            EvaluatePackageTrafficCandidate(
+                bool effectiveTrafficEnabled,
+                string modelName,
+                string category,
+                bool isInCdImage,
+                bool isVehicle,
+                VehicleClass actualClass,
+                out VehicleClass declaredClass)
+        {
+            declaredClass = default(VehicleClass);
+            if (!effectiveTrafficEnabled)
+                return PackageTrafficCandidateDecision.TrafficDisabled;
+            if (string.IsNullOrWhiteSpace(modelName))
+                return PackageTrafficCandidateDecision.MissingModel;
+            if (!TryMapPackageRoadCategory(category, out declaredClass))
+                return PackageTrafficCandidateDecision.UnsupportedCategory;
+            if (!isInCdImage)
+                return PackageTrafficCandidateDecision.ModelUnavailable;
+            if (!isVehicle)
+                return PackageTrafficCandidateDecision.NotVehicle;
+            if (actualClass != declaredClass)
+                return PackageTrafficCandidateDecision.ClassMismatch;
+            return PackageTrafficCandidateDecision.Eligible;
+        }
+
+        private static double GetPackageTrafficWeight(double configuredWeight)
+        {
+            // The package parser validates this range. Keep a defensive bound
+            // here so a malformed runtime record cannot inflate hot-path pools.
+            if (double.IsNaN(configuredWeight) ||
+                double.IsInfinity(configuredWeight))
+                return 1d;
+            return Math.Max(0.1d, Math.Min(20d, configuredWeight));
+        }
+
+        private static void LogPackageTrafficRejection(
+            GbayVehicleRecord entry,
+            string modelName,
+            PackageTrafficCandidateDecision decision,
+            string actualClass = "")
+        {
+            ClientLog.Warn("Traffic", "package_model_rejected",
+                new Dictionary<string, object>
+                {
+                    { "package_id", entry?.PackageId ?? "" },
+                    { "catalog_id", entry?.CatalogId ?? "" },
+                    { "model", modelName ?? "" },
+                    { "category", entry?.Category ?? "" },
+                    { "reason", PackageTrafficDecisionCode(decision) },
+                    { "actual_class", actualClass ?? "" }
+                });
+        }
+
+        private static string PackageTrafficDecisionCode(
+            PackageTrafficCandidateDecision decision)
+        {
+            switch (decision)
+            {
+                case PackageTrafficCandidateDecision.TrafficDisabled:
+                    return "traffic_disabled";
+                case PackageTrafficCandidateDecision.MissingModel:
+                    return "missing_model";
+                case PackageTrafficCandidateDecision.UnsupportedCategory:
+                    return "unsupported_category";
+                case PackageTrafficCandidateDecision.ModelUnavailable:
+                    return "model_unavailable";
+                case PackageTrafficCandidateDecision.NotVehicle:
+                    return "not_vehicle";
+                case PackageTrafficCandidateDecision.ClassMismatch:
+                    return "class_mismatch";
+                case PackageTrafficCandidateDecision.DuplicateModel:
+                    return "duplicate_model";
+                default:
+                    return "eligible";
+            }
+        }
+
         // ------------------------------------------------------------------ //
         //  Initialization                                                     //
         // ------------------------------------------------------------------ //
@@ -346,6 +475,7 @@ namespace ALLIN1
         {
             _validModels.Clear();
             _classPools.Clear();
+            _trafficWeights.Clear();
             _dlcModelHashes.Clear();
 
             // Build per-class pools of validated models.
@@ -363,19 +493,146 @@ namespace ALLIN1
             }
 
             // Build the flat list for driven spawner (union of all class pools).
-            var seen = new HashSet<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var pool in _classPools.Values)
             {
                 foreach (string name in pool)
                 {
                     if (seen.Add(name))
+                    {
                         _validModels.Add(name);
+                        _trafficWeights[name] = 1d;
+                    }
                 }
             }
 
-            // Build hash set of DLC model hashes so the scanner can skip
-            // vehicles that are already DLC.
-            foreach (string name in _validModels)
+            int packageDeclared = 0;
+            int packageAccepted = 0;
+            try
+            {
+                RuntimeVehicleCatalog.Refresh();
+                var packageEntries = new List<GbayVehicleRecord>(
+                    RuntimeVehicleCatalog.TrafficEntries);
+                packageEntries.Sort((left, right) =>
+                {
+                    int result = string.Compare(
+                        left?.PackageId, right?.PackageId,
+                        StringComparison.OrdinalIgnoreCase);
+                    if (result != 0) return result;
+                    result = string.Compare(
+                        left?.CatalogId, right?.CatalogId,
+                        StringComparison.OrdinalIgnoreCase);
+                    if (result != 0) return result;
+                    return string.Compare(
+                        left?.Model, right?.Model,
+                        StringComparison.OrdinalIgnoreCase);
+                });
+                packageDeclared = packageEntries.Count;
+
+                foreach (GbayVehicleRecord entry in packageEntries)
+                {
+                    if (entry == null)
+                    {
+                        ClientLog.Warn("Traffic", "package_model_rejected",
+                            new Dictionary<string, object>
+                            {
+                                { "reason", "missing_record" }
+                            });
+                        continue;
+                    }
+
+                    string modelName = (entry.Model ?? "").Trim()
+                        .ToLowerInvariant();
+                    if (!entry.TrafficEnabled)
+                    {
+                        LogPackageTrafficRejection(
+                            entry, modelName,
+                            PackageTrafficCandidateDecision.TrafficDisabled);
+                        continue;
+                    }
+                    if (string.IsNullOrWhiteSpace(modelName))
+                    {
+                        LogPackageTrafficRejection(
+                            entry, modelName,
+                            PackageTrafficCandidateDecision.MissingModel);
+                        continue;
+                    }
+                    if (!TryMapPackageRoadCategory(
+                            entry.Category, out VehicleClass declaredClass))
+                    {
+                        LogPackageTrafficRejection(
+                            entry, modelName,
+                            PackageTrafficCandidateDecision.UnsupportedCategory);
+                        continue;
+                    }
+
+                    Model model = new Model(modelName);
+                    bool isInCdImage = model.IsInCdImage;
+                    bool isVehicle = model.IsVehicle;
+                    VehicleClass actualClass = declaredClass;
+                    if (isInCdImage && isVehicle)
+                    {
+                        int modelHash = Game.GenerateHash(modelName);
+                        actualClass = (VehicleClass)Function.Call<int>(
+                            Hash.GET_VEHICLE_CLASS_FROM_NAME, modelHash);
+                    }
+                    PackageTrafficCandidateDecision decision =
+                        EvaluatePackageTrafficCandidate(
+                            true,
+                            modelName,
+                            entry.Category,
+                            isInCdImage,
+                            isVehicle,
+                            actualClass,
+                            out declaredClass);
+
+                    if (decision != PackageTrafficCandidateDecision.Eligible)
+                    {
+                        LogPackageTrafficRejection(
+                            entry, modelName, decision,
+                            actualClass.ToString());
+                        continue;
+                    }
+
+                    // Static ALLIN1 models and the first package owner win.
+                    // This prevents duplicate weighting and ambiguous ownership
+                    // when multiple packages declare the same spawn name.
+                    if (!seen.Add(modelName))
+                    {
+                        LogPackageTrafficRejection(
+                            entry, modelName,
+                            PackageTrafficCandidateDecision.DuplicateModel,
+                            actualClass.ToString());
+                        continue;
+                    }
+
+                    double weight = GetPackageTrafficWeight(
+                        entry.TrafficWeight);
+                    List<string> classPool = _classPools[declaredClass];
+                    classPool.Add(modelName);
+                    _validModels.Add(modelName);
+                    _trafficWeights[modelName] = weight;
+                    packageAccepted++;
+                    ClientLog.Info("Traffic", "package_model_accepted",
+                        new Dictionary<string, object>
+                        {
+                            { "package_id", entry.PackageId ?? "" },
+                            { "catalog_id", entry.CatalogId ?? "" },
+                            { "model", modelName },
+                            { "category", entry.Category ?? "" },
+                            { "weight", weight }
+                        });
+                }
+            }
+            catch (Exception ex)
+            {
+                // Package catalog failures must not disable built-in traffic.
+                ClientLog.Error("Traffic", "package_catalog_load_failed", ex);
+            }
+
+            // Build hash set of all managed traffic model hashes so the scanner
+            // never replaces a built-in or package vehicle it already injected.
+            foreach (string name in seen)
                 _dlcModelHashes.Add(
                     Function.Call<int>(Hash.GET_HASH_KEY, name));
 
@@ -388,12 +645,14 @@ namespace ALLIN1
             foreach (var arr in ROAD_CLASSES)
                 total += arr.Length;
 
-            Log($"=== ALLIN1 Initialized: {_validModels.Count}/{total} DLC vehicles available ===");
+            Log($"=== ALLIN1 Initialized: {seen.Count}/{total + packageDeclared} " +
+                $"traffic models available ({packageAccepted}/{packageDeclared} package) ===");
             foreach (var kv in _classPools)
                 Log($"  {kv.Key}: {kv.Value.Count} models");
 
             GTA.UI.Notification.Show(
-                $"~g~ALLIN1~w~: {_validModels.Count}/{total} DLC vehicles available");
+                $"~g~ALLIN1~w~: {seen.Count}/{total + packageDeclared} " +
+                "traffic models available");
         }
 
         // ------------------------------------------------------------------ //
@@ -408,6 +667,38 @@ namespace ALLIN1
             "a_f_y_tourist_01", "a_m_y_latino_01",
         };
 
+        private string SelectWeightedTrafficModel(IReadOnlyList<string> pool)
+        {
+            if (pool == null || pool.Count == 0) return null;
+            double totalWeight = 0d;
+            foreach (string modelName in pool)
+            {
+                if (!_trafficWeights.TryGetValue(
+                        modelName, out double weight))
+                    weight = 1d;
+                if (weight > 0d && !double.IsNaN(weight) &&
+                    !double.IsInfinity(weight))
+                    totalWeight += weight;
+            }
+            if (totalWeight <= 0d || double.IsNaN(totalWeight) ||
+                double.IsInfinity(totalWeight))
+                return pool[_rng.Next(pool.Count)];
+
+            double selection = _rng.NextDouble() * totalWeight;
+            foreach (string modelName in pool)
+            {
+                if (!_trafficWeights.TryGetValue(
+                        modelName, out double weight))
+                    weight = 1d;
+                if (weight <= 0d || double.IsNaN(weight) ||
+                    double.IsInfinity(weight))
+                    continue;
+                selection -= weight;
+                if (selection <= 0d) return modelName;
+            }
+            return pool[pool.Count - 1];
+        }
+
         private bool SpawnDriven()
         {
             Vector3 playerPos = Game.Player.Character.Position;
@@ -416,7 +707,7 @@ namespace ALLIN1
                               out Vector3 nodePos, out float heading))
                 return false;
 
-            string modelName = _validModels[_rng.Next(_validModels.Count)];
+            string modelName = SelectWeightedTrafficModel(_validModels);
             Vehicle veh = LoadAndCreateVehicle(modelName, nodePos, heading);
             if (veh == null)
                 return false;
@@ -623,7 +914,7 @@ namespace ALLIN1
                     || pool.Count == 0)
                     continue;
 
-                string newModelName = pool[_rng.Next(pool.Count)];
+                string newModelName = SelectWeightedTrafficModel(pool);
                 if (IsProtectedFromTrafficReplacement(veh, player))
                     continue;
                 replacementAttempts++;

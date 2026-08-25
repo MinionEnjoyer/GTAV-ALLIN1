@@ -20,3 +20,11 @@ def test_help_search_requires_every_word_and_empty_query_returns_all():
     assert search_help_topics("") == HELP_TOPICS
     assert search_help_topics("controller input")[0].key == "input"
     assert search_help_topics("definitely-not-a-topic") == ()
+
+
+def test_troubleshooting_help_documents_unified_navigation_shortcuts():
+    topic = next(topic for topic in HELP_TOPICS if topic.key == "troubleshooting")
+
+    assert "Ctrl+B" in topic.body
+    assert "Ctrl+Tab" in topic.body
+    assert "Ctrl+Shift+Tab" in topic.body

@@ -80,6 +80,73 @@
     "sections": [],
     "catalogs": []
   },
+  "workbench": {
+    "weapon_enhancements": [
+      {
+        "id": "realistic-suppressors.thermal-components",
+        "name": "Suppressor heat and condition",
+        "mode": "scripted_vanilla_components",
+        "weapon_components": [
+          {"weapon_name": "WEAPON_PISTOL", "weapon_hash": "0x1B06D571", "component_name": "COMPONENT_AT_PI_SUPP_02", "component_hash": "0x65EA7EBB"},
+          {"weapon_name": "WEAPON_COMBATPISTOL", "weapon_hash": "0x5EF9FEC4", "component_name": "COMPONENT_AT_PI_SUPP", "component_hash": "0xC304849A"},
+          {"weapon_name": "WEAPON_APPISTOL", "weapon_hash": "0x22D8FE39", "component_name": "COMPONENT_AT_PI_SUPP", "component_hash": "0xC304849A"},
+          {"weapon_name": "WEAPON_PISTOL50", "weapon_hash": "0x99AEEB3B", "component_name": "COMPONENT_AT_AR_SUPP_02", "component_hash": "0xA73D4664"},
+          {"weapon_name": "WEAPON_MICROSMG", "weapon_hash": "0x13532244", "component_name": "COMPONENT_AT_AR_SUPP_02", "component_hash": "0xA73D4664"},
+          {"weapon_name": "WEAPON_SMG", "weapon_hash": "0x2BE6766B", "component_name": "COMPONENT_AT_PI_SUPP", "component_hash": "0xC304849A"},
+          {"weapon_name": "WEAPON_ASSAULTSMG", "weapon_hash": "0xEFE7E2DF", "component_name": "COMPONENT_AT_AR_SUPP_02", "component_hash": "0xA73D4664"},
+          {"weapon_name": "WEAPON_ASSAULTRIFLE", "weapon_hash": "0xBFEFFF6D", "component_name": "COMPONENT_AT_AR_SUPP_02", "component_hash": "0xA73D4664"},
+          {"weapon_name": "WEAPON_CARBINERIFLE", "weapon_hash": "0x83BF0278", "component_name": "COMPONENT_AT_AR_SUPP", "component_hash": "0x837445AA"},
+          {"weapon_name": "WEAPON_ADVANCEDRIFLE", "weapon_hash": "0xAF113F99", "component_name": "COMPONENT_AT_AR_SUPP", "component_hash": "0x837445AA"},
+          {"weapon_name": "WEAPON_PUMPSHOTGUN", "weapon_hash": "0x1D073A89", "component_name": "COMPONENT_AT_SR_SUPP", "component_hash": "0xE608B35E"},
+          {"weapon_name": "WEAPON_ASSAULTSHOTGUN", "weapon_hash": "0xE284C527", "component_name": "COMPONENT_AT_AR_SUPP", "component_hash": "0x837445AA"},
+          {"weapon_name": "WEAPON_BULLPUPSHOTGUN", "weapon_hash": "0x9D61E50F", "component_name": "COMPONENT_AT_AR_SUPP_02", "component_hash": "0xA73D4664"},
+          {"weapon_name": "WEAPON_SNIPERRIFLE", "weapon_hash": "0x05FC3C11", "component_name": "COMPONENT_AT_AR_SUPP_02", "component_hash": "0xA73D4664"},
+          {"weapon_name": "WEAPON_HEAVYPISTOL", "weapon_hash": "0xD205520E", "component_name": "COMPONENT_AT_PI_SUPP", "component_hash": "0xC304849A"},
+          {"weapon_name": "WEAPON_BULLPUPRIFLE", "weapon_hash": "0x7F229F94", "component_name": "COMPONENT_AT_AR_SUPP", "component_hash": "0x837445AA"},
+          {"weapon_name": "WEAPON_SPECIALCARBINE", "weapon_hash": "0xC0A3098D", "component_name": "COMPONENT_AT_AR_SUPP_02", "component_hash": "0xA73D4664"},
+          {"weapon_name": "WEAPON_SNSPISTOL_MK2", "weapon_hash": "0x88374054", "component_name": "COMPONENT_AT_PI_SUPP_02", "component_hash": "0x65EA7EBB"},
+          {"weapon_name": "WEAPON_MARKSMANRIFLE_MK2", "weapon_hash": "0x6A6C02E0", "component_name": "COMPONENT_AT_AR_SUPP", "component_hash": "0x837445AA"},
+          {"weapon_name": "WEAPON_PUMPSHOTGUN_MK2", "weapon_hash": "0x555AF99A", "component_name": "COMPONENT_AT_SR_SUPP_03", "component_hash": "0xAC42DF71"},
+          {"weapon_name": "WEAPON_BULLPUPRIFLE_MK2", "weapon_hash": "0x84D6FAFD", "component_name": "COMPONENT_AT_AR_SUPP", "component_hash": "0x837445AA"},
+          {"weapon_name": "WEAPON_SPECIALCARBINE_MK2", "weapon_hash": "0x969C3D67", "component_name": "COMPONENT_AT_AR_SUPP_02", "component_hash": "0xA73D4664"},
+          {"weapon_name": "WEAPON_PISTOLXM3", "weapon_hash": "0x1BC4FDB9", "component_name": "COMPONENT_WM29_PISTOL_SUPP", "component_hash": "0x1E02B7E0"},
+          {"weapon_name": "WEAPON_VINTAGEPISTOL", "weapon_hash": "0x083839C4", "component_name": "COMPONENT_AT_PI_SUPP", "component_hash": "0xC304849A"},
+          {"weapon_name": "WEAPON_HEAVYSHOTGUN", "weapon_hash": "0x3AABBBAA", "component_name": "COMPONENT_AT_AR_SUPP_02", "component_hash": "0xA73D4664"},
+          {"weapon_name": "WEAPON_MARKSMANRIFLE", "weapon_hash": "0xC734385A", "component_name": "COMPONENT_AT_AR_SUPP", "component_hash": "0x837445AA"},
+          {"weapon_name": "WEAPON_CERAMICPISTOL", "weapon_hash": "0x2B5EF5EC", "component_name": "COMPONENT_CERAMICPISTOL_SUPP", "component_hash": "0x9307D6FA"},
+          {"weapon_name": "WEAPON_MILITARYRIFLE", "weapon_hash": "0x9D1F17E6", "component_name": "COMPONENT_AT_AR_SUPP", "component_hash": "0x837445AA"},
+          {"weapon_name": "WEAPON_COMBATSHOTGUN", "weapon_hash": "0x05A96BA4", "component_name": "COMPONENT_AT_AR_SUPP", "component_hash": "0x837445AA"},
+          {"weapon_name": "WEAPON_MACHINEPISTOL", "weapon_hash": "0xDB1AA450", "component_name": "COMPONENT_AT_PI_SUPP", "component_hash": "0xC304849A"},
+          {"weapon_name": "WEAPON_CARBINERIFLE_MK2", "weapon_hash": "0xFAD1F1C9", "component_name": "COMPONENT_AT_AR_SUPP", "component_hash": "0x837445AA"},
+          {"weapon_name": "WEAPON_SMG_MK2", "weapon_hash": "0x78A97CD0", "component_name": "COMPONENT_AT_PI_SUPP", "component_hash": "0xC304849A"},
+          {"weapon_name": "WEAPON_ASSAULTRIFLE_MK2", "weapon_hash": "0x394F415C", "component_name": "COMPONENT_AT_AR_SUPP_02", "component_hash": "0xA73D4664"},
+          {"weapon_name": "WEAPON_HEAVYSNIPER_MK2", "weapon_hash": "0x0A914799", "component_name": "COMPONENT_AT_SR_SUPP_03", "component_hash": "0xAC42DF71"},
+          {"weapon_name": "WEAPON_PISTOL_MK2", "weapon_hash": "0xBFE256D4", "component_name": "COMPONENT_AT_PI_SUPP_02", "component_hash": "0x65EA7EBB"},
+          {"weapon_name": "WEAPON_TACTICALRIFLE", "weapon_hash": "0xD1D5F52B", "component_name": "COMPONENT_AT_AR_SUPP_02", "component_hash": "0xA73D4664"},
+          {"weapon_name": "WEAPON_HEAVYRIFLE", "weapon_hash": "0xC78D71B4", "component_name": "COMPONENT_AT_AR_SUPP", "component_hash": "0x837445AA"},
+          {"weapon_name": "WEAPON_TECPISTOL", "weapon_hash": "0x14E5AFD5", "component_name": "COMPONENT_AT_AR_SUPP_02", "component_hash": "0xA73D4664"},
+          {"weapon_name": "WEAPON_BATTLERIFLE", "weapon_hash": "0x72B66B11", "component_name": "COMPONENT_AT_AR_SUPP", "component_hash": "0x837445AA"}
+        ],
+        "script_entry_points": [
+          "RealisticSuppressors.RealisticSuppressorController"
+        ],
+        "visual_assets": [
+          {
+            "dlc_pack": "rs_suppressor_heat",
+            "archive": "x64/models/cdimages/rs_suppressor_heat.rpf",
+            "families": ["ar", "ar02", "pi", "sr", "sr03"],
+            "levels": 24,
+            "model_pattern": "rs_suppressor_heat_{family}_{level:02d}.ydr",
+            "base_model_pattern": "rs_suppressor_heat_{family}.ydr",
+            "texture_dictionary": "rs_suppressor_heat.ytd",
+            "texture_pattern": "rs_suppressor_heat_gradient_{level:02d}",
+            "archetype_dictionary": "rs_suppressor_heat.ytyp",
+            "base_level_uses_unsuffixed": true
+          }
+        ]
+      }
+    ]
+  },
   "runtime": {
     "assemblies": [
       {

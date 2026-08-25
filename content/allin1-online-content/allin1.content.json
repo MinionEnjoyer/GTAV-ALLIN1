@@ -3,7 +3,7 @@
   "api_version": 1,
   "id": "allin1.online-content",
   "name": "ALLIN1 Online Content",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "The official Story Mode content pack: GBAY products, DLC traffic, properties, garages, specialized storage, and character-owned equipment.",
   "capabilities": [
     "gbay.catalogs",
@@ -201,7 +201,13 @@
       {"id": "gear", "label": "Gear", "description": "Buy armor and equipment.", "route": "builtin:gear", "order": 40},
       {"id": "garages", "label": "My Garage", "description": "Manage storage locations.", "route": "builtin:garages", "order": 50}
     ],
-    "catalogs": []
+    "catalogs": [
+      {
+        "id": "story-vehicles",
+        "kind": "vehicle",
+        "source": "scripts/ALLIN1/Catalogs/story-vehicles.json"
+      }
+    ]
   },
   "runtime": {
     "assemblies": [

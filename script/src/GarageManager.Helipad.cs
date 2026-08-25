@@ -429,6 +429,8 @@ namespace ALLIN1
         internal static bool IsEligible(string model)
         {
             if (string.IsNullOrWhiteSpace(model)) return false;
+            if (string.Equals(RuntimeVehicleCatalog.GetStorage(model),
+                    "helipad", StringComparison.OrdinalIgnoreCase)) return true;
             foreach (string helicopter in VehicleList.Helicopters)
                 if (string.Equals(model, helicopter,
                     StringComparison.OrdinalIgnoreCase)) return true;

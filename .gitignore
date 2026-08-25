@@ -22,6 +22,7 @@ Thumbs.db
 .claude/
 config.toml
 allin1.log
+ScriptHookV.log
 .gta_path
 .gh_token
 sdk/imported_packages.json
