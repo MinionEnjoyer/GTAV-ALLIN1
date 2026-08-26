@@ -87,6 +87,15 @@ story_mode_only = true
     assert not hasattr(config.general, "story_mode_only")
 
 
+def test_retired_axle_test_harness_setting_is_ignored(tmp_path):
+    path = _write_toml(tmp_path, """
+[script]
+axle_test_harness = true
+""")
+    config = Config.load(path)
+    assert not hasattr(config.script, "axle_test_harness")
+
+
 def test_disabled_classes(tmp_path):
     path = _write_toml(tmp_path, """
 [vehicles]
@@ -137,7 +146,6 @@ def test_default_config():
     assert config.script.enhanced_police_ai is False
     assert config.script.gta_iv_npc_physics is False
     assert config.script.gta_iv_npc_physics_debug is False
-    assert config.script.axle_test_harness is False
     assert config.script.enhanced_smoke_effects is False
     assert config.script.controller_enabled is True
     assert config.script.controller_open_gbay == "FrontendRdown"
@@ -168,7 +176,6 @@ def test_save_round_trip_preserves_all_fields(tmp_path):
     config.script.enhanced_police_ai = True
     config.script.gta_iv_npc_physics = True
     config.script.gta_iv_npc_physics_debug = False
-    config.script.axle_test_harness = True
     config.script.enhanced_smoke_effects = True
     path = tmp_path / "nested" / "config.toml"
 
@@ -206,14 +213,6 @@ def test_keybind_validation_rejects_conflicts_and_normalizes_case():
         config.validate()
     config.script.world_vector_key = "NumPad9"
     config.validate()
-
-
-def test_enabled_axle_harness_reserves_f11():
-    config = Config.default()
-    config.script.axle_test_harness = True
-    config.script.world_vector_key = "F11"
-    with pytest.raises(ValueError, match="reserved by the enabled axle test"):
-        config.validate()
 
 
 def test_controller_bindings_round_trip_and_validate(tmp_path):

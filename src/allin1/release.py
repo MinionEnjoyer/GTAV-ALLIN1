@@ -29,7 +29,6 @@ PUBLIC_ROOT_FILES = (
     "LICENSE",
     "README.md",
     "RELEASE_NOTES.md",
-    "documentation.md",
     "docs/content-extension-api.md",
     "docs/gtaiv-npc-physics-experiment.md",
     "docs/optional-assistant.md",
@@ -67,6 +66,7 @@ FORBIDDEN_NAMES = frozenset({
 })
 
 TOOL_SOURCE_SUFFIXES = frozenset({".cs", ".csproj", ".pdb"})
+RPF_TOOL_RUNTIME_IGNORED_NAMES = frozenset({"strings.txt"})
 
 FORBIDDEN_RUNTIME_DEV_FILES = frozenset({
     "GarageTraversalLab.cs",
@@ -116,7 +116,11 @@ def collect_public_files(root: Path, *, require_toolchain: bool = True) -> list[
             )
         files.extend(
             path for path in patcher.iterdir()
-            if path.is_file() and path.suffix.lower() not in TOOL_SOURCE_SUFFIXES
+            if (
+                path.is_file()
+                and path.suffix.lower() not in TOOL_SOURCE_SUFFIXES
+                and path.name.casefold() not in RPF_TOOL_RUNTIME_IGNORED_NAMES
+            )
         )
 
     unique = {path.resolve(): path for path in files}

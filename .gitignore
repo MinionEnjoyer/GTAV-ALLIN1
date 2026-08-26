@@ -67,3 +67,6 @@ F80-*-Render-Workflow/
 .codex-*/
 .tmp*/
 tools/RpfPatcher/strings.txt
+
+# Local development reference; intentionally excluded from public source/releases.
+/documentation.md

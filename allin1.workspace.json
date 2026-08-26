@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "allin1.core",
   "name": "ALLIN1 Core",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "kind": "product_workspace",
   "editions": [
     "legacy",
@@ -33,7 +33,6 @@
       "README.md",
       "RELEASE_NOTES.md",
       "config.example.toml",
-      "documentation.md",
       "install.bat",
       "install.sh",
       "manager.bat",
@@ -213,7 +212,6 @@
       "paths": [
         "README.md",
         "RELEASE_NOTES.md",
-        "documentation.md",
         "docs",
         "LICENSE"
       ],

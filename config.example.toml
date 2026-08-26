@@ -91,8 +91,6 @@ enhanced_police_ai = false
 # Mission characters, persistent peds, occupants, and the player are excluded.
 gta_iv_npc_physics = false
 gta_iv_npc_physics_debug = false
-# Experimental F11 test drive: four-axle Chernobog with progressive all-wheel steering and drive.
-axle_test_harness = false
 # Port the audited BZ-gas smoke records into mods/update/update.rpf.
 # Player colour: white, red, orange, yellow, green, blue, or purple.
 # CASEVAC smoke always uses its dedicated orange signal.

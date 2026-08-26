@@ -1,3 +1,18 @@
+# GTA V ALLIN1 0.5.8
+
+Version 0.5.8 removes temporary gameplay test scaffolding and tightens the
+public release boundary ahead of the next SDK vehicle-authoring release.
+
+## Release cleanup
+
+- Retired the temporary F11 four-axle Chernobog gameplay harness after its
+  validation run. The standalone SDK axle configurator and runtime export
+  tooling remain available.
+- Kept internal development notes local and removed them from the public source
+  inventory and launcher archive.
+- Requalified the launcher, Story Mode client, official content manifests, and
+  checksum-verified release payload as one versioned build.
+
 # GTA V ALLIN1 0.5.7
 
 Version 0.5.7 synchronizes the launcher, in-game runtime, official content

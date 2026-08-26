@@ -69,7 +69,6 @@ class ScriptConfig:
     enhanced_police_ai: bool = False
     gta_iv_npc_physics: bool = False
     gta_iv_npc_physics_debug: bool = False
-    axle_test_harness: bool = False
     enhanced_smoke_effects: bool = False
     controller_enabled: bool = True
     controller_open_gbay: str = "FrontendRdown"
@@ -198,7 +197,6 @@ class Config:
             f"gta_iv_npc_physics = {boolean(self.script.gta_iv_npc_physics)}\n"
             "gta_iv_npc_physics_debug = "
             f"{boolean(self.script.gta_iv_npc_physics_debug)}\n"
-            f"axle_test_harness = {boolean(self.script.axle_test_harness)}\n"
             "enhanced_smoke_effects = "
             f"{boolean(self.script.enhanced_smoke_effects)}\n"
             f"controller_enabled = {boolean(self.script.controller_enabled)}\n"
@@ -252,11 +250,6 @@ class Config:
                     f"Key {key} is assigned to both {normalized[key]} and {setting}"
                 )
             normalized[key] = setting
-        if self.script.axle_test_harness and "F11" in normalized:
-            raise ValueError(
-                "F11 is reserved by the enabled axle test harness and conflicts "
-                f"with {normalized['F11']}"
-            )
         traffic = self.traffic
         if not 0 <= traffic.max_driven <= 100:
             raise ValueError("traffic.max_driven must be between 0 and 100")

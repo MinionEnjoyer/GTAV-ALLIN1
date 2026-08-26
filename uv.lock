@@ -170,7 +170,7 @@ wheels = [
 
 [[package]]
 name = "gta-v-allin1"
-version = "0.5.7"
+version = "0.5.8"
 source = { editable = "." }
 dependencies = [
     { name = "click" },

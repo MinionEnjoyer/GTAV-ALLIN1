@@ -309,30 +309,22 @@ def test_world_vector_and_seat_selector_contracts():
     assert "Sparse authored layouts" in seat
 
 
-def test_f11_axle_harness_is_opt_in_bone_aware_and_story_only():
-    harness = (ROOT / "script/src/AxleTestHarness.cs").read_text()
-    manifest = (ROOT / "content/allin1-experimental-gameplay/allin1.content.json").read_text()
-    config = (ROOT / "config.example.toml").read_text()
-    assert 'axle_test_harness = false' in config
-    assert '"vehicle-axle-test"' in manifest
-    assert "multi-axle vehicle testing" in manifest
-    assert '"enabled_by_default": false' in manifest
-    assert "Keys.F11" in harness
-    assert 'TestModel = "chernobog"' in harness
-    assert "WheelLeftMiddle1" in harness
-    assert "WheelLeftMiddle2" in harness
-    assert "WheelLeftRear" in harness
-    assert "NETWORK_IS_SESSION_ACTIVE" in harness
-    assert "vehicle.Wheels.Count" in harness
-    assert "vehicle.Wheels.GetAllWheels()" in harness
-    assert "EntityBone" in harness
-    assert "RelativePosition" in harness
-    assert "FourAxleSteeringGeometry.TryCalculate" in harness
-    assert "ExpectedWheelCount = 8" in harness
-    assert '"four-axle/all-drive/all-steer"' in harness
-    assert "ReferenceLockDegrees = 35.0" in harness
-    assert "MemoryAddress" not in harness
-    assert "axleOrder * 2" not in harness
+def test_temporary_f11_axle_harness_is_retired():
+    assert not (ROOT / "script/src/AxleTestHarness.cs").exists()
+    assert not (ROOT / "script/tests/AxleTestHarnessPolicyTests.cs").exists()
+
+    current_surfaces = "\n".join(
+        (ROOT / path).read_text()
+        for path in (
+            "config.example.toml",
+            "src/allin1/config.py",
+            "src/allin1/gui.py",
+            "content/allin1-experimental-gameplay/allin1.content.json",
+        )
+    )
+    assert "axle_test_harness" not in current_surfaces
+    assert "vehicle-axle-test" not in current_surfaces
+    assert "vehicles.axle-testing" not in current_surfaces
 
 
 def test_vehicle_grounding_catalog_is_complete_and_read_only_at_runtime():

@@ -14,7 +14,7 @@ ALLIN1 supports both GTA V Legacy and GTA V Enhanced. It is designed exclusively
 Mode**; the installer configures the game to launch without BattlEye and should never be used in
 GTA Online.
 
-> **Current public release:** **0.5.7**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
+> **Current public release:** **0.5.8**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
 > highlights and hardening work included in this build.
 
 ## Support
@@ -260,8 +260,8 @@ Important groups include:
 - `[script]` — shared input, accessibility, recovery, compatibility, and logging fields used by
   the current runtime bridge. Content-pack settings should be changed in the launcher's Content
   workspace and are synchronized to this bridge when required.
-  The Experimental Gameplay pack offers an opt-in GTA IV-style ambient NPC physics preset and
-  a Story-only F11 multi-axle test drive. Both remain disabled until explicitly enabled.
+  The Experimental Gameplay pack offers opt-in GTA IV-style ambient NPC physics and coordinated
+  police-response experiments. Both remain disabled until explicitly enabled.
   See [the experiment notes](docs/gtaiv-npc-physics-experiment.md) for its safety boundary and prior art.
 
 Vehicle, weapon, and gear pricing is maintained in `prices_vehicles.toml`,
@@ -326,7 +326,6 @@ mods                       Local mod-package format and examples
 sdk                        Compatibility mirror for the extracted standalone SDK contract
 tools/RpfPatcher           RPF, YTD, Gen9 conversion, and verification utility
 tests                      Python, build, packaging, and repository contract tests
-documentation.md           Complete configuration, architecture, and troubleshooting reference
 config.example.toml        Commented configuration template
 install.bat / manager.bat  Windows setup and launcher entry points
 ```
@@ -352,11 +351,5 @@ garage and character persistence, preview generation, RPF contracts, C# compilat
 artifacts. Native gameplay still requires the manual checklist in
 [tests/IN_GAME_CHECKLIST.md](tests/IN_GAME_CHECKLIST.md) because ScriptHook APIs require a running
 game process.
-
-## Documentation
-
-Detailed setup, configuration, GBAY behavior, garages, traffic, the preview DLC pipeline, build
-tools, diagnostics, and troubleshooting are maintained in
-[documentation.md](documentation.md).
 
 GTA V ALLIN1 is licensed under the GNU General Public License v3.0 or later.
