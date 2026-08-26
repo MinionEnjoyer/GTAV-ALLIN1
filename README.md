@@ -14,7 +14,7 @@ ALLIN1 supports both GTA V Legacy and GTA V Enhanced. It is designed exclusively
 Mode**; the installer configures the game to launch without BattlEye and should never be used in
 GTA Online.
 
-> **Current public release:** **0.5.5**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
+> **Current public release:** **0.5.7**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
 > highlights and hardening work included in this build.
 
 ## Support
@@ -260,7 +260,8 @@ Important groups include:
 - `[script]` — shared input, accessibility, recovery, compatibility, and logging fields used by
   the current runtime bridge. Content-pack settings should be changed in the launcher's Content
   workspace and are synchronized to this bridge when required.
-  The Experimental Gameplay pack offers an opt-in GTA IV-style ambient NPC physics preset.
+  The Experimental Gameplay pack offers an opt-in GTA IV-style ambient NPC physics preset and
+  a Story-only F11 multi-axle test drive. Both remain disabled until explicitly enabled.
   See [the experiment notes](docs/gtaiv-npc-physics-experiment.md) for its safety boundary and prior art.
 
 Vehicle, weapon, and gear pricing is maintained in `prices_vehicles.toml`,

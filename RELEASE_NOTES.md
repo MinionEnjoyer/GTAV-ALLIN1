@@ -1,3 +1,28 @@
+# GTA V ALLIN1 0.5.7
+
+Version 0.5.7 synchronizes the launcher, in-game runtime, official content
+packs, and standalone SDK while adding a guarded four-axle gameplay fixture.
+
+## Four-axle Story Mode test
+
+- Added an opt-in F11 Chernobog test drive at Sandy Shores with four driven
+  and independently steered axle pairs.
+- Steering gains are derived from the vehicle's canonical wheel-bone positions,
+  producing progressive same-phase steering at the front and counter-steering
+  at the rear without assuming wheel collection order.
+- The harness validates all eight physical wheel bones, game-reported wheel
+  count, package state, key conflicts, and Story Mode state before applying
+  changes. Invalid or changing mappings fail closed and are logged.
+
+## Release hardening
+
+- Kept the axle experiment disabled by default and isolated inside ALLIN1
+  Experimental Gameplay.
+- Added official-content version checks to release qualification and expanded
+  launcher, runtime, geometry, restoration, and package-contract regressions.
+- Preserved the explicit release allowlist: local vehicle test mods remain
+  excluded, while the colored-smoke SDK example remains available.
+
 # GTA V ALLIN1 0.5.5
 
 Version 0.5.5 turns the vehicle add-on workflow into a connected but optional

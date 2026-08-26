@@ -168,6 +168,14 @@ def validate_version_consistency(root: Path, version: str = __version__) -> Rele
     cs_version = re.search(r"<Version>([^<]+)</Version>", csproj)
     assembly_version = re.search(r"<AssemblyVersion>([^<]+)</AssemblyVersion>", csproj)
     file_version = re.search(r"<FileVersion>([^<]+)</FileVersion>", csproj)
+    online_content = json.loads(
+        (root / "content" / "allin1-online-content" / "allin1.content.json")
+        .read_text(encoding="utf-8")
+    )
+    experimental_content = json.loads(
+        (root / "content" / "allin1-experimental-gameplay" / "allin1.content.json")
+        .read_text(encoding="utf-8")
+    )
     readme = (root / "README.md").read_text(encoding="utf-8")
     notes = (root / "RELEASE_NOTES.md").read_text(encoding="utf-8")
     observed = {
@@ -177,6 +185,10 @@ def validate_version_consistency(root: Path, version: str = __version__) -> Rele
         "C# client": cs_version.group(1) if cs_version else "missing",
         "C# assembly": assembly_version.group(1).removesuffix(".0") if assembly_version else "missing",
         "C# file": file_version.group(1).removesuffix(".0") if file_version else "missing",
+        "Online content manifest": str(online_content.get("version", "missing")),
+        "Experimental content manifest": str(
+            experimental_content.get("version", "missing")
+        ),
     }
     mismatches = [f"{name}={value}" for name, value in observed.items() if value != version]
     if mismatches:

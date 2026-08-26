@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "allin1.core",
   "name": "ALLIN1 Core",
-  "version": "0.5.5",
+  "version": "0.5.7",
   "kind": "product_workspace",
   "editions": [
     "legacy",

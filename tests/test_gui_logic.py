@@ -156,6 +156,7 @@ def _window():
     window.enhanced_police_ai = Variable(True)
     window.gta_iv_npc_physics = Variable(True)
     window.gta_iv_npc_physics_debug = Variable(False)
+    window.axle_test_harness = Variable(True)
     window.enhanced_smoke_effects = Variable(True)
     return window
 
@@ -186,6 +187,7 @@ def test_current_config_collects_all_launcher_fields():
     assert config.script.enhanced_police_ai is True
     assert config.script.gta_iv_npc_physics is True
     assert config.script.gta_iv_npc_physics_debug is False
+    assert config.script.axle_test_harness is True
     assert config.script.enhanced_smoke_effects is True
 
 
@@ -493,7 +495,7 @@ def test_content_workspace_renders_every_declared_system():
     package_call = window.content_tree.insert.call_args_list[0]
     assert package_call.kwargs["text"] == "ALLIN1 Online Content"
     assert package_call.kwargs["values"] == (
-        "Package", "0.5.5", "Install / Repair",
+        "Package", "0.5.7", "Install / Repair",
     )
 
 
@@ -519,7 +521,7 @@ def test_content_workspace_surfaces_registry_failure():
     assert window.content_registry_error == "registry is corrupt"
     package_call = window.content_tree.insert.call_args_list[0]
     assert package_call.kwargs["values"] == (
-        "Package", "0.5.5", "Registry error",
+        "Package", "0.5.7", "Registry error",
     )
 
 

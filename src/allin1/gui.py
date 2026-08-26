@@ -319,6 +319,8 @@ class ManagerWindow:
             value=self.config.script.gta_iv_npc_physics)
         self.gta_iv_npc_physics_debug = tk.BooleanVar(
             value=self.config.script.gta_iv_npc_physics_debug)
+        self.axle_test_harness = tk.BooleanVar(
+            value=self.config.script.axle_test_harness)
         self.enhanced_smoke_effects = tk.BooleanVar(
             value=self.config.script.enhanced_smoke_effects)
         self.controller_enabled = tk.BooleanVar(value=self.config.script.controller_enabled)
@@ -357,6 +359,7 @@ class ManagerWindow:
             self.enhanced_police_ai,
             self.gta_iv_npc_physics,
             self.gta_iv_npc_physics_debug,
+            self.axle_test_harness,
             self.enhanced_smoke_effects,
             self.controller_enabled,
             self.controller_open_gbay, self.controller_open_gbay_modifier,
@@ -1412,6 +1415,8 @@ class ManagerWindow:
             self.gta_iv_npc_physics.get()
         self.config.script.gta_iv_npc_physics_debug = \
             self.gta_iv_npc_physics_debug.get()
+        self.config.script.axle_test_harness = \
+            self.axle_test_harness.get()
         enhanced_smoke = getattr(self, "enhanced_smoke_effects", None)
         if enhanced_smoke is not None:
             self.config.script.enhanced_smoke_effects = enhanced_smoke.get()
@@ -1499,6 +1504,8 @@ class ManagerWindow:
                 self.config.script.gta_iv_npc_physics)
             self.gta_iv_npc_physics_debug.set(
                 self.config.script.gta_iv_npc_physics_debug)
+            self.axle_test_harness.set(
+                self.config.script.axle_test_harness)
             self.enhanced_smoke_effects.set(
                 self.config.script.enhanced_smoke_effects)
             self.controller_enabled.set(self.config.script.controller_enabled)
@@ -1620,6 +1627,7 @@ class ManagerWindow:
             "script.enhanced_police_ai": "enhanced_police_ai",
             "script.gta_iv_npc_physics": "gta_iv_npc_physics",
             "script.gta_iv_npc_physics_debug": "gta_iv_npc_physics_debug",
+            "script.axle_test_harness": "axle_test_harness",
             "script.enhanced_smoke_effects": "enhanced_smoke_effects",
             "script.reduced_motion": "reduced_motion",
             "script.colorblind_mode": "colorblind_mode",

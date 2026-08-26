@@ -3,12 +3,13 @@
   "api_version": 1,
   "id": "allin1.experimental-gameplay",
   "name": "ALLIN1 Experimental Gameplay",
-  "version": "0.5.5",
-  "description": "Optional NPC physics and coordinated police-response experiments. Every feature remains off until explicitly enabled.",
+  "version": "0.5.7",
+  "description": "Optional NPC physics, coordinated police-response, and multi-axle vehicle testing experiments. Every feature remains off until explicitly enabled.",
   "capabilities": [
     "launcher.settings",
     "npc.physics",
     "police.coordination",
+    "vehicles.axle-testing",
     "story-save.transactions"
   ],
   "systems": [
@@ -50,6 +51,23 @@
           "type": "boolean",
           "default": false,
           "config_key": "script.gta_iv_npc_physics_debug"
+        }
+      ]
+    },
+    {
+      "id": "vehicle-axle-test",
+      "name": "Multi-Axle Test Drive",
+      "category": "Vehicles",
+      "description": "F11 moves the active character to Sandy Shores in a four-axle Chernobog configured for progressive all-wheel steering and all-wheel drive.",
+      "experimental": true,
+      "enabled_by_default": false,
+      "settings": [
+        {
+          "key": "axle_test_harness",
+          "label": "Enable F11 four-axle Chernobog test",
+          "type": "boolean",
+          "default": false,
+          "config_key": "script.axle_test_harness"
         }
       ]
     }
