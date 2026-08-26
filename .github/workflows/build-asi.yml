@@ -67,10 +67,15 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main
+          git fetch origin main
+          $remoteMain = git rev-parse origin/main
+          if ($remoteMain -ne "${{ github.sha }}") {
+            Write-Host "Main advanced to $remoteMain while this build was queued; a newer build owns the packaged binaries."
+            exit 0
+          }
           git add script/dist/ALLIN1.dll script/dist/LemonUI.SHVDN3.dll
           git add mods/realistic-suppressors/payload/RealisticSuppressors.dll
           git add mods/realistic-suppressors/standalone/payload/RealisticSuppressors.dll
           git add mods/realistic-suppressors/dist mods/realistic-suppressors/standalone/dist
           git diff --cached --quiet || git commit -m "Auto-build: update packaged DLLs"
-          git push
+          git push origin HEAD:main
