@@ -1,3 +1,22 @@
+# GTA V ALLIN1 0.5.9
+
+Version 0.5.9 is the clean production companion to the expanded SDK axle
+authoring release. It keeps the launcher, Story Mode client, and official
+content packs on one qualified version while preserving a strict boundary
+between shipped features and private vehicle tests.
+
+## Release cleanup and qualification
+
+- Confirmed that the temporary F11 axle harness and its vehicle-specific
+  assets, scripts, configuration, and bindings are absent from the public
+  launcher and release archive.
+- Kept advanced axle authoring in the standalone SDK; ALLIN1 remains the
+  stable package, lifecycle, and Story Mode content launcher.
+- Requalified the launcher, in-game client, official content descriptors,
+  generated binaries, and checksum-verifiable Windows package together.
+- Hardened release sequencing so delayed generated-binary jobs cannot publish
+  stale payloads over a newer source revision.
+
 # GTA V ALLIN1 0.5.8
 
 Version 0.5.8 removes temporary gameplay test scaffolding and tightens the

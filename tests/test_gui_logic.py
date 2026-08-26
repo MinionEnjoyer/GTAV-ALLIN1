@@ -493,7 +493,7 @@ def test_content_workspace_renders_every_declared_system():
     package_call = window.content_tree.insert.call_args_list[0]
     assert package_call.kwargs["text"] == "ALLIN1 Online Content"
     assert package_call.kwargs["values"] == (
-        "Package", "0.5.8", "Install / Repair",
+        "Package", "0.5.9", "Install / Repair",
     )
 
 
@@ -519,7 +519,7 @@ def test_content_workspace_surfaces_registry_failure():
     assert window.content_registry_error == "registry is corrupt"
     package_call = window.content_tree.insert.call_args_list[0]
     assert package_call.kwargs["values"] == (
-        "Package", "0.5.8", "Registry error",
+        "Package", "0.5.9", "Registry error",
     )
 
 
