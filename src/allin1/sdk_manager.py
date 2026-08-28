@@ -23,6 +23,7 @@ SDK_RELEASES_API = "https://api.github.com/repos/MinionEnjoyer/ALLIN1-SDK/releas
 SDK_EXECUTABLE = "ALLIN1-SDK-Desktop.exe"
 SDK_CLI_EXECUTABLE = "allin1-sdk.exe"
 SDK_AGENT_EXECUTABLE = "ALLIN1-SDK-Agent.exe"
+SDK_UPDATER_EXECUTABLE = "ALLIN1-SDK-Updater.exe"
 SDK_RELEASE_METADATA = "release.json"
 SDK_CHECKSUMS = "checksums.json"
 APPLICATION_CONTROL_WINERROR = 4551
@@ -168,6 +169,26 @@ def read_sdk_status(root: Path | None = None) -> SdkStatus:
         normalize_version(version)
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         return SdkStatus(root, executable, None, False, f"Installation metadata is invalid: {exc}")
+    updater_name = payload.get("updater_entrypoint")
+    if updater_name is not None:
+        if updater_name != SDK_UPDATER_EXECUTABLE:
+            return SdkStatus(
+                root, executable, version, False,
+                "Installation metadata names an invalid SDK updater",
+            )
+        updater = root / SDK_UPDATER_EXECUTABLE
+        if not updater.is_file():
+            return SdkStatus(root, executable, version, False, "SDK updater is missing")
+        try:
+            with updater.open("rb") as stream:
+                signature = stream.read(2)
+            if signature != b"MZ":
+                return SdkStatus(root, executable, version, False, "SDK updater is invalid")
+        except OSError as exc:
+            return SdkStatus(
+                root, executable, version, False,
+                f"SDK updater cannot be read: {exc}",
+            )
     return SdkStatus(root, executable, version, True, f"ALLIN1 SDK {version} is ready")
 
 
@@ -295,6 +316,11 @@ def inspect_sdk_archive(archive_path: Path, expected_version: str | None = None)
                 raise ValueError("SDK release metadata names the wrong desktop entrypoint")
             if metadata.get("cli_entrypoint") != SDK_CLI_EXECUTABLE:
                 raise ValueError("SDK release metadata names the wrong console entrypoint")
+            updater_name = metadata.get("updater_entrypoint")
+            if updater_name is not None and updater_name != SDK_UPDATER_EXECUTABLE:
+                raise ValueError("SDK release metadata names the wrong updater entrypoint")
+            if updater_name is not None and SDK_UPDATER_EXECUTABLE not in names:
+                raise ValueError("SDK archive is missing its declared updater executable")
             checksums = json.loads(archive.read(names[SDK_CHECKSUMS]).decode("utf-8"))
         except (KeyError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("SDK release metadata is invalid") from exc
@@ -312,7 +338,10 @@ def inspect_sdk_archive(archive_path: Path, expected_version: str | None = None)
             actual = hashlib.sha256(archive.read(names[name])).hexdigest()
             if actual != digest:
                 raise ValueError(f"SDK checksum mismatch: {name}")
-        for executable in (SDK_EXECUTABLE, SDK_CLI_EXECUTABLE, SDK_AGENT_EXECUTABLE):
+        executables = [SDK_EXECUTABLE, SDK_CLI_EXECUTABLE, SDK_AGENT_EXECUTABLE]
+        if updater_name is not None:
+            executables.append(SDK_UPDATER_EXECUTABLE)
+        for executable in executables:
             if archive.read(names[executable])[:2] != b"MZ":
                 raise ValueError(f"SDK executable is not a Windows PE file: {executable}")
     return SdkPackageInfo(version, len(payload_names), unpacked)

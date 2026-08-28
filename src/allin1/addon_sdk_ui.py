@@ -13,6 +13,7 @@ from typing import Any
 from allin1.addon_importer import AddonDraftBuilder, AddonPackageInspector, PackageScan
 from allin1.asset_viewer import AssetViewerDialog
 from allin1.rpf_explorer import RpfExplorerDialog
+from allin1.ui_theme import apply_current_theme
 from allin1.processes import run_hidden
 from allin1.addon_sdk import (
     AddonInstallStep,
@@ -59,6 +60,7 @@ class AddonSdkDialog(tk.Toplevel):
         self.transient(parent)
         self._build()
         self._load_examples()
+        apply_current_theme(self)
 
     def _build(self) -> None:
         outer = ttk.Frame(self, padding=14)

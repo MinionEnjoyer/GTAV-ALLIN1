@@ -14,6 +14,7 @@ except ModuleNotFoundError:
 from allin1.config import Config
 from allin1.customization import CHARACTERS, SKILLS, CharacterLoadout, GarageSaveStore, LoadoutStore
 from allin1.vehicles.database import VehicleDatabase
+from allin1.ui_theme import apply_current_theme
 
 GEAR = {
     "ARMOR_SUPER_LIGHT", "ARMOR_LIGHT", "ARMOR_STANDARD", "ARMOR_HEAVY",
@@ -72,6 +73,7 @@ class CharacterCustomizationDialog(ttk.Frame):
         self._inventory_tab(tabs)
         self._progress_tab(tabs)
         self._outfit_tab(tabs)
+        apply_current_theme(self._window or self)
 
     def _progress_tab(self, tabs) -> None:
         frame = ttk.Frame(tabs, padding=14); tabs.add(frame, text="Stats & Money")

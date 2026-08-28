@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from allin1 import __version__
+from allin1.ui_theme import apply_current_theme
 
 
 @dataclass(frozen=True)
@@ -211,6 +212,7 @@ class HelpCenterDialog(ttk.Frame):
         self._populate()
         if self._window is not None:
             self.bind("<Escape>", lambda _event: self._window.destroy())
+        apply_current_theme(self._window or self)
 
     def _build(self) -> None:
         outer = ttk.Frame(self, padding=20)

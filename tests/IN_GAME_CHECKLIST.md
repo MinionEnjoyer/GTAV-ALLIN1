@@ -11,6 +11,23 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   `scripts/ALLIN1.dll` or another mod's files.
 - Start Story Mode with BattlEye disabled; confirm no ScriptHook or SHVDN load
   errors and confirm the standalone log contains a fresh `configured` entry.
+- On the first launch after Install / Repair, record the time from game launch
+  to a controllable character and confirm Alt+Tab/minimize becomes responsive.
+  The installed `allin1_maps` marker must report `layout=pruned-local-v2`,
+  `asset_count=15`, and an archive size near 163 MiB.
+- With the enabled Reactor V package installed, launch Story Mode from ALLIN1.
+  Before the game is playable, confirm only a compact upper-right status strip
+  appears. It must cycle through the REACTOR acronym, advance only from fresh
+  native-loader, asset, SHVDN, and Reactor events, remain click-through, stay
+  absent from Alt+Tab, and hide while another desktop app is foreground.
+  Confirm the centered, pulsing in-game logo does not appear until a stable
+  player ped exists, player control is enabled, the screen is faded in, and no
+  cutscene is active. Its glow must remain unclipped. Confirm the runtime writes
+  a fresh `story_mode_ready` marker and the launcher status then fades away.
+  Confirm there is no blank, partial, or repeated WebView surface before the
+  centered presentation. The runtime log must record `webview_content_ready`
+  before its first `webview_visibility_applied visible=True`, and input must
+  remain responsive throughout the hidden preload.
 - Import the standalone GTA-V-FPV release's `mod.toml`, install it for the selected edition, and confirm its independent DLL and descriptor appear under `scripts/GTA-V-FPV` without changing `scripts/ALLIN1.dll`. Confirm its package-owned Flight, Controls, OSD, and Payload settings render in Content; then disable, re-enable, and uninstall it and verify only its receipt-owned files change.
 - Open GBAY with F9 and navigate every vehicle, weapons, gear, and garage screen.
 - Purchase, spawn, customize, store, retrieve, sell, and remove a vehicle.
@@ -30,7 +47,8 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   confirm entry immediately returns. Enable the launcher override and confirm
   wanted entry works, while mission, protected-story-vehicle, and size rules are
   still enforced. Garage exits must remain usable in either setting.
-- Enter and leave the DLC-backed garages (Harmony, Davis, and the Garment Factory),
+- Enter and leave every DLC-backed location (Harmony, Davis, the Garment
+  Factory, Grapeseed, Paleto Bay, and the Super Yacht),
   then visit Michael's house and Floyd's apartment. Confirm Story Mode bedroom
   beds, sofas, and other furniture still render, and confirm the log records
   `multiplayer_map_acquired` followed by `story_map_restored` for each visit.
@@ -205,8 +223,7 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   remain intact; the yacht IPL must stream without ON_ENTER_MP/ON_ENTER_SP.
 - On a clean install, confirm `scripts/ALLIN1_vehicle_grounding.json` contains
   the completed 827-model catalog and garages place a low sports car, an SUV,
-  and a motorcycle on their tires without hovering or clipping. Confirm F10
-  remains the World Vector toggle and F11 has no ALLIN1 runtime binding.
+  and a motorcycle on their tires without hovering or clipping.
 - In My Garage, switch among Eclipse Garage, Harmony Garage, Davis Auto Shop,
   Garment Factory, Grapeseed Garage, and Paleto Bay Garage. Deliver a standard vehicle to the Garment Factory,
   sell it, restart, and confirm its save remains independent. Then switch among
@@ -239,9 +256,6 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   adjacent vehicles must not overlap, and the log must identify the Z source as
   `raycast`, `configured`, or the safe `native-root` fallback.
 - Confirm preview textures load and no placeholder remains for catalogued vehicles.
-- Press F10 and confirm the world-vector overlay toggles directly, with no
-  retired capture menu or screenshot actions. Confirm X/Y/Z and heading update
-  while walking or driving.
 - Allow ALLIN1 traffic to populate, then begin a Story Mode mission. Confirm no
   newly spawned or replacement traffic appears during the mission and no
   previously managed vehicle continues driving without a visible driver.

@@ -168,7 +168,6 @@ def test_save_round_trip_preserves_all_fields(tmp_path):
     config.script.enable_dlc_police = True
     config.script.gbay_key = "F8"
     config.script.night_vision_key = "V"
-    config.script.world_vector_key = "F10"
     config.script.seat_selector_enabled = False
     config.script.seat_selector_key = "G"
     config.script.gbay_free_mode = True
@@ -195,7 +194,6 @@ def test_target_edition_validation_rejects_unknown_value():
 @pytest.mark.parametrize("field,value,match", [
     ("gbay_key", "", "Unsupported"),
     ("night_vision_key", "Space", "Unsupported"),
-    ("world_vector_key", "F13", "Unsupported"),
     ("seat_selector_key", "Space", "Unsupported"),
 ])
 def test_keybind_validation_rejects_unsupported_values(field, value, match):
@@ -208,10 +206,10 @@ def test_keybind_validation_rejects_unsupported_values(field, value, match):
 def test_keybind_validation_rejects_conflicts_and_normalizes_case():
     config = Config.default()
     config.script.gbay_key = "f9"
-    config.script.world_vector_key = "F9"
+    config.script.night_vision_key = "F9"
     with pytest.raises(ValueError, match="both"):
         config.validate()
-    config.script.world_vector_key = "NumPad9"
+    config.script.night_vision_key = "NumPad9"
     config.validate()
 
 

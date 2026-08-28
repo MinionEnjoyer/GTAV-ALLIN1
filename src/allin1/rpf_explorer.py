@@ -14,6 +14,7 @@ from PIL import Image, ImageOps, ImageTk, UnidentifiedImageError
 from allin1.detector import detect_gta_path
 from allin1.native_assets import MAX_NATIVE_PREVIEW_BYTES, NativeAssetInspector
 from allin1.rpf_tools import RpfEntryRecord, RpfExplorerService, RpfIndex
+from allin1.ui_theme import apply_current_theme
 
 
 def _human_size(value: int) -> str:
@@ -50,6 +51,7 @@ class RpfExplorerDialog(tk.Toplevel):
         self.transient(parent)
         self.protocol("WM_DELETE_WINDOW", self._close)
         self._build()
+        apply_current_theme(self)
         if archive:
             self._load_archive(Path(archive))
 

@@ -65,9 +65,8 @@ enable_dlc_police = false
 # Uses .NET Keys enum names: F1-F12, NumPad0-9, etc.
 gbay_key = "F9"
 
-# Keys for purchased night vision and the developer world-vector overlay.
+# Key for purchased night vision.
 night_vision_key = "N"
-world_vector_key = "F10"
 
 # Hold the game's enter/exit control to choose a specific vehicle seat.
 seat_selector_enabled = true

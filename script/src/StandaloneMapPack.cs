@@ -6,10 +6,11 @@ using GTA.Native;
 namespace ALLIN1
 {
     /// <summary>
-    /// Detects and probes the metadata-only allin1_maps DLC. The pack exposes
-    /// selected Rockstar interior RPFs to Story Mode without changing global
-    /// map state. A failed probe is terminal for that interaction; callers
-    /// must never switch the whole session to the Online map as a fallback.
+    /// Detects and probes the locally generated allin1_maps compatibility DLC.
+    /// The pack exposes only the Rockstar interior archives used by ALLIN1 to
+    /// Story Mode without changing global map state. A failed probe is terminal
+    /// for that interaction; callers must never switch the whole session to the
+    /// Online map as a fallback.
     /// </summary>
     internal static class StandaloneMapPack
     {

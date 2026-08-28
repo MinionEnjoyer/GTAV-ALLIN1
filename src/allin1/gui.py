@@ -25,6 +25,11 @@ from allin1.extensions import (
     apply_settings_to_config,
 )
 from allin1.game_launcher import launch_gta
+from allin1.reactor_bootstrap_ui import (
+    ReactorBootstrapWindow,
+    start_reactor_bootstrap,
+)
+from allin1.reactor_bootstrap import start_reactor_preloader
 from allin1.logging import setup_logging
 from allin1.manager import InstallationStatus, ModManager
 from allin1.mods import (
@@ -42,6 +47,16 @@ from allin1.rpf_explorer import RpfExplorerDialog
 from allin1.help_center import HelpCenterDialog
 from allin1.sdk_installer_ui import SdkManagerDialog
 from allin1.sdk_manager import default_sdk_root, read_sdk_status
+from allin1.ui_theme import (
+    THEME_MODES,
+    UiSettings,
+    apply_application_theme,
+    default_ui_settings_path,
+    detect_system_theme,
+    load_ui_settings,
+    normalize_theme,
+    save_ui_settings,
+)
 from allin1 import __version__
 from allin1.versioning import fetch_latest_release
 from allin1.profiles import ProfileStore
@@ -52,6 +67,7 @@ WINDOWS_APP_ID = "MinionEnjoyer.GTAVALLIN1.Launcher"
 _INSTANCE_MUTEX: int | None = None
 PACKAGE_LIBRARY_WATCH_INTERVAL_MS = 2000
 LAUNCHER_HANDOFF_POLL_INTERVAL_MS = 500
+THEME_POLL_INTERVAL_MS = 1500
 
 
 @dataclass(frozen=True)
@@ -254,6 +270,7 @@ class ManagerWindow:
         self.messages: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy = False
         self.launch_pending = False
+        self.reactor_bootstrap: ReactorBootstrapWindow | None = None
         self.profiles = ProfileStore(manager.project_root / "profiles")
         self.mod_catalog = default_mod_catalog(manager.project_root)
         self._mod_catalog_fingerprint = self.mod_catalog.fingerprint()
@@ -277,6 +294,12 @@ class ManagerWindow:
         self.current_status: InstallationStatus | None = None
         self.settings_dirty = False
         self.sidebar_visible = tk.BooleanVar(self.root, value=True)
+        self.ui_settings_path = default_ui_settings_path()
+        self.theme_mode = tk.StringVar(
+            self.root, value=load_ui_settings(self.ui_settings_path).theme,
+        )
+        self._resolved_theme: str | None = None
+        self._theme_poll_after_id: str | None = None
 
         root.title("ALLIN1 Launcher")
         root.geometry("1240x840")
@@ -302,7 +325,6 @@ class ManagerWindow:
         self.logging_enabled = tk.BooleanVar(value=self.config.script.enable_logging)
         self.gbay_key = tk.StringVar(value=self.config.script.gbay_key)
         self.night_vision_key = tk.StringVar(value=self.config.script.night_vision_key)
-        self.world_vector_key = tk.StringVar(value=self.config.script.world_vector_key)
         self.seat_selector_enabled = tk.BooleanVar(value=self.config.script.seat_selector_enabled)
         self.seat_selector_key = tk.StringVar(value=self.config.script.seat_selector_key)
         self.safe_mode = tk.BooleanVar(value=self.config.script.safe_mode)
@@ -344,13 +366,14 @@ class ManagerWindow:
         self.profile_name = tk.StringVar(value="Full ALLIN1")
 
         self._build()
+        self._apply_theme()
         self._setting_variables = (
             self.path, self.legacy_path, self.enhanced_path, self.target_edition,
             self.rpf_previews, self.backup_enabled, self.traffic,
             self.rich_areas_only, self.adaptive_performance, self.enable_all_vehicles,
             self.disabled_classes, self.disabled_vehicles, self.police,
             self.logging_enabled, self.gbay_key, self.night_vision_key,
-            self.world_vector_key, self.seat_selector_enabled, self.seat_selector_key,
+            self.seat_selector_enabled, self.seat_selector_key,
             self.safe_mode, self.reduced_motion, self.colorblind_mode, self.ui_scale,
             self.hold_duration_ms, self.gbay_free_mode,
             self.garages_always_accessible,
@@ -384,6 +407,9 @@ class ManagerWindow:
         )
         self.root.after(
             PACKAGE_LIBRARY_WATCH_INTERVAL_MS, self._watch_package_library,
+        )
+        self._theme_poll_after_id = self.root.after(
+            THEME_POLL_INTERVAL_MS, self._poll_theme,
         )
         self.refresh()
 
@@ -499,6 +525,15 @@ class ManagerWindow:
                 command=lambda selected=key: self._select_workspace(selected),
             )
         view_menu.add_separator()
+        theme_menu = tk.Menu(view_menu, tearoff=False)
+        for mode in THEME_MODES:
+            theme_menu.add_radiobutton(
+                label=mode.title(), variable=self.theme_mode, value=mode,
+                command=lambda selected=mode: self._set_theme(selected),
+            )
+        self.theme_menu = theme_menu
+        view_menu.add_cascade(label="Theme", menu=theme_menu)
+        view_menu.add_separator()
         view_menu.add_checkbutton(
             label="Show workspace sidebar", accelerator="Ctrl+B",
             variable=self.sidebar_visible, onvalue=True, offvalue=False,
@@ -507,6 +542,7 @@ class ManagerWindow:
             ),
         )
         self.sidebar_visible.set(True)
+        self.view_menu = view_menu
         menu.add_cascade(label="View", menu=view_menu)
 
         help_menu = tk.Menu(menu, tearoff=False)
@@ -517,6 +553,49 @@ class ManagerWindow:
         help_menu.add_command(label="About ALLIN1", command=self.show_about)
         menu.add_cascade(label="Help", menu=help_menu)
         self.root.configure(menu=menu)
+
+    def _set_theme(self, mode: str) -> None:
+        """Persist and immediately apply an explicit desktop theme preference."""
+
+        normalized = normalize_theme(mode)
+        self.theme_mode.set(normalized)
+        try:
+            save_ui_settings(UiSettings(theme=normalized), self.ui_settings_path)
+        except OSError as exc:
+            logging.getLogger("allin1").warning(
+                "Could not save the UI theme preference: %s", exc,
+            )
+        self._apply_theme()
+        if hasattr(self, "notice_text"):
+            label = normalized.title()
+            self.notice_text.set(f"{label} theme active")
+
+    def _apply_theme(self) -> None:
+        """Repaint the existing launcher tree without rebuilding workspaces."""
+
+        palette = apply_application_theme(self.root, self.theme_mode.get())
+        self.palette = palette
+        self._resolved_theme = palette.name
+
+    def _poll_theme(self) -> None:
+        """Follow shared preference and Windows theme changes while running."""
+
+        try:
+            shared = load_ui_settings(self.ui_settings_path).theme
+            if shared != self.theme_mode.get():
+                self.theme_mode.set(shared)
+                self._apply_theme()
+            elif shared == "system":
+                resolved = detect_system_theme()
+                if resolved != self._resolved_theme:
+                    self._apply_theme()
+        finally:
+            try:
+                self._theme_poll_after_id = self.root.after(
+                    THEME_POLL_INTERVAL_MS, self._poll_theme,
+                )
+            except tk.TclError:
+                self._theme_poll_after_id = None
 
     def _select_workspace(self, key: str) -> None:
         """Show one task-oriented workspace and keep navigation state obvious."""
@@ -1048,7 +1127,6 @@ class ManagerWindow:
         for row, (label, variable) in enumerate((
             ("Open GBAY", self.gbay_key),
             ("Night vision", self.night_vision_key),
-            ("World-vector overlay", self.world_vector_key),
             ("Seat selector", self.seat_selector_key),
         )):
             ttk.Label(controls, text=label).grid(row=row, column=0, sticky="w", pady=3)
@@ -1395,7 +1473,6 @@ class ManagerWindow:
         self.config.script.enable_logging = self.logging_enabled.get()
         self.config.script.gbay_key = self.gbay_key.get()
         self.config.script.night_vision_key = self.night_vision_key.get()
-        self.config.script.world_vector_key = self.world_vector_key.get()
         self.config.script.seat_selector_enabled = self.seat_selector_enabled.get()
         self.config.script.seat_selector_key = self.seat_selector_key.get()
         self.config.script.safe_mode = self.safe_mode.get()
@@ -1482,7 +1559,6 @@ class ManagerWindow:
             self.logging_enabled.set(self.config.script.enable_logging)
             self.gbay_key.set(self.config.script.gbay_key)
             self.night_vision_key.set(self.config.script.night_vision_key)
-            self.world_vector_key.set(self.config.script.world_vector_key)
             self.seat_selector_enabled.set(self.config.script.seat_selector_enabled)
             self.seat_selector_key.set(self.config.script.seat_selector_key)
             self.safe_mode.set(self.config.script.safe_mode)
@@ -1672,7 +1748,7 @@ class ManagerWindow:
             ttk.Label(
                 self.content_settings_frame,
                 text="Choose a system below this package to review its settings.",
-                background="#ffffff", foreground="#52635c", wraplength=500,
+                style="SurfaceMuted.TLabel", wraplength=500,
             ).pack(anchor="w")
             return
         system = next(
@@ -1690,7 +1766,7 @@ class ManagerWindow:
             ttk.Label(
                 self.content_settings_frame,
                 text="This system has no configurable settings.",
-                background="#ffffff", foreground="#52635c",
+                style="SurfaceMuted.TLabel",
             ).pack(anchor="w")
             return
         for setting in system.settings:
@@ -1707,7 +1783,7 @@ class ManagerWindow:
                 ).pack(anchor="w")
             else:
                 ttk.Label(
-                    row, text=setting.label, background="#ffffff",
+                    row, text=setting.label, style="Surface.TLabel",
                 ).pack(anchor="w")
                 if setting.setting_type == "choice":
                     ttk.Combobox(
@@ -1727,7 +1803,7 @@ class ManagerWindow:
             if setting.description:
                 ttk.Label(
                     row, text=setting.description, wraplength=500,
-                    foreground="#52635c", background="#ffffff",
+                    style="SurfaceMuted.TLabel",
                 ).pack(anchor="w", pady=(3, 0))
 
     def _content_setting_initial_value(
@@ -2209,10 +2285,11 @@ class ManagerWindow:
             "error": "Error.Status.TLabel",
         }[presentation.tone]
         self.status_headline_label.configure(style=style)
+        palette = getattr(self, "palette", None)
         self.status_accent.configure(background={
-            "success": "#2d9c50",
-            "warning": "#d09a22",
-            "error": "#c94b3b",
+            "success": palette.accent if palette else "#2d9c50",
+            "warning": palette.warning if palette else "#d09a22",
+            "error": palette.danger if palette else "#c94b3b",
         }[presentation.tone])
         path = str(status.gta_path) if status.gta_path else "Not detected"
         mark = lambda value: "Installed" if value else "Missing"
@@ -2317,6 +2394,7 @@ class ManagerWindow:
             self._reset_launch_guard()
             messagebox.showerror("Game not found", "Select a GTA V installation first.")
             return
+        reactor_preloader = None
         try:
             # A structurally readable RPF can still fail GTA's startup data
             # manager. Block packs that failed a real Story Mode canary instead
@@ -2333,11 +2411,28 @@ class ManagerWindow:
                     "\n\nRun Install / Repair, then launch again."
                 )
             self.manager.save_config(config)
+            if self.reactor_bootstrap is not None:
+                self.reactor_bootstrap.stop()
+            self.reactor_bootstrap = start_reactor_bootstrap(
+                self.root,
+                gta_path,
+                on_log=self._append_log,
+                on_closed=self._reactor_bootstrap_closed,
+            )
+            reactor_preloader = start_reactor_preloader(gta_path)
+            self._append_log(reactor_preloader.reason)
             target = launch_gta(gta_path)
+            if self.reactor_bootstrap is not None:
+                self.reactor_bootstrap.mark_launch_requested()
             smoke_canary_consumed = consume_rpf_canary(
                 gta_path, "allin1_smoke"
             )
         except (FileNotFoundError, OSError, ValueError) as exc:
+            if reactor_preloader is not None:
+                reactor_preloader.stop()
+            if self.reactor_bootstrap is not None:
+                self.reactor_bootstrap.stop()
+                self.reactor_bootstrap = None
             self._reset_launch_guard()
             self._append_log(f"Launch failed: {exc}")
             messagebox.showerror("Could not launch GTA V", str(exc))
@@ -2356,6 +2451,9 @@ class ManagerWindow:
         self.launch_pending = False
         if not self.busy:
             self.launch_button.configure(state="normal")
+
+    def _reactor_bootstrap_closed(self) -> None:
+        self.reactor_bootstrap = None
 
     def uninstall(self) -> None:
         if not messagebox.askyesno("Uninstall ALLIN1", "Remove ALLIN1 files and restore its game changes?"):
@@ -2548,6 +2646,15 @@ class ManagerWindow:
                 return
             if choice and not self.save():
                 return
+        if self.reactor_bootstrap is not None:
+            self.reactor_bootstrap.stop()
+            self.reactor_bootstrap = None
+        if getattr(self, "_theme_poll_after_id", None) is not None:
+            try:
+                self.root.after_cancel(self._theme_poll_after_id)
+            except tk.TclError:
+                pass
+            self._theme_poll_after_id = None
         self.root.destroy()
 
     def _run(self, label: str, operation, *, determinate: bool = False) -> None:
@@ -2726,9 +2833,14 @@ def main(arguments: list[str] | None = None) -> None:
     if not _claim_single_instance(handoff):
         return
     root = tk.Tk()
+    # Construct off-screen so a saved/system dark theme never flashes a white
+    # Launcher shell during first paint.
+    root.withdraw()
     window = ManagerWindow(root, ModManager(PROJECT_ROOT))
     if handoff is not None:
         root.after_idle(lambda: window._show_launcher_handoff(handoff))
+    root.update_idletasks()
+    root.deiconify()
     root.mainloop()
 
 

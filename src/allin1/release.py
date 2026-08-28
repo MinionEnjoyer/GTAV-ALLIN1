@@ -203,10 +203,9 @@ def validate_version_consistency(root: Path, version: str = __version__) -> Rele
         raise ValueError(f"release notes do not identify release {version}")
 
     tool_sources = sorted(path.name for path in (root / "script" / "tools").glob("*.cs"))
-    supported_tools = ["WorldVectorTool.cs"]
-    if tool_sources != supported_tools:
+    if tool_sources:
         raise ValueError(
-            "only WorldVectorTool.cs may remain in "
+            "production C# tools must not remain in "
             f"script/tools: {tool_sources}"
         )
 

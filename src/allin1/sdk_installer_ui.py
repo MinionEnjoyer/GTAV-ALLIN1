@@ -40,6 +40,7 @@ from allin1.sdk_manager import (
     sdk_update_available,
     uninstall_sdk,
 )
+from allin1.ui_theme import apply_current_theme
 
 
 _ASSISTANT_MODE_LABELS = {
@@ -116,6 +117,7 @@ class SdkManagerDialog(ttk.Frame):
         self.assistant_llama_revision = tk.StringVar()
         self._build()
         self._refresh_local()
+        apply_current_theme(self._window or self)
         self._run_background("Checking SDK releases", self._check_release, quiet=True)
 
     def _build(self) -> None:

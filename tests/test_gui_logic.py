@@ -14,6 +14,7 @@ from allin1.gui import (
     ManagerWindow, QueueLogHandler, _operation_progress_text, _status_presentation,
 )
 from allin1.manager import InstallationStatus
+from allin1.ui_theme import UiSettings
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,6 +54,14 @@ def test_launcher_navigation_matches_the_embedded_workspace_shell() -> None:
     assert "versioned API" not in source
 
 
+def test_launcher_builds_offscreen_before_first_themed_paint() -> None:
+    from allin1.gui import main
+
+    source = inspect.getsource(main)
+    assert source.index("root.withdraw()") < source.index("ManagerWindow(root")
+    assert source.index("ManagerWindow(root") < source.index("root.deiconify()")
+
+
 def test_sidebar_toggle_preserves_the_active_workspace() -> None:
     window = ManagerWindow.__new__(ManagerWindow)
     window.sidebar_visible = Mock()
@@ -73,6 +82,50 @@ def test_sidebar_toggle_preserves_the_active_workspace() -> None:
     )
     assert window.current_workspace == "mods"
 
+
+def test_theme_selection_persists_without_dirtying_gameplay_settings(
+    tmp_path, monkeypatch,
+) -> None:
+    window = ManagerWindow.__new__(ManagerWindow)
+    window.theme_mode = Mock()
+    window.ui_settings_path = tmp_path / "ui-settings.json"
+    window._apply_theme = Mock()
+    window.notice_text = Mock()
+    saved = []
+    monkeypatch.setattr(
+        "allin1.gui.save_ui_settings",
+        lambda settings, path: saved.append((settings, path)),
+    )
+
+    window._set_theme("DARK")
+
+    window.theme_mode.set.assert_called_once_with("dark")
+    assert saved == [(UiSettings(theme="dark"), window.ui_settings_path)]
+    window._apply_theme.assert_called_once_with()
+    window.notice_text.set.assert_called_once_with("Dark theme active")
+
+
+def test_system_theme_poll_repaints_only_when_effective_theme_changes(
+    tmp_path, monkeypatch,
+) -> None:
+    window = ManagerWindow.__new__(ManagerWindow)
+    window.ui_settings_path = tmp_path / "ui-settings.json"
+    window.theme_mode = Mock()
+    window.theme_mode.get.return_value = "system"
+    window._resolved_theme = "light"
+    window._apply_theme = Mock()
+    window.root = Mock()
+    window.root.after.return_value = "theme-poll"
+    monkeypatch.setattr(
+        "allin1.gui.load_ui_settings", lambda _path: UiSettings(theme="system"),
+    )
+    monkeypatch.setattr("allin1.gui.detect_system_theme", lambda: "dark")
+
+    window._poll_theme()
+
+    window._apply_theme.assert_called_once_with()
+    window.root.after.assert_called_once_with(1500, window._poll_theme)
+    assert window._theme_poll_after_id == "theme-poll"
 
 def test_workspace_cycle_wraps_in_both_directions() -> None:
     window = ManagerWindow.__new__(ManagerWindow)
@@ -129,6 +182,7 @@ class Variable:
 
 def _window():
     window = ManagerWindow.__new__(ManagerWindow)
+    window.reactor_bootstrap = None
     window.config = Config.default()
     window.path = Variable(" /game ")
     window.rpf_previews = Variable(True)
@@ -143,7 +197,6 @@ def _window():
     window.logging_enabled = Variable(True)
     window.gbay_key = Variable("F8")
     window.night_vision_key = Variable("V")
-    window.world_vector_key = Variable("F11")
     window.seat_selector_enabled = Variable(False)
     window.seat_selector_key = Variable("G")
     window.safe_mode = Variable(True)
@@ -173,7 +226,6 @@ def test_current_config_collects_all_launcher_fields():
     assert config.vehicles.disabled_vehicles == ["oppressor2", "deluxo"]
     assert config.script.gbay_key == "F8"
     assert config.script.night_vision_key == "V"
-    assert config.script.world_vector_key == "F11"
     assert config.script.seat_selector_enabled is False
     assert config.script.seat_selector_key == "G"
     assert config.script.safe_mode is True
@@ -493,7 +545,7 @@ def test_content_workspace_renders_every_declared_system():
     package_call = window.content_tree.insert.call_args_list[0]
     assert package_call.kwargs["text"] == "ALLIN1 Online Content"
     assert package_call.kwargs["values"] == (
-        "Package", "0.5.9", "Install / Repair",
+        "Package", "0.6.0", "Install / Repair",
     )
 
 
@@ -519,7 +571,7 @@ def test_content_workspace_surfaces_registry_failure():
     assert window.content_registry_error == "registry is corrupt"
     package_call = window.content_tree.insert.call_args_list[0]
     assert package_call.kwargs["values"] == (
-        "Package", "0.5.9", "Registry error",
+        "Package", "0.6.0", "Registry error",
     )
 
 
@@ -606,15 +658,82 @@ def test_launch_guard_submits_only_one_storefront_request(tmp_path, monkeypatch)
     window.root = Mock()
     window._clear_dirty = Mock()
     window._append_log = Mock()
+    events = []
+    bootstrap = Mock()
+    bootstrap.mark_launch_requested.side_effect = lambda: events.append("handoff")
+    factory = Mock(side_effect=lambda *_args, **_kwargs: (
+        events.append("bootstrap") or bootstrap
+    ))
+    preloader = Mock(reason="Reactor V browser warm-up started.")
+    preloader_factory = Mock(side_effect=lambda *_args, **_kwargs: (
+        events.append("preloader") or preloader
+    ))
     target = Mock(description="GTA V Enhanced through Steam")
-    launcher = Mock(return_value=target)
+    launcher = Mock(side_effect=lambda _path: events.append("launch") or target)
+    monkeypatch.setattr("allin1.gui.start_reactor_bootstrap", factory)
+    monkeypatch.setattr("allin1.gui.start_reactor_preloader", preloader_factory)
     monkeypatch.setattr("allin1.gui.launch_gta", launcher)
 
     window.launch_game()
     window.launch_game()
 
     launcher.assert_called_once_with(tmp_path)
+    factory.assert_called_once_with(
+        window.root,
+        tmp_path,
+        on_log=window._append_log,
+        on_closed=window._reactor_bootstrap_closed,
+    )
+    preloader_factory.assert_called_once_with(tmp_path)
+    assert events == ["bootstrap", "preloader", "launch", "handoff"]
     window.root.after.assert_called_once_with(15000, window._reset_launch_guard)
+
+
+def test_launch_failure_stops_reactor_bootstrap(tmp_path, monkeypatch):
+    window = _window()
+    window.busy = False
+    window.launch_pending = False
+    window.manager = Mock()
+    window.manager.resolve_path.return_value = tmp_path
+    window.launch_button = Mock()
+    window.root = Mock()
+    window._append_log = Mock()
+    bootstrap = Mock()
+    preloader = Mock(reason="Reactor V browser warm-up started.")
+    monkeypatch.setattr(
+        "allin1.gui.start_reactor_bootstrap", Mock(return_value=bootstrap),
+    )
+    monkeypatch.setattr(
+        "allin1.gui.start_reactor_preloader", Mock(return_value=preloader),
+    )
+    monkeypatch.setattr(
+        "allin1.gui.launch_gta", Mock(side_effect=OSError("storefront failed")),
+    )
+    shown = Mock()
+    monkeypatch.setattr("allin1.gui.messagebox.showerror", shown)
+
+    window.launch_game()
+
+    bootstrap.stop.assert_called_once_with()
+    preloader.stop.assert_called_once_with()
+    assert window.reactor_bootstrap is None
+    assert window.launch_pending is False
+    shown.assert_called_once()
+
+
+def test_close_stops_active_reactor_bootstrap():
+    window = ManagerWindow.__new__(ManagerWindow)
+    window.busy = False
+    window.settings_dirty = False
+    window.root = Mock()
+    reactor = Mock()
+    window.reactor_bootstrap = reactor
+
+    window._on_close()
+
+    reactor.stop.assert_called_once_with()
+    assert window.reactor_bootstrap is None
+    window.root.destroy.assert_called_once_with()
 
 
 def test_launch_guard_blocks_quarantined_rpf_pack(tmp_path, monkeypatch):
@@ -645,7 +764,7 @@ def test_launch_guard_blocks_quarantined_rpf_pack(tmp_path, monkeypatch):
 def test_save_displays_validation_errors(monkeypatch):
     window = _window()
     window.gbay_key = Variable("F8")
-    window.world_vector_key = Variable("F8")
+    window.night_vision_key = Variable("F8")
     window.manager = Mock()
     window._append_log = Mock()
     shown = Mock()

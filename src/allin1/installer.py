@@ -1022,6 +1022,11 @@ def _deploy_standalone_map_dlc(
             raise RuntimeError(f"RpfPatcher build-dlc failed: {error_msg}")
         if not output_rpf.is_file() or output_rpf.stat().st_size == 0:
             raise RuntimeError("RpfPatcher build-dlc produced no map archive")
+        map_size = output_rpf.stat().st_size
+        log.info(
+            "Pruned standalone map DLC built: %d assets, %d bytes (%.2f MiB)",
+            len(dlc_maps.MAP_ASSETS), map_size, map_size / (1024 * 1024),
+        )
 
         _report_progress(progress, 49, "Verifying standalone map support")
         verify = run_hidden(
@@ -1046,7 +1051,11 @@ def _deploy_standalone_map_dlc(
             raise RuntimeError(
                 "RpfPatcher patch failed; could not register allin1_maps"
             )
-        log.info("Standalone map DLC built, deployed, and registered")
+        log.info(
+            "Standalone map DLC built, deployed, and registered "
+            "(layout=%s, assets=%d, bytes=%d)",
+            dlc_maps.PACK_LAYOUT, len(dlc_maps.MAP_ASSETS), map_size,
+        )
         return True
 
 

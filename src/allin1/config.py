@@ -56,7 +56,6 @@ class ScriptConfig:
     enable_dlc_police: bool = False
     gbay_key: str = "F9"
     night_vision_key: str = "N"
-    world_vector_key: str = "F10"
     seat_selector_enabled: bool = True
     seat_selector_key: str = "L"
     safe_mode: bool = False
@@ -181,7 +180,6 @@ class Config:
             f"enable_dlc_police = {boolean(self.script.enable_dlc_police)}\n"
             f"gbay_key = {quote(self.script.gbay_key)}\n"
             f"night_vision_key = {quote(self.script.night_vision_key)}\n"
-            f"world_vector_key = {quote(self.script.world_vector_key)}\n"
             f"seat_selector_enabled = {boolean(self.script.seat_selector_enabled)}\n"
             f"seat_selector_key = {quote(self.script.seat_selector_key)}\n"
             f"safe_mode = {boolean(self.script.safe_mode)}\n"
@@ -234,7 +232,6 @@ class Config:
         keys = {
             "gbay_key": self.script.gbay_key,
             "night_vision_key": self.script.night_vision_key,
-            "world_vector_key": self.script.world_vector_key,
             "seat_selector_key": self.script.seat_selector_key,
         }
         allowed = ({f"F{i}" for i in range(1, 13)} |

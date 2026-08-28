@@ -18,9 +18,9 @@ def test_standalone_map_pack_references_only_its_local_device(tmp_path):
     assert all(name.startswith(f"{dlc_maps.DEVICE_NAME}:/") for name in filenames)
     assert any("yacht" in name for name in filenames)
     assert any("dlc_int_01_tr.rpf" in name for name in filenames)
-    assert any("int_01_ba.rpf" in name for name in filenames)
-    assert any("vwdlc_int_01.rpf" in name for name in filenames)
-    assert any(name.endswith("/int_01.rpf") for name in filenames)
+    assert any("int_02_ba.rpf" in name for name in filenames)
+    assert any("vwdlc_int_03.rpf" in name for name in filenames)
+    assert any(name.endswith("/int_03.rpf") for name in filenames)
     assert not any("_bvh.rpf" in name for name in filenames)
     assert not any("dlcMPHeist:" in name for name in filenames)
     assert not list(root.rglob("*.ymap"))
@@ -39,6 +39,32 @@ def test_map_assets_are_unique_and_use_base_game_archives(tmp_path):
             tmp_path / "update/x64/dlcpacks" / asset.source_pack
             / asset.source_archive_name
         )
+
+
+def test_map_pack_contains_only_allin1_requested_interiors():
+    paths = {asset.source_path for asset in dlc_maps.MAP_ASSETS}
+    assert len(paths) == 15
+    assert {
+        "x64/levels/gta5/interiors/dlc_int_01_tr.rpf",
+        "x64/levels/gta5/interiors/int_placement_tr.rpf",
+        "x64/levels/gta5/interiors/int_02_ba.rpf",
+        "x64/levels/gta5/interiors/int_placement_ba.rpf",
+        "x64/levels/gta5/interiors/vwdlc_int_03.rpf",
+        "x64/levels/gta5/interiors/int_placement_vw.rpf",
+        "x64/levels/gta5/interiors/int_03.rpf",
+        "x64/levels/gta5/interiors/int_placement.rpf",
+    }.issubset(paths)
+    assert paths.isdisjoint({
+        "x64/levels/gta5/interiors/dlc_int_02_tr.rpf",
+        "x64/levels/gta5/interiors/dlc_int_04_tr.rpf",
+        "x64/levels/gta5/interiors/int_01_ba.rpf",
+        "x64/levels/gta5/interiors/int_03_ba.rpf",
+        "x64/levels/gta5/interiors/vwdlc_int_01.rpf",
+        "x64/levels/gta5/interiors/vwdlc_int_02.rpf",
+        "x64/levels/gta5/interiors/vwdlc_int_05.rpf",
+        "x64/levels/gta5/interiors/int_01.rpf",
+        "x64/levels/gta5/interiors/int_02.rpf",
+    })
 
 
 def test_placement_archives_are_classified_as_dlc_map_data(tmp_path):
@@ -62,7 +88,7 @@ def test_harmony_entity_set_archives_are_classified_as_map_data(tmp_path):
         "//dataFiles/Item[contains(filename, '/interiors/int_') and "
         "contains(filename, '_ba.rpf')]"
     )
-    assert len(harmony_items) == 4
+    assert len(harmony_items) == 2
     assert all(
         item.findtext("contents") == "CONTENTS_DLC_MAP_DATA"
         for item in harmony_items
@@ -191,7 +217,10 @@ def test_standalone_map_pack_deploy_and_remove_are_owned(tmp_path):
     deployed = dlc_maps.deploy_dlc_rpf(archive, tmp_path)
     assert (deployed / "dlc.rpf").read_bytes() == b"maps"
     assert (deployed / "dlc.rpf.bak").read_bytes() == b"old-maps"
-    assert (deployed / dlc_maps.ACTIVE_MARKER).is_file()
+    marker = (deployed / dlc_maps.ACTIVE_MARKER).read_text(encoding="utf-8")
+    assert f"layout={dlc_maps.PACK_LAYOUT}" in marker
+    assert f"asset_count={len(dlc_maps.MAP_ASSETS)}" in marker
+    assert "archive_bytes=4" in marker
     assert not legacy.exists()
     assert dlc_maps.remove_dlc_pack(tmp_path) == [deployed]
     assert unrelated.exists()

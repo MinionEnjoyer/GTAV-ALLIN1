@@ -28,23 +28,23 @@ def _release_tree(tmp_path: Path) -> Path:
         path.write_text(f"fixture {relative}\n", encoding="utf-8")
 
     (root / "pyproject.toml").write_text(
-        '[project]\nname = "gta-v-allin1"\nversion = "0.5.9"\n',
+        '[project]\nname = "gta-v-allin1"\nversion = "0.6.0"\n',
         encoding="utf-8",
     )
     (root / "uv.lock").write_text(
-        '[[package]]\nname = "gta-v-allin1"\nversion = "0.5.9"\n',
+        '[[package]]\nname = "gta-v-allin1"\nversion = "0.6.0"\n',
         encoding="utf-8",
     )
-    (root / "README.md").write_text("Current public release: **0.5.9**\n")
-    (root / "RELEASE_NOTES.md").write_text("# Release 0.5.9\n")
+    (root / "README.md").write_text("Current public release: **0.6.0**\n")
+    (root / "RELEASE_NOTES.md").write_text("# Release 0.6.0\n")
 
     files = {
-        "src/allin1/__init__.py": b'__version__ = "0.5.9"\n',
+        "src/allin1/__init__.py": b'__version__ = "0.6.0"\n',
         "src/allin1/assets/logo.png": b"png",
         "content/allin1-content.schema.json": b'{"schema_version":1}',
         "content/allin1-vehicle-catalog.schema.json": b'{"schema_version":1}',
-        "content/allin1-online-content/allin1.content.json": b'{"schema_version":1,"version":"0.5.9"}',
-        "content/allin1-experimental-gameplay/allin1.content.json": b'{"schema_version":1,"version":"0.5.9"}',
+        "content/allin1-online-content/allin1.content.json": b'{"schema_version":1,"version":"0.6.0"}',
+        "content/allin1-experimental-gameplay/allin1.content.json": b'{"schema_version":1,"version":"0.6.0"}',
         "data/story_vehicles.json": b'{"vehicles":[]}',
         "data/vehicles.toml": b"data",
         "data/vehicle_grounding.json": b'{"Entries":{}}',
@@ -57,23 +57,22 @@ def _release_tree(tmp_path: Path) -> Path:
         "tools/RpfPatcher/CodeWalker.Core.dll": b"codewalker",
         "tools/RpfPatcher/RpfPatcher.pdb": b"symbols",
         "tools/RpfPatcher/Program.cs": b"source",
-        "script/tools/WorldVectorTool.cs": b"vector",
     }
     for relative, content in files.items():
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content)
     (root / "script/ALLIN1.csproj").write_text(
-        "<Project><PropertyGroup><Version>0.5.9</Version>"
-        "<AssemblyVersion>0.5.9.0</AssemblyVersion>"
-        "<FileVersion>0.5.9.0</FileVersion></PropertyGroup></Project>"
+        "<Project><PropertyGroup><Version>0.6.0</Version>"
+        "<AssemblyVersion>0.6.0.0</AssemblyVersion>"
+        "<FileVersion>0.6.0.0</FileVersion></PropertyGroup></Project>"
     )
     return root
 
 
 def test_repository_release_versions_and_tool_surface_are_consistent():
     report = validate_version_consistency(ROOT)
-    assert report.version == "0.5.9"
+    assert report.version == "0.6.0"
 
 
 def test_public_readme_does_not_point_to_excluded_suppressors_source_tree():
@@ -105,14 +104,13 @@ def test_public_file_collection_is_explicit_and_excludes_sources(tmp_path):
     assert set(PUBLIC_SMOKE_EXAMPLE_SOURCES).issubset(names)
     assert "mods/examples/script/mod.toml.example" not in names
     assert "tools/RpfPatcher/RpfPatcher.pdb" not in names
-    assert "script/tools/WorldVectorTool.cs" not in names
 
 
 def test_public_release_round_trip_and_tamper_detection(tmp_path):
     root = _release_tree(tmp_path)
     archive = tmp_path / "ALLIN1.zip"
     report = build_public_release(root, archive)
-    assert report.version == "0.5.9"
+    assert report.version == "0.6.0"
     assert report.file_count > len(PUBLIC_ROOT_FILES)
 
     with zipfile.ZipFile(archive) as bundle:
@@ -228,10 +226,11 @@ def test_version_validation_requires_public_documentation(tmp_path, target, cont
 
 def test_version_validation_rejects_extra_or_missing_client_tools(tmp_path):
     root = _release_tree(tmp_path)
+    (root / "script/tools").mkdir(parents=True, exist_ok=True)
     (root / "script/tools/ExtraTool.cs").write_text("tool")
     with pytest.raises(
         ValueError,
-        match="only WorldVectorTool",
+        match="production C# tools",
     ):
         validate_version_consistency(root)
 
@@ -261,10 +260,10 @@ def test_release_verifier_rejects_structural_manifest_errors(tmp_path):
 
     unmatched = tmp_path / "unmatched.zip"
     with zipfile.ZipFile(unmatched, "w") as archive:
-        archive.writestr("release.json", b'{"version":"0.5.9"}')
+        archive.writestr("release.json", b'{"version":"0.6.0"}')
         archive.writestr("extra.txt", b"extra")
         archive.writestr("checksums.json", json.dumps({
-            "release.json": hashlib.sha256(b'{"version":"0.5.9"}').hexdigest(),
+            "release.json": hashlib.sha256(b'{"version":"0.6.0"}').hexdigest(),
         }))
     with pytest.raises(ValueError, match="exactly match"):
         verify_public_release(unmatched)
@@ -275,7 +274,7 @@ def test_release_verifier_rejects_structural_manifest_errors(tmp_path):
         verify_public_release(wrong_version)
 
     incomplete = tmp_path / "incomplete.zip"
-    _write_manifest_archive(incomplete, {"release.json": b'{"version":"0.5.9"}'})
+    _write_manifest_archive(incomplete, {"release.json": b'{"version":"0.6.0"}'})
     with pytest.raises(ValueError, match="missing required files"):
         verify_public_release(incomplete)
 

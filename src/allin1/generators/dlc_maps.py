@@ -27,6 +27,7 @@ DEVICE_NAME = f"dlc_{DLC_NAME}"
 CHANGESET_NAME = "ALLIN1_MAPS_AUTOGEN"
 STREAMING_CHANGESET_NAME = "ALLIN1_MAPS_STREAMING_MAP"
 ACTIVE_MARKER = "allin1_maps.active"
+PACK_LAYOUT = "pruned-local-v2"
 
 
 @dataclass(frozen=True)
@@ -113,14 +114,11 @@ MAP_ASSETS: tuple[MapAsset, ...] = (
         "mpheist",
         "x64/levels/gta5/_hills/cityhills_01/yacht_metadata.rpf",
     ),
-    # Los Santos Tuners Auto Shop used by the Davis garage.
-    *tuple(
-        _rpf("mptuner", f"x64/levels/gta5/interiors/{name}.rpf")
-        for name in (
-            "dlc_int_01_tr", "dlc_int_02_tr", "dlc_int_04_tr",
-            "int_placement_tr",
-        )
-    ),
+    # Los Santos Tuners Auto Shop used by the Davis garage.  The other Tuners
+    # interiors are unrelated car-meet and meth-lab content and must not be
+    # mounted just because they share the same Rockstar DLC.
+    _rpf("mptuner", "x64/levels/gta5/interiors/dlc_int_01_tr.rpf"),
+    _rpf("mptuner", "x64/levels/gta5/interiors/int_placement_tr.rpf"),
 
     # After Hours nightclub garage used by the five-floor Harmony Garage.
     *tuple(
@@ -129,32 +127,23 @@ MAP_ASSETS: tuple[MapAsset, ...] = (
             source_archive_name="dlc1.rpf",
             # The nightclub's floor and detail variations are MLO entity
             # sets, not ordinary streamed props. A generic RPF mount can
-            # expose the bare shell while leaving those sets inert. Keep all
-            # four archives in the map-data mount used by the proven local
-            # probe, while limiting the override to Harmony.
+            # expose the bare shell while leaving those sets inert. Keep the
+            # exact garage and its placement archive in the map-data mount
+            # used by the proven local probe.
             map_data=True,
         )
-        for name in (
-            "int_01_ba", "int_02_ba", "int_03_ba", "int_placement_ba",
-        )
+        for name in ("int_02_ba", "int_placement_ba")
     ),
 
-    # Diamond Casino penthouse garage used by the Paleto Bay Garage.
-    *tuple(
-        _rpf("mpvinewood", f"x64/levels/gta5/interiors/{name}.rpf")
-        for name in (
-            "vwdlc_int_01", "vwdlc_int_02", "vwdlc_int_03",
-            "vwdlc_int_05", "int_placement_vw",
-        )
-    ),
+    # Diamond Casino garage used by the Paleto Bay Garage.  Main-casino,
+    # penthouse, and carpark siblings are deliberately excluded.
+    _rpf("mpvinewood", "x64/levels/gta5/interiors/vwdlc_int_03.rpf"),
+    _rpf("mpvinewood", "x64/levels/gta5/interiors/int_placement_vw.rpf"),
 
-    # Agents of Sabotage garment-factory garage.
-    *tuple(
-        _rpf("mp2024_02", f"x64/levels/gta5/interiors/{name}.rpf")
-        for name in (
-            "int_01", "int_02", "int_03", "int_placement",
-        )
-    ),
+    # Agents of Sabotage garment-factory garage.  The basement and office
+    # sibling interiors are not used by ALLIN1.
+    _rpf("mp2024_02", "x64/levels/gta5/interiors/int_03.rpf"),
+    _rpf("mp2024_02", "x64/levels/gta5/interiors/int_placement.rpf"),
 )
 
 
@@ -378,7 +367,10 @@ def deploy_dlc_rpf(dlc_rpf: Path, gta_path: Path) -> Path:
             shutil.copy2(destination, backup)
         temporary.replace(destination)
         (destination_dir / ACTIVE_MARKER).write_text(
-            "Generated from this GTA installation and verified by ALLIN1.\n",
+            "Generated from this GTA installation and verified by ALLIN1.\n"
+            f"layout={PACK_LAYOUT}\n"
+            f"asset_count={len(MAP_ASSETS)}\n"
+            f"archive_bytes={destination.stat().st_size}\n",
             encoding="utf-8",
         )
     except Exception:

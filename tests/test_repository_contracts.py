@@ -129,10 +129,10 @@ def test_generated_csharp_contains_every_data_model():
 def test_production_project_includes_only_supported_developer_tools():
     project = (ROOT / "script/ALLIN1.csproj").read_text()
     assert '<Compile Remove="tools\\**" />' in project
-    assert '<Compile Include="tools\\WorldVectorTool.cs" />' in project
     assert '<Compile Include="tools\\VehicleGroundingTool.cs" />' not in project
     assert '<Compile Include="tools\\SeatTestTool.cs" />' not in project
-    assert project.count('<Compile Include="tools\\') == 1
+    assert project.count('<Compile Include="tools\\') == 0
+    assert not (ROOT / "script/tools/WorldVectorTool.cs").exists()
     assert not (ROOT / "script/src/GarageTraversalLab.cs").exists()
     assert not (ROOT / "script/tests/GarageTraversalLabPolicyTests.cs").exists()
 
@@ -276,9 +276,8 @@ def test_current_online_weapons_are_generated_and_safely_granted():
     assert '$"{card.PurchaseQuantity} x ${card.UnitPrice:N0} = ${card.Price:N0}"' in browser
 
 
-def test_world_vector_and_seat_selector_contracts():
+def test_installer_and_seat_selector_contracts():
     installer = (ROOT / "src/allin1/installer.py").read_text()
-    vector = (ROOT / "script/tools/WorldVectorTool.cs").read_text()
     seat = (ROOT / "script/src/SeatSelector.cs").read_text()
     assert "Package" in installer and "reviewed repository assets" in installer
     assert "models = sorted(v.model" in installer
@@ -290,16 +289,6 @@ def test_world_vector_and_seat_selector_contracts():
     assert "ALLIN1_seat_tests" in installer
     assert "ALLIN1.dll.pre-seat-nav-fix.bak" in installer
     assert "Removed retired developer artifact" in installer
-    assert "WORLD VECTOR" in vector
-    assert "world_vector_key" in vector
-    assert "preview_capture_key" not in vector
-    assert "position.X:F4" in vector
-    assert "position.Y:F4" in vector
-    assert "position.Z:F4" in vector
-    assert "Heading {heading:F2}" in vector
-    assert "CaptureMode" not in vector
-    assert "CaptureScreenshot" not in vector
-    assert "Vehicle previews" not in vector
     assert "IsSelectorHeld" in seat
     assert "That seat is no longer available" in seat
     assert "seat_selector_enabled" in seat

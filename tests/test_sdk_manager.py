@@ -15,6 +15,7 @@ from allin1.sdk_manager import (
     SDK_AGENT_EXECUTABLE,
     SDK_CLI_EXECUTABLE,
     SDK_EXECUTABLE,
+    SDK_UPDATER_EXECUTABLE,
     SdkRelease,
     default_sdk_root,
     fetch_latest_sdk_release,
@@ -167,6 +168,38 @@ def test_archive_install_status_repair_and_uninstall(tmp_path):
     assert not (root / "stale.txt").exists()
     assert uninstall_sdk(root) is True
     assert uninstall_sdk(root) is False
+
+
+def test_launcher_validates_declared_standalone_updater(tmp_path):
+    archive_path = tmp_path / "sdk-with-updater.zip"
+    payload = {
+        SDK_EXECUTABLE: b"MZdesktop",
+        SDK_CLI_EXECUTABLE: b"MZconsole",
+        SDK_AGENT_EXECUTABLE: b"MZagent",
+        SDK_UPDATER_EXECUTABLE: b"MZupdater",
+        "release.json": json.dumps({
+            "product": "ALLIN1-SDK", "version": "0.6.0",
+            "entrypoint": SDK_EXECUTABLE,
+            "cli_entrypoint": SDK_CLI_EXECUTABLE,
+            "agent_entrypoint": SDK_AGENT_EXECUTABLE,
+            "updater_entrypoint": SDK_UPDATER_EXECUTABLE,
+        }).encode(),
+    }
+    checksums = {
+        name: hashlib.sha256(content).hexdigest()
+        for name, content in payload.items()
+    }
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        for name, content in payload.items():
+            archive.writestr(name, content)
+        archive.writestr("checksums.json", json.dumps(checksums))
+
+    assert inspect_sdk_archive(archive_path).version == "0.6.0"
+    root = tmp_path / "SDK"
+    assert install_sdk_archive(archive_path, root).healthy
+    (root / SDK_UPDATER_EXECUTABLE).unlink()
+    assert read_sdk_status(root).healthy is False
+    assert "updater is missing" in read_sdk_status(root).detail
 
 
 def test_archive_rejects_tampering_unsafe_paths_and_wrong_version(tmp_path):

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gta-v-allin1"
-version = "0.5.9"
+version = "0.6.0"
 description = "GTA V Story Mode launcher, mod manager, and package lifecycle tooling"
 requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
@@ -48,11 +48,13 @@ omit = [
     "src/allin1/gui.py",
     "src/allin1/customization_ui.py",
     "src/allin1/addon_sdk_ui.py",
-      "src/allin1/asset_viewer.py",
-      "src/allin1/rpf_explorer.py",
+    "src/allin1/asset_viewer.py",
+    "src/allin1/rpf_explorer.py",
+    "src/allin1/reactor_bootstrap_ui.py",
     "src/allin1/help_center.py",
     "src/allin1/sdk_installer_ui.py",
-  ]
+    "src/allin1/ui_theme.py",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -566,6 +566,19 @@ def test_type_specific_destination_rules(
         ModManifest.load(package)
 
 
+def test_mixed_package_accepts_isolated_plugin_runtime_tree(tmp_path: Path):
+    package = _package(
+        tmp_path,
+        "isolated-runtime",
+        "mixed",
+        "plugins/ReactorV/Renderer.dll",
+    )
+
+    manifest = ModManifest.load(package)
+
+    assert manifest.files[0].destination.as_posix() == "plugins/ReactorV/Renderer.dll"
+
+
 def test_traversal_checksum_and_missing_payload_are_rejected(tmp_path: Path):
     package = _package(tmp_path, "unsafe-mod", "script", "scripts/Safe.dll")
     manifest_path = package / "mod.toml"

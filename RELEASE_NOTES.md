@@ -1,3 +1,41 @@
+# GTA V ALLIN1 0.6.0
+
+Version 0.6.0 refreshes the desktop experience, reduces Story Mode startup
+work, and adds a guarded launcher handoff for the separately installed Reactor
+V overlay framework.
+
+## Desktop and startup polish
+
+- Added persistent Light, Dark, and System themes across the launcher and its
+  supporting workspaces without rebuilding or reopening the active panel.
+- Reduced the generated Story Mode map compatibility pack from 24 to 15 nested
+  archives by excluding nine unused sibling interiors. The verified pack is
+  about 60% smaller while retaining every ALLIN1 garage and yacht dependency.
+- Retired the temporary F10 world-vector overlay and removed its launcher
+  setting so production builds no longer expose developer placement tools.
+
+## Reactor V integration
+
+- Added a lightweight, non-activating startup strip that stays in the
+  upper-right while reporting fresh loader and script milestones. It remains
+  click-through and hands presentation to the centered in-game surface only
+  after Story Mode is stable.
+- Warm-loads Reactor's browser and React bundle invisibly, then waits for the
+  warmed controller and shared profile to be released before runtime handoff.
+  This integration activates only when the optional `ragewebui.framework`
+  package is installed, enabled, and receipt-verified; Reactor is distributed
+  independently rather than hidden inside the launcher archive.
+
+## Package and SDK lifecycle
+
+- Permits validated package payloads to target the isolated `plugins/`
+  directory alongside supported scripts, mods, and shader destinations.
+- Recognizes the standalone SDK updater entrypoint during archive inspection,
+  installation, health checks, and repair while remaining compatible with
+  earlier SDK archives that do not contain an updater.
+- Requalified the launcher, Story Mode client, official content descriptors,
+  generated binaries, and checksum-verifiable Windows package together.
+
 # GTA V ALLIN1 0.5.9
 
 Version 0.5.9 is the clean production companion to the expanded SDK axle

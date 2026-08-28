@@ -527,12 +527,12 @@ class ModManifest:
                     ".asi", ".dll", ".ini", ".toml", ".addon64",
                 }
                 managed_tree = bool(parts) and parts[0] in {
-                    "scripts", "mods", "reshade-shaders",
+                    "scripts", "plugins", "mods", "reshade-shaders",
                 }
                 if not root_plugin and not managed_tree:
                     raise ValueError(
                         "Mixed package files must target a supported root plug-in "
-                        "or scripts/mods/reshade-shaders directory"
+                        "or scripts/plugins/mods/reshade-shaders directory"
                     )
 
     def validate_payload(self) -> None:

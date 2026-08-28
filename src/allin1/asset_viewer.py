@@ -24,6 +24,7 @@ from allin1.native_assets import (
     NativeAssetInspector,
     native_preview_limit,
 )
+from allin1.ui_theme import apply_current_theme
 
 
 def _human_size(value: int) -> str:
@@ -77,6 +78,7 @@ class AssetViewerDialog(tk.Toplevel):
         self.minsize(900, 620)
         self.transient(parent)
         self._build()
+        apply_current_theme(self)
         if source is not None:
             self._load_source(Path(source), scan)
 

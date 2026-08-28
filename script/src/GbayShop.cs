@@ -1858,7 +1858,7 @@ namespace ALLIN1
         internal static void ApplyBallisticOutfit(Ped player, PedHash ch)
         {
             // Paleto Score juggernaut suit — confirmed in-game on Enhanced Edition
-            // via F10 debug overlay during the heist mission.
+            // during the heist mission.
             //
             // The suit is built from multiple component slots + helmet prop.
             // Each character has different drawable IDs.

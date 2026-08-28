@@ -14,7 +14,7 @@ ALLIN1 supports both GTA V Legacy and GTA V Enhanced. It is designed exclusively
 Mode**; the installer configures the game to launch without BattlEye and should never be used in
 GTA Online.
 
-> **Current public release:** **0.5.9**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
+> **Current public release:** **0.6.0**. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release
 > highlights and hardening work included in this build.
 
 ## Support
@@ -237,7 +237,6 @@ options; `.allin1/extensions/registry.json` carries package state and effective 
 | `R3` | Favorite or unfavorite the selected listing |
 | `L` | Open the seat selector by default |
 | `N` | Toggle acquired night vision |
-| `F10` | Toggle the developer world-vector overlay |
 
 GBAY supports keyboard, mouse, and controller navigation. Page arrows and category-strip arrows
 are also clickable, and directional navigation crosses listing-page boundaries automatically.
