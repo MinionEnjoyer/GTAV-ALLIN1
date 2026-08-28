@@ -1,3 +1,16 @@
+# GTA V ALLIN1 0.6.1
+
+Version 0.6.1 is a synchronized maintenance release for the launcher, Story
+Mode client, official content packs, and separately published ALLIN1 SDK.
+
+## Release coordination
+
+- Aligns every updater-facing launcher and client version surface on 0.6.1.
+- Keeps the SDK Manager compatible with the separately downloadable SDK 0.6.1
+  release and its vehicle-authoring workflow.
+- Requalifies the checksum-verifiable Windows package without enabling any
+  experimental gameplay feature by default.
+
 # GTA V ALLIN1 0.6.0
 
 Version 0.6.0 refreshes the desktop experience, reduces Story Mode startup

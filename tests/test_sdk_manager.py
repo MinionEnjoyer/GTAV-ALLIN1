@@ -178,7 +178,7 @@ def test_launcher_validates_declared_standalone_updater(tmp_path):
         SDK_AGENT_EXECUTABLE: b"MZagent",
         SDK_UPDATER_EXECUTABLE: b"MZupdater",
         "release.json": json.dumps({
-            "product": "ALLIN1-SDK", "version": "0.6.0",
+            "product": "ALLIN1-SDK", "version": "0.6.1",
             "entrypoint": SDK_EXECUTABLE,
             "cli_entrypoint": SDK_CLI_EXECUTABLE,
             "agent_entrypoint": SDK_AGENT_EXECUTABLE,
@@ -194,7 +194,7 @@ def test_launcher_validates_declared_standalone_updater(tmp_path):
             archive.writestr(name, content)
         archive.writestr("checksums.json", json.dumps(checksums))
 
-    assert inspect_sdk_archive(archive_path).version == "0.6.0"
+    assert inspect_sdk_archive(archive_path).version == "0.6.1"
     root = tmp_path / "SDK"
     assert install_sdk_archive(archive_path, root).healthy
     (root / SDK_UPDATER_EXECUTABLE).unlink()

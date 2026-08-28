@@ -28,23 +28,23 @@ def _release_tree(tmp_path: Path) -> Path:
         path.write_text(f"fixture {relative}\n", encoding="utf-8")
 
     (root / "pyproject.toml").write_text(
-        '[project]\nname = "gta-v-allin1"\nversion = "0.6.0"\n',
+        '[project]\nname = "gta-v-allin1"\nversion = "0.6.1"\n',
         encoding="utf-8",
     )
     (root / "uv.lock").write_text(
-        '[[package]]\nname = "gta-v-allin1"\nversion = "0.6.0"\n',
+        '[[package]]\nname = "gta-v-allin1"\nversion = "0.6.1"\n',
         encoding="utf-8",
     )
-    (root / "README.md").write_text("Current public release: **0.6.0**\n")
-    (root / "RELEASE_NOTES.md").write_text("# Release 0.6.0\n")
+    (root / "README.md").write_text("Current public release: **0.6.1**\n")
+    (root / "RELEASE_NOTES.md").write_text("# Release 0.6.1\n")
 
     files = {
-        "src/allin1/__init__.py": b'__version__ = "0.6.0"\n',
+        "src/allin1/__init__.py": b'__version__ = "0.6.1"\n',
         "src/allin1/assets/logo.png": b"png",
         "content/allin1-content.schema.json": b'{"schema_version":1}',
         "content/allin1-vehicle-catalog.schema.json": b'{"schema_version":1}',
-        "content/allin1-online-content/allin1.content.json": b'{"schema_version":1,"version":"0.6.0"}',
-        "content/allin1-experimental-gameplay/allin1.content.json": b'{"schema_version":1,"version":"0.6.0"}',
+        "content/allin1-online-content/allin1.content.json": b'{"schema_version":1,"version":"0.6.1"}',
+        "content/allin1-experimental-gameplay/allin1.content.json": b'{"schema_version":1,"version":"0.6.1"}',
         "data/story_vehicles.json": b'{"vehicles":[]}',
         "data/vehicles.toml": b"data",
         "data/vehicle_grounding.json": b'{"Entries":{}}',
@@ -63,16 +63,16 @@ def _release_tree(tmp_path: Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content)
     (root / "script/ALLIN1.csproj").write_text(
-        "<Project><PropertyGroup><Version>0.6.0</Version>"
-        "<AssemblyVersion>0.6.0.0</AssemblyVersion>"
-        "<FileVersion>0.6.0.0</FileVersion></PropertyGroup></Project>"
+        "<Project><PropertyGroup><Version>0.6.1</Version>"
+        "<AssemblyVersion>0.6.1.0</AssemblyVersion>"
+        "<FileVersion>0.6.1.0</FileVersion></PropertyGroup></Project>"
     )
     return root
 
 
 def test_repository_release_versions_and_tool_surface_are_consistent():
     report = validate_version_consistency(ROOT)
-    assert report.version == "0.6.0"
+    assert report.version == "0.6.1"
 
 
 def test_public_readme_does_not_point_to_excluded_suppressors_source_tree():
@@ -110,7 +110,7 @@ def test_public_release_round_trip_and_tamper_detection(tmp_path):
     root = _release_tree(tmp_path)
     archive = tmp_path / "ALLIN1.zip"
     report = build_public_release(root, archive)
-    assert report.version == "0.6.0"
+    assert report.version == "0.6.1"
     assert report.file_count > len(PUBLIC_ROOT_FILES)
 
     with zipfile.ZipFile(archive) as bundle:
@@ -260,10 +260,10 @@ def test_release_verifier_rejects_structural_manifest_errors(tmp_path):
 
     unmatched = tmp_path / "unmatched.zip"
     with zipfile.ZipFile(unmatched, "w") as archive:
-        archive.writestr("release.json", b'{"version":"0.6.0"}')
+        archive.writestr("release.json", b'{"version":"0.6.1"}')
         archive.writestr("extra.txt", b"extra")
         archive.writestr("checksums.json", json.dumps({
-            "release.json": hashlib.sha256(b'{"version":"0.6.0"}').hexdigest(),
+            "release.json": hashlib.sha256(b'{"version":"0.6.1"}').hexdigest(),
         }))
     with pytest.raises(ValueError, match="exactly match"):
         verify_public_release(unmatched)
@@ -274,7 +274,7 @@ def test_release_verifier_rejects_structural_manifest_errors(tmp_path):
         verify_public_release(wrong_version)
 
     incomplete = tmp_path / "incomplete.zip"
-    _write_manifest_archive(incomplete, {"release.json": b'{"version":"0.6.0"}'})
+    _write_manifest_archive(incomplete, {"release.json": b'{"version":"0.6.1"}'})
     with pytest.raises(ValueError, match="missing required files"):
         verify_public_release(incomplete)
 
