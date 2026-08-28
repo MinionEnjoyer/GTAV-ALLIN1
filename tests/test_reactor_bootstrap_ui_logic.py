@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -180,6 +181,10 @@ def test_position_commits_computed_bounds_through_tk_and_native_api(monkeypatch)
     assert native_calls == [(77, expected, True)]
 
 
+@pytest.mark.skipif(
+    os.name != "nt",
+    reason="non-activating Reactor overlay positioning is Windows-specific",
+)
 def test_first_frame_is_withdrawn_positioned_then_shown_without_activation(
     monkeypatch,
 ):
