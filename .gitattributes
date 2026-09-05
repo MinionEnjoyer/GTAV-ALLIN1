@@ -1,0 +1,3 @@
+# This generated dependency inventory hashes exact bytes, including newlines.
+# Windows checkout must not rewrite text companions after they are attested.
+data/reactor/allin1-ui/** -text
