@@ -460,7 +460,7 @@ namespace ALLIN1
         }
 
         private static bool DrawCatalogPreviewTexture(
-            string itemId, Dictionary<string, string> previewDict,
+            string itemId, IReadOnlyDictionary<string, string> previewDict,
             float x, float y, float w, float h)
         {
             if (!previewDict.TryGetValue(itemId, out string dict))
@@ -479,7 +479,7 @@ namespace ALLIN1
             string weaponName, float x, float y, float w, float h)
         {
             return DrawCatalogPreviewTexture(
-                weaponName, WeaponList.PreviewDict, x, y, w, h);
+                weaponName, RuntimeWeaponCatalog.PreviewDict, x, y, w, h);
         }
 
         /// <summary>Draw a captured equipment preview when available.</summary>

@@ -5,6 +5,21 @@ namespace ALLIN1.Tests
     public sealed class WeaponCustomizationPolicyTests
     {
         [Theory]
+        [InlineData(GTA.WeaponAttachmentPoint.Scope, true)]
+        [InlineData(GTA.WeaponAttachmentPoint.Scope2, true)]
+        [InlineData(GTA.WeaponAttachmentPoint.Supp, true)]
+        [InlineData(GTA.WeaponAttachmentPoint.Supp2, true)]
+        [InlineData(GTA.WeaponAttachmentPoint.Grip, true)]
+        [InlineData(GTA.WeaponAttachmentPoint.FlashLaser2, true)]
+        [InlineData(GTA.WeaponAttachmentPoint.Clip, false)]
+        [InlineData(GTA.WeaponAttachmentPoint.Barrel, false)]
+        [InlineData(GTA.WeaponAttachmentPoint.GunRoot, false)]
+        [InlineData(GTA.WeaponAttachmentPoint.Invalid, false)]
+        public void Only_optional_accessory_slots_can_be_unequipped(GTA.WeaponAttachmentPoint point, bool allowed)
+        {
+            Assert.Equal(allowed, WeaponCustomizationPolicy.CanUnequipComponent(unchecked((int)point)));
+        }
+        [Theory]
         [InlineData("Clip", "Extended Magazine", 2500)]
         [InlineData("Unknown", "Extended Clip", 2500)]
         [InlineData("Scope", "Large Scope", 3500)]

@@ -6,15 +6,15 @@ using GTA.Native;
 namespace ALLIN1
 {
     /// <summary>
-    /// Keeps the fixed Galaxy Super Yacht shell streamed into Story Mode.
-    /// Ownership is a separate entitlement: the yacht remains visible in the
-    /// world, while its interactions and specialized storage are gated by
-    /// <see cref="FeaturesUnlocked"/>.
+    /// Streams the fixed Galaxy Super Yacht shell while the player is nearby.
+    /// Ownership is a separate entitlement: its interactions and specialized
+    /// storage are gated by <see cref="FeaturesUnlocked"/>.
     /// </summary>
     internal static class YachtManager
     {
         private const float AcquireDistance = 900f;
         private const float ReleaseDistance = 1200f;
+        private const int ActivationRetryMs = 5000;
 
         internal static readonly Vector3 WorldPosition =
             new Vector3(-2027.946f, -1036.695f, 6.707587f);
@@ -38,20 +38,27 @@ namespace ALLIN1
 
         private static int _nextStreamCheck;
         private static bool _worldRequested;
+        private static bool _worldStreamed;
+        private static bool _streamingReadyLogged;
+        private static bool _storyReadinessDeferredLogged;
         private static bool _activationBlockedUntilExit;
 
         // The base shell supplies the helipad collision. Supplemental room and
         // lighting IPLs can settle later and must not block aircraft delivery.
-        internal static bool IsWorldStreamed => _worldRequested &&
-            Function.Call<bool>(Hash.IS_IPL_ACTIVE, "hei_yacht_heist");
+        // Updated by the bounded streaming poll. Consumers may query this from
+        // frame callbacks without issuing another native every frame.
+        internal static bool IsWorldStreamed =>
+            _worldRequested && _worldStreamed;
 
         internal static bool FeaturesUnlocked =>
             CharacterInventory.IsPropertyOwned(WorldAssetList.SuperYacht);
 
         internal static void Initialize()
         {
-            UpdateStreaming();
+            // Establish the ordinary retry before probing. UpdateStreaming may
+            // extend it when Story Mode or the map pack is not ready yet.
             _nextStreamCheck = Game.GameTime + 1000;
+            UpdateStreaming();
         }
 
         internal static void OnTick()
@@ -65,81 +72,188 @@ namespace ALLIN1
 
         internal static void Shutdown()
         {
-            RemoveWorld();
+            if (_worldRequested)
+            {
+                RemoveWorld();
+                DeferredMapContentRuntime.Release(
+                    DeferredMapProperty.Yacht, RequiredIpls,
+                    force: true, timeoutMs: 1500);
+            }
             _worldRequested = false;
+            _worldStreamed = false;
+            _streamingReadyLogged = false;
+            _storyReadinessDeferredLogged = false;
             _activationBlockedUntilExit = false;
             GarageManager.OnYachtWorldUnloaded();
         }
 
         private static void UpdateStreaming()
         {
+            bool gameLoading = Game.IsLoading;
+            if (gameLoading)
+            {
+                _nextStreamCheck = Game.GameTime + 1000;
+                return;
+            }
+
             Ped player = Game.Player.Character;
             if (player == null || !player.Exists()) return;
 
             float distance = player.Position.DistanceTo(WorldPosition);
             bool acquired = _worldRequested;
 
-            // A missing or incomplete local map pack must fail closed. Never
-            // switch the whole session to the Online map as a fallback: that
-            // creates global loading zones and can strand Story Mode.
+            // A failed activation remains blocked until the player leaves the
+            // release radius. This prevents a damaged or deliberately
+            // quarantined closure from retrying every few seconds in visible
+            // gameplay.
             if (_activationBlockedUntilExit)
             {
-                if (distance <= ReleaseDistance) return;
+                if (distance <= ReleaseDistance)
+                {
+                    _nextStreamCheck = Game.GameTime + ActivationRetryMs;
+                    return;
+                }
                 _activationBlockedUntilExit = false;
             }
 
             bool shouldAcquire = YachtStreamingPolicy.ShouldAcquire(
                 acquired, distance, AcquireDistance, ReleaseDistance);
-
-            if (shouldAcquire)
+            if (!shouldAcquire)
             {
                 if (!acquired)
                 {
-                    if (!StandaloneMapPack.TryActivate(RequiredIpls, 1500))
+                    _nextStreamCheck = Game.GameTime + 1000;
+                    return;
+                }
+
+                RemoveWorld();
+                DeferredMapContentResult release =
+                    DeferredMapContentRuntime.Release(
+                        DeferredMapProperty.Yacht, RequiredIpls,
+                        timeoutMs: 1500);
+                _worldRequested = false;
+                _worldStreamed = false;
+                _streamingReadyLogged = false;
+                GarageManager.OnYachtWorldUnloaded();
+                ClientLog.Info("Yacht", "streaming_exited",
+                    new Dictionary<string, object>
                     {
-                        _activationBlockedUntilExit = true;
-                        ClientLog.Warn("Yacht", "standalone_map_unavailable");
-                        return;
-                    }
-                    _worldRequested = true;
-                    ClientLog.Info("Yacht", "streaming_entered", new Dictionary<string, object>
+                        { "distance", distance },
+                        { "release_outcome", release.Outcome.ToString() },
+                    });
+                _nextStreamCheck = Game.GameTime + 1000;
+                return;
+            }
+
+            string readinessReason = string.Empty;
+            bool storyRuntimeReady = acquired ||
+                DeferredMapContentRuntime.IsStoryRuntimeReady(
+                    out readinessReason);
+            if (!storyRuntimeReady)
+            {
+                _nextStreamCheck = Game.GameTime + 1000;
+                if (!_storyReadinessDeferredLogged)
+                {
+                    _storyReadinessDeferredLogged = true;
+                    ClientLog.Info("Yacht", "session_streaming_deferred",
+                        new Dictionary<string, object>
+                        {
+                            { "reason", readinessReason },
+                            { "distance", distance },
+                            { "acquire_distance", AcquireDistance },
+                        });
+                }
+                return;
+            }
+            _storyReadinessDeferredLogged = false;
+
+            // The yacht's Rockstar archives are exposed through the same
+            // property-scoped metadata bridge as the garages. Acquire only
+            // while the player is inside the near radius and Story is stable;
+            // a failed bridge or IPL probe stays quarantined until they leave.
+            if (!_worldRequested)
+            {
+                DeferredMapContentResult activation =
+                    DeferredMapContentRuntime.TryAcquire(
+                        DeferredMapProperty.Yacht, RequiredIpls,
+                        timeoutMs: 3000);
+                if (!activation.Success)
+                {
+                    _nextStreamCheck = Game.GameTime + ActivationRetryMs;
+                    _activationBlockedUntilExit = true;
+                    ClientLog.Warn("Yacht", "session_streaming_activation_failed",
+                        new Dictionary<string, object>
+                        {
+                            { "outcome", activation.Outcome.ToString() },
+                            { "detail", activation.Detail },
+                            { "retry_ms", ActivationRetryMs },
+                        });
+                    return;
+                }
+                _worldRequested = true;
+                ClientLog.Info("Yacht", "streaming_entered",
+                    new Dictionary<string, object>
                     {
                         { "distance", distance },
                         { "x", WorldPosition.X },
                         { "y", WorldPosition.Y },
                         { "z", WorldPosition.Z },
                     });
-                }
-
-                RequestWorld();
-                return;
             }
 
-            if (!acquired) return;
-
-            RemoveWorld();
-            _worldRequested = false;
-            GarageManager.OnYachtWorldUnloaded();
-            ClientLog.Info("Yacht", "streaming_exited",
-                new Dictionary<string, object> { { "distance", distance } });
+            _worldStreamed = RequestWorld();
+            if (IsWorldStreamed && !_streamingReadyLogged)
+            {
+                _streamingReadyLogged = true;
+                ClientLog.Info("Yacht", "session_streaming_ready",
+                    new Dictionary<string, object>
+                    {
+                        { "activation", "verified_metadata_bridge" },
+                        { "x", WorldPosition.X },
+                        { "y", WorldPosition.Y },
+                        { "z", WorldPosition.Z },
+                    });
+            }
+            _nextStreamCheck = Game.GameTime +
+                GetStreamingPollInterval(_worldStreamed);
         }
 
-        private static void RequestWorld()
+        internal static int GetStreamingPollInterval(bool worldStreamed)
+        {
+            // Once active, a five-second health poll keeps the yacht resident
+            // without repeatedly walking every IPL during normal gameplay.
+            return worldStreamed ? ActivationRetryMs : 1000;
+        }
+
+        private static bool RequestWorld()
         {
             Function.Call(Hash.REQUEST_COLLISION_AT_COORD,
                 WorldPosition.X, WorldPosition.Y, WorldPosition.Z);
 
+            bool baseShellActive = false;
             foreach (string ipl in Ipls)
             {
-                if (!Function.Call<bool>(Hash.IS_IPL_ACTIVE, ipl))
+                bool active = Function.Call<bool>(Hash.IS_IPL_ACTIVE, ipl);
+                if (string.Equals(ipl, RequiredIpls[0],
+                        System.StringComparison.Ordinal))
+                    baseShellActive = active;
+                if (!active)
                     Function.Call(Hash.REQUEST_IPL, ipl);
             }
+            return baseShellActive;
         }
 
         private static void RemoveWorld()
         {
             foreach (string ipl in Ipls)
-                Function.Call(Hash.REMOVE_IPL, ipl);
+            {
+                try { Function.Call(Hash.REMOVE_IPL, ipl); }
+                catch (System.Exception ex)
+                {
+                    ClientLog.Error("Yacht", "ipl_remove_failed",
+                        ex, new Dictionary<string, object> { { "ipl", ipl } });
+                }
+            }
         }
 
     }
@@ -159,4 +273,5 @@ namespace ALLIN1
                 : distance <= acquireDistance;
         }
     }
+
 }

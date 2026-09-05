@@ -19,37 +19,65 @@ from allin1.release import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _reactor_pair_contract(
+    core: bytes, bridge: bytes, version: str = "0.6.4",
+) -> bytes:
+    return json.dumps({
+        "schema_version": 1,
+        "version": version,
+        "core_file": "ALLIN1.dll",
+        "core_sha256": hashlib.sha256(core).hexdigest(),
+        "bridge_file": "ALLIN1.ReactorBridge.plugin",
+        "bridge_sha256": hashlib.sha256(bridge).hexdigest(),
+    }, separators=(",", ":")).encode("utf-8")
+
+
 def _release_tree(tmp_path: Path) -> Path:
     root = tmp_path / "project"
     root.mkdir(parents=True)
+    from allin1.reactor_dependency import UI_REQUIRED, TAG
+    ui_root = root / "data/reactor/allin1-ui"
+    ui_files = {}
+    for name in UI_REQUIRED:
+        target = ui_root / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"ui-fixture")
+        ui_files[name] = hashlib.sha256(b"ui-fixture").hexdigest()
+    (ui_root / "allin1-ui.json").write_text(json.dumps(dict(
+        schema_version=1, profile="allin1-composition", reactor_release=TAG, files=ui_files,
+    )), encoding="utf-8")
     for relative in PUBLIC_ROOT_FILES:
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"fixture {relative}\n", encoding="utf-8")
 
     (root / "pyproject.toml").write_text(
-        '[project]\nname = "gta-v-allin1"\nversion = "0.6.1"\n',
+        '[project]\nname = "gta-v-allin1"\nversion = "0.6.4"\n',
         encoding="utf-8",
     )
     (root / "uv.lock").write_text(
-        '[[package]]\nname = "gta-v-allin1"\nversion = "0.6.1"\n',
+        '[[package]]\nname = "gta-v-allin1"\nversion = "0.6.4"\n',
         encoding="utf-8",
     )
-    (root / "README.md").write_text("Current public release: **0.6.1**\n")
-    (root / "RELEASE_NOTES.md").write_text("# Release 0.6.1\n")
+    (root / "README.md").write_text("Current public release: **0.6.4**\n")
+    (root / "RELEASE_NOTES.md").write_text("# Release 0.6.4\n")
 
+    core = b"client"
+    bridge = b"reactor-bridge"
     files = {
-        "src/allin1/__init__.py": b'__version__ = "0.6.1"\n',
+        "src/allin1/__init__.py": b'__version__ = "0.6.4"\n',
         "src/allin1/assets/logo.png": b"png",
         "content/allin1-content.schema.json": b'{"schema_version":1}',
         "content/allin1-vehicle-catalog.schema.json": b'{"schema_version":1}',
-        "content/allin1-online-content/allin1.content.json": b'{"schema_version":1,"version":"0.6.1"}',
-        "content/allin1-experimental-gameplay/allin1.content.json": b'{"schema_version":1,"version":"0.6.1"}',
+        "content/allin1-online-content/allin1.content.json": b'{"schema_version":1,"version":"0.6.4"}',
+        "content/allin1-experimental-gameplay/allin1.content.json": b'{"schema_version":1,"version":"0.6.4"}',
         "data/story_vehicles.json": b'{"vehicles":[]}',
         "data/vehicles.toml": b"data",
         "data/vehicle_grounding.json": b'{"Entries":{}}',
-        "script/dist/ALLIN1.dll": b"client",
-        "script/dist/LemonUI.SHVDN3.dll": b"lemon",
+        "script/dist/ALLIN1.dll": core,
+        "script/dist/ALLIN1.ReactorBridge.plugin": bridge,
+        "script/dist/ALLIN1.ReactorBridge.contract.json":
+            _reactor_pair_contract(core, bridge),
         "script/dist/previews/test.png": b"preview",
         "mods/README.md": b"mods",
         "mods/examples/script/mod.toml.example": b"example",
@@ -63,16 +91,23 @@ def _release_tree(tmp_path: Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content)
     (root / "script/ALLIN1.csproj").write_text(
-        "<Project><PropertyGroup><Version>0.6.1</Version>"
-        "<AssemblyVersion>0.6.1.0</AssemblyVersion>"
-        "<FileVersion>0.6.1.0</FileVersion></PropertyGroup></Project>"
+        "<Project><PropertyGroup><Version>0.6.4</Version>"
+        "<AssemblyVersion>0.6.4.0</AssemblyVersion>"
+        "<FileVersion>0.6.4.0</FileVersion></PropertyGroup></Project>"
+    )
+    bridge_project = root / "script/reactor-bridge/ALLIN1.ReactorBridge.csproj"
+    bridge_project.parent.mkdir(parents=True, exist_ok=True)
+    bridge_project.write_text(
+        "<Project><PropertyGroup><Version>0.6.4</Version>"
+        "<AssemblyVersion>0.6.4.0</AssemblyVersion>"
+        "<FileVersion>0.6.4.0</FileVersion></PropertyGroup></Project>"
     )
     return root
 
 
 def test_repository_release_versions_and_tool_surface_are_consistent():
     report = validate_version_consistency(ROOT)
-    assert report.version == "0.6.1"
+    assert report.version == "0.6.4"
 
 
 def test_public_readme_does_not_point_to_excluded_suppressors_source_tree():
@@ -80,13 +115,17 @@ def test_public_readme_does_not_point_to_excluded_suppressors_source_tree():
 
     assert "mods/realistic-suppressors/mod.toml" not in readme
     assert "not bundled in the ALLIN1" in readme
-    assert "Download the standalone Suppressors Enhanced package" in readme
+    for project in ("Suppressors Enhanced", "weapon pack bundle", "GTA VR", "FPV"):
+        assert project in readme
+    assert "separate releases and test gates" in readme
 
 
 def test_public_file_collection_is_explicit_and_excludes_sources(tmp_path):
     root = _release_tree(tmp_path)
     names = {path.relative_to(root).as_posix() for path in collect_public_files(root)}
     assert "script/dist/ALLIN1.dll" in names
+    assert "script/dist/ALLIN1.ReactorBridge.plugin" in names
+    assert "script/dist/ALLIN1.ReactorBridge.contract.json" in names
     assert "content/allin1-online-content/allin1.content.json" in names
     assert "content/allin1-vehicle-catalog.schema.json" in names
     assert "content/allin1-experimental-gameplay/allin1.content.json" in names
@@ -106,16 +145,61 @@ def test_public_file_collection_is_explicit_and_excludes_sources(tmp_path):
     assert "tools/RpfPatcher/RpfPatcher.pdb" not in names
 
 
+@pytest.mark.parametrize("project", ["realistic-suppressors", "weapon-pack-bundle", "gta-vr", "gta-v-fpv"])
+def test_independent_project_payloads_are_not_collected_or_accepted(tmp_path, project):
+    root = _release_tree(tmp_path)
+    relative = f"mods/{project}/payload/Independent.dll"
+    source = root / relative
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"independent project; not an ALLIN1 component")
+    names = {path.relative_to(root).as_posix() for path in collect_public_files(root)}
+    assert relative not in names
+    with pytest.raises(ValueError, match="Independent mod"):
+        _validate_public_path(relative)
+    with pytest.raises(ValueError, match="Independent mod"):
+        _validate_public_path(relative.upper())
+    assert source.read_bytes() == b"independent project; not an ALLIN1 component"
+
+
+@pytest.mark.parametrize("filename", ["RealisticSuppressors.dll", "OtherWeaponPack.dll", "VR.asi", "FPV.plugin"])
+def test_staged_independent_binaries_cannot_leak_into_verified_release(tmp_path, filename):
+    root = _release_tree(tmp_path)
+    relative = f"script/dist/{filename}"
+    (root / relative).write_bytes(b"not core")
+    with pytest.raises(ValueError, match="Unapproved runtime"):
+        _validate_public_path(relative)
+    # DLL/plugin files are otherwise selected by the runtime tree rule.
+    if Path(filename).suffix in {".dll", ".plugin"}:
+        with pytest.raises(ValueError, match="Unapproved runtime"):
+            collect_public_files(root)
+    archive = tmp_path / "foreign.zip"
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.writestr(relative, b"not core")
+    with pytest.raises(ValueError, match="Unapproved runtime"):
+        verify_public_release(archive)
+
+
+def test_allin1_build_and_test_entrypoints_do_not_build_independent_mods():
+    for name in ("test-all.ps1", "test-all.sh", ".github/workflows/build-asi.yml", ".github/workflows/test.yml"):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        assert "mods/realistic-suppressors/" not in text, name
+    independent = (ROOT / ".github/workflows/suppressors-tests.yml").read_text(encoding="utf-8")
+    assert "mods/realistic-suppressors/tests/test_package_contract.py" in independent
+    assert "RealisticSuppressors.Tests.csproj" in independent
+
+
 def test_public_release_round_trip_and_tamper_detection(tmp_path):
     root = _release_tree(tmp_path)
     archive = tmp_path / "ALLIN1.zip"
     report = build_public_release(root, archive)
-    assert report.version == "0.6.1"
+    assert report.version == "0.6.4"
     assert report.file_count > len(PUBLIC_ROOT_FILES)
 
     with zipfile.ZipFile(archive) as bundle:
         assert json.loads(bundle.read("release.json"))["entrypoint"] == "install.bat"
         assert "checksums.json" in bundle.namelist()
+        assert "script/dist/ALLIN1.ReactorBridge.plugin" in bundle.namelist()
+        assert "script/dist/ALLIN1.ReactorBridge.contract.json" in bundle.namelist()
         assert "docs/gtaiv-npc-physics-experiment.md" in bundle.namelist()
         assert "docs/optional-assistant.md" in bundle.namelist()
         assert "docs/realistic-suppressors.md" in bundle.namelist()
@@ -143,6 +227,16 @@ def test_release_rejects_version_drift(tmp_path):
     )
     with pytest.raises(ValueError, match="version mismatch"):
         validate_version_consistency(root)
+
+
+def test_release_build_rejects_mixed_core_and_bridge_binaries(tmp_path):
+    root = _release_tree(tmp_path)
+    (root / "script/dist/ALLIN1.ReactorBridge.plugin").write_bytes(
+        b"new-bridge-with-stale-contract"
+    )
+
+    with pytest.raises(ValueError, match="does not match the Reactor bridge"):
+        build_public_release(root, tmp_path / "mixed.zip")
 
 
 @pytest.mark.parametrize("package", [
@@ -200,8 +294,11 @@ def test_collection_reports_missing_release_inputs(tmp_path):
         collect_public_files(root)
 
     root = _release_tree(tmp_path / "missing-tree")
-    for path in (root / "data").iterdir():
-        path.unlink()
+    for path in sorted((root / "data").rglob("*"), key=lambda p: len(p.parts), reverse=True):
+        if path.is_file():
+            path.unlink()
+        else:
+            path.rmdir()
     (root / "data").rmdir()
     with pytest.raises(FileNotFoundError, match="data"):
         collect_public_files(root)
@@ -252,6 +349,24 @@ def _write_manifest_archive(path: Path, files: dict[str, bytes]) -> None:
         archive.writestr("checksums.json", json.dumps(checksums))
 
 
+def test_release_verifier_rejects_rechecksummed_mixed_binary_pair(tmp_path):
+    root = _release_tree(tmp_path / "source")
+    original = tmp_path / "original.zip"
+    build_public_release(root, original)
+    mixed = tmp_path / "mixed.zip"
+    with zipfile.ZipFile(original) as source:
+        files = {
+            name: source.read(name)
+            for name in source.namelist()
+            if name != "checksums.json"
+        }
+    files["script/dist/ALLIN1.dll"] = b"different-core"
+    _write_manifest_archive(mixed, files)
+
+    with pytest.raises(ValueError, match="does not match the Reactor bridge"):
+        verify_public_release(mixed)
+
+
 def test_release_verifier_rejects_structural_manifest_errors(tmp_path):
     missing_metadata = tmp_path / "missing-metadata.zip"
     _write_manifest_archive(missing_metadata, {"README.md": b"readme"})
@@ -260,10 +375,10 @@ def test_release_verifier_rejects_structural_manifest_errors(tmp_path):
 
     unmatched = tmp_path / "unmatched.zip"
     with zipfile.ZipFile(unmatched, "w") as archive:
-        archive.writestr("release.json", b'{"version":"0.6.1"}')
+        archive.writestr("release.json", b'{"version":"0.6.4"}')
         archive.writestr("extra.txt", b"extra")
         archive.writestr("checksums.json", json.dumps({
-            "release.json": hashlib.sha256(b'{"version":"0.6.1"}').hexdigest(),
+            "release.json": hashlib.sha256(b'{"version":"0.6.4"}').hexdigest(),
         }))
     with pytest.raises(ValueError, match="exactly match"):
         verify_public_release(unmatched)
@@ -274,7 +389,7 @@ def test_release_verifier_rejects_structural_manifest_errors(tmp_path):
         verify_public_release(wrong_version)
 
     incomplete = tmp_path / "incomplete.zip"
-    _write_manifest_archive(incomplete, {"release.json": b'{"version":"0.6.1"}'})
+    _write_manifest_archive(incomplete, {"release.json": b'{"version":"0.6.4"}'})
     with pytest.raises(ValueError, match="missing required files"):
         verify_public_release(incomplete)
 

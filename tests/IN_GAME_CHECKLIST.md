@@ -1,6 +1,49 @@
 # GTA runtime smoke checklist
 
-Run this checklist on both Legacy and Enhanced after automated tests pass.
+## Current 0.6.4 acceptance
+
+0.6.4 is unreleased. Live tests require explicit approval, a newly identified
+candidate and an isolated/recoverable test setup. This document does not launch
+GTA or approve writes. Run Legacy and Enhanced separately against the final
+core/bridge/dependency bytes, not merely an app version string.
+
+The versioned schema in `src/allin1/release_acceptance.py` is authoritative.
+Record a unique session, independent authority, start/end timestamps, exact
+source/build/artifact/dependency identity and ordered structured evidence.
+Stale, missing, skipped or unrelated checks fail; a log hash alone is insufficient.
+
+Required Launcher-desktop checks:
+
+- `clean_install`, `upgrade`, `repair`, `uninstall`, `rollback`;
+- `missing_dependencies`, `space_paths`, `long_paths`, `user_data_preservation`;
+- `setup`, `gameplay`, `content`, `input`, `packages`, `characters`, `sdk_manager`,
+  `activity`, `help`, `cancel_close`.
+
+Required Reactor Story checks:
+
+- `reactor_loaded`, `renderer_initialized`, `frame_presented`;
+- `resize_recovery`, `device_recovery`, `shutdown`, `online_guard`.
+
+The online guard must prevent gameplay/native writes in an online/network
+session; do not deliberately join GTA Online with a modded configuration.
+SDK preview/Blender images are not Reactor frame evidence.
+
+Exercise native dialogs, dirty drafts, cancelled work, uncertain sidecar outcomes,
+SDK handoff and console hiding in the packaged desktop, with user-data and
+outside-destination canaries. Follow the exact candidate's enabled/quarantined
+content state; do not enable a disabled map/runtime just to satisfy an old fixture.
+
+Suppressors Enhanced 1.2.1 and GTA-V-FPV have independent acceptance. Do not install
+either merely to qualify a Launcher that does not bundle it. If optional package
+integration is separately approved, record that identity and scope distinctly.
+
+## Historical feature and fixture checklist
+
+The list below is preserved for investigation and feature history. Specific
+F11 bus bindings, map layouts/quarantines, mod versions and old presentation
+expectations are **not** blanket 0.6.4 requirements. Reconcile each applicable
+case with current source and approval before using it. Historical cases cannot
+replace the complete schema/session checks above.
 
 - With GTA V closed, open the launcher's **Packages** workspace, import the
   standalone `realistic-suppressors/mod.toml`, and install it for the selected
@@ -11,10 +54,20 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   `scripts/ALLIN1.dll` or another mod's files.
 - Start Story Mode with BattlEye disabled; confirm no ScriptHook or SHVDN load
   errors and confirm the standalone log contains a fresh `configured` entry.
-- On the first launch after Install / Repair, record the time from game launch
-  to a controllable character and confirm Alt+Tab/minimize becomes responsive.
-  The installed `allin1_maps` marker must report `layout=pruned-local-v2`,
-  `asset_count=15`, and an archive size near 163 MiB.
+- After Install / Repair, confirm `allin1_maps.active` reports
+  `layout=pruned-local-v4-unregistered` and
+  `archive_registration=disabled`, `allin1_maps.runtime.json` is absent, and
+  `dlclist.xml` contains no `dlcpacks:/allin1_maps/` entry. Health Check must
+  report the staged 16-asset archive as safely excluded from startup and must
+  describe map-backed garages and the yacht as temporarily unavailable.
+- The first launch after rebuilding `update.rpf` may rebuild Rockstar archive
+  caches. Record time to a controllable character on that launch and on two
+  subsequent warm launches; confirm Alt+Tab/minimize becomes responsive and
+  distinguish the one-time archive cost from a repeatable ScriptHook delay.
+- Confirm map-backed entrances at Harmony, Davis, Garment Factory, Grapeseed,
+  and Paleto Bay fail closed while the generated map archive is quarantined:
+  no fade, teleport, storage, or IPL transition may begin. Keep F11 reserved
+  for the bus happy-path fixture.
 - With the enabled Reactor V package installed, launch Story Mode from ALLIN1.
   Before the game is playable, confirm only a compact upper-right status strip
   appears. It must cycle through the REACTOR acronym, advance only from fresh
@@ -48,11 +101,19 @@ Run this checklist on both Legacy and Enhanced after automated tests pass.
   wanted entry works, while mission, protected-story-vehicle, and size rules are
   still enforced. Garage exits must remain usable in either setting.
 - Enter and leave every DLC-backed location (Harmony, Davis, the Garment
-  Factory, Grapeseed, Paleto Bay, and the Super Yacht),
+  Factory, Grapeseed, and Paleto Bay), then visit the Super Yacht,
   then visit Michael's house and Floyd's apartment. Confirm Story Mode bedroom
-  beds, sofas, and other furniture still render, and confirm the log records
-  `multiplayer_map_acquired` followed by `story_map_restored` for each visit.
+  beds, sofas, and other furniture still render. Confirm each garage logs one
+  `DeferredMap activation_ready` on entry and `release_completed` on exit.
+  The yacht group must activate once after Story Mode becomes safe, stay
+  resident regardless of player distance, and release only during shutdown.
 - Restart the game and confirm garage, balance, ownership, and configuration persistence.
+- With Story Mode autosave disabled, purchase and equip normal armor,
+  Juggernaut armor, night vision, a parachute, and each can/extinguisher item.
+  Die and respawn; confirm armor is zero, night vision and Juggernaut effects
+  are off, and none of the purchased gear returns. Reload the prior save
+  without saving and confirm the staged loss is discarded. Repeat the death,
+  create a Story Mode save, reload it, and confirm the gear remains consumed.
 - Drive through poor, middle, rich, highway, emergency, air, and water spawn regions.
 - Watch off-screen DLC traffic replacements enter view. Cars whose source had a
   driver must retain a driver and resume ambient driving even when replaced at a

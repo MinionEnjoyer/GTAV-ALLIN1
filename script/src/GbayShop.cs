@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using GTA;
 using GTA.Math;
@@ -16,11 +17,21 @@ namespace ALLIN1
 {
     public class GbayShop : Script
     {
+        private const long ShutdownSlowThresholdMilliseconds = 50;
         private static GbayShop _current;
 
         internal static bool IsMenuActive =>
-            _current != null && _current._browser != null &&
-            _current._browser.IsOpen;
+            _current != null &&
+            ((_current._browser != null && _current._browser.IsOpen) ||
+             (_current._menuBridge != null &&
+              _current._menuBridge.IsMenuActive));
+
+        private enum GbayUiBackend
+        {
+            Auto,
+            Reactor,
+            Legacy,
+        }
 
         // --- Config ---
         private static readonly string SCRIPTS_DIR =
@@ -32,6 +43,10 @@ namespace ALLIN1
         private Keys _openKey = Keys.F9;
         private Keys _nightVisionKey = Keys.N;
         private bool _freeMode;
+        // Deprecated compatibility alias. It selects the legacy browser only
+        // when gbay_ui_backend is absent from an older configuration.
+        private bool _menuEnabled;
+        private GbayUiBackend _uiBackend = GbayUiBackend.Auto;
         private bool _enableLogging = true;
         private bool _initialized;
         private bool _safeMode;
@@ -54,6 +69,21 @@ namespace ALLIN1
 
         // --- Browser UI ---
         private GbayBrowser _browser;
+        private GbayVehicleStorefront _vehicleStorefront;
+        private IAllin1MenuBridge _menuBridge;
+        private readonly GbayToggleInputGate _toggleInput =
+            new GbayToggleInputGate();
+        private readonly ReactorF9HandoffGate _f9Handoff =
+            new ReactorF9HandoffGate();
+        private readonly GbayStoryCharacterRefreshGate
+            _storyCharacterRefresh = new GbayStoryCharacterRefreshGate();
+        private readonly GbayGameStateSynchronizationGate
+            _gameStateSynchronization =
+                new GbayGameStateSynchronizationGate();
+        private bool _handoffBlockedLogged;
+        private long _lastHandoffSuppressionLoggedGeneration;
+        private bool _reactorWeaponWorkbenchHandoff;
+        private bool _gameStateSyncFailureLogged;
 
         // --- Public accessors for GbayBrowser ---
         internal bool FreeMode => _freeMode;
@@ -68,18 +98,74 @@ namespace ALLIN1
                 Allin1ExtensionApi.OnlineContentPackageId);
             Tick += OnTick;
             KeyDown += OnKeyDown;
+            KeyUp += OnKeyUp;
             Aborted += OnAborted;
             Interval = 0;
         }
 
         private void OnAborted(object sender, EventArgs args)
         {
-            _browser?.Close();
-            if (ReferenceEquals(_current, this)) _current = null;
-            if (_onlineContentEnabled)
+            using (ClientLog.Time("GBAY", "shutdown_on_aborted",
+                new Dictionary<string, object>
+                {
+                    { "browser_present", _browser != null },
+                    { "reactor_bridge_present", _menuBridge != null },
+                    { "online_content_enabled", _onlineContentEnabled },
+                }, ShutdownSlowThresholdMilliseconds))
             {
-                GarageManager.OnScriptAborted();
-                YachtManager.Shutdown();
+                using (ClientLog.Time("GBAY", "shutdown_browser_close",
+                    new Dictionary<string, object>
+                    {
+                        { "browser_present", _browser != null },
+                    }, ShutdownSlowThresholdMilliseconds))
+                {
+                    _browser?.Close();
+                }
+
+                using (ClientLog.Time("GBAY",
+                    "shutdown_reactor_bridge_dispose",
+                    new Dictionary<string, object>
+                    {
+                        { "reactor_bridge_present", _menuBridge != null },
+                    }, ShutdownSlowThresholdMilliseconds))
+                {
+                    try { _menuBridge?.Dispose(); }
+                    catch (Exception ex)
+                    {
+                        LogException("ReactorBridge.Dispose", ex);
+                    }
+                    _menuBridge = null;
+                }
+
+                using (ClientLog.Time("GBAY",
+                    "shutdown_f9_handoff_dispose", null,
+                    ShutdownSlowThresholdMilliseconds))
+                {
+                    _f9Handoff.Dispose();
+                }
+
+                using (ClientLog.Time("GBAY", "shutdown_current_release",
+                    null, ShutdownSlowThresholdMilliseconds))
+                {
+                    if (ReferenceEquals(_current, this)) _current = null;
+                }
+
+                if (_onlineContentEnabled)
+                {
+                    using (ClientLog.Time("GBAY",
+                        "shutdown_garage_manager_abort", null,
+                        ShutdownSlowThresholdMilliseconds))
+                    {
+                        GarageManager.OnScriptAborted();
+                    }
+
+                    using (ClientLog.Time("GBAY",
+                        "shutdown_yacht_manager", null,
+                        ShutdownSlowThresholdMilliseconds))
+                    {
+                        YachtManager.Shutdown();
+                    }
+                }
             }
         }
 
@@ -107,6 +193,8 @@ namespace ALLIN1
         {
             _openKey = Keys.F9;
             _freeMode = false;
+            _menuEnabled = false;
+            _uiBackend = GbayUiBackend.Auto;
             _enableLogging = true;
             _safeMode = false;
             _garagesAlwaysAccessible = false;
@@ -116,8 +204,14 @@ namespace ALLIN1
 
             try
             {
+                string configText;
+                string[] configLines = EarlyStartupSnapshot.TryGetText(
+                        "config", out configText)
+                    ? SplitLines(configText)
+                    : File.ReadAllLines(CONFIG_PATH);
                 string currentSection = "";
-                foreach (string rawLine in File.ReadAllLines(CONFIG_PATH))
+                bool backendConfigured = false;
+                foreach (string rawLine in configLines)
                 {
                     string line = rawLine.Trim();
                     if (line.Length == 0 || line.StartsWith("#"))
@@ -157,6 +251,30 @@ namespace ALLIN1
                     {
                         _freeMode = valLower == "true";
                     }
+                    else if (key == "gbay_menu_enabled")
+                    {
+                        _menuEnabled = valLower == "true";
+                    }
+                    else if (key == "gbay_ui_backend")
+                    {
+                        string cleaned = val.Trim('"', '\'')
+                            .ToLowerInvariant();
+                        if (cleaned == "auto")
+                        {
+                            _uiBackend = GbayUiBackend.Auto;
+                            backendConfigured = true;
+                        }
+                        else if (cleaned == "reactor")
+                        {
+                            _uiBackend = GbayUiBackend.Reactor;
+                            backendConfigured = true;
+                        }
+                        else if (cleaned == "legacy")
+                        {
+                            _uiBackend = GbayUiBackend.Legacy;
+                            backendConfigured = true;
+                        }
+                    }
                     else if (key == "enable_logging")
                     {
                         _enableLogging = valLower == "true";
@@ -182,6 +300,8 @@ namespace ALLIN1
                         _uiScale = Math.Max(0.75f, Math.Min(1.5f, scale));
                     }
                 }
+                if (!backendConfigured && _menuEnabled)
+                    _uiBackend = GbayUiBackend.Legacy;
             }
             catch (Exception ex)
             {
@@ -196,8 +316,13 @@ namespace ALLIN1
 
             try
             {
+                string pricesText;
+                string[] priceLines = EarlyStartupSnapshot.TryGetText(
+                        "gear-prices", out pricesText)
+                    ? SplitLines(pricesText)
+                    : File.ReadAllLines(GEAR_PRICES_PATH);
                 int count = 0;
-                foreach (string rawLine in File.ReadAllLines(GEAR_PRICES_PATH))
+                foreach (string rawLine in priceLines)
                 {
                     string line = rawLine.Trim();
                     if (line.Length == 0 || line.StartsWith("#") ||
@@ -225,6 +350,12 @@ namespace ALLIN1
             }
         }
 
+        private static string[] SplitLines(string value)
+        {
+            return (value ?? "").Replace("\r\n", "\n")
+                .Replace('\r', '\n').Split('\n');
+        }
+
         // ------------------------------------------------------------------ //
         //  Initialization                                                     //
         // ------------------------------------------------------------------ //
@@ -235,13 +366,36 @@ namespace ALLIN1
             ControllerBindings.Load(CONFIG_PATH);
             ClientLog.Configure(_enableLogging);
             ClientWatchdog.Configure(_safeMode);
-            GbayBrowser.ReducedMotion = _reducedMotion;
-            GbayRenderer.ColorblindMode = _colorblindMode;
-            GbayRenderer.UiScale = _uiScale;
+            if (_onlineContentEnabled)
+            {
+                // Hash the stock Tuners archive away from the Davis entry/black
+                // transition. Entry remains unavailable until this exact keyed
+                // background attestation has completed successfully.
+                DavisStockReferenceBridgePolicy
+                    .WarmUpCurrentNativeMutationAuthorization();
+                // A strict Grapeseed Phase-A install emits one deterministic
+                // zero-native startup guard for promotion evidence. A strict
+                // Phase-B install instead warms its multi-gigabyte mpheist
+                // archive attestation away from the garage-entry transition.
+                GrapeseedStockReferenceBridgePolicy
+                    .ObserveStartupAuthorizationState();
+                // Garment Factory uses its own scoped mp2024_02 bridge. Hash
+                // the stock archive in the shared background queue so entry
+                // never performs multi-gigabyte I/O on the game thread.
+                GarmentStockReferenceBridgePolicy
+                    .WarmUpCurrentNativeMutationAuthorization();
+                OfficialInteriorStockBridgePolicy.Harmony
+                    .WarmUpCurrentNativeMutationAuthorization();
+                OfficialInteriorStockBridgePolicy.Paleto
+                    .WarmUpCurrentNativeMutationAuthorization();
+            }
             RuntimeVehicleCatalog.Refresh();
+            RuntimeWeaponCatalog.Refresh();
             if (_onlineContentEnabled)
                 LoadGearPrices();
-            Log($"=== GBAY Initialized: key={_openKey} freeMode={_freeMode} ===");
+            Log($"=== GBAY services initialized: backend={_uiBackend} " +
+                $"legacyAlias={_menuEnabled} key={_openKey} " +
+                $"freeMode={_freeMode} ===");
 
             if (_onlineContentEnabled)
             {
@@ -275,8 +429,189 @@ namespace ALLIN1
                 }
             }
 
-            _browser = new GbayBrowser(this);
+            if (_uiBackend == GbayUiBackend.Legacy)
+                EnsureBrowser();
+            else
+                TryInitializeReactorBridge(logUnavailable: false);
             _initialized = true;
+        }
+
+        private bool TryInitializeReactorBridge(bool logUnavailable)
+        {
+            if (_menuBridge != null)
+                return true;
+            if (_vehicleStorefront == null)
+                _vehicleStorefront = new GbayVehicleStorefront(this);
+            _menuBridge = GbayReactorBridgeLoader.TryLoad(
+                _vehicleStorefront, out string status);
+            if (_menuBridge != null)
+            {
+                Ped activePlayer = Game.Player.Character;
+                if (_menuBridge is IAllin1StoryCharacterBridge &&
+                    !Game.IsLoading &&
+                    activePlayer != null && activePlayer.Exists() &&
+                    !activePlayer.IsDead &&
+                    TryResolveProtagonist(
+                        activePlayer.Model.Hash, out PedHash character) &&
+                    !GarageManager.IsTransitionInProgress)
+                    _storyCharacterRefresh.Seed(
+                        StoryCharacterId(character));
+                ClientLog.Info("GBAY", "reactor_bridge_ready",
+                    new Dictionary<string, object>
+                    {
+                        { "status", status ?? "ready" },
+                    });
+                return true;
+            }
+            if (logUnavailable)
+                ClientLog.Warn("GBAY", "reactor_bridge_unavailable",
+                    new Dictionary<string, object>
+                    {
+                        { "status", status ?? "unavailable" },
+                    });
+            return false;
+        }
+
+        private GbayBrowser EnsureBrowser()
+        {
+            if (_browser != null)
+                return _browser;
+
+            // Keep the legacy renderer and its static catalog dormant when
+            // Reactor V owns the storefront. Specialized garage access may
+            // still create it lazily until those lists move to Reactor.
+            GbayBrowser.ReducedMotion = _reducedMotion;
+            GbayRenderer.ColorblindMode = _colorblindMode;
+            GbayRenderer.UiScale = _uiScale;
+            _browser = new GbayBrowser(this);
+            return _browser;
+        }
+
+        internal bool TryOpenVehicleDelivery(string model, int quotedPrice)
+        {
+            GbayBrowser browser = EnsureBrowser();
+            if (browser.IsOpen)
+                return false;
+            return browser.TryOpenVehicleDelivery(model, quotedPrice);
+        }
+
+        internal bool TryGetCachedWeaponCustomizationCatalog(
+            string weapon,
+            out IReadOnlyList<GbayBrowser.DetachedWorkbenchRow> rows)
+        {
+            if (_vehicleStorefront == null)
+            {
+                rows = Array.Empty<GbayBrowser.DetachedWorkbenchRow>();
+                return false;
+            }
+            return _vehicleStorefront.TryGetCachedWeaponCustomizationCatalog(
+                weapon, out rows);
+        }
+
+        internal bool TryOpenReactorWeaponWorkbench(
+            string weaponName, string displayName)
+        {
+            GbayBrowser browser = EnsureBrowser();
+            if (browser.IsOpen || !browser.TryOpenWeaponCustomization(
+                    weaponName, displayName))
+                return false;
+            _reactorWeaponWorkbenchHandoff = true;
+            ClientLog.Info("GBAY", "reactor_weapon_workbench_handoff_opened",
+                new Dictionary<string, object>
+                {
+                    { "weapon", weaponName ?? "" },
+                });
+            return true;
+        }
+
+        internal bool TryOpenReactorWeaponPreview(
+            string weaponName, string displayName)
+        {
+            GbayBrowser browser = EnsureBrowser();
+            if (browser.IsOpen || !browser.TryOpenReactorWeaponPreview(
+                    weaponName, displayName))
+                return false;
+            ClientLog.Info("GBAY", "reactor_weapon_preview_opened",
+                new Dictionary<string, object>
+                {
+                    { "weapon", weaponName ?? "" },
+                    { "menu_owner", "reactor" },
+                });
+            return true;
+        }
+
+        internal bool TryPreviewReactorWeaponOption(
+            string weaponName, string kind, int componentHash,
+            int attachmentPoint, int tint)
+        {
+            return _browser != null &&
+                _browser.TryPreviewReactorWeaponOption(
+                    weaponName, kind, componentHash, attachmentPoint, tint);
+        }
+
+        internal void CloseReactorWeaponPreview()
+        {
+            if (_browser == null || !_browser.IsReactorWeaponPreviewOpen)
+                return;
+            _browser.CloseReactorWeaponPreview();
+            ClientLog.Info("GBAY", "reactor_weapon_preview_closed");
+        }
+
+        private void OpenGarageWorldEntry(
+            Allin1GarageWorldEntryLocation location,
+            Action openLegacyList)
+        {
+            if (_uiBackend != GbayUiBackend.Legacy &&
+                TryInitializeReactorBridge(logUnavailable: true))
+            {
+                try
+                {
+                    if (_menuBridge.TryPresentGarage(
+                            new Allin1GaragePresentationRequest
+                            {
+                                Location = location,
+                            }))
+                    {
+                        ClientLog.Info("GBAY",
+                            "reactor_world_entry_presented",
+                            new Dictionary<string, object>
+                            {
+                                { "location", location.ToString() },
+                            });
+                        return;
+                    }
+                    ClientLog.Warn("GBAY",
+                        "reactor_world_entry_not_ready",
+                        new Dictionary<string, object>
+                        {
+                            { "location", location.ToString() },
+                            { "status", _menuBridge.Status ?? "not ready" },
+                        });
+                }
+                catch (Exception ex)
+                {
+                    LogException("ReactorBridge.WorldEntry", ex);
+                }
+            }
+
+            // A forced Reactor backend never opens a second, overlapping UI.
+            // Auto and Legacy retain the 0.5 compatibility list when Reactor
+            // is genuinely unavailable.
+            if (_uiBackend == GbayUiBackend.Reactor)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~y~Reactor V is not ready. My Garage was not opened.",
+                    2500);
+                return;
+            }
+
+            if (_uiBackend == GbayUiBackend.Auto)
+                ClientLog.Warn("GBAY", "world_entry_fallback_to_legacy",
+                    new Dictionary<string, object>
+                    {
+                        { "location", location.ToString() },
+                    });
+            openLegacyList();
         }
 
         // ------------------------------------------------------------------ //
@@ -292,6 +627,19 @@ namespace ALLIN1
                 "~r~Helicopters, planes, and boats require specialized ALLIN1 storage.",
                 3500);
             Log($"Delivery rejected: {model} cannot use {garageName}");
+            return true;
+        }
+
+        private bool RejectUnavailableMapDestination(
+            int location, string destinationName)
+        {
+            if (OfficialMapContentPolicy.IsDeliveryDestinationAvailable(
+                    location))
+                return false;
+            GTA.UI.Screen.ShowSubtitle(
+                "~r~That destination is not recognized by this build.",
+                4000);
+            Log($"Delivery rejected: unknown destination {destinationName}");
             return true;
         }
 
@@ -316,8 +664,9 @@ namespace ALLIN1
             int currentPrice = RuntimeVehicleCatalog.GetPrice(model);
             if (!_freeMode && quotedPrice != currentPrice)
             {
+                _browser?.SynchronizeVehicleListing(model, currentPrice);
                 GTA.UI.Screen.ShowSubtitle(
-                    "~y~That listing changed. Reopen GBAY to refresh its price.",
+                    "~y~That listing changed. GBAY will update it automatically.",
                     3500);
                 Log($"Vehicle purchase rejected: stale quote {model}, " +
                     $"quoted=${quotedPrice}, current=${currentPrice}");
@@ -427,6 +776,7 @@ namespace ALLIN1
 
         internal void ExecuteDeliverToFloorGarage(string model, int price)
         {
+            if (RejectUnavailableMapDestination(1, "Harmony Garage")) return;
             if (RejectSpecializedVehicleFromGarage(model, "Harmony Garage"))
                 return;
             int used = GarageManager.GetFloorGarageUsedSlots();
@@ -474,6 +824,7 @@ namespace ALLIN1
 
         internal void ExecuteDeliverToDavisGarage(string model, int price)
         {
+            if (RejectUnavailableMapDestination(2, "Davis Auto Shop")) return;
             if (RejectSpecializedVehicleFromGarage(model, "Davis Auto Shop"))
                 return;
             if (GarageManager.GetGarageSizeTier(model) >= 2)
@@ -533,13 +884,11 @@ namespace ALLIN1
                 return WeaponPurchasePolicy.Quote(
                     smoke.UnitPrice, "Throwables",
                     smoke.BundleQuantity, _freeMode);
-            Ped player = Game.Player.Character;
-            Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
-            string category = WeaponList.CategoryNames.ContainsKey(weaponName)
-                ? WeaponList.CategoryNames[weaponName] : "";
-            int configuredQuantity = WeaponList.PurchaseQuantities.ContainsKey(
+            string category = RuntimeWeaponCatalog.CategoryNames.ContainsKey(weaponName)
+                ? RuntimeWeaponCatalog.CategoryNames[weaponName] : "";
+            int configuredQuantity = RuntimeWeaponCatalog.PurchaseQuantities.ContainsKey(
                     weaponName)
-                ? WeaponList.PurchaseQuantities[weaponName] : 1;
+                ? RuntimeWeaponCatalog.PurchaseQuantities[weaponName] : 1;
             return WeaponPurchasePolicy.Quote(
                 unitPrice, category, configuredQuantity, _freeMode);
         }
@@ -549,6 +898,18 @@ namespace ALLIN1
             if (SmokeGrenadeCatalog.IsProduct(weaponName))
             {
                 ExecuteGiveSmokeGrenades(weaponName);
+                return;
+            }
+            RuntimeWeaponCatalog.Refresh();
+            if (!RuntimeWeaponCatalog.TryGetPrice(weaponName, out int currentPrice))
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~This weapon is no longer listed in GBAY.", 3500);
+                return;
+            }
+            // Require another confirmation if the authorized price has changed.
+            if (unitPrice != currentPrice)
+            {
+                GTA.UI.Screen.ShowSubtitle("~y~The weapon price changed. Choose the listing again.", 3500);
                 return;
             }
             Ped player = Game.Player.Character;
@@ -626,8 +987,8 @@ namespace ALLIN1
             if (!_freeMode && totalPrice > 0)
                 Game.Player.Money -= totalPrice;
 
-            string displayName = WeaponList.DisplayNames.ContainsKey(weaponName)
-                ? WeaponList.DisplayNames[weaponName] : weaponName;
+            string displayName = RuntimeWeaponCatalog.DisplayNames.ContainsKey(weaponName)
+                ? RuntimeWeaponCatalog.DisplayNames[weaponName] : weaponName;
             string quantityText = quote.QuantityPriced
                 ? $" ({chargedQuantity} x ${quote.UnitPrice:N0})" : "";
             string msg = _freeMode || totalPrice <= 0
@@ -638,6 +999,12 @@ namespace ALLIN1
 
             Log($"GiveWeapon: {weaponName}, unit=${quote.UnitPrice}, "
                 + $"quantity={chargedQuantity}, total=${totalPrice}");
+            ClientLog.Info("GBAY", "weapon_purchase_completed",
+                new Dictionary<string, object> {
+                    { "event_schema", 1 }, { "weapon", weaponName },
+                    { "unit_price", quote.UnitPrice }, { "quantity", chargedQuantity },
+                    { "total_price", totalPrice }
+                });
             CharacterInventory.RecordOwned(weaponName, false);
             GbayPreferences.RecordWeapon(weaponName);
         }
@@ -744,6 +1111,15 @@ namespace ALLIN1
         /// </summary>
         internal int ExecuteRefillAmmo(string weaponName)
         {
+            RuntimeWeaponCatalog.Refresh();
+            if (!RuntimeWeaponCatalog.TryGetPrice(weaponName, out _) ||
+                !Function.Call<bool>(Hash.IS_WEAPON_VALID, Game.GenerateHash(weaponName)) ||
+                !Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON,
+                    Game.Player.Character.Handle, Game.GenerateHash(weaponName), false))
+            {
+                GTA.UI.Screen.ShowSubtitle("~r~This weapon is unavailable or not equipped in your inventory.", 3500);
+                return 0;
+            }
             Ped player = Game.Player.Character;
             Hash weaponHash = (Hash)Game.GenerateHash(weaponName);
 
@@ -783,10 +1159,7 @@ namespace ALLIN1
             int needed = capacity.RoundsNeeded;
 
             int costPerRound = GetAmmoUnitPrice(weaponName);
-            int totalCost = needed * costPerRound;
-
-            if (_freeMode)
-                totalCost = 0;
+            int totalCost = AmmoRefillPolicy.Price(needed, costPerRound, _freeMode);
 
             if (!_freeMode && totalCost > 0 && Game.Player.Money < totalCost)
             {
@@ -800,8 +1173,8 @@ namespace ALLIN1
             if (!_freeMode && totalCost > 0)
                 Game.Player.Money -= totalCost;
 
-            string displayName = WeaponList.DisplayNames.ContainsKey(weaponName)
-                ? WeaponList.DisplayNames[weaponName] : weaponName;
+            string displayName = RuntimeWeaponCatalog.DisplayNames.ContainsKey(weaponName)
+                ? RuntimeWeaponCatalog.DisplayNames[weaponName] : weaponName;
             string msg = totalCost > 0
                 ? $"~g~{displayName}~w~ ammo refilled ({needed} rounds) for ~g~${totalCost:N0}~w~."
                 : $"~g~{displayName}~w~ ammo refilled ({needed} rounds).";
@@ -835,7 +1208,8 @@ namespace ALLIN1
             bool consumed = Allin1ExtensionApi.IsWeaponComponentConsumed(
                 weaponName, componentHash);
             bool owned = !consumed && (inventoryOwned || liveOwned);
-            int charge = _freeMode || owned ? 0 : Math.Max(0, price);
+            bool defaultPart = WeaponComponentDefaults.IsDefault(weaponHash, componentHash);
+            int charge = _freeMode || owned || defaultPart ? 0 : Math.Max(0, price);
             if (charge > 0 && Game.Player.Money < charge)
             {
                 GTA.UI.Screen.ShowSubtitle("~r~Insufficient funds.", 2500);
@@ -858,8 +1232,9 @@ namespace ALLIN1
             if (charge > 0) Game.Player.Money -= charge;
             CharacterInventory.RecordWeaponComponent(
                 weaponName, componentHash, attachmentPoint);
-            Allin1ExtensionApi.NotifyWeaponComponentPurchased(
-                weaponName, componentHash, attachmentPoint);
+            if (!defaultPart)
+                Allin1ExtensionApi.NotifyWeaponComponentPurchased(
+                    weaponName, componentHash, attachmentPoint);
             GTA.UI.Screen.ShowSubtitle(charge > 0
                 ? $"~g~Weapon upgrade~w~ purchased for ~g~${charge:N0}~w~."
                 : "~g~Weapon upgrade equipped.~w~", 2500);
@@ -872,13 +1247,42 @@ namespace ALLIN1
             return true;
         }
 
+        internal bool ExecuteWeaponComponentRemoval(string weaponName, int componentHash, int attachmentPoint)
+        {
+            Ped player = Game.Player.Character;
+            int weaponHash = CharacterInventory.GetWeaponHash(weaponName);
+            if (player == null || !player.Exists() ||
+                !WeaponCustomizationPolicy.CanUnequipComponent(attachmentPoint) ||
+                WeaponComponentDefaults.IsDefault(weaponHash, componentHash) ||
+                !Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON, player.Handle, weaponHash, false) ||
+                !Function.Call<bool>(Hash.DOES_WEAPON_TAKE_WEAPON_COMPONENT, weaponHash, componentHash) ||
+                !Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON_COMPONENT, player.Handle, weaponHash, componentHash))
+                return false;
+            Function.Call(Hash.REMOVE_WEAPON_COMPONENT_FROM_PED, player.Handle, weaponHash, componentHash);
+            if (Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON_COMPONENT, player.Handle, weaponHash, componentHash))
+                return false;
+            if (!WeaponComponentDefaults.RestoreAfterRemoval(player.Handle, weaponHash, attachmentPoint, componentHash))
+            {
+                Function.Call(Hash.GIVE_WEAPON_COMPONENT_TO_PED, player.Handle, weaponHash, componentHash);
+                return false;
+            }
+            if (!CharacterInventory.RecordWeaponComponentUnequipped(weaponName, componentHash, attachmentPoint))
+            {
+                Function.Call(Hash.GIVE_WEAPON_COMPONENT_TO_PED, player.Handle, weaponHash, componentHash);
+                return false;
+            }
+            // Keep ownership; neither charge nor emit a purchase/wear-reset event.
+            GTA.UI.Screen.ShowSubtitle("~g~Attachment unequipped. It remains owned.~w~", 2500);
+            return true;
+        }
+
         internal bool ExecuteWeaponTintPurchase(
             string weaponName, int tint, int price)
         {
             Ped player = Game.Player.Character;
             int weaponHash = CharacterInventory.GetWeaponHash(weaponName);
             int tintCount = Function.Call<int>(Hash.GET_WEAPON_TINT_COUNT, weaponHash);
-            if (tint < 0 || tint >= tintCount) return false;
+            if (tint < 0 || tint >= RuntimeWeaponCatalog.SupportedTintCount(weaponName, tintCount)) return false;
             bool owned = CharacterInventory.IsWeaponTintOwned(weaponName, tint);
             int charge = _freeMode || owned ? 0 : Math.Max(0, price);
             if (charge > 0 && Game.Player.Money < charge)
@@ -998,6 +1402,16 @@ namespace ALLIN1
                     "~y~Already owned.~w~ Yacht features are unlocked.", 3000);
                 return false;
             }
+            if (!OfficialMapContentPolicy.IsWorldPropertyPurchaseAvailable(
+                    alreadyOwned: false))
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~That world property is not available.",
+                    4000);
+                Log("PurchaseWorldAsset: rejected unavailable map content for " +
+                    assetId);
+                return false;
+            }
             if (!_freeMode && price > 0 && Game.Player.Money < price)
             {
                 GTA.UI.Screen.ShowSubtitle("~r~Insufficient funds.", 3000);
@@ -1024,6 +1438,7 @@ namespace ALLIN1
 
         internal void ExecuteDeliverToGarmentGarage(string model, int price)
         {
+            if (RejectUnavailableMapDestination(3, "Garment Factory")) return;
             if (RejectSpecializedVehicleFromGarage(
                     model, "Garment Factory garage")) return;
             if (GarageManager.GetGarageSizeTier(model) >= 2)
@@ -1071,6 +1486,7 @@ namespace ALLIN1
 
         internal void ExecuteDeliverToRuralGarage(string model, int price)
         {
+            if (RejectUnavailableMapDestination(4, "Grapeseed Garage")) return;
             if (RejectSpecializedVehicleFromGarage(model, "Grapeseed Garage"))
                 return;
             if (GarageManager.GetGarageSizeTier(model) >= 2)
@@ -1118,6 +1534,7 @@ namespace ALLIN1
 
         internal void ExecuteDeliverToPaletoGarage(string model, int price)
         {
+            if (RejectUnavailableMapDestination(5, "Paleto Bay Garage")) return;
             if (RejectSpecializedVehicleFromGarage(model, "Paleto Bay Garage"))
                 return;
             if (GarageManager.GetGarageSizeTier(model) >= 2)
@@ -1295,6 +1712,7 @@ namespace ALLIN1
 
         internal void ExecuteDeliverToYachtHelipad(string model, int price)
         {
+            if (RejectUnavailableMapDestination(7, "Yacht Helipad")) return;
             if (!YachtManager.FeaturesUnlocked)
             {
                 GTA.UI.Screen.ShowSubtitle(
@@ -1684,17 +2102,17 @@ namespace ALLIN1
 
             int costPerRound = GetAmmoUnitPrice(weaponName);
 
-            return _freeMode ? 0 : roundsNeeded * costPerRound;
+            return AmmoRefillPolicy.Price(roundsNeeded, costPerRound, _freeMode);
         }
 
         private static int GetAmmoUnitPrice(string weaponName)
         {
-            int fallback = WeaponList.AmmoCostPerRound.ContainsKey(weaponName)
-                ? WeaponList.AmmoCostPerRound[weaponName] : 2;
-            int catalogPrice = WeaponList.Prices.ContainsKey(weaponName)
-                ? WeaponList.Prices[weaponName] : fallback;
-            string category = WeaponList.CategoryNames.ContainsKey(weaponName)
-                ? WeaponList.CategoryNames[weaponName] : "";
+            int fallback = RuntimeWeaponCatalog.AmmoCostPerRound.ContainsKey(weaponName)
+                ? RuntimeWeaponCatalog.AmmoCostPerRound[weaponName] : 2;
+            int catalogPrice = RuntimeWeaponCatalog.Prices.ContainsKey(weaponName)
+                ? RuntimeWeaponCatalog.Prices[weaponName] : fallback;
+            string category = RuntimeWeaponCatalog.CategoryNames.ContainsKey(weaponName)
+                ? RuntimeWeaponCatalog.CategoryNames[weaponName] : "";
             return WeaponPurchasePolicy.RefillUnitPrice(
                 category, catalogPrice, fallback);
         }
@@ -1853,6 +2271,39 @@ namespace ALLIN1
             if (_nightVisionActive)
                 Function.Call(Hash.SET_NIGHTVISION, false);
             _nightVisionActive = false;
+        }
+
+        internal static bool ClearRuntimeGearAfterDeath()
+        {
+            // The dying ped is no longer a safe target for outfit restoration.
+            // Clear transient effects now; CharacterInventory removes the
+            // consumed items from the replacement ped after hospital respawn.
+            bool juggernautWasActive = JuggernautActive;
+            JuggernautActive = false;
+            NightVisionOwned = false;
+            if (_nightVisionActive)
+                Function.Call(Hash.SET_NIGHTVISION, false);
+            _nightVisionActive = false;
+            return juggernautWasActive;
+        }
+
+        internal static void CompleteRuntimeGearCleanupAfterDeath(
+            Ped player, bool juggernautWasLost)
+        {
+            ClearRuntimeGearAfterDeath();
+            if (juggernautWasLost && player != null && player.Exists())
+            {
+                // RemoveJuggernaut normally refuses after the death tick has
+                // cleared its active flag. Temporarily restore that flag so
+                // the replacement ped receives the saved health, outfit, and
+                // movement settings instead of inheriting ballistic effects.
+                JuggernautActive = true;
+                RemoveJuggernaut(player);
+            }
+            _savedComponents = null;
+            _savedTextures = null;
+            _savedMaxHealth = 0;
+            _lastKnownHealth = 0;
         }
 
         internal static void ApplyBallisticOutfit(Ped player, PedHash ch)
@@ -2030,6 +2481,113 @@ namespace ALLIN1
             return true;
         }
 
+        private static string StoryCharacterId(PedHash character)
+        {
+            if (character == PedHash.Michael) return "michael";
+            if (character == PedHash.Franklin) return "franklin";
+            if (character == PedHash.Trevor) return "trevor";
+            return "";
+        }
+
+        /// <summary>
+        /// Refresh Reactor's detached, character-scoped data once per
+        /// protagonist edge. The per-frame player-model check already exists
+        /// for Story safety; this adds no provider polling or timer.
+        /// </summary>
+        private void ObserveStoryCharacterSnapshot(PedHash character)
+        {
+            var bridge = _menuBridge as IAllin1StoryCharacterBridge;
+            if (bridge == null || !_storyCharacterRefresh.TryBegin(
+                    StoryCharacterId(character), Game.GameTime,
+                    out string characterId))
+                return;
+
+            bool refreshed = false;
+            try
+            {
+                refreshed = bridge.TryRefreshStoryCharacter(characterId);
+                if (refreshed)
+                {
+                    ClientLog.Info("GBAY",
+                        "story_character_snapshot_refreshed",
+                        new Dictionary<string, object>
+                        {
+                            { "character", characterId },
+                        });
+                }
+                else
+                {
+                    ClientLog.Warn("GBAY",
+                        "story_character_snapshot_refresh_failed",
+                        new Dictionary<string, object>
+                        {
+                            { "character", characterId },
+                            { "status", _menuBridge.Status ?? "not ready" },
+                        });
+                }
+            }
+            catch (Exception ex)
+            {
+                LogException("ReactorBridge.CharacterRefresh", ex);
+            }
+            finally
+            {
+                // Commit the identity only after Reactor publishes a complete
+                // character-bound snapshot. A transient failure gets up to
+                // three throttled retries; a success suppresses every later
+                // per-frame observation for that protagonist.
+                _storyCharacterRefresh.Complete(characterId, refreshed);
+            }
+        }
+
+        /// <summary>
+        /// While Reactor owns the visible GBAY surface, keep every detached
+        /// menu projection aligned with live Story state at a bounded rate.
+        /// Hidden menus perform no polling, and reopening always checks state
+        /// immediately. Older bridges simply do not expose this capability.
+        /// </summary>
+        private void ObserveReactorGameState(PedHash character)
+        {
+            var bridge = _menuBridge as IAllin1GameStateBridge;
+            bool active = bridge != null && _menuBridge.IsMenuActive;
+            if (!_gameStateSynchronization.TryBegin(
+                    Game.GameTime, active))
+                return;
+
+            bool synchronized = false;
+            try
+            {
+                synchronized = bridge.TrySynchronizeGameState(
+                    StoryCharacterId(character));
+                if (!synchronized && !_gameStateSyncFailureLogged)
+                {
+                    _gameStateSyncFailureLogged = true;
+                    ClientLog.Warn("GBAY",
+                        "game_state_synchronization_failed",
+                        new Dictionary<string, object>
+                        {
+                            { "status", _menuBridge.Status ?? "not ready" },
+                        });
+                }
+                else if (synchronized)
+                    _gameStateSyncFailureLogged = false;
+            }
+            catch (Exception ex)
+            {
+                if (!_gameStateSyncFailureLogged)
+                {
+                    _gameStateSyncFailureLogged = true;
+                    LogException(
+                        "ReactorBridge.GameStateSynchronization", ex);
+                }
+            }
+            finally
+            {
+                _gameStateSynchronization.Complete(
+                    Game.GameTime, synchronized);
+            }
+        }
+
         // ------------------------------------------------------------------ //
         //  Events                                                             //
         // ------------------------------------------------------------------ //
@@ -2038,12 +2596,128 @@ namespace ALLIN1
         {
             try
             {
+                ObserveStartupHandoffPresentation(Game.GameTime);
+
+                bool physicalDown;
+                bool physicalStateAvailable = TryReadPhysicalKeyState(
+                    _openKey,
+                    out physicalDown);
+                bool physicalToggleEdge = _toggleInput.ObservePhysicalState(
+                    Game.GameTime,
+                    physicalStateAvailable,
+                    physicalDown);
+                if (!physicalToggleEdge)
+                    LogStartupHandoffSuppressionIfPending("physical_poll");
+                if (physicalToggleEdge)
+                {
+                    if (Game.IsLoading)
+                    {
+                        ClientLog.Info("GBAY", "toggle_input_ignored",
+                            new Dictionary<string, object>
+                            {
+                                { "source", "physical_poll" },
+                                { "key", _openKey.ToString() },
+                                { "reason", "game_loading" },
+                            });
+                    }
+                    else
+                    {
+                        ClientLog.Info("GBAY", "toggle_input_edge",
+                            new Dictionary<string, object>
+                            {
+                                { "source", "physical_poll" },
+                                { "key", _openKey.ToString() },
+                                { "fallback", true },
+                            });
+                        TryToggleBrowser(isPhysicalF9: _openKey == Keys.F9);
+                    }
+                }
+
                 // Auto-initialize on first tick so garage blips/markers
                 // appear immediately without needing to press F9 first.
                 if (!_initialized && !Game.IsLoading)
                     Initialize();
 
-                bool supportedCharacter = TryGetCurrentCharacter(out _);
+                Ped activePlayer = Game.Player.Character;
+                bool playerExists = activePlayer != null &&
+                    activePlayer.Exists();
+                PedHash activeCharacter = (PedHash)0;
+                bool supportedCharacter = playerExists &&
+                    TryResolveProtagonist(
+                        activePlayer.Model.Hash,
+                        out activeCharacter);
+                bool characterSnapshotReady = !Game.IsLoading &&
+                    supportedCharacter &&
+                    !activePlayer.IsDead &&
+                    !GarageManager.IsTransitionInProgress;
+                if (characterSnapshotReady)
+                {
+                    ObserveStoryCharacterSnapshot(activeCharacter);
+                    ObserveReactorGameState(activeCharacter);
+                }
+                else
+                    _gameStateSynchronization.TryBegin(
+                        Game.GameTime, menuActive: false);
+                bool reactorMenuUnsafe = !characterSnapshotReady;
+                if (reactorMenuUnsafe && _menuBridge != null &&
+                    _menuBridge.IsMenuActive)
+                {
+                    _menuBridge.TryDismissVehicles();
+                    ClientLog.Warn("GBAY",
+                        "reactor_menu_closed_for_unavailable_story_state");
+                }
+                  else if (!reactorMenuUnsafe && _initialized &&
+                      (_menuBridge == null || !_menuBridge.IsMenuActive) &&
+                      _f9Handoff.TryBeginStartupIntentCheck())
+                  {
+                    // Native Reactor owns a physical F9 pressed before the
+                    // managed provider is ready. Once Story Mode and this
+                    // extension are both safe, convert that typed, process-
+                    // scoped intent into exactly one normal GBAY presentation.
+                    // This never replays the original key or another action.
+                      bool presented = false;
+                      long handoffGeneration = 0;
+                      try
+                      {
+                          presented = _menuBridge != null &&
+                              _menuBridge.TryPresentPendingStartupMenu();
+                      }
+                      finally
+                      {
+                          // A miss remains retryable for only five seconds,
+                          // throttled to four bridge checks per second. This
+                          // covers native release racing the preloader's UI
+                          // event without reopening a named event every tick.
+                          handoffGeneration =
+                              _f9Handoff.CompleteStartupIntentCheck(presented);
+                          if (handoffGeneration > 0)
+                          {
+                              _toggleInput.ClaimStartupHandoff(
+                                  Game.GameTime, handoffGeneration);
+                              ClientLog.Info("GBAY",
+                                  "startup_menu_intent_presented",
+                                  new Dictionary<string, object>
+                                  {
+                                      { "handoff_generation", handoffGeneration },
+                                      { "opening_f9_consumed", true },
+                                      { "settle_ms", GbayToggleInputGate.DefaultHandoffSettleMilliseconds },
+                                      { "visibility_timeout_ms", GbayToggleInputGate.DefaultHandoffVisibilityTimeoutMilliseconds },
+                                  });
+                          }
+                      }
+                  }
+                if (reactorMenuUnsafe && _browser != null &&
+                    (_browser.IsWeaponCustomizationOpen ||
+                     _browser.IsReactorWeaponPreviewOpen))
+                {
+                    // The native camera/dummy workbench owns temporary player
+                    // visibility and camera state. Never carry that state into
+                    // death, loading, or a garage transition.
+                    _reactorWeaponWorkbenchHandoff = false;
+                    _browser.Close();
+                    ClientLog.Warn("GBAY",
+                        "weapon_workbench_closed_for_unavailable_story_state");
+                }
                 if (!supportedCharacter && _browser != null && _browser.IsOpen)
                 {
                     _browser.Close();
@@ -2081,22 +2755,62 @@ namespace ALLIN1
                         GarageManager.OnYachtHelipadTick();
                     }
 
-                    if (supportedCharacter && _browser != null &&
+                    if (supportedCharacter &&
                         GarageManager.ConsumeHelipadListRequest())
-                        _browser.OpenHelipadList();
-                    if (supportedCharacter && _browser != null &&
+                        OpenGarageWorldEntry(
+                            Allin1GarageWorldEntryLocation.VespucciHelipad,
+                            () => EnsureBrowser().OpenHelipadList());
+                    if (supportedCharacter &&
                         GarageManager.ConsumeHarbourListRequest())
-                        _browser.OpenHarbourList();
+                        OpenGarageWorldEntry(
+                            Allin1GarageWorldEntryLocation.Harbour,
+                            () => EnsureBrowser().OpenHarbourList());
                 }
 
                 if (supportedCharacter && _browser != null)
+                {
+                    _browser.TickReactorWeaponPreview();
                     _browser.Draw();
+                }
 
-                if (supportedCharacter && _browser != null && !_browser.IsOpen &&
+                if (_reactorWeaponWorkbenchHandoff &&
+                    (_browser == null ||
+                     !_browser.IsWeaponCustomizationOpen))
+                {
+                    bool restoreReactor = !reactorMenuUnsafe &&
+                        supportedCharacter && _menuBridge != null;
+                    _reactorWeaponWorkbenchHandoff = false;
+                    _browser?.Close();
+                    if (restoreReactor &&
+                        _menuBridge.TryPresentWeaponCustomization())
+                    {
+                        ClientLog.Info("GBAY",
+                            "reactor_weapon_workbench_handoff_returned");
+                    }
+                    else if (restoreReactor)
+                    {
+                        ClientLog.Warn("GBAY",
+                            "reactor_weapon_workbench_handoff_return_failed",
+                            new Dictionary<string, object>
+                            {
+                                { "status", _menuBridge.Status ?? "not ready" },
+                            });
+                    }
+                }
+
+                if (supportedCharacter &&
                     ControllerBindings.ChordJustPressed(
                         ControllerBindings.OpenGbayModifier,
                         ControllerBindings.OpenGbay))
-                    TryToggleBrowser();
+                {
+                    if (_browser != null && _browser.IsOpen)
+                    {
+                        _reactorWeaponWorkbenchHandoff = false;
+                        _browser.Toggle();
+                    }
+                    else
+                        TryToggleBrowser(isPhysicalF9: false);
+                }
 
                 if (_onlineContentEnabled && NightVisionOwned &&
                     ControllerBindings.ChordJustPressed(
@@ -2120,9 +2834,21 @@ namespace ALLIN1
 
             if (e.KeyCode == _openKey)
             {
+                if (!_toggleInput.TryPress(Game.GameTime))
+                {
+                    LogStartupHandoffSuppressionIfPending("shvdn_keydown");
+                    return;
+                }
+                ClientLog.Info("GBAY", "toggle_input_edge",
+                    new Dictionary<string, object>
+                    {
+                        { "source", "shvdn_keydown" },
+                        { "key", e.KeyCode.ToString() },
+                        { "fallback", false },
+                    });
                 try
                 {
-                    TryToggleBrowser();
+                    TryToggleBrowser(isPhysicalF9: e.KeyCode == Keys.F9);
                 }
                 catch (Exception ex)
                 {
@@ -2134,8 +2860,160 @@ namespace ALLIN1
                 ToggleNightVision();
         }
 
-        private void TryToggleBrowser()
+        private void OnKeyUp(object sender, KeyEventArgs e)
         {
+            if (e.KeyCode == _openKey)
+                _toggleInput.ObserveManagedRelease(Game.GameTime);
+        }
+
+        private void ObserveStartupHandoffPresentation(long nowMilliseconds)
+        {
+            bool menuActive = _menuBridge != null &&
+                _menuBridge.IsMenuActive;
+            bool menuReady = menuActive && IsReactorMenuReady();
+            _toggleInput.ObserveMenuLifecycle(menuActive);
+
+            if (!_toggleInput.StartupHandoffActive)
+                return;
+
+            var transition = _toggleInput.ObserveStartupPresentation(
+                nowMilliseconds,
+                menuReady);
+            if (transition == GbayToggleHandoffTransition.PresentationObserved)
+            {
+                ClientLog.Info("GBAY", "startup_f9_presentation_observed",
+                    new Dictionary<string, object>
+                    {
+                        { "handoff_generation", _toggleInput.StartupHandoffGeneration },
+                        { "settle_ms", GbayToggleInputGate.DefaultHandoffSettleMilliseconds },
+                    });
+            }
+            else if (transition == GbayToggleHandoffTransition.Settled)
+            {
+                ClientLog.Info("GBAY", "startup_f9_handoff_settled",
+                    new Dictionary<string, object>
+                    {
+                        { "handoff_generation", _toggleInput.StartupHandoffGeneration },
+                        { "result", "visible_and_released" },
+                    });
+            }
+            else if (transition == GbayToggleHandoffTransition.TimedOut)
+            {
+                ClientLog.Warn("GBAY", "startup_f9_handoff_settled",
+                    new Dictionary<string, object>
+                    {
+                        { "handoff_generation", _toggleInput.StartupHandoffGeneration },
+                        { "result", "visibility_timeout_after_release" },
+                    });
+            }
+        }
+
+        private bool IsReactorMenuReady()
+        {
+            if (_menuBridge == null)
+                return false;
+            var lifecycle = _menuBridge as IAllin1MenuLifecycleBridge;
+            return lifecycle == null
+                ? _menuBridge.IsMenuActive
+                : lifecycle.IsMenuReady;
+        }
+
+        private void LogStartupHandoffSuppressionIfPending(string source)
+        {
+            if (!_toggleInput.ConsumeHandoffSuppression())
+                return;
+            long generation = _toggleInput.StartupHandoffGeneration;
+            if (generation == _lastHandoffSuppressionLoggedGeneration)
+                return;
+            _lastHandoffSuppressionLoggedGeneration = generation;
+            ClientLog.Info("GBAY", "toggle_input_ignored",
+                new Dictionary<string, object>
+                {
+                    { "source", source ?? "unknown" },
+                    { "key", _openKey.ToString() },
+                    { "reason", "startup_handoff_generation_consumed" },
+                    { "handoff_generation", generation },
+                });
+        }
+
+        private void TryToggleBrowser(bool isPhysicalF9)
+        {
+            if (!_f9Handoff.CanDispatch(isPhysicalF9))
+            {
+                if (_initialized && !_handoffBlockedLogged)
+                {
+                    _handoffBlockedLogged = true;
+                    ClientLog.Info("GBAY", "f9_waiting_for_reactor_handoff");
+                }
+                return;
+            }
+            _handoffBlockedLogged = false;
+
+            if (!_initialized)
+                Initialize();
+            if (_browser != null && _browser.IsOpen)
+            {
+                // A direct F9/controller close cancels the Reactor return
+                // handoff. Back inside the native workbench is the deliberate
+                // route that returns to the populated Customize Weapons page.
+                _reactorWeaponWorkbenchHandoff = false;
+                _browser.Toggle();
+                return;
+            }
+            // Logical presentation and browser readiness are separate. Once
+            // Reactor accepts an open request, reject another F9 until that
+            // exact generation has painted; once dismissal is accepted,
+            // reject replacement requests until Reactor reports it hidden.
+            // This makes one released press one transition while preserving
+            // click-close followed by a later F9 reopen.
+            if (_menuBridge != null && _menuBridge.IsMenuActive)
+            {
+                GbayMenuToggleDecision decision =
+                    _toggleInput.BeginMenuToggle(
+                        isMenuActive: true,
+                        isMenuReady: IsReactorMenuReady());
+                if (decision != GbayMenuToggleDecision.Close)
+                {
+                    ClientLog.Info("GBAY", "toggle_input_ignored",
+                        new Dictionary<string, object>
+                        {
+                            { "source", "menu_lifecycle" },
+                            { "key", _openKey.ToString() },
+                            { "reason", decision ==
+                                GbayMenuToggleDecision.OpeningNotReady
+                                    ? "reactor_presentation_not_ready"
+                                    : "reactor_dismissal_pending" },
+                        });
+                    return;
+                }
+
+                bool dismissed = _menuBridge.TryDismissVehicles();
+                _toggleInput.CompleteMenuToggle(decision, dismissed);
+                if (dismissed)
+                    ClientLog.Info("GBAY", "reactor_menu_dismiss_requested");
+                else
+                    ClientLog.Warn("GBAY", "reactor_menu_dismiss_failed",
+                        new Dictionary<string, object>
+                        {
+                            { "status", _menuBridge.Status ?? "not ready" },
+                        });
+                return;
+            }
+            // While Reactor's typed startup intent is active, this same F9
+            // edge means cancel/close, never a second direct GBAY request.
+            // The optional bridge performs an atomic process-scoped cancel
+            // and removes any queued-but-undrained presentation.
+            if (isPhysicalF9 && _menuBridge != null &&
+                _menuBridge.TryCancelPendingStartupMenu())
+            {
+                ClientLog.Info("GBAY", "startup_menu_intent_cancelled_by_f9");
+                return;
+            }
+            if (isPhysicalF9 && _f9Handoff.TryRequestStartupIntentClose())
+            {
+                ClientLog.Info("GBAY", "startup_initializer_close_requested_by_f9");
+                return;
+            }
             if (!TryGetCurrentCharacter(out _))
             {
                 GTA.UI.Screen.ShowSubtitle(
@@ -2149,9 +3027,91 @@ namespace ALLIN1
                     "~y~A garage transition is already in progress.", 1500);
                 return;
             }
-            if (!_initialized) Initialize();
-            _browser.Toggle();
+
+            if (_uiBackend != GbayUiBackend.Legacy &&
+                TryInitializeReactorBridge(logUnavailable: true))
+            {
+                try
+                {
+                    GbayMenuToggleDecision decision =
+                        _toggleInput.BeginMenuToggle(
+                            isMenuActive: _menuBridge.IsMenuActive,
+                            isMenuReady: IsReactorMenuReady());
+                    if (decision != GbayMenuToggleDecision.Open)
+                    {
+                        ClientLog.Info("GBAY", "toggle_input_ignored",
+                            new Dictionary<string, object>
+                            {
+                                { "source", "menu_lifecycle" },
+                                { "key", _openKey.ToString() },
+                                { "reason", "reactor_transition_in_progress" },
+                            });
+                        return;
+                    }
+
+                    bool presented = _menuBridge.TryPresentVehicles(
+                        new Allin1VehicleCatalogRequest());
+                    _toggleInput.CompleteMenuToggle(decision, presented);
+                    if (presented)
+                    {
+                        ClientLog.Info("GBAY", "reactor_menu_present_requested");
+                        ClientLog.Info("GBAY", "reactor_menu_toggled");
+                        return;
+                    }
+                    ClientLog.Warn("GBAY", "reactor_menu_not_ready",
+                        new Dictionary<string, object>
+                        {
+                            { "status", _menuBridge.Status ?? "not ready" },
+                        });
+                }
+                catch (Exception ex)
+                {
+                    LogException("ReactorBridge.Present", ex);
+                }
+            }
+
+            if (_uiBackend == GbayUiBackend.Reactor)
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    "~y~Reactor V is not ready. GBAY was not opened.", 2500);
+                return;
+            }
+
+            // Automatic mode fails soft. The native browser is allocated only
+            // when this fallback is actually used, keeping startup lightweight.
+            if (_uiBackend == GbayUiBackend.Auto)
+            {
+                ClientLog.Warn("GBAY", "reactor_fallback_to_legacy");
+                GTA.UI.Screen.ShowSubtitle(
+                    "~y~Reactor V is unavailable; opening compatibility GBAY.",
+                    2200);
+            }
+            EnsureBrowser().Toggle();
         }
+
+        private static bool TryReadPhysicalKeyState(
+            Keys key,
+            out bool isDown)
+        {
+            try
+            {
+                isDown = (GetAsyncKeyState((int)key) & 0x8000) != 0;
+                return true;
+            }
+            catch (DllNotFoundException)
+            {
+                isDown = false;
+                return false;
+            }
+            catch (EntryPointNotFoundException)
+            {
+                isDown = false;
+                return false;
+            }
+        }
+
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int virtualKey);
 
         private static void ToggleNightVision()
         {

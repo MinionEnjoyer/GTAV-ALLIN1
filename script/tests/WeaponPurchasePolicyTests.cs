@@ -4,6 +4,15 @@ namespace ALLIN1.Tests
 {
     public sealed class WeaponPurchasePolicyTests
     {
+        [Theory]
+        [InlineData("Pistols", 0, 0)]
+        [InlineData("Throwables", 0, 2)]
+        [InlineData("Misc", 500, -1)]
+        public void Consumable_refills_have_a_positive_unit_price(string category, int price, int ammo)
+        {
+            Assert.True(WeaponPurchasePolicy.RefillUnitPrice(category, price, ammo) > 0);
+        }
+
         [Fact]
         public void StickyBombQuote_ChargesEveryGrantedBomb()
         {

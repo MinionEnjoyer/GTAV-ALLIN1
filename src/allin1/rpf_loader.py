@@ -379,6 +379,16 @@ def uninstall_managed_rpf_loader(gta_path: Path) -> list[Path]:
         target = game / relative.name
         if not target.exists():
             continue
+        # Reactor is now a shared dependency and survives ALLIN1 uninstall.
+        # Retain its ASI loader even when the old preview installer owns it.
+        if relative.name.lower() in ENHANCED_ASI_LOADERS and any(
+            (game / name).is_file() for name in (
+                "ReactorV.Bootstrap.asi", "ReactorV.ScriptProbe.asi", "ReactorV.RenderHook.asi",
+            )
+        ):
+            retained.append(entry)
+            log.info("Preserving ASI loader used by shared Reactor V: %s", target)
+            continue
         expected = str(entry.get("sha256", "")).lower()
         try:
             matches = len(expected) == 64 and sha256_file(target).lower() == expected

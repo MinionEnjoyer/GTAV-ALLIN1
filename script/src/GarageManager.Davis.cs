@@ -18,26 +18,26 @@ namespace ALLIN1
             GarageDefinitions.Davis;
 
         // Exterior anchors surveyed in Davis.
-        internal static readonly Vector3 DAVIS_VEHICLE_ENTRANCE_POS =
+        internal static Vector3 DAVIS_VEHICLE_ENTRANCE_POS =
             new Vector3(204.0661f, -1466.4750f, 29.1437f);
-        private const float DAVIS_VEHICLE_ENTRANCE_HEADING = 43.97f;
-        internal static readonly Vector3 DAVIS_PED_ENTRANCE_POS =
+        private static float DAVIS_VEHICLE_ENTRANCE_HEADING = 43.97f;
+        internal static Vector3 DAVIS_PED_ENTRANCE_POS =
             new Vector3(215.0502f, -1461.0250f, 29.1847f);
-        private const float DAVIS_PED_ENTRANCE_HEADING = 49.38f;
+        private static float DAVIS_PED_ENTRANCE_HEADING = 49.38f;
 
         // Shared Los Santos Tuners Auto Shop interior.
-        private static readonly Vector3 DAVIS_INTERIOR_PED =
+        private static Vector3 DAVIS_INTERIOR_PED =
             new Vector3(-1357.6240f, 153.2929f, -99.1942f);
-        private const float DAVIS_INTERIOR_PED_HEADING = 0f;
+        private static float DAVIS_INTERIOR_PED_HEADING = 0f;
 
         // This is the actual Auto Shop MILO placement name in mptuner's
         // int_placement_tr.rpf. The five tr_tuner_shop_* names are exterior
         // location aliases and never become active for this shared interior.
-        private static readonly string[] DAVIS_AUTO_SHOP_IPLS =
+        private static string[] DAVIS_AUTO_SHOP_IPLS =
         {
             "tr_int_placement_tr_interior_0_tuner_mod_garage_milo_",
         };
-        private static readonly Vector3 DAVIS_INTERIOR_CENTER =
+        private static Vector3 DAVIS_INTERIOR_CENTER =
             new Vector3(-1350f, 160f, -100f);
         private const int DAVIS_INTERIOR_LOAD_TIMEOUT_MS = 5000;
         private const int DAVIS_INTERIOR_FALLBACK_SETTLE_MS = 1000;
@@ -144,7 +144,7 @@ namespace ALLIN1
             };
 
         // Rockstar's native Auto Shop ten-car arrangement.
-        internal static readonly ParkingSlot[] DavisGarageSlots =
+        internal static ParkingSlot[] DavisGarageSlots =
         {
             new ParkingSlot(-1341.5f, 156.0f, -99.6944f, 160f, -100.1944f),
             new ParkingSlot(-1337.5f, 156.0f, -99.6944f, 160f, -100.1944f),
@@ -186,6 +186,8 @@ namespace ALLIN1
         private static readonly Vehicle[] _davisHandles =
             new Vehicle[DAVIS_SLOT_COUNT];
         private static bool _isPlayerInDavisGarage;
+        private static bool _davisMapLeaseHeld;
+        private static bool _davisMapLeaseCreatedForCurrentEntry;
         private static bool _davisInitialized;
         private static int _davisExitCooldownFrames;
         private static Blip _davisVehicleBlip;
@@ -347,15 +349,24 @@ namespace ALLIN1
 
             Ped player = Game.Player.Character;
             if (player == null || player.IsDead) return;
-            if (!_isPlayerInDavisGarage && !GbayShop.TryGetCurrentCharacter(out _)) return;
-            Color markerColor = CharacterMarkerColor();
+            Color markerColor;
 
             if (!_isPlayerInDavisGarage)
             {
-                if (EvaluateGarageEntry(DAVIS_GARAGE) ==
-                    GarageEntryDenial.MissionActive) return;
+                bool inVehicle = player.IsInVehicle();
+                Vector3 activeEntrance = inVehicle
+                    ? DAVIS_VEHICLE_ENTRANCE_POS
+                    : DAVIS_PED_ENTRANCE_POS;
+                if (!ShouldServiceExteriorMarker(
+                        player.Position, activeEntrance))
+                    return;
+                if (!GbayShop.TryGetCurrentCharacter(out _))
+                    return;
+                markerColor = CharacterMarkerColor();
 
-                if (player.IsInVehicle())
+                if (!ShouldServiceGarageExterior()) return;
+
+                if (inVehicle)
                 {
                     World.DrawMarker(GTA.MarkerType.VerticalCylinder,
                         DAVIS_VEHICLE_ENTRANCE_POS - new Vector3(0f, 0f, 1f),
@@ -406,6 +417,7 @@ namespace ALLIN1
                 return;
             }
 
+            markerColor = CharacterMarkerColor();
             EnforceDavisVehicleState(player);
             if (player.IsInVehicle())
             {
@@ -433,31 +445,85 @@ namespace ALLIN1
         private static void EnterDavisGarage()
         {
             if (RejectGarageEntry(DAVIS_GARAGE)) return;
+            if (!DeferredMapContentRuntime.CanBeginOfficialGarageEntry(
+                    DeferredMapProperty.Davis, out _)) return;
             if (!BeginTransition("EnterDavisGarage")) return;
+            _davisMapLeaseCreatedForCurrentEntry = false;
+            var transition = CreateDavisEntryStreamingTransition();
             try
             {
                 using (ClientLog.Time("Garage", "enter_davis_garage"))
-                    EnterDavisGarageCore();
+                    EnterDavisGarageCore(transition);
             }
             catch (Exception ex)
             {
+                transition.Fail("entry_exception:" + ex.GetType().Name);
                 LogException("EnterDavisGarage", ex);
-                UnloadDavisAutoShopInterior();
                 RecoverTransition("EnterDavisGarage", DAVIS_PED_ENTRANCE_POS,
                     DAVIS_PED_ENTRANCE_HEADING);
+                Script.Wait(100);
+                UnloadDavisAutoShopInterior(
+                    force: _davisMapLeaseCreatedForCurrentEntry);
                 GTA.UI.Screen.ShowSubtitle(
                     "~r~Davis garage entry failed safely. See ALLIN1_gbay.log.", 4000);
             }
-            finally { EndTransition("EnterDavisGarage"); }
+            finally
+            {
+                transition.Dispose();
+                EndTransition("EnterDavisGarage");
+            }
         }
 
-        private static void EnterDavisGarageCore()
+        private static OfficialGarageTransitionCoordinator
+            CreateDavisEntryStreamingTransition()
+        {
+            return new OfficialGarageTransitionCoordinator(
+                DAVIS_GARAGE.Id,
+                "entry",
+                () => Environment.TickCount,
+                ObserveOfficialGarageTransition,
+                () =>
+                {
+                    _isPlayerInDavisGarage = false;
+                    ClearDavisHandles();
+                    bool forceRelease =
+                        _davisMapLeaseCreatedForCurrentEntry;
+                    UnloadDavisAutoShopInterior(
+                        force: forceRelease);
+                    if (!_davisMapLeaseHeld)
+                        _davisMapLeaseCreatedForCurrentEntry = false;
+                },
+                () => Function.Call(Hash.DO_SCREEN_FADE_IN, 0));
+        }
+
+        private static void ObserveOfficialGarageTransition(
+            OfficialGarageTransitionEvent observation)
+        {
+            ClientLog.Info("Garage", "official_garage_transition_phase",
+                new Dictionary<string, object>
+                {
+                    { "transition_id", observation.TransitionId },
+                    { "garage", observation.GarageId },
+                    { "direction", observation.Direction },
+                    { "previous_phase", observation.PreviousPhase.ToString() },
+                    { "phase", observation.Phase.ToString() },
+                    { "phase_elapsed_ms", observation.PhaseElapsedMilliseconds },
+                    { "total_elapsed_ms", observation.TotalElapsedMilliseconds },
+                    { "detail", observation.Detail },
+                    { "terminal", observation.Terminal },
+                });
+        }
+
+        private static void EnterDavisGarageCore(
+            OfficialGarageTransitionCoordinator transition)
         {
             Log("EnterDavisGarage: START");
             Ped player = Game.Player.Character;
             Vehicle rideInToDelete = null;
             string confirmation = null;
-            bool interiorLoaded = false;
+            List<StoredVehicle> storedListDuringEntry = null;
+            StoredVehicle storedDuringEntry = null;
+            bool storageCommitted = false;
 
             if (player.IsInVehicle())
             {
@@ -478,59 +544,86 @@ namespace ALLIN1
                     }
                     int slotIndex = FindEmptyDavisSlot(list);
                     if (slotIndex < 0) return;
-                    if (!LoadDavisAutoShopInterior())
-                    {
-                        GTA.UI.Screen.ShowSubtitle(
-                            "~r~The Davis Auto Shop map pack could not be loaded.", 4000);
-                        return;
-                    }
-                    interiorLoaded = true;
-                    StoredVehicle stored = CaptureVehicleState(
+                    storedListDuringEntry = list;
+                    storedDuringEntry = CaptureVehicleState(
                         rideIn, modelName, slotIndex);
-                    list.Add(stored);
-                    if (!DavisSave())
-                    {
-                        list.Remove(stored);
-                        UnloadDavisAutoShopInterior();
-                        GTA.UI.Screen.ShowSubtitle(
-                            "~r~The vehicle could not be saved.", 3000);
-                        return;
-                    }
                     string display = RuntimeVehicleCatalog.GetDisplayName(modelName);
                     confirmation = $"~g~{display}~w~ stored in the Davis Auto Shop.";
-                    rideIn.IsPersistent = true;
                     rideInToDelete = rideIn;
                 }
             }
 
-            if (!interiorLoaded && !LoadDavisAutoShopInterior())
+            // MPTUNER_MAP_UPDATE is a broad Rockstar cache-loader changeset
+            // whose own metadata requires a loading screen. Hold and verify
+            // black before the Phase-B runtime can execute the fixed group.
+            transition.HoldFade(
+                () => BeginGarageBlackTransition("EnterDavisGarage"));
+            transition.Advance(
+                OfficialGarageTransitionPhase.LeaseRequested,
+                "davis_map_lease_requested_while_black");
+            if (!LoadDavisAutoShopInterior(transition))
             {
+                transition.Fail("map_activation_failed");
                 GTA.UI.Screen.ShowSubtitle(
-                    "~r~The Davis Auto Shop map pack could not be loaded.", 4000);
+                    DeferredMapContentRuntime.GarageUnavailableMessage(
+                        "The Davis Auto Shop"), 4000);
                 return;
             }
 
-            ClearDavisHandles();
-            _isPlayerInDavisGarage = true;
-            BeginGarageBlackTransition("EnterDavisGarage");
+            try
+            {
+                if (storedDuringEntry != null && storedListDuringEntry != null)
+                {
+                    storedListDuringEntry.Add(storedDuringEntry);
+                    if (!DavisSave())
+                    {
+                        storedListDuringEntry.Remove(storedDuringEntry);
+                        transition.Fail("vehicle_persistence_failed");
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~r~The vehicle could not be saved.", 3000);
+                        return;
+                    }
+                    storageCommitted = true;
+                    rideInToDelete.IsPersistent = true;
+                }
 
-            player.IsPositionFrozen = true;
-            Function.Call(Hash.SET_ENTITY_COORDS, player,
-                DAVIS_INTERIOR_PED.X, DAVIS_INTERIOR_PED.Y, DAVIS_INTERIOR_PED.Z,
-                false, false, false, true);
-            Function.Call(Hash.SET_ENTITY_HEADING, player, DAVIS_INTERIOR_PED_HEADING);
-            Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, player);
-            if (rideInToDelete != null && rideInToDelete.Exists())
-                rideInToDelete.Delete();
-            SpawnDavisGarageVehicles();
-            player.IsPositionFrozen = false;
-            Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
-            CompleteGarageBlackTransition(
-                "EnterDavisGarage", player, null,
-                () => IsPlayerInReadyInterior(player), _davisHandles);
-            if (!string.IsNullOrEmpty(confirmation))
-                GTA.UI.Screen.ShowSubtitle(confirmation, 4000);
-            Log("EnterDavisGarage: COMPLETE");
+                ClearDavisHandles();
+                _isPlayerInDavisGarage = true;
+                player.IsPositionFrozen = true;
+                Function.Call(Hash.SET_ENTITY_COORDS, player,
+                    DAVIS_INTERIOR_PED.X, DAVIS_INTERIOR_PED.Y,
+                    DAVIS_INTERIOR_PED.Z, false, false, false, true);
+                Function.Call(Hash.SET_ENTITY_HEADING, player,
+                    DAVIS_INTERIOR_PED_HEADING);
+                Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, player);
+                if (rideInToDelete != null && rideInToDelete.Exists())
+                    rideInToDelete.Delete();
+                SpawnDavisGarageVehicles();
+                player.IsPositionFrozen = false;
+                Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
+                transition.Complete(
+                    OfficialGarageTransitionPhase.Occupied,
+                    () => CompleteGarageBlackTransition(
+                        "EnterDavisGarage", player, null,
+                        () => IsPlayerInReadyInterior(player), _davisHandles),
+                    "davis_interior_occupied");
+                _davisMapLeaseCreatedForCurrentEntry = false;
+                if (!string.IsNullOrEmpty(confirmation))
+                    GTA.UI.Screen.ShowSubtitle(confirmation, 4000);
+                Log("EnterDavisGarage: COMPLETE");
+            }
+            catch
+            {
+                if (storageCommitted && storedDuringEntry != null &&
+                    storedListDuringEntry != null)
+                {
+                    storedListDuringEntry.Remove(storedDuringEntry);
+                    if (!DavisSave())
+                        Log("EnterDavisGarage: WARNING - entry rollback save failed");
+                    Log("EnterDavisGarage: rolled back drive-in storage after transition failure");
+                }
+                throw;
+            }
         }
 
         private static void LeaveDavisGarage()
@@ -584,8 +677,6 @@ namespace ALLIN1
             player.IsPositionFrozen = true;
             if (playerVehicle != null)
                 playerVehicle.IsPositionFrozen = true;
-            UnloadDavisAutoShopInterior();
-            Script.Wait(250);
 
             if (playerVehicle != null)
             {
@@ -609,6 +700,9 @@ namespace ALLIN1
                 player.IsPositionFrozen = false;
             }
 
+            Script.Wait(100);
+            UnloadDavisAutoShopInterior();
+
             DavisSave();
             _isPlayerInDavisGarage = false;
             _davisExitCooldownFrames = 60;
@@ -619,15 +713,32 @@ namespace ALLIN1
             Log("LeaveDavisGarage: COMPLETE");
         }
 
-        private static bool LoadDavisAutoShopInterior()
+        private static bool LoadDavisAutoShopInterior(
+            OfficialGarageTransitionCoordinator transition = null)
         {
             bool focusSet = false;
             try
             {
-                if (!StandaloneMapPack.TryActivate(DAVIS_AUTO_SHOP_IPLS, 1500))
+                if (!_davisMapLeaseHeld)
                 {
-                    Log("LoadDavisAutoShopInterior: standalone map unavailable");
-                    return false;
+                    DeferredMapContentResult activation =
+                        DeferredMapContentRuntime.TryAcquireDavisPhaseB(
+                            transition, DAVIS_AUTO_SHOP_IPLS,
+                            DAVIS_INTERIOR_LOAD_TIMEOUT_MS);
+                    if (!activation.Success)
+                    {
+                        if (DeferredMapContentRuntime
+                                .HasDavisPhaseBCleanupPending)
+                        {
+                            _davisMapLeaseHeld = true;
+                            _davisMapLeaseCreatedForCurrentEntry = true;
+                        }
+                        Log("LoadDavisAutoShopInterior: deferred map unavailable " +
+                            $"outcome={activation.Outcome} detail={activation.Detail}");
+                        return false;
+                    }
+                    _davisMapLeaseHeld = true;
+                    _davisMapLeaseCreatedForCurrentEntry = true;
                 }
 
                 Function.Call(Hash.SET_FOCUS_POS_AND_VEL,
@@ -666,6 +777,14 @@ namespace ALLIN1
                     iplActive = true;
                     foreach (string ipl in DAVIS_AUTO_SHOP_IPLS)
                         iplActive &= Function.Call<bool>(Hash.IS_IPL_ACTIVE, ipl);
+                    if (iplActive && transition != null &&
+                        transition.Phase ==
+                            OfficialGarageTransitionPhase.LeaseRequested)
+                    {
+                        transition.Advance(
+                            OfficialGarageTransitionPhase.IplReady,
+                            "davis_ipls_active");
+                    }
                     int resolvedForMs = firstResolvedAt < 0 ? 0
                         : Game.GameTime - firstResolvedAt;
                     if (GarageInteriorReadinessPolicy.IsUsable(
@@ -673,6 +792,13 @@ namespace ALLIN1
                         resolvedForMs, DAVIS_INTERIOR_FALLBACK_SETTLE_MS))
                     {
                         ApplyDavisAutoShopCustomization(interior);
+                        if (transition != null && transition.Phase ==
+                            OfficialGarageTransitionPhase.IplReady)
+                        {
+                            transition.Advance(
+                                OfficialGarageTransitionPhase.InteriorReady,
+                                "davis_interior_ready");
+                        }
                         Log($"LoadDavisAutoShopInterior: interior={interior} ready " +
                             $"readySignal={interiorReady} iplActive={iplActive} " +
                             $"elapsed={Game.GameTime - startedAt}ms");
@@ -692,14 +818,31 @@ namespace ALLIN1
             {
                 if (focusSet) Function.Call(Hash.CLEAR_FOCUS);
             }
-            UnloadDavisAutoShopInterior();
+            UnloadDavisAutoShopInterior(
+                force: _davisMapLeaseCreatedForCurrentEntry);
             return false;
         }
 
-        private static void UnloadDavisAutoShopInterior()
+        private static void UnloadDavisAutoShopInterior(bool force = false)
         {
-            foreach (string ipl in DAVIS_AUTO_SHOP_IPLS)
-                Function.Call(Hash.REMOVE_IPL, ipl);
+            if (!_davisMapLeaseHeld) return;
+            DeferredMapContentResult released =
+                DeferredMapContentRuntime.Release(
+                    DeferredMapProperty.Davis, DAVIS_AUTO_SHOP_IPLS, force);
+            if (released.Outcome == DeferredMapContentOutcome.KeptResident)
+            {
+                Log("UnloadDavisAutoShopInterior: Phase-B map retained for " +
+                    "the Story session");
+                return;
+            }
+            if (released.ReleaseComplete)
+            {
+                _davisMapLeaseHeld = false;
+                _davisMapLeaseCreatedForCurrentEntry = false;
+            }
+            else
+                Log("UnloadDavisAutoShopInterior: map release failed; " +
+                    "lease retained " + released.Detail);
         }
 
         private static void ApplyDavisAutoShopCustomization(int interior)

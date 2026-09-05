@@ -131,7 +131,7 @@ def _fake_rpf_service(
         Path(output).write_bytes(payload)
         return True
 
-    def replace(archive, entry, payload):
+    def replace(archive, entry, payload, *, expected_sha256=None):
         entries[key(Path(archive), str(entry))] = Path(payload).read_bytes()
 
     def delete(archive, entry):
@@ -180,6 +180,111 @@ def test_install_toggle_and_uninstall_each_supported_mod_shape(
     service.uninstall(manifest.mod_id)
     assert not target.exists()
     assert service.list_installed() == []
+
+
+@pytest.mark.parametrize(
+    "destination",
+    [
+        "VehicleWorkbenchAxles/runtime.json",
+        "VehicleWorkbenchAxles/profiles/compatibility.json",
+    ],
+)
+def test_mixed_package_can_own_vehicle_workbench_json_runtime_tree(
+    tmp_path: Path, destination: str,
+):
+    manifest = ModManifest.load(_package(
+        tmp_path, "vehicle-workbench-runtime", "mixed", destination,
+        payload=b'{"manifestVersion": 1}',
+    ))
+    game = _game(tmp_path)
+    service = ModIntegrationService(game)
+
+    service.install(manifest)
+
+    target = game / Path(destination)
+    assert target.read_bytes() == b'{"manifestVersion": 1}'
+    receipt = json.loads(
+        (service.state_root / "vehicle-workbench-runtime.json").read_text(
+            encoding="utf-8",
+        )
+    )
+    assert receipt["files"][0]["destination"] == destination
+
+    service.uninstall(manifest.mod_id)
+    assert not target.exists()
+
+
+@pytest.mark.parametrize(
+    ("destination", "message"),
+    [
+        ("OtherRuntime/runtime.json", "Mixed package files"),
+        ("VehicleWorkbenchAxles.json", "Mixed package files"),
+        ("VehicleWorkbenchAxles/runtime.dll", "Mixed package files"),
+        ("VehicleWorkbenchAxles/tools/settings.exe", "Mixed package files"),
+        ("VehicleWorkbenchAxles/../escape.json", "traversal"),
+        ("VehicleWorkbenchAxles/runtime.json:alternate", "Windows-invalid"),
+    ],
+)
+def test_mixed_package_runtime_tree_exception_stays_narrow(
+    tmp_path: Path, destination: str, message: str,
+):
+    package = _package(
+        tmp_path, "vehicle-workbench-runtime-invalid", "mixed", destination,
+    )
+
+    with pytest.raises(ValueError, match=message):
+        ModManifest.load(package)
+
+
+def test_mixed_runtime_tree_cannot_target_launcher_reserved_root(
+    tmp_path: Path,
+) -> None:
+    package = _package(
+        tmp_path, "mixed-reserved-target", "mixed", "ScriptHookV.dll",
+    )
+
+    with pytest.raises(ValueError, match="reserved by the ALLIN1 launcher"):
+        ModManifest.load(package)
+
+
+def test_mixed_runtime_tree_rejects_case_insensitive_duplicate_destination(
+    tmp_path: Path,
+) -> None:
+    package = _package(
+        tmp_path, "mixed-duplicate-runtime", "mixed",
+        "VehicleWorkbenchAxles/runtime.json", payload=b"{}",
+    )
+    (package / "other.json").write_bytes(b"{}")
+    manifest_path = package / "mod.toml"
+    manifest_path.write_text(
+        manifest_path.read_text(encoding="utf-8")
+        + "[[files]]\n"
+        + 'source = "other.json"\n'
+        + 'destination = "vehicleworkbenchaxles/RUNTIME.JSON"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Duplicate destination"):
+        ModManifest.load(package)
+
+
+def test_mixed_runtime_tree_receipt_ownership_collision_is_rejected(
+    tmp_path: Path,
+) -> None:
+    game = _game(tmp_path)
+    service = ModIntegrationService(game)
+    first = ModManifest.load(_package(
+        tmp_path, "mixed-runtime-owner", "mixed",
+        "VehicleWorkbenchAxles/runtime.json", payload=b'{"owner": 1}',
+    ))
+    collision = ModManifest.load(_package(
+        tmp_path, "mixed-runtime-collision", "mixed",
+        "vehicleworkbenchaxles/RUNTIME.JSON", payload=b'{"owner": 2}',
+    ))
+    service.install(first)
+
+    with pytest.raises(ValueError, match="destination is owned"):
+        service.install(collision)
 
 
 def test_install_backups_and_uninstall_restores_preexisting_file(tmp_path: Path):
@@ -236,6 +341,120 @@ def test_reinstall_same_mod_updates_payload(tmp_path: Path):
     )
     service.install(ModManifest.load(package))
     assert (game / "scripts" / "Updated.dll").read_bytes() == b"v2"
+
+
+def test_reinstall_repairs_missing_managed_payload(tmp_path: Path):
+    game = _game(tmp_path)
+    old_package = _package(
+        tmp_path / "old", "repair-update", "script",
+        "scripts/RepairUpdate.dll", payload=b"v1", version="1.0.0",
+    )
+    new_package = _package(
+        tmp_path / "new", "repair-update", "script",
+        "scripts/RepairUpdate.dll", payload=b"v2", version="2.0.0",
+    )
+    service = ModIntegrationService(game)
+    service.install(ModManifest.load(old_package))
+    target = game / "scripts" / "RepairUpdate.dll"
+    target.unlink()
+
+    status = service.install(ModManifest.load(new_package))
+
+    assert status.version == "2.0.0"
+    assert target.read_bytes() == b"v2"
+    receipt = json.loads(
+        (service.state_root / "repair-update.json").read_text(encoding="utf-8")
+    )
+    assert receipt["version"] == "2.0.0"
+
+
+def test_reinstall_accepts_payload_already_matching_validated_replacement(
+    tmp_path: Path,
+):
+    game = _game(tmp_path)
+    old_package = _package(
+        tmp_path / "old", "partial-repair", "script",
+        "scripts/PartialRepair.dll", payload=b"v1", version="1.0.0",
+    )
+    new_package = _package(
+        tmp_path / "new", "partial-repair", "script",
+        "scripts/PartialRepair.dll", payload=b"v2", version="2.0.0",
+    )
+    service = ModIntegrationService(game)
+    service.install(ModManifest.load(old_package))
+    target = game / "scripts" / "PartialRepair.dll"
+    target.write_bytes(b"v2")
+
+    status = service.install(ModManifest.load(new_package))
+
+    assert status.version == "2.0.0"
+    assert target.read_bytes() == b"v2"
+
+
+def test_reinstall_still_refuses_unrecognized_managed_payload_change(
+    tmp_path: Path,
+):
+    game = _game(tmp_path)
+    old_package = _package(
+        tmp_path / "old", "tampered-repair", "script",
+        "scripts/TamperedRepair.dll", payload=b"v1", version="1.0.0",
+    )
+    new_package = _package(
+        tmp_path / "new", "tampered-repair", "script",
+        "scripts/TamperedRepair.dll", payload=b"v2", version="2.0.0",
+    )
+    service = ModIntegrationService(game)
+    service.install(ModManifest.load(old_package))
+    target = game / "scripts" / "TamperedRepair.dll"
+    target.write_bytes(b"unexpected")
+
+    with pytest.raises(RuntimeError, match="externally changed managed file"):
+        service.install(ModManifest.load(new_package))
+
+    assert target.read_bytes() == b"unexpected"
+
+    status = service.install(
+        ModManifest.load(new_package), repair_managed=True,
+    )
+
+    assert status.version == "2.0.0"
+    assert target.read_bytes() == b"v2"
+
+
+def test_failed_repair_update_restores_prior_missing_state(
+    tmp_path: Path, monkeypatch,
+):
+    game = _game(tmp_path)
+    old_package = _package(
+        tmp_path / "old", "repair-update-rollback", "script",
+        "scripts/RepairRollback.dll", payload=b"v1", version="1.0.0",
+    )
+    new_package = _package(
+        tmp_path / "new", "repair-update-rollback", "script",
+        "scripts/RepairRollback.dll", payload=b"v2", version="2.0.0",
+    )
+    service = ModIntegrationService(game)
+    service.install(ModManifest.load(old_package))
+    target = game / "scripts" / "RepairRollback.dll"
+    target.unlink()
+
+    monkeypatch.setattr(
+        service,
+        "_copy_atomic",
+        lambda _source, _target: (_ for _ in ()).throw(
+            OSError("synthetic repair failure")
+        ),
+    )
+    with pytest.raises(OSError, match="synthetic repair failure"):
+        service.install(ModManifest.load(new_package))
+
+    assert not target.exists()
+    receipt = json.loads(
+        (service.state_root / "repair-update-rollback.json").read_text(
+            encoding="utf-8",
+        )
+    )
+    assert receipt["version"] == "1.0.0"
 
 
 def test_update_preserves_disabled_package_state(tmp_path: Path):
@@ -533,7 +752,7 @@ def test_manifest_metadata_validation(tmp_path: Path, replacement: str, message:
     manifest_path = package / "mod.toml"
     text = manifest_path.read_text()
     if replacement.startswith("schema"):
-        text = text.replace(replacement, "schema_version = 3")
+        text = text.replace(replacement, "schema_version = 5")
     elif replacement.startswith("id"):
         text = text.replace(replacement, 'id = "BAD ID"')
     elif replacement.startswith("type"):
@@ -654,6 +873,78 @@ def test_install_rejects_in_root_symlink_destination_alias(tmp_path: Path):
     with pytest.raises(ValueError, match="symlink or junction"):
         ModIntegrationService(game).install(manifest)
     assert protected.read_bytes() == b"protected"
+
+
+def test_runtime_tree_install_rejects_symlinked_parent_directory(
+    tmp_path: Path,
+) -> None:
+    game = _game(tmp_path)
+    outside = tmp_path / "outside-runtime"
+    outside.mkdir()
+    sentinel = outside / "sentinel.json"
+    sentinel.write_bytes(b"protected")
+    runtime_root = game / "VehicleWorkbenchAxles"
+    try:
+        runtime_root.symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"symlink creation is unavailable: {exc}")
+    manifest = ModManifest.load(_package(
+        tmp_path, "runtime-parent-alias", "mixed",
+        "VehicleWorkbenchAxles/runtime.json", payload=b"replacement",
+    ))
+    service = ModIntegrationService(game)
+
+    with pytest.raises(ValueError, match="symlink or junction"):
+        service.install(manifest)
+    assert sentinel.read_bytes() == b"protected"
+    assert not (service.state_root / "runtime-parent-alias.json").exists()
+
+
+def test_runtime_tree_install_rejects_predictable_temporary_symlink(
+    tmp_path: Path,
+) -> None:
+    game = _game(tmp_path)
+    runtime_root = game / "VehicleWorkbenchAxles"
+    runtime_root.mkdir()
+    sentinel = tmp_path / "outside-sentinel.json"
+    sentinel.write_bytes(b"protected")
+    legacy_temporary = runtime_root / ".runtime.json.allin1-install"
+    try:
+        legacy_temporary.symlink_to(sentinel)
+    except OSError as exc:
+        pytest.skip(f"symlink creation is unavailable: {exc}")
+    manifest = ModManifest.load(_package(
+        tmp_path, "runtime-temp-alias", "mixed",
+        "VehicleWorkbenchAxles/runtime.json", payload=b"replacement",
+    ))
+    service = ModIntegrationService(game)
+
+    with pytest.raises(ValueError, match="legacy install-temporary"):
+        service.install(manifest)
+    assert sentinel.read_bytes() == b"protected"
+    assert not (runtime_root / "runtime.json").exists()
+    assert not (service.state_root / "runtime-temp-alias.json").exists()
+
+
+def test_runtime_tree_install_rejects_occupied_legacy_temporary_file(
+    tmp_path: Path,
+) -> None:
+    game = _game(tmp_path)
+    runtime_root = game / "VehicleWorkbenchAxles"
+    runtime_root.mkdir()
+    legacy_temporary = runtime_root / ".runtime.json.allin1-install"
+    legacy_temporary.write_bytes(b"protected")
+    manifest = ModManifest.load(_package(
+        tmp_path, "runtime-temp-file", "mixed",
+        "VehicleWorkbenchAxles/runtime.json", payload=b"replacement",
+    ))
+    service = ModIntegrationService(game)
+
+    with pytest.raises(ValueError, match="legacy install-temporary"):
+        service.install(manifest)
+    assert legacy_temporary.read_bytes() == b"protected"
+    assert not (runtime_root / "runtime.json").exists()
+    assert not (service.state_root / "runtime-temp-file.json").exists()
 
 
 def test_edition_missing_receipt_and_corrupt_receipt_errors(tmp_path: Path):
@@ -806,6 +1097,50 @@ def test_preexisting_dlc_registration_is_not_claimed_or_removed(
     service.set_enabled("shared-registration", True)
     service.uninstall("shared-registration")
     assert calls == [("shared_pack", True)]
+
+
+def test_disabled_update_preserves_owned_dlc_for_reenable(
+    tmp_path: Path, monkeypatch,
+):
+    game = _game(tmp_path)
+    for loader in ("OpenRPF.asi", "xinput1_4.dll"):
+        _write_pe(game / loader)
+    package = _package(
+        tmp_path, "disabled-update", "rpf",
+        "mods/update/x64/dlcpacks/owned_pack/dlc.rpf",
+        dependencies=("openrpf",), dlc_packs=("owned_pack",),
+    )
+    service = ModIntegrationService(game)
+    calls: list[tuple[str, bool]] = []
+    monkeypatch.setattr(
+        service, "_set_dlc_registration",
+        lambda pack, enabled: calls.append((pack, enabled)) or True,
+    )
+    manifest = ModManifest.load(package)
+
+    service.install(manifest)
+    service.set_enabled("disabled-update", False)
+    service.install(manifest)
+    disabled_receipt = json.loads(
+        (service.state_root / "disabled-update.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert disabled_receipt["enabled"] is False
+    assert disabled_receipt["owned_dlc_packs"] == ["owned_pack"]
+
+    service.set_enabled("disabled-update", True)
+    enabled_receipt = json.loads(
+        (service.state_root / "disabled-update.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert enabled_receipt["owned_dlc_packs"] == ["owned_pack"]
+    assert calls == [
+        ("owned_pack", True),
+        ("owned_pack", False),
+        ("owned_pack", True),
+    ]
 
 
 def test_rpf_entry_install_toggle_and_uninstall_restore_exact_entry(
@@ -964,7 +1299,7 @@ def test_rpf_extract_replace_delete_error_contracts(tmp_path: Path, monkeypatch)
     output = tmp_path / "entry.bin"
 
     def success_extract(command, *arguments):
-        assert command == "extract-entry"
+        assert command == "extract-exact-entry"
         Path(arguments[-1]).write_bytes(b"entry")
         return SimpleNamespace(returncode=0, stdout="ok", stderr="")
 

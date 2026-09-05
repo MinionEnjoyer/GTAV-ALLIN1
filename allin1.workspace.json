@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "allin1.core",
   "name": "ALLIN1 Core",
-  "version": "0.6.1",
+  "version": "0.6.4",
   "kind": "product_workspace",
   "editions": [
     "legacy",
@@ -95,8 +95,7 @@
       "paths": [
         "script/ALLIN1.csproj",
         "script/src",
-        "script/dist/ALLIN1.dll",
-        "script/dist/LemonUI.SHVDN3.dll"
+        "script/dist/ALLIN1.dll"
       ],
       "runtime_artifact": "scripts/ALLIN1.dll",
       "api_contract": "data/runtime_api_contract.json"

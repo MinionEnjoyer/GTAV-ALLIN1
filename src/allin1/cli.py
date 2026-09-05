@@ -35,19 +35,19 @@ log = logging.getLogger("allin1.cli")
 @click.option(
     "--config", "-c",
     type=click.Path(exists=False),
-    default=str(DEFAULT_CONFIG),
+    default=None,
     help="Path to config.toml",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose (debug) output")
 @click.version_option(__version__, prog_name="GTA V ALLIN1")
 @click.pass_context
-def main(ctx: click.Context, config: str, verbose: bool) -> None:
+def main(ctx: click.Context, config: str | None, verbose: bool) -> None:
     """ALLIN1 - GTA V Story Mode mod manager and add-on content tool."""
     setup_logging(project_root=PROJECT_ROOT, verbose=verbose)
     log.info("ALLIN1 started")
 
     ctx.ensure_object(dict)
-    config_path = Path(config)
+    config_path = Path(config) if config is not None else DEFAULT_CONFIG
     if config_path.exists():
         ctx.obj["config"] = Config.load(config_path)
         log.info("Loaded config from %s", config_path)
@@ -104,6 +104,12 @@ def open_launcher_cmd(
 
 @main.command()
 @click.option(
+    "--reactor",
+    type=click.Choice(("ask", "install", "skip"), case_sensitive=False),
+    default="ask", show_default=True,
+    help="Download/repair the pinned edition-specific shared Reactor V dependency and ALLIN1 UI.",
+)
+@click.option(
     "--rpf-loader",
     type=click.Choice(("ask", "install", "skip"), case_sensitive=False),
     default="ask",
@@ -114,7 +120,7 @@ def open_launcher_cmd(
     ),
 )
 @click.pass_context
-def install_cmd(ctx: click.Context, rpf_loader: str) -> None:
+def install_cmd(ctx: click.Context, rpf_loader: str, reactor: str) -> None:
     """Install MP vehicles into your GTA V single player."""
     config: Config = ctx.obj["config"]
     db = VehicleDatabase.load(VEHICLES_DB)
@@ -143,14 +149,36 @@ def install_cmd(ctx: click.Context, rpf_loader: str) -> None:
         )
         return click.confirm("Install these optional third-party dependencies?", default=True)
 
+    def approve_reactor(gta_path: Path, enhanced: bool) -> bool:
+        from allin1.reactor_dependency import dependency_recorded
+        if reactor.lower() != "ask":
+            return reactor.lower() == "install"
+        if dependency_recorded(gta_path, enhanced):
+            return True
+        edition = "Enhanced" if enhanced else "Legacy"
+        click.echo(f"Reactor V for {edition} is a shared, unsigned preview dependency (~175 MB download).")
+        click.echo("ALLIN1 verifies its pinned SHA-256 and supported game build; other mods and runtime settings are preserved.")
+        return click.confirm("Download and install Reactor V with ALLIN1's GBAY interface?", default=True)
+
+    from allin1.reactor_dependency import ReactorInstallError
     try:
-        result = install(config, db, rpf_loader_consent=approve_rpf_loader)
+        result = install(config, db, rpf_loader_consent=approve_rpf_loader, reactor_consent=approve_reactor)
+    except (ReactorInstallError, OSError) as e:
+        # The batch installer must not reinterpret dependency/IO failures as
+        # failed GTA folder detection and ask the user for the same path again.
+        if isinstance(e, FileNotFoundError):
+            click.echo(f"Error: {e}", err=True)
+            raise SystemExit(1)
+        click.echo(f"Installation blocked: {e}", err=True)
+        raise SystemExit(3)
     except (FileNotFoundError, ValueError) as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
     click.echo(f"GTA V path: {result.gta_path}")
     click.echo(f"Edition: {'Enhanced' if result.is_enhanced else 'Legacy'}")
+    if result.reactor_ready:
+        click.echo(f"Shared dependency installed and verified: {result.reactor_provider}")
 
     for warning in result.warnings:
         click.echo(f"  {warning}")
@@ -177,7 +205,9 @@ def install_cmd(ctx: click.Context, rpf_loader: str) -> None:
     else:
         click.echo("ScriptHookVDotNet detected.")
 
-    if not result.openrpf_found:
+    if result.reactor_ready:
+        click.echo("Reactor serves GBAY artwork directly; an RPF loader is not needed for menu images.")
+    elif not result.openrpf_found:
         click.echo()
         if result.is_enhanced:
             click.echo("OpenRPF not detected. This is optional; GBAY will use safe placeholders.")
@@ -392,9 +422,21 @@ def content_validate(manifest: Path) -> None:
     "--gta-path", type=click.Path(exists=True, file_okay=False, path_type=Path),
 )
 @click.option("--yes", is_flag=True, help="Approve installing the validated package.")
+@click.option(
+    "--repair-managed",
+    is_flag=True,
+    help=(
+        "Repair package-owned files even when their current hashes no longer "
+        "match the managed receipt."
+    ),
+)
 @click.pass_context
 def content_install_package(
-    ctx: click.Context, source: Path, gta_path: Path | None, yes: bool,
+    ctx: click.Context,
+    source: Path,
+    gta_path: Path | None,
+    yes: bool,
+    repair_managed: bool,
 ) -> None:
     """Install a validated mod.toml, package folder, or bounded ZIP package."""
     from allin1.mods import ModIntegrationService, open_mod_package
@@ -402,7 +444,9 @@ def content_install_package(
     game = _content_game_path(ctx, gta_path)
     with open_mod_package(source) as package:
         _confirm_content_change(yes, f"Install {package.name} {package.version}?")
-        status = ModIntegrationService(game).install(package)
+        status = ModIntegrationService(game).install(
+            package, repair_managed=repair_managed,
+        )
     click.echo(
         f"Installed {status.name} {status.version} ({status.mod_id})."
     )
@@ -638,6 +682,623 @@ def content_settings_apply(
     except (KeyError, OSError, PermissionError, TypeError, ValueError) as exc:
         raise click.ClickException(str(exc)) from exc
     click.echo(json.dumps(applied, indent=2, ensure_ascii=False))
+
+
+@main.group("map-canary", hidden=True)
+def map_canary_group() -> None:
+    """Run fixed-scope developer map-registration canaries."""
+
+
+@map_canary_group.command("install")
+@click.option(
+    "--gta-path",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--yes", is_flag=True, help="Authorize the guarded mutation.")
+@click.option(
+    "--confirm-canary",
+    help="Exact fixed canary confirmation token; required with --yes.",
+)
+def map_canary_install(
+    gta_path: Path, yes: bool, confirm_canary: str | None,
+) -> None:
+    """Install the Enhanced Davis registration-only canary; never start GTA."""
+    from allin1.map_canary import (
+        INSTALL_CONFIRMATION,
+        install_davis_registration_canary,
+    )
+
+    if not yes or confirm_canary != INSTALL_CONFIRMATION:
+        raise click.ClickException(
+            "Canary install requires --yes and --confirm-canary "
+            f"{INSTALL_CONFIRMATION}"
+        )
+    try:
+        payload = install_davis_registration_canary(
+            gta_path, confirmation=confirm_canary,
+        )
+    except (FileNotFoundError, OSError, PermissionError, RuntimeError,
+            TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("status")
+@click.option(
+    "--gta-path",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+def map_canary_status(gta_path: Path) -> None:
+    """Read the Davis canary checkpoint and installed evidence."""
+    from allin1.map_canary import read_davis_registration_canary_status
+
+    try:
+        payload = read_davis_registration_canary_status(gta_path)
+    except (FileNotFoundError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("rollback")
+@click.option(
+    "--gta-path",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--yes", is_flag=True, help="Authorize exact rollback.")
+@click.option(
+    "--confirm-canary",
+    help="Exact fixed rollback confirmation token; required with --yes.",
+)
+def map_canary_rollback(
+    gta_path: Path, yes: bool, confirm_canary: str | None,
+) -> None:
+    """Restore the exact pre-canary pack and dlclist while GTA is closed."""
+    from allin1.map_canary import (
+        ROLLBACK_CONFIRMATION,
+        rollback_davis_registration_canary,
+    )
+
+    if not yes or confirm_canary != ROLLBACK_CONFIRMATION:
+        raise click.ClickException(
+            "Canary rollback requires --yes and --confirm-canary "
+            f"{ROLLBACK_CONFIRMATION}"
+        )
+    try:
+        payload = rollback_davis_registration_canary(
+            gta_path, confirmation=confirm_canary,
+        )
+    except (FileNotFoundError, OSError, PermissionError, RuntimeError,
+            TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("streaming-install")
+@click.option(
+    "--gta-path",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--yes", is_flag=True, help="Authorize the guarded mutation.")
+@click.option(
+    "--confirm-canary",
+    help="Exact streaming-canary confirmation token; required with --yes.",
+)
+def map_canary_streaming_install(
+    gta_path: Path, yes: bool, confirm_canary: str | None,
+) -> None:
+    """Install the Enhanced Davis isolated-streaming v2 canary."""
+    from allin1.map_canary import (
+        STREAMING_INSTALL_CONFIRMATION,
+        install_davis_streaming_canary,
+    )
+
+    if not yes or confirm_canary != STREAMING_INSTALL_CONFIRMATION:
+        raise click.ClickException(
+            "Streaming canary install requires --yes and --confirm-canary "
+            f"{STREAMING_INSTALL_CONFIRMATION}"
+        )
+    try:
+        payload = install_davis_streaming_canary(
+            gta_path, confirmation=confirm_canary,
+        )
+    except (FileNotFoundError, OSError, PermissionError, RuntimeError,
+            TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("streaming-status")
+@click.option(
+    "--gta-path",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+def map_canary_streaming_status(gta_path: Path) -> None:
+    """Read the Davis isolated-streaming v2 evidence."""
+    from allin1.map_canary import read_davis_streaming_canary_status
+
+    try:
+        payload = read_davis_streaming_canary_status(gta_path)
+    except (FileNotFoundError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("streaming-rollback")
+@click.option(
+    "--gta-path",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--yes", is_flag=True, help="Authorize exact rollback.")
+@click.option(
+    "--confirm-canary",
+    help="Exact streaming rollback token; required with --yes.",
+)
+def map_canary_streaming_rollback(
+    gta_path: Path, yes: bool, confirm_canary: str | None,
+) -> None:
+    """Restore the exact pre-streaming-canary pack and dlclist."""
+    from allin1.map_canary import (
+        STREAMING_ROLLBACK_CONFIRMATION,
+        rollback_davis_streaming_canary,
+    )
+
+    if not yes or confirm_canary != STREAMING_ROLLBACK_CONFIRMATION:
+        raise click.ClickException(
+            "Streaming canary rollback requires --yes and --confirm-canary "
+            f"{STREAMING_ROLLBACK_CONFIRMATION}"
+        )
+    try:
+        payload = rollback_davis_streaming_canary(
+            gta_path, confirmation=confirm_canary,
+        )
+    except (FileNotFoundError, OSError, PermissionError, RuntimeError,
+            TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("startup-install")
+@click.option(
+    "--gta-path",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--yes", is_flag=True, help="Authorize the guarded mutation.")
+@click.option(
+    "--confirm-canary",
+    help="Exact startup-canary confirmation token; required with --yes.",
+)
+def map_canary_startup_install(
+    gta_path: Path, yes: bool, confirm_canary: str | None,
+) -> None:
+    """Install the Enhanced Davis-only startup/IPL v3 canary."""
+    from allin1.map_startup_canary import (
+        INSTALL_CONFIRMATION,
+        install_davis_startup_canary,
+    )
+
+    if not yes or confirm_canary != INSTALL_CONFIRMATION:
+        raise click.ClickException(
+            "Startup canary install requires --yes and --confirm-canary "
+            f"{INSTALL_CONFIRMATION}"
+        )
+    try:
+        payload = install_davis_startup_canary(
+            gta_path, confirmation=confirm_canary,
+        )
+    except (FileNotFoundError, OSError, PermissionError, RuntimeError,
+            TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("startup-status")
+@click.option(
+    "--gta-path",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+def map_canary_startup_status(gta_path: Path) -> None:
+    """Read the Davis-only startup/IPL v3 evidence."""
+    from allin1.map_startup_canary import read_davis_startup_canary_status
+
+    try:
+        payload = read_davis_startup_canary_status(gta_path)
+    except (FileNotFoundError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("startup-rollback")
+@click.option(
+    "--gta-path",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--yes", is_flag=True, help="Authorize exact rollback.")
+@click.option(
+    "--confirm-canary",
+    help="Exact startup rollback token; required with --yes.",
+)
+def map_canary_startup_rollback(
+    gta_path: Path, yes: bool, confirm_canary: str | None,
+) -> None:
+    """Restore the exact pre-startup-canary pack and dlclist."""
+    from allin1.map_startup_canary import (
+        ROLLBACK_CONFIRMATION,
+        rollback_davis_startup_canary,
+    )
+
+    if not yes or confirm_canary != ROLLBACK_CONFIRMATION:
+        raise click.ClickException(
+            "Startup canary rollback requires --yes and --confirm-canary "
+            f"{ROLLBACK_CONFIRMATION}"
+        )
+    try:
+        payload = rollback_davis_startup_canary(
+            gta_path, confirmation=confirm_canary,
+        )
+    except (FileNotFoundError, OSError, PermissionError, RuntimeError,
+            TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("stock-boot-install", hidden=True)
+@click.option(
+    "--gta-path",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--yes", is_flag=True, help="Authorize the guarded mutation.")
+@click.option(
+    "--confirm-canary",
+    help="Exact stock-reference boot token; required with --yes.",
+)
+def map_canary_stock_boot_install(
+    gta_path: Path, yes: bool, confirm_canary: str | None,
+) -> None:
+    """Install the execution-disabled Enhanced stock-reference boot canary."""
+    from allin1.map_stock_bridge_canary import (
+        INSTALL_CONFIRMATION,
+        install_davis_stock_reference_boot_canary,
+    )
+
+    if not yes or confirm_canary != INSTALL_CONFIRMATION:
+        raise click.ClickException(
+            "Stock-reference boot canary install requires --yes and "
+            f"--confirm-canary {INSTALL_CONFIRMATION}"
+        )
+    try:
+        payload = install_davis_stock_reference_boot_canary(
+            gta_path, confirmation=confirm_canary,
+        )
+    except (FileNotFoundError, OSError, PermissionError, RuntimeError,
+            TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("stock-boot-status", hidden=True)
+@click.option(
+    "--gta-path",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+def map_canary_stock_boot_status(gta_path: Path) -> None:
+    """Read exact Enhanced stock-reference Phase-A evidence."""
+    from allin1.map_stock_bridge_canary import (
+        read_davis_stock_reference_boot_canary_status,
+    )
+
+    try:
+        payload = read_davis_stock_reference_boot_canary_status(gta_path)
+    except (FileNotFoundError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("stock-boot-rollback", hidden=True)
+@click.option(
+    "--gta-path",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--yes", is_flag=True, help="Authorize exact rollback.")
+@click.option(
+    "--confirm-canary",
+    help="Exact stock-reference rollback token; required with --yes.",
+)
+def map_canary_stock_boot_rollback(
+    gta_path: Path, yes: bool, confirm_canary: str | None,
+) -> None:
+    """Restore the exact pre-Phase-A pack and dlclist.xml."""
+    from allin1.map_stock_bridge_canary import (
+        ROLLBACK_CONFIRMATION,
+        rollback_davis_stock_reference_boot_canary,
+    )
+
+    if not yes or confirm_canary != ROLLBACK_CONFIRMATION:
+        raise click.ClickException(
+            "Stock-reference boot canary rollback requires --yes and "
+            f"--confirm-canary {ROLLBACK_CONFIRMATION}"
+        )
+    try:
+        payload = rollback_davis_stock_reference_boot_canary(
+            gta_path, confirmation=confirm_canary,
+        )
+    except (FileNotFoundError, OSError, PermissionError, RuntimeError,
+            TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("stock-black-promote", hidden=True)
+@click.option(
+    "--gta-path",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option(
+    "--session",
+    required=True,
+    help="Exact 12-character Phase-A ALLIN1 client session identity.",
+)
+@click.option("--yes", is_flag=True, help="Authorize guarded Phase-B promotion.")
+@click.option(
+    "--confirm-canary",
+    help="Exact Phase-B promotion token; required with --yes.",
+)
+def map_canary_stock_black_promote(
+    gta_path: Path, session: str, yes: bool, confirm_canary: str | None,
+) -> None:
+    """Promote one observed Phase-A bridge to the Davis black transition."""
+    from allin1.map_stock_bridge_black_canary import (
+        PROMOTE_CONFIRMATION,
+        promote_davis_stock_reference_black_transition_canary,
+    )
+
+    if not yes or confirm_canary != PROMOTE_CONFIRMATION:
+        raise click.ClickException(
+            "Stock-reference Phase-B promotion requires --yes and "
+            f"--confirm-canary {PROMOTE_CONFIRMATION}"
+        )
+    try:
+        payload = promote_davis_stock_reference_black_transition_canary(
+            gta_path, confirmation=confirm_canary, session=session,
+        )
+    except (FileNotFoundError, OSError, PermissionError, RuntimeError,
+            TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("stock-black-status", hidden=True)
+@click.option(
+    "--gta-path",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+def map_canary_stock_black_status(gta_path: Path) -> None:
+    """Read exact Enhanced stock-reference Phase-B evidence."""
+    from allin1.map_stock_bridge_black_canary import (
+        read_davis_stock_reference_black_transition_canary_status,
+    )
+
+    try:
+        payload = read_davis_stock_reference_black_transition_canary_status(
+            gta_path,
+        )
+    except (FileNotFoundError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("stock-black-rollback", hidden=True)
+@click.option(
+    "--gta-path",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--yes", is_flag=True, help="Authorize exact Phase-A restoration.")
+@click.option(
+    "--confirm-canary",
+    help="Exact Phase-B rollback token; required with --yes.",
+)
+def map_canary_stock_black_rollback(
+    gta_path: Path, yes: bool, confirm_canary: str | None,
+) -> None:
+    """Restore the exact Phase-A marker and receipt while GTA is closed."""
+    from allin1.map_stock_bridge_black_canary import (
+        ROLLBACK_CONFIRMATION,
+        rollback_davis_stock_reference_black_transition_canary,
+    )
+
+    if not yes or confirm_canary != ROLLBACK_CONFIRMATION:
+        raise click.ClickException(
+            "Stock-reference Phase-B rollback requires --yes and "
+            f"--confirm-canary {ROLLBACK_CONFIRMATION}"
+        )
+    try:
+        payload = rollback_davis_stock_reference_black_transition_canary(
+            gta_path, confirmation=confirm_canary,
+        )
+    except (FileNotFoundError, OSError, PermissionError, RuntimeError,
+            TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("grapeseed-stock-boot-install", hidden=True)
+@click.option(
+    "--gta-path", required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--yes", is_flag=True, help="Authorize the guarded mutation.")
+@click.option("--confirm-canary", help="Exact Grapeseed Phase-A install token.")
+def map_canary_grapeseed_stock_boot_install(
+    gta_path: Path, yes: bool, confirm_canary: str | None,
+) -> None:
+    """Install the execution-disabled Enhanced Grapeseed bridge."""
+    from allin1.map_grapeseed_stock_bridge_canary import (
+        INSTALL_CONFIRMATION,
+        install_grapeseed_stock_reference_boot_canary,
+    )
+
+    if not yes or confirm_canary != INSTALL_CONFIRMATION:
+        raise click.ClickException(
+            "Grapeseed Phase-A install requires --yes and "
+            f"--confirm-canary {INSTALL_CONFIRMATION}"
+        )
+    try:
+        payload = install_grapeseed_stock_reference_boot_canary(
+            gta_path, confirmation=confirm_canary,
+        )
+    except (FileNotFoundError, OSError, PermissionError, RuntimeError,
+            TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("grapeseed-stock-boot-status", hidden=True)
+@click.option(
+    "--gta-path", required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+def map_canary_grapeseed_stock_boot_status(gta_path: Path) -> None:
+    """Read exact Grapeseed Phase-A evidence."""
+    from allin1.map_grapeseed_stock_bridge_canary import (
+        read_grapeseed_stock_reference_boot_canary_status,
+    )
+
+    try:
+        payload = read_grapeseed_stock_reference_boot_canary_status(gta_path)
+    except (FileNotFoundError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("grapeseed-stock-boot-rollback", hidden=True)
+@click.option(
+    "--gta-path", required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--yes", is_flag=True, help="Authorize exact rollback.")
+@click.option("--confirm-canary", help="Exact Grapeseed Phase-A rollback token.")
+def map_canary_grapeseed_stock_boot_rollback(
+    gta_path: Path, yes: bool, confirm_canary: str | None,
+) -> None:
+    """Restore the prior pack and remove only Grapeseed's DLC registration."""
+    from allin1.map_grapeseed_stock_bridge_canary import (
+        ROLLBACK_CONFIRMATION,
+        rollback_grapeseed_stock_reference_boot_canary,
+    )
+
+    if not yes or confirm_canary != ROLLBACK_CONFIRMATION:
+        raise click.ClickException(
+            "Grapeseed Phase-A rollback requires --yes and "
+            f"--confirm-canary {ROLLBACK_CONFIRMATION}"
+        )
+    try:
+        payload = rollback_grapeseed_stock_reference_boot_canary(
+            gta_path, confirmation=confirm_canary,
+        )
+    except (FileNotFoundError, OSError, PermissionError, RuntimeError,
+            TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("grapeseed-stock-black-promote", hidden=True)
+@click.option(
+    "--gta-path", required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option(
+    "--session", required=True,
+    help="Exact 12-character Grapeseed Phase-A client session identity.",
+)
+@click.option("--yes", is_flag=True, help="Authorize Phase-B promotion.")
+@click.option("--confirm-canary", help="Exact Grapeseed Phase-B promotion token.")
+def map_canary_grapeseed_stock_black_promote(
+    gta_path: Path, session: str, yes: bool, confirm_canary: str | None,
+) -> None:
+    """Promote an observed Grapeseed Phase A to its black transition."""
+    from allin1.map_grapeseed_stock_bridge_black_canary import (
+        PROMOTE_CONFIRMATION,
+        promote_grapeseed_stock_reference_black_transition_canary,
+    )
+
+    if not yes or confirm_canary != PROMOTE_CONFIRMATION:
+        raise click.ClickException(
+            "Grapeseed Phase-B promotion requires --yes and "
+            f"--confirm-canary {PROMOTE_CONFIRMATION}"
+        )
+    try:
+        payload = promote_grapeseed_stock_reference_black_transition_canary(
+            gta_path, confirmation=confirm_canary, session=session,
+        )
+    except (FileNotFoundError, OSError, PermissionError, RuntimeError,
+            TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("grapeseed-stock-black-status", hidden=True)
+@click.option(
+    "--gta-path", required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+def map_canary_grapeseed_stock_black_status(gta_path: Path) -> None:
+    """Read exact Grapeseed Phase-B evidence."""
+    from allin1.map_grapeseed_stock_bridge_black_canary import (
+        read_grapeseed_stock_reference_black_transition_canary_status,
+    )
+
+    try:
+        payload = read_grapeseed_stock_reference_black_transition_canary_status(
+            gta_path,
+        )
+    except (FileNotFoundError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+@map_canary_group.command("grapeseed-stock-black-rollback", hidden=True)
+@click.option(
+    "--gta-path", required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option("--yes", is_flag=True, help="Restore the exact Phase-A pair.")
+@click.option("--confirm-canary", help="Exact Grapeseed Phase-B rollback token.")
+def map_canary_grapeseed_stock_black_rollback(
+    gta_path: Path, yes: bool, confirm_canary: str | None,
+) -> None:
+    """Restore Grapeseed's exact Phase-A marker and receipt."""
+    from allin1.map_grapeseed_stock_bridge_black_canary import (
+        ROLLBACK_CONFIRMATION,
+        rollback_grapeseed_stock_reference_black_transition_canary,
+    )
+
+    if not yes or confirm_canary != ROLLBACK_CONFIRMATION:
+        raise click.ClickException(
+            "Grapeseed Phase-B rollback requires --yes and "
+            f"--confirm-canary {ROLLBACK_CONFIRMATION}"
+        )
+    try:
+        payload = rollback_grapeseed_stock_reference_black_transition_canary(
+            gta_path, confirmation=confirm_canary,
+        )
+    except (FileNotFoundError, OSError, PermissionError, RuntimeError,
+            TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2, sort_keys=True))
 
 
 @main.group("assistant")
@@ -1966,20 +2627,35 @@ def repair_garage_cmd(garage_file: Path) -> None:
 @click.option("--minimum-coverage", type=float, default=91.0)
 @click.option("--script-assembly", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
 @click.option("--smoke-report", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
+@click.option("--acceptance-context", type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help="Independently reviewed build/session anchor and evidence roots; never supplied by the smoke report.")
 def qualification_report_cmd(output: Path, coverage_report: Path, minimum_coverage: float,
-                             script_assembly: Path, smoke_report: Path) -> None:
+                             script_assembly: Path, smoke_report: Path, acceptance_context: Path | None) -> None:
     """Create a release qualification dashboard JSON file."""
     from allin1.qualification import build_report, checks_from_artifacts
 
     try:
+        context = None
+        if acceptance_context:
+            from allin1.release_paths import no_links, strict_json
+            context = strict_json(no_links(acceptance_context).read_bytes())
+            required = {"expected_identity", "trusted_session", "evidence_root", "artifact_root", "dependency_root", "target_edition", "suite"}
+            if not isinstance(context, dict) or set(context) != required: raise ValueError("Incomplete acceptance context")
+            if context["suite"] != "launcher-desktop": raise ValueError("Launcher qualification requires its full desktop acceptance suite")
+            for key in ("evidence_root", "artifact_root", "dependency_root"):
+                authored = Path(context[key])
+                if not authored.is_absolute(): raise ValueError("Acceptance roots must be absolute")
+                context[key] = no_links(authored)
         checks, metrics = checks_from_artifacts(
             coverage_report, script_assembly, smoke_report,
             minimum_coverage=minimum_coverage,
+            acceptance_context=context,
         )
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     report = build_report(output, checks, metrics=metrics)
     click.echo(f"Qualification: {'PASS' if report['passed'] else 'FAIL'} ({output})")
+    click.echo("Release readiness: NOT QUALIFIED by this artifact dashboard alone.")
     if not report["passed"]:
         raise SystemExit(1)
 

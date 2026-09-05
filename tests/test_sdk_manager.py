@@ -146,6 +146,53 @@ def test_latest_release_rejects_missing_or_mismatched_assets():
         fetch_latest_sdk_release(opener=lambda *_args, **_kwargs: response([archive, checksum]))
 
 
+@pytest.mark.parametrize("duplicated", ["archive", "checksum"])
+def test_latest_release_rejects_case_ambiguous_assets(duplicated):
+    archive = {"name": "ALLIN1-SDK-0.6.4-win-x64.zip", "size": 10,
+               "browser_download_url": "https://example.test/sdk.zip"}
+    checksum = {"name": archive["name"] + ".sha256",
+                "browser_download_url": "https://example.test/sdk.sha256"}
+    other = dict(archive if duplicated == "archive" else checksum)
+    other["name"] = other["name"].upper()
+    other["browser_download_url"] = "https://example.test/another-build"
+    payload = json.dumps({"tag_name": "v0.6.4", "html_url": "https://example.test/release",
+                          "assets": [archive, checksum, other]}).encode()
+    with pytest.raises(ValueError, match="ambiguous"):
+        fetch_latest_sdk_release(opener=lambda *_args, **_kwargs: _Response(payload))
+
+
+@pytest.mark.parametrize("name", ["../outside.zip", "nested/archive.zip", "nested\\archive.zip",
+    "C:/outside.zip", "C:outside.zip", "//server/share/outside.zip", "NUL.zip",
+    "ALLIN1-SDK-0.6.3-win-x64.zip", "ALLIN1-SDK-0.6.4-win-x64.zip "])
+def test_download_preflights_archive_name_before_network_or_writes(tmp_path, name):
+    outside = tmp_path / "outside.zip"
+    outside.write_bytes(b"outside canary")
+    release = SdkRelease("0.6.4", "SDK", "https://example.test/release",
+        "https://example.test/archive", name, 10, "https://example.test/checksum")
+    calls = []
+    def opener(*_args, **_kwargs):
+        calls.append(True)
+        # Never permit a regressed downloader to reach arbitrary drive/UNC
+        # paths. The separate contained reproduction uses only tmp_path.
+        pytest.fail("Unsafe release name reached the network boundary")
+    with pytest.raises(ValueError):
+        install_sdk_release(release, tmp_path / "SDK", opener=opener)
+    assert calls == []
+    assert outside.read_bytes() == b"outside canary"
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["outside.zip"]
+
+
+@pytest.mark.parametrize("size", [0, -1, True, "10", 768 * 1024 * 1024 + 1])
+def test_download_preflights_size_before_network(tmp_path, size):
+    release = SdkRelease("0.6.4", "SDK", "https://example.test/release",
+        "https://example.test/archive", "ALLIN1-SDK-0.6.4-win-x64.zip", size,
+        "https://example.test/checksum")
+    def opener(*_args, **_kwargs):
+        pytest.fail("Invalid release must fail before downloading")
+    with pytest.raises(ValueError, match="size"):
+        install_sdk_release(release, tmp_path / "SDK", opener=opener)
+
+
 def test_archive_install_status_repair_and_uninstall(tmp_path):
     package = tmp_path / "sdk.zip"
     _sdk_archive(package)
@@ -165,8 +212,12 @@ def test_archive_install_status_repair_and_uninstall(tmp_path):
     previous.mkdir()
     repaired = install_sdk_archive(package, root)
     assert repaired.healthy
-    assert not (root / "stale.txt").exists()
+    # Unowned files and unrelated previous work must survive repair.
+    assert (root / "stale.txt").read_text() == "old"
+    assert pending.is_dir() and previous.is_dir()
+    assert len(list(root.parent.glob("SDK.previous-*"))) == 1
     assert uninstall_sdk(root) is True
+    assert next(root.parent.glob("SDK.uninstalled-*")).joinpath("stale.txt").read_text() == "old"
     assert uninstall_sdk(root) is False
 
 
@@ -235,6 +286,11 @@ def test_archive_rejects_tampering_unsafe_paths_and_wrong_version(tmp_path):
 ])
 def test_archive_rejects_malformed_internal_json(tmp_path, metadata, checksums, match):
     executable = b"MZsdk"
+    if metadata == b"[]":
+        checksums = {name: hashlib.sha256(value).hexdigest() for name, value in {
+            SDK_EXECUTABLE: executable, SDK_CLI_EXECUTABLE: executable,
+            SDK_AGENT_EXECUTABLE: executable, "release.json": metadata,
+        }.items()}
     archive_path = tmp_path / "malformed.zip"
     with zipfile.ZipFile(archive_path, "w") as archive:
         archive.writestr(SDK_EXECUTABLE, executable)

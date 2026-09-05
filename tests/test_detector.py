@@ -1,5 +1,6 @@
 """Cross-platform tests for GTA installation discovery."""
 
+import os
 from pathlib import Path
 from unittest.mock import Mock
 from types import SimpleNamespace
@@ -25,6 +26,18 @@ def test_validate_accepts_both_editions_and_rejects_invalid(tmp_path):
     empty.mkdir()
     with pytest.raises(ValueError, match="GTA5.exe"):
         detector.validate_gta_path(empty)
+
+
+@pytest.mark.parametrize("cached", [True, False])
+def test_read_only_discovery_never_publishes_cache(tmp_path, monkeypatch, cached):
+    game = _game(tmp_path / "owned game")
+    monkeypatch.setattr(detector, "load_cached_path", lambda: game if cached else None)
+    monkeypatch.setattr(detector.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(detector, "_detect_windows", lambda: game)
+    monkeypatch.setattr(detector, "save_cached_path", lambda *_: pytest.fail("Read-only discovery wrote a cache"))
+    assert detector.inspect_detected_gta_path() == game
+    assert detector.inspect_gta_path(game) == game
+    with pytest.raises(ValueError): detector.inspect_gta_path(tmp_path / "missing")
 
 
 def test_cache_round_trip_and_invalid_cache(tmp_path, monkeypatch):
@@ -259,3 +272,89 @@ def test_find_via_steam_handles_uppercase_and_bad_manifests(tmp_path, monkeypatc
     game = _game(steamapps / "common" / "GTAV")
     manifest.write_text('"installdir" "GTAV"')
     assert detector._find_via_steam_appmanifest().samefile(game)
+
+
+@pytest.mark.parametrize("mode", ["absent-module", "missing-key", "empty", "invalid"])
+def test_registry_fallbacks_never_guess_an_installation(tmp_path, monkeypatch, mode):
+    class Key:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+    def open_key(*args):
+        if mode == "missing-key": raise FileNotFoundError("synthetic missing key")
+        return Key()
+    fake = SimpleNamespace(HKEY_LOCAL_MACHINE=1, HKEY_CURRENT_USER=2, OpenKey=open_key,
+        QueryValueEx=lambda *args: ("" if mode == "empty" else str(tmp_path / "not installed"), None))
+    monkeypatch.setitem(sys.modules, "winreg", None if mode == "absent-module" else fake)
+    assert detector._check_registry() is None
+    assert detector._check_steam_uninstall_registry() is None
+    paths = detector._get_steam_path_from_registry()
+    assert len(paths) == (3 if mode == "invalid" else 0)
+
+
+@pytest.mark.parametrize("relative", ["GTAV", "Library/Grand Theft Auto V", "Library/Games/GTA V",
+    "steamapps/common/CustomGame", "Library/steamapps/common/CustomGame", "Library/Steam/steamapps/common/CustomGame"])
+def test_deep_scan_is_bounded_to_supplied_disposable_drive(tmp_path, relative):
+    drive = tmp_path / "drive"
+    game = _game(drive / relative)
+    for directory in [drive, game.parent]: (directory / "ignore-file.txt").write_bytes(b"not a directory")
+    if "steamapps" in relative:
+        steamapps = game.parent.parent
+        (steamapps / "appmanifest_3240220.acf").write_text('"installdir" "CustomGame"', encoding="utf-8")
+    assert detector._deep_scan_windows([drive]) == game
+
+
+@pytest.mark.parametrize("depth", [0, 1, 2])
+def test_deep_scan_permission_denied_skips_only_unreadable_directory(tmp_path, monkeypatch, depth):
+    drive = tmp_path / "drive"
+    blocked = drive.joinpath(*(["nested"] * depth))
+    (blocked / "child").mkdir(parents=True)
+    real = Path.iterdir
+    def iterdir(path):
+        if path == blocked: raise PermissionError("synthetic denied directory")
+        return real(path)
+    monkeypatch.setattr(Path, "iterdir", iterdir)
+    assert detector._deep_scan_windows([drive]) is None
+
+
+@pytest.mark.parametrize("damage", ["none", "invalid-path", "unreadable"])
+@pytest.mark.skipif(os.name != "nt", reason="Windows absolute path in Rockstar settings")
+def test_rockstar_settings_detection_is_read_only(tmp_path, monkeypatch, damage):
+    game = _game(tmp_path / "Grand Theft Auto V Enhanced")
+    settings = tmp_path / "Rockstar Games/Launcher/settings_user.dat"
+    settings.parent.mkdir(parents=True)
+    selected = game if damage != "invalid-path" else tmp_path / "missing Grand Theft Auto V"
+    raw = b"header\x00" + str(selected).encode() + b"\x00footer"
+    settings.write_bytes(raw)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    if damage == "unreadable":
+        real = Path.read_bytes
+        def read(path):
+            if path == settings: raise PermissionError("synthetic settings permission")
+            return real(path)
+        monkeypatch.setattr(Path, "read_bytes", read)
+    assert detector._find_rockstar_launcher_windows() == (game if damage == "none" else None)
+
+
+def test_epic_manifest_noise_unreadable_and_fallback_are_isolated(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROGRAMDATA", str(tmp_path))
+    monkeypatch.setattr(detector, "_get_windows_drives", lambda: [tmp_path / "drive"])
+    manifests = tmp_path / "Epic/EpicGamesLauncher/Data/Manifests"
+    manifests.mkdir(parents=True)
+    (manifests / "other.item").write_text('{"Name":"Other Game"}', encoding="utf-8")
+    (manifests / "bad.item").write_text('{"Name":"GTA"}', encoding="utf-8")
+    unreadable = manifests / "denied.item"
+    unreadable.write_text("GTA", encoding="utf-8")
+    real = Path.read_text
+    def read(path, *args, **kwargs):
+        if path == unreadable: raise PermissionError("synthetic denied manifest")
+        return real(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "read_text", read)
+    assert detector._find_epic_install_windows() is None
+    game = _game(tmp_path / "drive/Epic Games/Grand Theft Auto V Enhanced")
+    assert detector._find_epic_install_windows() == game
+
+
+def test_cached_path_read_error_is_nonfatal(tmp_path, monkeypatch):
+    (tmp_path / ".gta_path").write_text("fixture", encoding="utf-8")
+    monkeypatch.setattr(Path, "read_text", Mock(side_effect=PermissionError("synthetic denied cache")))
+    assert detector.load_cached_path() is None

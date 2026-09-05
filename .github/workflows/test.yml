@@ -6,8 +6,7 @@ on:
   pull_request:
   workflow_dispatch:
 
-# A binary refresh commit can immediately supersede the source commit that
-# triggered it. Do not run two copies of the expensive Windows toolchain job.
+# A newer reviewed source revision supersedes the previous validation run.
 concurrency:
   group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -16,6 +15,44 @@ permissions:
   contents: read
 
 jobs:
+  launcher-react:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        id: python
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[test]"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: desktop
+      - name: Run source-bound React and service migration harness
+        # Includes source-owned documentation and protocol regression checks.
+        run: python tools/react_release_harness.py --product launcher
+        env:
+          ALLIN1_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+      - name: Check documentation against current source
+        run: python tools/documentation_audit.py
+      - name: Retain migration evidence (not release qualification)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-react-migration-evidence
+          path: build/react-harness/
+          if-no-files-found: error
+      - run: pnpm build
+        working-directory: desktop
+      - run: cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
+
   python:
     strategy:
       fail-fast: false
@@ -41,8 +78,8 @@ jobs:
           dotnet-version: "8.0.x"
       - run: dotnet restore script/tests/ALLIN1.Tests.csproj
       - run: dotnet test script/tests/ALLIN1.Tests.csproj -c Release --no-restore
-      - run: dotnet restore mods/realistic-suppressors/tests/RealisticSuppressors.Tests.csproj
-      - run: dotnet test mods/realistic-suppressors/tests/RealisticSuppressors.Tests.csproj -c Release --no-restore
+      - run: dotnet restore script/reactor-bridge/ALLIN1.ReactorBridge.csproj
+      - run: dotnet build script/reactor-bridge/ALLIN1.ReactorBridge.csproj -c Release --no-restore
 
   windows-real-toolchain:
     runs-on: windows-latest
@@ -82,16 +119,16 @@ jobs:
         run: |
           dotnet restore script/tests/ALLIN1.Tests.csproj
           dotnet test script/tests/ALLIN1.Tests.csproj -c Release --no-restore
-          dotnet restore mods/realistic-suppressors/tests/RealisticSuppressors.Tests.csproj
-          dotnet test mods/realistic-suppressors/tests/RealisticSuppressors.Tests.csproj -c Release --no-restore
-          Copy-Item script/bin/Release/ALLIN1.dll script/dist/ALLIN1.dll -Force
+          dotnet restore script/reactor-bridge/ALLIN1.ReactorBridge.csproj
+          dotnet build script/reactor-bridge/ALLIN1.ReactorBridge.csproj -c Release --no-restore
+          Get-Item script/dist/ALLIN1.dll, script/dist/ALLIN1.ReactorBridge.plugin, script/dist/ALLIN1.ReactorBridge.contract.json | Out-Null
       - name: Build and verify public release contract
         shell: powershell
         run: |
           python -m allin1.cli build-release --output output/GTAV-ALLIN1-windows.zip
           python -m allin1.cli verify-release output/GTAV-ALLIN1-windows.zip
-      - name: Upload qualified release candidate
-        # The release contract above is the required qualification gate.
+      - name: Upload integrity-checked package (not release-qualified)
+        # Package integrity is separate from automated and live acceptance.
         # Artifact storage is a convenience and may be quota-limited.
         continue-on-error: true
         uses: actions/upload-artifact@v4

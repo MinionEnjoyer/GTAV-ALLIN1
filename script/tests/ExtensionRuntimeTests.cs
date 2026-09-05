@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.Serialization;
 using Xunit;
 
 namespace ALLIN1.Tests
@@ -303,6 +304,99 @@ namespace ALLIN1.Tests
         }
 
         [Fact]
+        public void Map_descriptor_requires_exact_receipt_path_and_current_hash()
+        {
+            string root = Path.Combine(Path.GetTempPath(),
+                "allin1-map-receipt-" + Guid.NewGuid().ToString("N"));
+            string scripts = Path.Combine(root, "scripts");
+            string relative =
+                "scripts/ALLIN1/Maps/example.maps/maps.json";
+            string descriptor = Path.Combine(root,
+                "scripts", "ALLIN1", "Maps", "example.maps", "maps.json");
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(descriptor));
+                File.WriteAllText(descriptor, "{\"schema_version\":1}");
+                string digest = RuntimeExtensionRegistry.Sha256(descriptor);
+                RuntimeExtensionRegistry registry =
+                    RuntimeExtensionRegistry.Parse(
+                        MapRegistryJson(relative, digest), scripts);
+                RuntimeExtensionPackage package =
+                    registry.Packages["example.maps"];
+
+                MapDescriptorDeclaration declaration = Assert.Single(
+                    Allin1ExtensionApi.CurrentMapDescriptors(package));
+                Assert.Equal(relative, declaration.Source);
+                Assert.Equal(descriptor, declaration.SourcePath);
+
+                File.AppendAllText(descriptor, " ");
+                Assert.Empty(Allin1ExtensionApi.CurrentMapDescriptors(package));
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+        }
+
+        [Fact]
+        public void Map_descriptor_receipt_cannot_authorize_another_path()
+        {
+            string scripts = Path.Combine(
+                Path.GetTempPath(), "allin1-map-path", "scripts");
+            Assert.Throws<InvalidDataException>(() =>
+                RuntimeExtensionRegistry.Parse(MapRegistryJson(
+                    "scripts/ALLIN1/Maps/another/maps.json",
+                    new string('a', 64)), scripts));
+        }
+
+        [Fact]
+        public void Map_descriptor_receipt_accepts_a_safe_sibling_descriptor()
+        {
+            string root = Path.Combine(Path.GetTempPath(),
+                "allin1-map-sibling-" + Guid.NewGuid().ToString("N"));
+            string scripts = Path.Combine(root, "scripts");
+            string relative =
+                "scripts/ALLIN1/Maps/example.maps/davis.maps.json";
+            string descriptor = Path.Combine(root, "scripts", "ALLIN1", "Maps",
+                "example.maps", "davis.maps.json");
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(descriptor));
+                File.WriteAllText(descriptor, "{\"schema_version\":1}");
+                string digest = RuntimeExtensionRegistry.Sha256(descriptor);
+
+                RuntimeExtensionRegistry registry =
+                    RuntimeExtensionRegistry.Parse(
+                        MapRegistryJson(relative, digest), scripts);
+                MapDescriptorDeclaration declaration = Assert.Single(
+                    Allin1ExtensionApi.CurrentMapDescriptors(
+                        registry.Packages["example.maps"]));
+
+                Assert.Equal(relative, declaration.Source);
+                Assert.Equal(Path.GetFullPath(descriptor), declaration.SourcePath);
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+        }
+
+        [Theory]
+        [InlineData("scripts/ALLIN1/Maps/example.maps/nested/davis.maps.json")]
+        [InlineData("scripts/ALLIN1/Maps/example.maps/../davis.maps.json")]
+        [InlineData("scripts/ALLIN1/Maps/example.maps/davis.json")]
+        public void Map_descriptor_receipt_rejects_nested_traversal_or_wrong_leaf(
+            string relative)
+        {
+            string scripts = Path.Combine(Path.GetTempPath(),
+                "allin1-map-unsafe-" + Guid.NewGuid().ToString("N"), "scripts");
+
+            Assert.Throws<InvalidDataException>(() =>
+                RuntimeExtensionRegistry.Parse(
+                    MapRegistryJson(relative, new string('a', 64)), scripts));
+        }
+
+        [Fact]
         public void BuiltInCatalogMayOmitAReceiptButMustExist()
         {
             string root = Path.Combine(Path.GetTempPath(),
@@ -342,14 +436,104 @@ namespace ALLIN1.Tests
 
                 GbayAddonAction action = Assert.Single(
                     Allin1ExtensionApi.GetGbayActions());
-                Allin1ExtensionApi.InvokeGbayAction(action);
-                Allin1ExtensionApi.InvokeGbayAction(action);
+                GbayAddonInvocationResult first =
+                    Allin1ExtensionApi.InvokeGbayAction(action);
+                GbayAddonInvocationResult second =
+                    Allin1ExtensionApi.InvokeGbayAction(action);
+                Assert.True(first.Succeeded);
+                Assert.Equal("addon_invoked", first.Code);
+                Assert.True(second.Succeeded);
                 Assert.Equal(2, invoked);
 
                 registration.Dispose();
                 Assert.Empty(Allin1ExtensionApi.GetGbayActions());
-                Allin1ExtensionApi.InvokeGbayAction(action);
+                GbayAddonInvocationResult deauthorized =
+                    Allin1ExtensionApi.InvokeGbayAction(action);
+                Assert.False(deauthorized.Succeeded);
+                Assert.Equal("addon_deauthorized", deauthorized.Code);
                 Assert.Equal(2, invoked);
+            }
+            finally
+            {
+                Allin1ExtensionApi.ResetCallbacksForTests();
+            }
+        }
+
+        [Fact]
+        public void GbayActionCallbackFailureIsReturnedInsteadOfReportedAsSuccess()
+        {
+            Allin1ExtensionApi.ResetCallbacksForTests();
+            try
+            {
+                using (Allin1ExtensionApi.RegisterGbayActionForTests(
+                    "example.content", "example:failure",
+                    () => throw new InvalidOperationException("fixture failure")))
+                {
+                    GbayAddonAction action = Assert.Single(
+                        Allin1ExtensionApi.GetGbayActions());
+
+                    GbayAddonInvocationResult result =
+                        Allin1ExtensionApi.InvokeGbayAction(action);
+
+                    Assert.False(result.Succeeded);
+                    Assert.Equal("addon_callback_failed", result.Code);
+                    Assert.DoesNotContain("fixture failure", result.Message);
+                }
+            }
+            finally
+            {
+                Allin1ExtensionApi.ResetCallbacksForTests();
+            }
+        }
+
+        [Fact]
+        public void GbayActionRegistryReloadBetweenListingAndInvocationFailsClosed()
+        {
+            Allin1ExtensionApi.ResetCallbacksForTests();
+            int invoked = 0;
+            try
+            {
+                using (Allin1ExtensionApi.RegisterGbayActionForTests(
+                    "example.content", "example:stale", () => invoked++))
+                {
+                    GbayAddonAction action = Assert.Single(
+                        Allin1ExtensionApi.GetGbayActions());
+                    Allin1ExtensionApi.ReloadRegistry();
+
+                    GbayAddonInvocationResult result =
+                        Allin1ExtensionApi.InvokeGbayAction(action);
+
+                    Assert.False(result.Succeeded);
+                    Assert.Equal("addon_deauthorized", result.Code);
+                    Assert.Equal(0, invoked);
+                }
+            }
+            finally
+            {
+                Allin1ExtensionApi.ResetCallbacksForTests();
+            }
+        }
+
+        [Fact]
+        public void VehicleStorefrontPropagatesAddonCallbackFailure()
+        {
+            Allin1ExtensionApi.ResetCallbacksForTests();
+            try
+            {
+                var shop = (GbayShop)FormatterServices.GetUninitializedObject(
+                    typeof(GbayShop));
+                var storefront = new GbayVehicleStorefront(shop);
+                using (Allin1ExtensionApi.RegisterGbayActionForTests(
+                    "example.content", "example:failure",
+                    () => throw new InvalidOperationException("fixture failure")))
+                {
+                    Allin1GbayActionResult result = storefront.InvokeAddon(
+                        "example.content", "example:failure");
+
+                    Assert.False(result.Succeeded);
+                    Assert.Equal("addon_callback_failed", result.Code);
+                    Assert.DoesNotContain("fixture failure", result.Message);
+                }
             }
             finally
             {
@@ -572,6 +756,18 @@ namespace ALLIN1.Tests
               }]
             }".Replace("__SOURCE__", source)
                 .Replace("__CATALOG_FILES__", catalogFiles);
+        }
+
+        private static string MapRegistryJson(string path, string sha256)
+        {
+            return "{\"schema_version\":1,\"api_version\":1," +
+                "\"extensions\":[{\"schema_version\":1," +
+                "\"api_version\":1,\"id\":\"example.maps\"," +
+                "\"source\":\"package\",\"enabled\":true," +
+                "\"capabilities\":[\"world.maps\"],\"settings\":{}," +
+                "\"gbay\":{\"sections\":[]},\"catalog_files\":[]," +
+                "\"runtime_files\":[],\"map_files\":[{\"path\":\"" +
+                path + "\",\"sha256\":\"" + sha256 + "\"}]}]}";
         }
 
         private static void NoOp()

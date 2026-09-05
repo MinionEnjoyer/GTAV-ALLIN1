@@ -206,26 +206,21 @@ def launcher_process_command(
     if configured:
         command = [str(Path(configured).expanduser())]
     else:
-        frozen_name = Path(sys.executable).stem.casefold()
-        current_is_launcher = (
-            getattr(sys, "frozen", False)
-            and "allin1" in frozen_name
-            and ("launcher" in frozen_name or "gui" in frozen_name)
-        )
+        # A frozen Python service is not a GUI entrypoint. Never relaunch the
+        # sidecar itself or implicitly import the retired Tk implementation.
+        companion = Path(sys.executable).parent.parent / "allin1-launcher-desktop.exe"
         gui_entry = next(
             (
                 resolved
-                for name in ("ALLIN1-Launcher", "allin1-gui")
+                for name in ("allin1-launcher-desktop",)
                 if (resolved := shutil.which(name))
             ),
             None,
         )
-        if current_is_launcher:
-            command = [sys.executable]
+        if getattr(sys, "frozen", False) and companion.is_file():
+            command = [str(companion)]
         elif gui_entry:
             command = [gui_entry]
-        elif not getattr(sys, "frozen", False):
-            command = [sys.executable, "-m", "allin1.gui"]
         else:
             raise ValueError(
                 "ALLIN1 Launcher executable was not found; pass --launcher-path "
@@ -251,4 +246,5 @@ def open_launcher_packages(
     command: Sequence[str] = launcher_process_command(
         handoff, executable=executable, environment=environment,
     )
-    return subprocess.Popen(command, close_fds=True)
+    return subprocess.Popen(command, close_fds=True,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))

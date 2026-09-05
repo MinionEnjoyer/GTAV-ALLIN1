@@ -206,6 +206,9 @@ game-runtime access.
 
 ## GBAY sections and catalogs
 
+For the implemented add-on firearm schema and current client-build requirement,
+see [GBAY weapon catalogs](gbay-weapon-catalogs.md).
+
 GBAY metadata is declared under the `gbay` object:
 
 ```json

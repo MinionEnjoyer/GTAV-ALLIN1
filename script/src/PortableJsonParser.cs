@@ -26,9 +26,14 @@ namespace ALLIN1
 
         internal static object Parse(string json)
         {
+            return Parse(json, MaximumJsonLength);
+        }
+
+        internal static object Parse(string json, int maximumJsonLength)
+        {
             if (json == null)
                 throw new InvalidDataException("JSON input is null");
-            if (json.Length > MaximumJsonLength)
+            if (maximumJsonLength < 1 || json.Length > maximumJsonLength)
                 throw new InvalidDataException("JSON input exceeds its length limit");
 
             var parser = new PortableJsonParser(json);

@@ -217,10 +217,17 @@ namespace ALLIN1
                 return;
 
             Ped player = Game.Player.Character;
-            if (player == null || !player.Exists() || player.IsDead ||
-                !GbayShop.TryGetCurrentCharacter(out _)) return;
+            if (player == null || !player.Exists() || player.IsDead) return;
 
-            if (!player.IsInVehicle())
+            bool inVehicle = player.IsInVehicle();
+            Vector3 activeMarker = inVehicle
+                ? HelipadPosition : HelipadAccessPosition;
+            if (!ShouldServiceExteriorMarker(player.Position, activeMarker))
+                return;
+            if (!GbayShop.TryGetCurrentCharacter(out _)) return;
+            if (!ShouldServiceGarageExterior()) return;
+
+            if (!inVehicle)
             {
                 World.DrawMarker(MarkerType.VerticalCylinder,
                     HelipadAccessPosition - new Vector3(0f, 0f, 0.9f),

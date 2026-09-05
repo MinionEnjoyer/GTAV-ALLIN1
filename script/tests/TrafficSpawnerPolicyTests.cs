@@ -59,6 +59,35 @@ namespace ALLIN1.Tests
         }
 
         [Theory]
+        [InlineData(true, true, true, 0)]
+        [InlineData(false, true, true, 1)]
+        [InlineData(false, false, false, 1)]
+        [InlineData(true, false, true, 2)]
+        [InlineData(true, true, false, 3)]
+        public void Replacement_validation_distinguishes_normal_source_churn(
+            bool occupantsCloned, bool commitAllowed, bool sourceUnchanged,
+            int expected)
+        {
+            Assert.Equal(
+                (TrafficSpawner.ReplacementValidationOutcome)expected,
+                TrafficSpawner.EvaluateReplacementValidation(
+                    occupantsCloned, commitAllowed, sourceUnchanged));
+        }
+
+        [Theory]
+        [InlineData(1000, int.MinValue, true)]
+        [InlineData(1000, 1000, false)]
+        [InlineData(30999, 1000, false)]
+        [InlineData(31000, 1000, true)]
+        public void Source_churn_diagnostics_are_rate_limited(
+            int now, int lastDiagnosticTime, bool expected)
+        {
+            Assert.Equal(expected,
+                TrafficSpawner.ShouldEmitSourceChangeDiagnostic(
+                    now, lastDiagnosticTime));
+        }
+
+        [Theory]
         [InlineData(false, 24)]
         [InlineData(true, 12)]
         public void Replacement_scan_work_is_strictly_bounded(
@@ -66,6 +95,33 @@ namespace ALLIN1.Tests
         {
             Assert.Equal(expected,
                 TrafficSpawner.GetScanCandidateBudget(throttled));
+        }
+
+        [Theory]
+        [InlineData(14999, false, false)]
+        [InlineData(15000, false, true)]
+        [InlineData(29999, true, false)]
+        [InlineData(30000, true, true)]
+        public void Expensive_traffic_work_uses_one_shared_staggered_budget(
+            int elapsed, bool throttled, bool expected)
+        {
+            Assert.Equal(expected,
+                TrafficSpawner.IsTrafficWorkDue(elapsed, 0, throttled));
+        }
+
+        [Theory]
+        [InlineData(false, false, false, 0)]
+        [InlineData(true, false, false, 1)]
+        [InlineData(false, true, false, 2)]
+        [InlineData(true, true, false, 1)]
+        [InlineData(true, true, true, 2)]
+        public void Due_traffic_paths_alternate_instead_of_bursting_together(
+            bool drivenDue, bool replacementDue, bool preferReplacement,
+            int expected)
+        {
+            Assert.Equal((TrafficSpawner.TrafficWorkKind)expected,
+                TrafficSpawner.SelectTrafficWork(
+                    drivenDue, replacementDue, preferReplacement));
         }
 
         [Theory]
@@ -96,6 +152,7 @@ namespace ALLIN1.Tests
         [InlineData("interior", true)]
         [InlineData("wanted_level", true)]
         [InlineData("player_unavailable", false)]
+        [InlineData("garage_transition", false)]
         [InlineData("", false)]
         public void Unsafe_gameplay_transitions_release_managed_traffic_pairs(
             string suppression, bool expected)
@@ -128,6 +185,63 @@ namespace ALLIN1.Tests
         {
             Assert.Equal(expected, TrafficSpawner.IsPackageTrafficEnabled(
                 itemEnabled, packageEnabled));
+        }
+
+        [Theory]
+        [InlineData(false, false, 1)]
+        [InlineData(true, false, 0)]
+        [InlineData(false, true, 2)]
+        [InlineData(true, true, 2)]
+        public void Selected_models_are_probed_once_or_rejected_from_quarantine(
+            bool validated, bool quarantined, int expected)
+        {
+            Assert.Equal(
+                (TrafficSpawner.SelectedModelValidationAction)expected,
+                TrafficSpawner.DecideSelectedModelValidation(
+                    validated, quarantined));
+        }
+
+        [Fact]
+        public void Selected_model_cache_validates_once_and_quarantines_failures()
+        {
+            var cache = new TrafficSpawner.SelectedModelValidationCache();
+
+            Assert.Equal(TrafficSpawner.SelectedModelValidationAction.ProbeOnce,
+                cache.GetAction("edition_model"));
+            cache.MarkValidated("edition_model");
+            Assert.Equal(
+                TrafficSpawner.SelectedModelValidationAction.UseCachedValidation,
+                cache.GetAction("EDITION_MODEL"));
+            Assert.True(cache.Quarantine("edition_model"));
+            Assert.False(cache.Quarantine("edition_model"));
+            Assert.Equal(
+                TrafficSpawner.SelectedModelValidationAction.RejectQuarantined,
+                cache.GetAction("edition_model"));
+        }
+
+        [Theory]
+        [InlineData(0, 5000, false)]
+        [InlineData(4999, 5000, false)]
+        [InlineData(5000, 5000, true)]
+        [InlineData(5001, 5000, true)]
+        public void Model_streaming_uses_one_bounded_deadline(
+            long elapsedMilliseconds, int timeoutMilliseconds, bool expected)
+        {
+            Assert.Equal(expected, TrafficSpawner.HasModelLoadTimedOut(
+                elapsedMilliseconds, timeoutMilliseconds));
+        }
+
+        [Theory]
+        [InlineData(false, false, false)]
+        [InlineData(false, true, false)]
+        [InlineData(true, false, false)]
+        [InlineData(true, true, true)]
+        public void Traffic_disabled_baseline_registers_no_runtime_handlers(
+            bool packageEnabled, bool trafficEnabled, bool expected)
+        {
+            Assert.Equal(expected,
+                TrafficSpawner.ShouldAttachRuntimeHandlers(
+                    packageEnabled, trafficEnabled));
         }
 
         [Fact]

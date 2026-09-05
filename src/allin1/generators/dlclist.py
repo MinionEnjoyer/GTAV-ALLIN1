@@ -57,10 +57,19 @@ REQUIRED_DLC_PACKS = [
     "mp2025_01",
 ]
 
-# Custom DLC packs shipped by ALLIN1.
+# Custom DLC packs that are safe to register at startup.
 CUSTOM_DLC_PACKS = [
     "allin1_previews",  # Vehicle preview texture dictionaries for GBAY browser
-    "allin1_maps",      # Standalone registrations for ALLIN1-used MP interiors
+]
+
+# Includes dormant/quarantined packs so uninstall can still remove entries
+# written by an older release.  Do not feed this list to patch_dlclist().
+OWNED_DLC_PACKS = [
+    *CUSTOM_DLC_PACKS,
+    "allin1_maps",
+    "allin1_mp2024_02_garment_bridge",
+    "allin1_mpbattle_harmony_bridge",
+    "allin1_mpvinewood_paleto_bridge",
 ]
 
 
@@ -111,7 +120,8 @@ def patch_dlclist(dlclist_xml: str) -> tuple[str, list[str]]:
 def unpatch_dlclist(dlclist_xml: str) -> tuple[str, list[str]]:
     """Remove ALLIN1 custom DLC packs from dlclist.xml.
 
-    Only removes entries from CUSTOM_DLC_PACKS, not Rockstar DLC packs.
+    Only removes entries from OWNED_DLC_PACKS, not Rockstar DLC packs. This
+    includes obsolete allin1_maps registrations written by older releases.
 
     Returns:
         Tuple of (patched XML string, list of packs that were removed).
@@ -123,7 +133,7 @@ def unpatch_dlclist(dlclist_xml: str) -> tuple[str, list[str]]:
     if paths_el is None:
         return dlclist_xml, []
 
-    custom_lower = {p.lower() for p in CUSTOM_DLC_PACKS}
+    custom_lower = {p.lower() for p in OWNED_DLC_PACKS}
     removed: list[str] = []
 
     for item in list(paths_el.findall("Item")):

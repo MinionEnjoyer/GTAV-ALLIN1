@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from copy import deepcopy
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 
 import pytest
@@ -23,6 +23,8 @@ from allin1.extensions import (
     GbayCatalog,
     GbaySection,
     RuntimeAssembly,
+    PRELOAD_MAX_ENTRIES,
+    PRELOAD_STATIC_ENTRIES,
     _ContentRequirement,
     _content_requirements,
     apply_settings_to_config,
@@ -32,6 +34,194 @@ from allin1.mods import ModIntegrationService, ModManifest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_reactor_preload_manifest_source_matches_static_contract() -> None:
+    manifest = json.loads(
+        (ROOT / "data" / "reactor" / "preload" / "allin1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert manifest == {
+        "schema_version": 1,
+        "id": "allin1",
+        "entries": list(PRELOAD_STATIC_ENTRIES),
+    }
+    assert len({entry["id"] for entry in manifest["entries"]}) == len(
+        manifest["entries"]
+    )
+    assert all(not Path(entry["path"]).is_absolute() for entry in manifest["entries"])
+
+
+def test_registry_rebuild_refreshes_bounded_authorized_preload_entries(
+    tmp_path: Path,
+) -> None:
+    game = _game(tmp_path)
+    registry = _register_online_content(game)
+    manifest = json.loads(registry.preload_manifest_path.read_text(encoding="utf-8"))
+    assert len(manifest["entries"]) <= PRELOAD_MAX_ENTRIES
+    paths = {entry["path"] for entry in manifest["entries"]}
+    assert "scripts/ALLIN1.toml" in paths
+    assert {
+        record["path"]
+        for record in registry.rebuild()["extensions"][0]["map_files"]
+    }.issubset(paths)
+    assert all(len(entry["id"]) <= 64 for entry in manifest["entries"])
+
+
+def test_package_catalog_receipt_adds_and_disable_removes_preload_entry(
+    tmp_path: Path,
+) -> None:
+    game = _game(tmp_path)
+    package = _content_package(
+        tmp_path / "catalog", "acme.catalog-only", runtime=False,
+    )
+    descriptor_path = package / "allin1.content.json"
+    descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+    descriptor["capabilities"].append("gbay.catalogs")
+    descriptor["gbay"]["catalogs"] = [{
+        "id": "vehicles",
+        "kind": "vehicle",
+        "source": "scripts/acme.catalog-only/content.json",
+    }]
+    descriptor_path.write_text(json.dumps(descriptor), encoding="utf-8")
+    payload_path = package / "payload.bin"
+    catalog_payload = json.dumps({
+        "schema_version": 1,
+        "id": "vehicles",
+        "name": "ACME Vehicles",
+        "vehicles": [{
+            "model": "acmecar",
+            "name": "ACME Car",
+            "manufacturer": "ACME",
+            "category": "sports",
+            "price": 100000,
+            "storage": "garage",
+            "source_pack": "acme",
+            "size_tier": 0,
+            "preview_dictionary": "acme_preview",
+            "preview_texture": "acmecar_card",
+            "traffic": {"enabled": False, "weight": 1.0},
+        }],
+    }).encode("utf-8")
+    payload_path.write_bytes(catalog_payload)
+    registry = ExtensionRegistry(game)
+    installed_catalog = game / "scripts" / "acme.catalog-only" / "content.json"
+    installed_catalog.parent.mkdir(parents=True)
+    installed_catalog.write_bytes(catalog_payload)
+    registry.receipt_root.mkdir(parents=True)
+    receipt_path = registry.receipt_root / "acme.catalog-only.json"
+    receipt = {
+        "id": "acme.catalog-only",
+        "enabled": True,
+        "requires": [],
+        "extension": descriptor,
+        "files": [{
+            "destination": "scripts/acme.catalog-only/content.json",
+            "sha256": hashlib.sha256(catalog_payload).hexdigest(),
+        }],
+    }
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    registry.rebuild()
+    manifest = json.loads(registry.preload_manifest_path.read_text(encoding="utf-8"))
+    assert "scripts/acme.catalog-only/content.json" in {
+        entry["path"] for entry in manifest["entries"]
+    }
+
+    receipt["enabled"] = False
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    registry.rebuild()
+    manifest = json.loads(registry.preload_manifest_path.read_text(encoding="utf-8"))
+    assert "scripts/acme.catalog-only/content.json" not in {
+        entry["path"] for entry in manifest["entries"]
+    }
+
+
+def test_preload_manifest_caps_dynamic_entries_deterministically(
+    tmp_path: Path,
+) -> None:
+    game = _game(tmp_path)
+    registry = ExtensionRegistry(game)
+    catalogs = []
+    records = []
+    for index in range(70):
+        relative = f"scripts/catalogs/{index:02d}.json"
+        source = game / relative
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("{}", encoding="utf-8")
+        catalogs.append({
+            "id": f"catalog-{index:02d}",
+            "kind": "vehicle",
+            "source": relative,
+        })
+        records.append({
+            "path": relative,
+            "sha256": hashlib.sha256(b"{}").hexdigest(),
+        })
+    registry._refresh_preload_manifest({
+        "extensions": [{
+            "id": "acme.large-catalog",
+            "enabled": True,
+            "gbay": {"catalogs": catalogs},
+            "catalog_files": records,
+            "map_files": [],
+        }],
+    })
+
+    manifest = json.loads(registry.preload_manifest_path.read_text(encoding="utf-8"))
+    paths = [entry["path"] for entry in manifest["entries"]]
+    assert len(paths) == PRELOAD_MAX_ENTRIES
+    last_dynamic = PRELOAD_MAX_ENTRIES - len(PRELOAD_STATIC_ENTRIES) - 1
+    assert f"scripts/catalogs/{last_dynamic:02d}.json" in paths
+    assert f"scripts/catalogs/{last_dynamic + 1:02d}.json" not in paths
+
+
+def test_preload_manifest_omits_valid_catalog_outside_scripts(
+    tmp_path: Path,
+) -> None:
+    game = _game(tmp_path)
+    registry = ExtensionRegistry(game)
+    relative = "mods/acme/catalog.json"
+    source = game / relative
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("{}", encoding="utf-8")
+    descriptor = _descriptor()
+    descriptor["id"] = "acme.external-catalog"
+    descriptor["capabilities"].append("gbay.catalogs")
+    descriptor["gbay"]["catalogs"] = [{
+        "id": "vehicles",
+        "kind": "vehicle",
+        "source": relative,
+    }]
+    registry.receipt_root.mkdir(parents=True)
+    (registry.receipt_root / "acme.external-catalog.json").write_text(
+        json.dumps({
+            "id": "acme.external-catalog",
+            "enabled": True,
+            "requires": [],
+            "extension": descriptor,
+            "files": [{
+                "destination": relative,
+                "sha256": hashlib.sha256(b"{}").hexdigest(),
+            }],
+        }),
+        encoding="utf-8",
+    )
+
+    payload = registry.rebuild()
+    assert payload["extensions"][0]["enabled"] is True
+    assert payload["extensions"][0]["catalog_files"] == [{
+        "path": relative,
+        "sha256": hashlib.sha256(b"{}").hexdigest(),
+    }]
+
+    manifest = json.loads(
+        registry.preload_manifest_path.read_text(encoding="utf-8")
+    )
+    assert relative not in {entry["path"] for entry in manifest["entries"]}
+    assert "scripts/ALLIN1.toml" in {
+        entry["path"] for entry in manifest["entries"]
+    }
 
 
 def _descriptor() -> dict:
@@ -65,6 +255,32 @@ def _game(tmp_path: Path) -> Path:
     game.mkdir(parents=True)
     (game / "GTA5_Enhanced.exe").write_bytes(b"exe")
     return game
+
+
+def _register_online_content(game: Path) -> ExtensionRegistry:
+    """Install the official descriptor receipts used by the real installer."""
+    manifest = ExtensionManifest.load(
+        ROOT / "content" / "allin1-online-content" / "allin1.content.json"
+    )
+    destination_root = (
+        game / "scripts" / "ALLIN1" / "Maps" / manifest.extension_id
+    )
+    destination_root.mkdir(parents=True, exist_ok=True)
+    records: list[dict[str, str]] = []
+    for source in sorted(
+        (ROOT / "data" / "maps" / "allin1-online-content").glob(
+            "*.maps.json"
+        )
+    ):
+        destination = destination_root / source.name
+        destination.write_bytes(source.read_bytes())
+        records.append({
+            "path": destination.relative_to(game).as_posix(),
+            "sha256": hashlib.sha256(destination.read_bytes()).hexdigest(),
+        })
+    registry = ExtensionRegistry(game)
+    registry.register_builtin(manifest, map_files=records)
+    return registry
 
 
 def _content_package(
@@ -163,6 +379,26 @@ def test_bound_settings_round_trip_through_core_config() -> None:
     assert config.script.gbay_free_mode is True
 
 
+def test_registry_inspection_is_pure_and_matches_published_authorization(tmp_path: Path) -> None:
+    from allin1.desktop_service import LauncherService
+    game = _game(tmp_path)
+    registry = ExtensionRegistry(game)
+    before = LauncherService.tree_identity(game)
+    assert registry.inspect()["extensions"] == []
+    assert LauncherService.tree_identity(game) == before
+    manifest = ExtensionManifest.load(ROOT / "content/allin1-experimental-gameplay/allin1.content.json")
+    registry.register_builtin(manifest, settings={"npc_physics": True})
+    before = LauncherService.tree_identity(game)
+    viewed = registry.inspect()
+    assert registry.installed_manifest(manifest.extension_id).to_dict() == manifest.to_dict()
+    assert LauncherService.tree_identity(game) == before
+    assert viewed["extensions"] == registry.rebuild()["extensions"]
+    before = LauncherService.tree_identity(game)
+    with pytest.raises(KeyError, match="not installed"):
+        registry.installed_manifest("missing-package")
+    assert LauncherService.tree_identity(game) == before
+
+
 def test_builtin_registry_preserves_state_and_namespaced_settings(tmp_path: Path) -> None:
     game = _game(tmp_path)
     manifest = ExtensionManifest.load(
@@ -179,6 +415,68 @@ def test_builtin_registry_preserves_state_and_namespaced_settings(tmp_path: Path
     assert entry["source"] == "built-in"
     assert entry["enabled"] is False
     assert entry["settings"]["npc_physics"] is True
+
+
+@pytest.mark.parametrize("drift", ("missing", "tampered"))
+def test_builtin_map_descriptors_are_hash_authorized_and_fail_closed(
+    tmp_path: Path, drift: str,
+) -> None:
+    game = _game(tmp_path)
+    descriptor = _descriptor()
+    descriptor["id"] = "allin1.map-fixture"
+    descriptor["name"] = "ALLIN1 Map Fixture"
+    descriptor["capabilities"].append("world.maps")
+    manifest = ExtensionManifest.from_dict(descriptor)
+    registry = ExtensionRegistry(game)
+    destination_root = (
+        game / "scripts" / "ALLIN1" / "Maps" / manifest.extension_id
+    )
+    destination_root.mkdir(parents=True)
+    files = {
+        "city.maps.json": b'{"schema_version":1,"id":"city"}\n',
+        "country.maps.json": b'{"schema_version":1,"id":"country"}\n',
+    }
+    records = []
+    for name, content in files.items():
+        destination = destination_root / name
+        destination.write_bytes(content)
+        records.append({
+            "path": destination.relative_to(game).as_posix(),
+            "sha256": hashlib.sha256(content).hexdigest(),
+        })
+
+    builtin_path = registry.register_builtin(manifest, map_files=records)
+    stored = json.loads(builtin_path.read_text(encoding="utf-8"))
+    assert stored["map_files"] == records
+    entry = registry.installed()[0]
+    assert entry["enabled"] is True
+    assert entry["map_files"] == records
+
+    target = destination_root / "country.maps.json"
+    if drift == "missing":
+        target.unlink()
+    else:
+        target.write_bytes(b"tampered map descriptor")
+    blocked = registry.installed()[0]
+    assert blocked["enabled"] is False
+    assert "Map descriptor failed its built-in hash" in blocked["blocked_reason"]
+
+
+def test_builtin_world_maps_without_trusted_hashes_remain_disabled(
+    tmp_path: Path,
+) -> None:
+    game = _game(tmp_path)
+    descriptor = _descriptor()
+    descriptor["id"] = "allin1.map-fixture"
+    descriptor["capabilities"].append("world.maps")
+    registry = ExtensionRegistry(game)
+
+    registry.register_builtin(ExtensionManifest.from_dict(descriptor))
+
+    entry = registry.installed()[0]
+    assert entry["enabled"] is False
+    assert entry["map_files"] == []
+    assert "lack built-in hashes" in entry["blocked_reason"]
 
 
 def test_extension_package_lifecycle_authorizes_only_receipt_hashed_runtime(
@@ -426,8 +724,10 @@ def test_declared_catalog_files_are_receipt_hashed_and_verified(
     descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
     descriptor["capabilities"].append("gbay.catalogs")
     descriptor["gbay"]["catalogs"] = [{
-        "id": "weapons",
-        "kind": "weapon",
+        # Opaque service data isolates receipt integrity. The now-typed weapon
+        # contract and its install/toggle lifecycle have dedicated coverage.
+        "id": "services",
+        "kind": "service",
         "source": "scripts/acme.catalog/content.json",
     }]
     descriptor_path.write_text(json.dumps(descriptor), encoding="utf-8")
@@ -450,6 +750,50 @@ def test_declared_catalog_files_are_receipt_hashed_and_verified(
     assert "GBAY catalog failed its receipt hash" in blocked["blocked_reason"]
 
 
+@pytest.mark.parametrize("drift", ("missing", "tampered"))
+def test_world_map_descriptors_are_receipt_hashed_and_verified(
+    tmp_path: Path, drift: str,
+) -> None:
+    game = _game(tmp_path)
+    package_id = "acme.maps"
+    package = _content_package(tmp_path, package_id, runtime=False)
+    descriptor_path = package / "allin1.content.json"
+    descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+    descriptor["capabilities"].append("world.maps")
+    descriptor_path.write_text(json.dumps(descriptor), encoding="utf-8")
+
+    map_payload = b'{"schema_version":1,"package_id":"acme.maps"}\n'
+    (package / "payload.bin").write_bytes(map_payload)
+    map_destination = f"scripts/ALLIN1/Maps/{package_id}/maps.json"
+    manifest_path = package / "mod.toml"
+    manifest = manifest_path.read_text(encoding="utf-8")
+    manifest = manifest.replace(
+        f'destination = "scripts/{package_id}/content.json"',
+        f'destination = "{map_destination}"',
+    ).replace(
+        hashlib.sha256(b"managed extension payload").hexdigest(),
+        hashlib.sha256(map_payload).hexdigest(),
+    )
+    manifest_path.write_text(manifest, encoding="utf-8")
+
+    ModIntegrationService(game).install(ModManifest.load(package))
+    registry = ExtensionRegistry(game)
+    entry = registry.installed()[0]
+    assert entry["map_files"] == [{
+        "path": map_destination,
+        "sha256": hashlib.sha256(map_payload).hexdigest(),
+    }]
+
+    target = game / Path(*PurePosixPath(map_destination).parts)
+    if drift == "missing":
+        target.unlink()
+    else:
+        target.write_bytes(b"tampered map descriptor")
+    blocked = registry.rebuild()["extensions"][0]
+    assert blocked["enabled"] is False
+    assert "Map descriptor failed its receipt hash" in blocked["blocked_reason"]
+
+
 @pytest.mark.parametrize(
     "path",
     (
@@ -470,11 +814,7 @@ def test_runtime_paths_reject_windows_invalid_components(path: str) -> None:
 
 def test_builtin_dependency_cannot_be_disabled_under_enabled_package(tmp_path: Path) -> None:
     game = _game(tmp_path)
-    online = ExtensionManifest.load(
-        ROOT / "content" / "allin1-online-content" / "allin1.content.json"
-    )
-    registry = ExtensionRegistry(game)
-    registry.register_builtin(online)
+    registry = _register_online_content(game)
     package = _content_package(
         tmp_path, "acme.gbay-addon", runtime=False,
         requires=("allin1.online-content>=0.5.0",),
@@ -535,10 +875,7 @@ def test_content_cli_exposes_registry_and_requires_explicit_write_approval(
 ) -> None:
     monkeypatch.setattr("allin1.cli.setup_logging", lambda **_kwargs: None)
     game = _game(tmp_path)
-    online = ExtensionManifest.load(
-        ROOT / "content" / "allin1-online-content" / "allin1.content.json"
-    )
-    ExtensionRegistry(game).register_builtin(online)
+    _register_online_content(game)
     config = Config.default()
     config.general.gta_path = str(game)
     config_path = tmp_path / "config.toml"
@@ -575,10 +912,7 @@ def test_content_cli_explicit_game_path_controls_runtime_config_target(
     monkeypatch.setattr("allin1.cli.setup_logging", lambda **_kwargs: None)
     configured_game = _game(tmp_path / "configured")
     explicit_game = _game(tmp_path / "explicit")
-    online = ExtensionManifest.load(
-        ROOT / "content" / "allin1-online-content" / "allin1.content.json"
-    )
-    ExtensionRegistry(explicit_game).register_builtin(online)
+    _register_online_content(explicit_game)
     config = Config.default()
     config.general.gta_path = str(configured_game)
     config_path = tmp_path / "config.toml"

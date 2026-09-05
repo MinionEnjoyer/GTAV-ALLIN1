@@ -320,7 +320,7 @@ namespace ALLIN1
             }
         }
 
-        private static StoryGetawayMission DetectMission()
+        internal static StoryGetawayMission DetectMission()
         {
             // If scripts overlap during a transition, retain the stricter
             // four-seat requirement used by Agency and Finale.

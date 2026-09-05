@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "id": "davis-auto-shop",
+  "package_id": "allin1.online-content",
+  "name": "Davis Auto Shop",
+  "version": "0.6.1",
+  "editions": [
+    "legacy",
+    "enhanced"
+  ],
+  "streaming": {
+    "mode": "ipl",
+    "pack_name": "mptuner",
+    "content_group": null,
+    "ipls": [
+      "tr_int_placement_tr_interior_0_tuner_mod_garage_milo_"
+    ],
+    "activation_radius": 220,
+    "release_radius": 420,
+    "keep_resident": true
+  },
+  "levels": [
+    {
+      "id": "davis",
+      "name": "Davis Auto Shop Interior",
+      "center": {
+        "x": -1350,
+        "y": 160,
+        "z": -100,
+        "heading": 0
+      },
+      "ipls": [
+        "tr_int_placement_tr_interior_0_tuner_mod_garage_milo_"
+      ]
+    }
+  ],
+  "portals": [
+    {
+      "id": "davis-vehicle",
+      "name": "Davis vehicle entrance",
+      "mode": "vehicle",
+      "from": {
+        "level": "world",
+        "position": {
+          "x": 204.0661,
+          "y": -1466.475,
+          "z": 29.1437,
+          "heading": 43.97
+        }
+      },
+      "to": {
+        "level": "davis",
+        "position": {
+          "x": -1357.624,
+          "y": 153.2929,
+          "z": -99.1942,
+          "heading": 0
+        }
+      },
+      "radius": 3,
+      "one_way": false
+    },
+    {
+      "id": "davis-ped",
+      "name": "Davis pedestrian entrance",
+      "mode": "ped",
+      "from": {
+        "level": "world",
+        "position": {
+          "x": 215.0502,
+          "y": -1461.025,
+          "z": 29.1847,
+          "heading": 49.38
+        }
+      },
+      "to": {
+        "level": "davis",
+        "position": {
+          "x": -1357.624,
+          "y": 153.2929,
+          "z": -99.1942,
+          "heading": 0
+        }
+      },
+      "radius": 2.5,
+      "one_way": false
+    }
+  ],
+  "garages": [
+    {
+      "id": "davis",
+      "name": "Davis Auto Shop",
+      "level_id": "davis",
+      "entrance_portal_id": "davis-vehicle",
+      "capacity": 10,
+      "vehicle_types": [
+        "land"
+      ],
+      "slots": [
+        {
+          "id": "slot-01",
+          "position": {
+            "x": -1341.5,
+            "y": 156,
+            "z": -99.6944,
+            "heading": 160
+          }
+        },
+        {
+          "id": "slot-02",
+          "position": {
+            "x": -1337.5,
+            "y": 156,
+            "z": -99.6944,
+            "heading": 160
+          }
+        },
+        {
+          "id": "slot-03",
+          "position": {
+            "x": -1333.5,
+            "y": 156,
+            "z": -99.6944,
+            "heading": 160
+          }
+        },
+        {
+          "id": "slot-04",
+          "position": {
+            "x": -1329.5,
+            "y": 156,
+            "z": -99.6944,
+            "heading": 160
+          }
+        },
+        {
+          "id": "slot-05",
+          "position": {
+            "x": -1326,
+            "y": 149,
+            "z": -99.6944,
+            "heading": 90
+          }
+        },
+        {
+          "id": "slot-06",
+          "position": {
+            "x": -1325.5,
+            "y": 142,
+            "z": -99.6944,
+            "heading": 20
+          }
+        },
+        {
+          "id": "slot-07",
+          "position": {
+            "x": -1329.5,
+            "y": 142,
+            "z": -99.6944,
+            "heading": 20
+          }
+        },
+        {
+          "id": "slot-08",
+          "position": {
+            "x": -1333.5,
+            "y": 142,
+            "z": -99.6944,
+            "heading": 20
+          }
+        },
+        {
+          "id": "slot-09",
+          "position": {
+            "x": -1337.5,
+            "y": 142,
+            "z": -99.6944,
+            "heading": 20
+          }
+        },
+        {
+          "id": "slot-10",
+          "position": {
+            "x": -1341.5,
+            "y": 142,
+            "z": -99.6944,
+            "heading": 20
+          }
+        }
+      ],
+      "rules": {
+        "allow_store": true,
+        "allow_retrieve": true,
+        "save_policy": "story_save_only"
+      }
+    }
+  ]
+}

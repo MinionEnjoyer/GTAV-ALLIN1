@@ -25,11 +25,16 @@ namespace ALLIN1
         private static int _lastSmokeWeaponRegistration = -1;
         private static readonly Dictionary<int, string> SmokeSyncStates =
             new Dictionary<int, string>();
+        private const int DeathRespawnLoadWindowMs = 300000;
         private string _lastCharacter = "";
         private int _lastPedHandle;
         private bool _restorePending;
         private bool _saveWasInProgress;
         private bool _discardStagedAfterLoad;
+        private bool _deathObserved;
+        private string _deathCharacter = "";
+        private bool _juggernautActiveOnDeath;
+        private readonly List<string> _gearLostOnDeath = new List<string>();
         private DateTime _lastStorySaveWriteUtc;
         private DateTime _nextStorySavePollUtc;
 
@@ -55,6 +60,7 @@ namespace ALLIN1
         public sealed class WeaponCustomization
         {
             public List<int> owned_components { get; set; } = new List<int>();
+            public List<int> unequipped_components { get; set; } = new List<int>();
             public Dictionary<string, int> active_components { get; set; } =
                 new Dictionary<string, int>();
             public List<int> owned_tints { get; set; } = new List<int> { 0 };
@@ -110,7 +116,13 @@ namespace ALLIN1
 
         private static string CurrentCharacter()
         {
-            int model = Function.Call<int>(Hash.GET_ENTITY_MODEL, Game.Player.Character.Handle);
+            return CharacterForPed(Game.Player.Character);
+        }
+
+        private static string CharacterForPed(Ped player)
+        {
+            if (player == null || !player.Exists()) return "";
+            int model = Function.Call<int>(Hash.GET_ENTITY_MODEL, player.Handle);
             if (model == MichaelHash) return "michael";
             if (model == FranklinHash) return "franklin";
             if (model == TrevorHash) return "trevor";
@@ -187,8 +199,12 @@ namespace ALLIN1
                         _lastWrite = DateTime.MinValue;
                         return;
                     }
+                    string inventoryJson;
+                    if (!EarlyStartupSnapshot.TryGetText(
+                            "characters", out inventoryJson))
+                        inventoryJson = File.ReadAllText(PathName);
                     var loaded = Json.Deserialize<Dictionary<string, Inventory>>(
-                        File.ReadAllText(PathName));
+                        inventoryJson);
                     if (loaded != null)
                     {
                         _state = loaded;
@@ -207,6 +223,16 @@ namespace ALLIN1
 
         private void OnTick(object sender, EventArgs args)
         {
+            // Observe death before the loading guard. Hospital respawn can
+            // activate GTA's loading state, and treating that transition like
+            // an explicit save reload would restore the just-consumed gear.
+            Ped player = null;
+            if (Game.Player.IsDead && !_deathObserved)
+            {
+                player = Game.Player.Character;
+                HandlePlayerDeath(player);
+            }
+
             if (Game.IsLoading)
             {
                 _restorePending = true;
@@ -215,8 +241,15 @@ namespace ALLIN1
                 return;
             }
 
-            Ped player = Game.Player.Character;
-            if (player == null || !player.Exists() || player.IsDead)
+            if (player == null)
+                player = Game.Player.Character;
+            if (player == null || !player.Exists())
+            {
+                _restorePending = true;
+                return;
+            }
+
+            if (player.IsDead)
             {
                 _restorePending = true;
                 return;
@@ -225,12 +258,33 @@ namespace ALLIN1
             if (_discardStagedAfterLoad)
             {
                 _discardStagedAfterLoad = false;
-                GbayShop.DiscardStagedRuntimeGear(Game.Player.Character);
-                Reload();
-                GbayPreferences.DiscardStaged();
+                int timeSinceDeath = _deathObserved
+                    ? Function.Call<int>(Hash.GET_TIME_SINCE_LAST_DEATH)
+                    : -1;
+                if (ShouldPreserveDeathAcrossLoading(
+                        _deathObserved, timeSinceDeath))
+                {
+                    // A hospital transition is not an explicit save reload.
+                    // Keep the staged death loss (and the rest of the current
+                    // session) so the next Story save remains authoritative.
+                    ClientLog.Info("Character",
+                        "death_state_preserved_across_respawn_load",
+                        new Dictionary<string, object> {
+                            { "time_since_death_ms", timeSinceDeath }
+                        });
+                }
+                else
+                {
+                    GbayShop.DiscardStagedRuntimeGear(
+                        Game.Player.Character);
+                    Reload();
+                    GbayPreferences.DiscardStaged();
+                    ResetDeathTracking();
+                    ClientLog.Info("Character",
+                        "unsaved_gbay_state_discarded");
+                }
                 _lastCharacter = "";
                 _lastPedHandle = 0;
-                ClientLog.Info("Character", "unsaved_gbay_state_discarded");
             }
 
             DateTime write = File.Exists(PathName) ? File.GetLastWriteTimeUtc(PathName) : DateTime.MinValue;
@@ -254,6 +308,8 @@ namespace ALLIN1
                 return;
             }
 
+            CompleteDeathCleanup(player, character);
+
             BackupWhenStorySaveWritten(character, player);
             bool saveInProgress = Function.Call<bool>(Hash.IS_AUTO_SAVE_IN_PROGRESS);
             if (saveInProgress && !_saveWasInProgress)
@@ -265,6 +321,99 @@ namespace ALLIN1
             _lastCharacter = character;
             _lastPedHandle = player.Handle;
             Apply(character);
+        }
+
+        private void HandlePlayerDeath(Ped player)
+        {
+            _deathObserved = true;
+            _deathCharacter = CharacterForPed(player);
+            if (_deathCharacter.Length == 0)
+                _deathCharacter = _lastCharacter;
+            _gearLostOnDeath.Clear();
+
+            _juggernautActiveOnDeath =
+                GbayShop.ClearRuntimeGearAfterDeath();
+            if (_deathCharacter.Length == 0)
+            {
+                ClientLog.Warn("Character", "gear_reset_on_death_skipped",
+                    new Dictionary<string, object> {
+                        { "reason", "character_unresolved" }
+                    });
+                return;
+            }
+
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(_deathCharacter,
+                        out Inventory inventory))
+                    return;
+                NormalizeInventory(inventory);
+                _gearLostOnDeath.AddRange(
+                    ConsumeAllGearAfterDeathInMemory(inventory));
+                if (_gearLostOnDeath.Count > 0)
+                    StageStateLocked(_deathCharacter,
+                        "gear_lost_on_death",
+                        string.Join(",", _gearLostOnDeath));
+            }
+
+            RemoveDeathGearFromPed(player, _gearLostOnDeath);
+            ClientLog.Info("Character", "gear_reset_on_death",
+                new Dictionary<string, object> {
+                    { "character", _deathCharacter },
+                    { "gear_count", _gearLostOnDeath.Count },
+                    { "gear", string.Join(",", _gearLostOnDeath) },
+                    { "persistence", "staged_until_story_save" }
+                });
+        }
+
+        private void CompleteDeathCleanup(Ped player, string character)
+        {
+            if (!_deathObserved) return;
+            if (string.Equals(character, _deathCharacter,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                GbayShop.CompleteRuntimeGearCleanupAfterDeath(
+                    player, _juggernautActiveOnDeath);
+                RemoveDeathGearFromPed(player, _gearLostOnDeath);
+            }
+            ResetDeathTracking();
+        }
+
+        private void ResetDeathTracking()
+        {
+            _deathObserved = false;
+            _deathCharacter = "";
+            _juggernautActiveOnDeath = false;
+            _gearLostOnDeath.Clear();
+        }
+
+        internal static bool ShouldPreserveDeathAcrossLoading(
+            bool deathObserved, int timeSinceDeathMs)
+        {
+            return deathObserved && timeSinceDeathMs >= 0 &&
+                timeSinceDeathMs <= DeathRespawnLoadWindowMs;
+        }
+
+        private static void RemoveDeathGearFromPed(
+            Ped player, IEnumerable<string> gear)
+        {
+            if (player == null || !player.Exists()) return;
+            bool removeArmor = false;
+            foreach (string item in gear ?? new string[0])
+            {
+                if (GearList.IsArmor(item))
+                {
+                    removeArmor = true;
+                    continue;
+                }
+                if (string.Equals(item, "WEAPON_NIGHTVISION",
+                        StringComparison.OrdinalIgnoreCase))
+                    continue;
+                Function.Call(Hash.REMOVE_WEAPON_FROM_PED,
+                    player.Handle, Game.GenerateHash(item));
+            }
+            if (removeArmor)
+                player.Armor = 0;
         }
 
         private static void Apply(string character)
@@ -853,10 +1002,46 @@ namespace ALLIN1
                 NormalizeInventory(inventory);
                 WeaponCustomization customization = GetOrCreateCustomization(
                     inventory, weapon);
-                if (!customization.owned_components.Contains(componentHash))
-                    customization.owned_components.Add(componentHash);
-                customization.active_components[attachmentPoint.ToString()] = componentHash;
+                SetWeaponComponentEquippedInMemory(customization, componentHash, attachmentPoint, true);
                 StageStateLocked(character, "weapon_component", weapon);
+            }
+        }
+
+        internal static void SetWeaponComponentEquippedInMemory(
+            WeaponCustomization customization, int component, int point, bool equipped)
+        {
+            if (component == 0) throw new ArgumentException("A component is required");
+            if (customization.owned_components == null) customization.owned_components = new List<int>();
+            if (customization.unequipped_components == null) customization.unequipped_components = new List<int>();
+            if (customization.active_components == null) customization.active_components = new Dictionary<string, int>();
+            if (!customization.owned_components.Contains(component))
+                customization.owned_components.Add(component);
+            if (equipped)
+            {
+                customization.unequipped_components.RemoveAll(value => value == component);
+                customization.active_components[point.ToString()] = component;
+            }
+            else
+            {
+                // Preserve another accessory that replaced a stale selection.
+                foreach (var pair in new Dictionary<string, int>(customization.active_components))
+                    if (pair.Value == component) customization.active_components.Remove(pair.Key);
+                if (!customization.unequipped_components.Contains(component))
+                    customization.unequipped_components.Add(component);
+            }
+        }
+
+        internal static bool RecordWeaponComponentUnequipped(string weapon, int component, int point)
+        {
+            string character = CurrentCharacter();
+            if (character.Length == 0 || string.IsNullOrWhiteSpace(weapon)) return false;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory)) return false;
+                NormalizeInventory(inventory);
+                SetWeaponComponentEquippedInMemory(GetOrCreateCustomization(inventory, weapon), component, point, false);
+                StageStateLocked(character, "weapon_component_unequipped", weapon);
+                return true;
             }
         }
 
@@ -983,7 +1168,15 @@ namespace ALLIN1
             Ped ped, string weapon, Hash weaponHash, Inventory inventory)
         {
             if (!inventory.weapon_customizations.TryGetValue(
-                    weapon, out WeaponCustomization customization)) return;
+                    weapon, out WeaponCustomization customization))
+            {
+                WeaponComponentDefaults.RestoreEmptySightSlots(ped.Handle, unchecked((int)weaponHash));
+                return;
+            }
+            foreach (int component in customization.unequipped_components)
+                if (!customization.active_components.ContainsValue(component))
+                    Function.Call(Hash.REMOVE_WEAPON_COMPONENT_FROM_PED,
+                        ped.Handle, weaponHash, component);
             foreach (int component in customization.active_components.Values)
             {
                 if (Function.Call<bool>(Hash.DOES_WEAPON_TAKE_WEAPON_COMPONENT,
@@ -991,6 +1184,7 @@ namespace ALLIN1
                     Function.Call(Hash.GIVE_WEAPON_COMPONENT_TO_PED,
                         ped.Handle, weaponHash, component);
             }
+            WeaponComponentDefaults.RestoreEmptySightSlots(ped.Handle, unchecked((int)weaponHash));
             foreach (KeyValuePair<string, int> entry in
                 customization.active_component_tints)
             {
@@ -1001,7 +1195,8 @@ namespace ALLIN1
                     ped.Handle, weaponHash, component, entry.Value);
             }
             int tintCount = Function.Call<int>(Hash.GET_WEAPON_TINT_COUNT, weaponHash);
-            if (customization.active_tint >= 0 && customization.active_tint < tintCount)
+            if (customization.active_tint >= 0 && customization.active_tint <
+                RuntimeWeaponCatalog.SupportedTintCount(weapon, tintCount))
                 Function.Call(Hash.SET_PED_WEAPON_TINT_INDEX,
                     ped.Handle, weaponHash, customization.active_tint);
         }
@@ -1040,6 +1235,10 @@ namespace ALLIN1
                     maxAmmoAfterComponents);
                 Function.Call(Hash.SET_PED_AMMO,
                     ped.Handle, weaponHash, preservedAmmo);
+                foreach (int component in customization.unequipped_components)
+                    if (!customization.active_components.ContainsValue(component) &&
+                        Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON_COMPONENT,
+                            ped.Handle, weaponHash, component)) return false;
                 foreach (int component in customization.active_components.Values)
                     if (Function.Call<bool>(
                             Hash.DOES_WEAPON_TAKE_WEAPON_COMPONENT,
@@ -1062,7 +1261,7 @@ namespace ALLIN1
                 int tintCount = Function.Call<int>(
                     Hash.GET_WEAPON_TINT_COUNT, weaponHash);
                 if (customization.active_tint >= 0 &&
-                    customization.active_tint < tintCount &&
+                    customization.active_tint < RuntimeWeaponCatalog.SupportedTintCount(weapon, tintCount) &&
                     Function.Call<int>(Hash.GET_PED_WEAPON_TINT_INDEX,
                         ped.Handle, weaponHash) != customization.active_tint)
                     return false;
@@ -1561,6 +1760,10 @@ namespace ALLIN1
                     {
                         value.active_components = new Dictionary<string, int>(); changed = true;
                     }
+                    if (value.unequipped_components == null)
+                    {
+                        value.unequipped_components = new List<int>(); changed = true;
+                    }
                     if (value.owned_tints == null)
                     {
                         value.owned_tints = new List<int>(); changed = true;
@@ -1646,6 +1849,25 @@ namespace ALLIN1
                 changed = true;
             }
             return changed;
+        }
+
+        internal static List<string> ConsumeAllGearAfterDeathInMemory(
+            Inventory inventory)
+        {
+            var removed = new List<string>();
+            if (inventory == null) return removed;
+            foreach (string item in inventory.gear ?? new List<string>())
+                if (!string.IsNullOrWhiteSpace(item) &&
+                    !ContainsIgnoreCase(removed, item))
+                    removed.Add(item);
+            foreach (string item in inventory.equipped_gear ??
+                    new List<string>())
+                if (!string.IsNullOrWhiteSpace(item) &&
+                    !ContainsIgnoreCase(removed, item))
+                    removed.Add(item);
+            inventory.gear = new List<string>();
+            inventory.equipped_gear = new List<string>();
+            return removed;
         }
 
         private static bool ContainsIgnoreCase(List<string> values, string item)

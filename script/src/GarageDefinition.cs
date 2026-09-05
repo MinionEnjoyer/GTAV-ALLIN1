@@ -89,6 +89,33 @@ namespace ALLIN1
         }
     }
 
+    internal static class GarageMarkerVisibilityPolicy
+    {
+        /// <summary>
+        /// Garage and specialized-storage map locations are Story conveniences,
+        /// not mission objectives. Hide them whenever Rockstar owns the active
+        /// mission/cutscene transition state.
+        /// </summary>
+        internal static bool ShouldShowMapLocations(
+            bool missionActive, bool gameTransitionActive)
+        {
+            return !missionActive && !gameTransitionActive;
+        }
+
+        /// <summary>
+        /// Suppress only exterior entry/service loops. A player who was already
+        /// moved into an ALLIN1 interior must retain its exit markers even if a
+        /// mission or cutscene flag changes while they are inside.
+        /// </summary>
+        internal static bool ShouldServiceExterior(
+            bool missionActive, bool gameTransitionActive,
+            bool playerAlreadyInside)
+        {
+            return playerAlreadyInside || ShouldShowMapLocations(
+                missionActive, gameTransitionActive);
+        }
+    }
+
     internal static class GarageVehicleTypePolicy
     {
         internal static bool RequiresSpecializedStorage(string model)

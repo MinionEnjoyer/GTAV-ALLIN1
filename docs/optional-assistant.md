@@ -1,5 +1,11 @@
 # Optional SDK assistant
 
+> Interface scope for unreleased 0.6.4: the React Launcher's SDK Manager includes
+> independent assistant configuration, hardware assessment, reviewed model
+> download, pack import and removal. The standalone SDK separately configures an
+> existing runtime/model or API. Neither configuration nor installation starts
+> inference. Frozen/native and real upstream acceptance remain release gates.
+
 The ALLIN1 assistant is a separate, opt-in component for natural-language package installation
 and diagnostics. It is not part of GTA V, never runs inside ScriptHookVDotNet, and is disabled
 until a user explicitly selects and saves an assistant mode.
@@ -67,6 +73,12 @@ licenses/Qwen-LICENSE.txt
 installed file. Routine status checks validate the layout and executable/GGUF headers; the Verify
 command streams and hashes the complete install. Advanced users may still import a separately
 obtained checksum-complete assistant package, but ALLIN1 does not distribute Qwen that way.
+
+Both archive file and directory names are preflighted, including Windows aliases,
+duplicate destinations and checksum keys. Linked installation/staging/backup
+roots are rejected before cleanup or activation. Interrupted-install recovery
+validates the complete backup inventory and hashes before restoring it. A corrupt
+backup is retained for diagnosis, not promoted merely because its folder exists.
 
 ## Console/API lifecycle
 

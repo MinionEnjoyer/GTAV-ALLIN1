@@ -98,7 +98,8 @@ def test_install_command_rpf_loader_consent_modes(tmp_path, monkeypatch):
     game = tmp_path / "game"
     approvals = []
 
-    def fake_install(_config, _database, *, rpf_loader_consent):
+    def fake_install(_config, _database, *, rpf_loader_consent, reactor_consent):
+        assert callable(reactor_consent)
         approvals.append(rpf_loader_consent(game, True))
         return InstallResult(game, is_enhanced=True, openrpf_found=True)
 
@@ -258,7 +259,8 @@ def test_health_repair_and_qualification_commands(tmp_path, monkeypatch):
     passed = CliRunner().invoke(cli.main, ["qualification-report", str(report),
         "--coverage-report", str(coverage), "--script-assembly", str(assembly),
         "--smoke-report", str(smoke)])
-    assert passed.exit_code == 0 and "PASS" in passed.output
+    assert passed.exit_code == 1 and "FAIL" in passed.output
+    assert "legacy smoke schema" in report.read_text()
     coverage.write_text(json.dumps({"totals": {"percent_covered": 80.0}}))
     failed = CliRunner().invoke(cli.main, ["qualification-report", str(report),
         "--coverage-report", str(coverage), "--script-assembly", str(assembly),

@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "id": "allin1",
+  "entries": [
+    {
+      "id": "config",
+      "path": "scripts/ALLIN1.toml",
+      "kind": "text",
+      "required": true,
+      "max_bytes": 262144
+    },
+    {
+      "id": "extension-registry",
+      "path": "scripts/.allin1/extensions/registry.json",
+      "kind": "json",
+      "required": false,
+      "max_bytes": 4194304
+    },
+    {
+      "id": "characters",
+      "path": "scripts/ALLIN1_characters.json",
+      "kind": "json",
+      "required": false,
+      "max_bytes": 4194304
+    },
+    {
+      "id": "gear-prices",
+      "path": "scripts/prices_gear.toml",
+      "kind": "text",
+      "required": false,
+      "max_bytes": 262144
+    },
+    {
+      "id": "story-vehicle-catalog",
+      "path": "scripts/ALLIN1/Catalogs/story-vehicles.json",
+      "kind": "json",
+      "required": false,
+      "max_bytes": 4194304
+    },
+    {
+      "id": "garage-map-runtime",
+      "path": "scripts/ALLIN1/Maps/runtime-detected.json",
+      "kind": "json",
+      "required": false,
+      "max_bytes": 1048576
+    }
+  ]
+}

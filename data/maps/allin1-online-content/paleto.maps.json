@@ -1,0 +1,221 @@
+{
+  "schema_version": 1,
+  "id": "paleto-garage",
+  "package_id": "allin1.online-content",
+  "name": "Paleto Bay Garage",
+  "version": "0.6.1",
+  "editions": [
+    "legacy",
+    "enhanced"
+  ],
+  "streaming": {
+    "mode": "ipl",
+    "pack_name": "mpvinewood",
+    "content_group": null,
+    "ipls": [
+      "vw_casino_garage"
+    ],
+    "keep_resident": true
+  },
+  "levels": [
+    {
+      "id": "paleto",
+      "name": "Paleto Bay Garage Interior",
+      "center": {
+        "x": 1295,
+        "y": 230,
+        "z": -50,
+        "heading": 0
+      },
+      "ipls": [
+        "vw_casino_garage"
+      ]
+    }
+  ],
+  "portals": [
+    {
+      "id": "paleto-vehicle",
+      "name": "Paleto vehicle entrance",
+      "mode": "vehicle",
+      "from": {
+        "level": "world",
+        "position": {
+          "x": -221.9008,
+          "y": 6252.802,
+          "z": 31.4894,
+          "heading": 45
+        }
+      },
+      "to": {
+        "level": "paleto",
+        "position": {
+          "x": 1295.311,
+          "y": 221.1703,
+          "z": -49.0574,
+          "heading": 0
+        }
+      },
+      "radius": 3,
+      "one_way": false
+    },
+    {
+      "id": "paleto-ped",
+      "name": "Paleto pedestrian entrance",
+      "mode": "ped",
+      "from": {
+        "level": "world",
+        "position": {
+          "x": -224.518,
+          "y": 6244.262,
+          "z": 31.4926,
+          "heading": 45
+        }
+      },
+      "to": {
+        "level": "paleto",
+        "position": {
+          "x": 1295.311,
+          "y": 221.1703,
+          "z": -49.0574,
+          "heading": 0
+        }
+      },
+      "radius": 2.5,
+      "one_way": false
+    },
+    {
+      "id": "paleto-ped-secondary",
+      "name": "Paleto secondary pedestrian exit",
+      "mode": "ped",
+      "from": {
+        "level": "paleto",
+        "position": {
+          "x": 1295.335,
+          "y": 260.7359,
+          "z": -49.0574,
+          "heading": 180
+        }
+      },
+      "to": {
+        "level": "world",
+        "position": {
+          "x": -224.518,
+          "y": 6244.262,
+          "z": 31.4926,
+          "heading": 45
+        }
+      },
+      "radius": 2.5,
+      "one_way": true
+    }
+  ],
+  "garages": [
+    {
+      "id": "paleto",
+      "name": "Paleto Bay Garage",
+      "level_id": "paleto",
+      "entrance_portal_id": "paleto-vehicle",
+      "capacity": 10,
+      "vehicle_types": [
+        "land"
+      ],
+      "slots": [
+        {
+          "id": "slot-01",
+          "position": {
+            "x": 1281.471,
+            "y": 241.6617,
+            "z": -49.3467,
+            "heading": 270
+          }
+        },
+        {
+          "id": "slot-02",
+          "position": {
+            "x": 1281.471,
+            "y": 249.7067,
+            "z": -49.3467,
+            "heading": 270
+          }
+        },
+        {
+          "id": "slot-03",
+          "position": {
+            "x": 1281.471,
+            "y": 257.8117,
+            "z": -49.3467,
+            "heading": 270
+          }
+        },
+        {
+          "id": "slot-04",
+          "position": {
+            "x": 1309.364,
+            "y": 257.812,
+            "z": -49.347,
+            "heading": 90
+          }
+        },
+        {
+          "id": "slot-05",
+          "position": {
+            "x": 1309.364,
+            "y": 249.707,
+            "z": -49.347,
+            "heading": 90
+          }
+        },
+        {
+          "id": "slot-06",
+          "position": {
+            "x": 1309.364,
+            "y": 241.662,
+            "z": -49.347,
+            "heading": 90
+          }
+        },
+        {
+          "id": "slot-07",
+          "position": {
+            "x": 1309.364,
+            "y": 232.0345,
+            "z": -49.347,
+            "heading": 90
+          }
+        },
+        {
+          "id": "slot-08",
+          "position": {
+            "x": 1295.592,
+            "y": 231.7867,
+            "z": -49.347,
+            "heading": 211.32
+          }
+        },
+        {
+          "id": "slot-09",
+          "position": {
+            "x": 1295.592,
+            "y": 241.3592,
+            "z": -49.347,
+            "heading": 211.32
+          }
+        },
+        {
+          "id": "slot-10",
+          "position": {
+            "x": 1295.592,
+            "y": 249.7942,
+            "z": -49.347,
+            "heading": 211.32
+          }
+        }
+      ],
+      "rules": {
+        "allow_store": true,
+        "allow_retrieve": true,
+        "save_policy": "story_save_only"
+      }
+    }
+  ]
+}

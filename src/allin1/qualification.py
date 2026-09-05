@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from allin1.health import inspect_windows_binary, sha256_file
+from allin1.release_paths import no_links, strict_json
+from allin1.release_acceptance import validate_live_acceptance
 
 
 @dataclass(frozen=True)
@@ -20,11 +23,14 @@ class QualificationCheck:
 
 def build_report(output: Path, checks: list[QualificationCheck], *,
                  metrics: dict[str, object] | None = None) -> dict:
-    passed = all(check.passed for check in checks if check.required)
+    if len({check.name for check in checks}) != len(checks): raise ValueError("Duplicate qualification check")
+    passed = bool(checks) and all(check.passed for check in checks if check.required)
     report = {
         "schema_version": 1,
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "passed": passed,
+        "release_ready": False,
+        "scope": "artifact dashboard; automated test and complete release qualification evidence is separate",
         "summary": {
             "passed": sum(check.passed for check in checks),
             "failed": sum(not check.passed for check in checks),
@@ -45,49 +51,43 @@ def coverage_from_report(path: Path) -> float:
         value = float(payload["totals"]["percent_covered"])
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
         raise ValueError(f"invalid coverage artifact: {path}") from exc
-    if value < 0.0 or value > 100.0:
+    if not math.isfinite(value) or value < 0.0 or value > 100.0:
         raise ValueError(f"coverage percentage is outside 0-100: {value}")
     return value
 
 
-def verify_smoke_artifact(path: Path) -> tuple[bool, str]:
-    """Verify that a smoke report still matches its exact source game log."""
+def verify_smoke_artifact(path: Path, *, context: dict | None = None) -> tuple[bool, str]:
+    """Require a complete acceptance session pinned by an independent authority."""
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        payload = strict_json(no_links(path).read_bytes())
+    except (OSError, ValueError) as exc:
         return False, f"unreadable smoke artifact: {exc}"
-    if payload.get("schema") != 2:
-        return False, "unsupported or legacy smoke schema"
-    if payload.get("passed") is not True or not payload.get("session"):
-        return False, "smoke artifact did not pass a named game session"
-    checks = payload.get("checks")
-    if not isinstance(checks, list) or not checks or any(
-            not isinstance(check, dict) or check.get("passed") is not True for check in checks):
-        return False, "one or more smoke checks did not pass"
-    source_value = payload.get("source_log")
-    expected_hash = payload.get("source_log_sha256")
-    if not isinstance(source_value, str) or not isinstance(expected_hash, str):
-        return False, "smoke artifact is missing source-log provenance"
-    source = Path(source_value)
-    if not source.is_file():
-        return False, "source game log is no longer available"
-    if sha256_file(source) != expected_hash.lower():
-        return False, "source game log changed after smoke analysis"
-    return True, f"verified session {payload['session']}"
+    if not isinstance(payload, dict) or payload.get("kind") != "live_acceptance":
+        return False, "unsupported or legacy smoke schema; log analysis cannot qualify a release"
+    if context is None: return False, "independent acceptance identity and session anchor required"
+    try:
+        result = validate_live_acceptance(payload, **context)
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        return False, f"acceptance verification failed: {exc}"
+    return True, f"verified session {result['session_id']}"
 
 
 def checks_from_artifacts(
     coverage_report: Path, script_assembly: Path, smoke_report: Path, *,
     minimum_coverage: float = 91.0,
+    acceptance_context: dict | None = None,
 ) -> tuple[list[QualificationCheck], dict[str, object]]:
     """Build qualification checks from files produced by the real workflows."""
+    if not math.isfinite(minimum_coverage) or minimum_coverage < 91: raise ValueError("Minimum release coverage cannot be below 91%")
     coverage = coverage_from_report(coverage_report)
     binary = inspect_windows_binary(script_assembly)
-    smoke_ok, smoke_detail = verify_smoke_artifact(smoke_report)
+    smoke_ok, smoke_detail = verify_smoke_artifact(smoke_report, context=acceptance_context)
+    if smoke_ok and acceptance_context["expected_identity"]["artifacts"].get("script/dist/ALLIN1.dll") != sha256_file(script_assembly):
+        smoke_ok, smoke_detail = False, "Acceptance evidence does not bind the selected script assembly"
     checks = [
         QualificationCheck("python_coverage", coverage >= minimum_coverage,
                            f"{coverage:.2f}% / {minimum_coverage:.2f}%"),
-        QualificationCheck("script_build", binary.valid,
+        QualificationCheck("script_header", binary.valid,
                            f"{script_assembly}: {binary.reason}"),
         QualificationCheck("in_game_smoke", smoke_ok, smoke_detail),
     ]

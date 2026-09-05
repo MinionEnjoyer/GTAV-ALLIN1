@@ -1,0 +1,29 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ALLIN1 Launcher",
+  "version": "0.6.4",
+  "identifier": "com.minionenjoyer.allin1launcher",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://127.0.0.1:1421",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "ALLIN1 Launcher",
+        "width": 1200,
+        "height": 820,
+        "minWidth": 760,
+        "minHeight": 580
+      }
+    ],
+    "security": {
+      "capabilities": ["launcher-main"],
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+    }
+  },
+  "bundle": { "active": false, "icon": ["../../src/allin1/assets/ALLIN1.ico"] }
+}

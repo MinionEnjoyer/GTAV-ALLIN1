@@ -231,10 +231,20 @@ namespace ALLIN1
                 return;
 
             Ped player = Game.Player.Character;
-            if (player == null || !player.Exists() || player.IsDead ||
-                !GbayShop.TryGetCurrentCharacter(out _)) return;
+            if (player == null || !player.Exists() || player.IsDead) return;
 
-            if (!player.IsInVehicle())
+            bool inVehicle = player.IsInVehicle();
+            bool nearHarbour = ShouldServiceExteriorMarker(
+                player.Position, inVehicle
+                    ? HarbourPosition : HarbourAccessPosition);
+            bool nearMarina = ShouldServiceExteriorMarker(
+                player.Position, inVehicle
+                    ? MarinaPosition : MarinaAccessPosition);
+            if (!nearHarbour && !nearMarina) return;
+            if (!GbayShop.TryGetCurrentCharacter(out _)) return;
+            if (!ShouldServiceGarageExterior()) return;
+
+            if (!inVehicle)
             {
                 for (int location = 0; location < 2; location++)
                 {

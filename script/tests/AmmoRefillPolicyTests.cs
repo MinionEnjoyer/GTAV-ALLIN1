@@ -4,6 +4,19 @@ namespace ALLIN1.Tests
 {
     public sealed class AmmoRefillPolicyTests
     {
+        [Theory]
+        [InlineData(0, 2, false, 0)]
+        [InlineData(10, 0, false, 10)]
+        [InlineData(10, -1, false, 10)]
+        [InlineData(10, 2, false, 20)]
+        [InlineData(10, 2, true, 0)]
+        [InlineData(600, int.MaxValue, false, int.MaxValue)]
+        public void Refill_pricing_only_allows_free_mode_or_zero_quantity_to_be_free(
+            int rounds, int unit, bool freeMode, int expected)
+        {
+            Assert.Equal(expected, AmmoRefillPolicy.Price(rounds, unit, freeMode));
+        }
+
         [Fact]
         public void Native_failure_is_not_misreported_as_melee_or_full()
         {

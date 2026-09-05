@@ -40,7 +40,7 @@ using CodeWalker.Utils;
 
 namespace RpfPatcher
 {
-    class Program
+    partial class Program
     {
         private static readonly Dictionary<string, string> OwnedDlcEntries =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -48,6 +48,12 @@ namespace RpfPatcher
                 { "allin1_previews", "dlcpacks:/allin1_previews/" },
                 { "allin1_maps", "dlcpacks:/allin1_maps/" },
                 { "allin1_smoke", "dlcpacks:/allin1_smoke/" },
+                { "allin1_mp2024_02_garment_bridge",
+                    "dlcpacks:/allin1_mp2024_02_garment_bridge/" },
+                { "allin1_mpbattle_harmony_bridge",
+                    "dlcpacks:/allin1_mpbattle_harmony_bridge/" },
+                { "allin1_mpvinewood_paleto_bridge",
+                    "dlcpacks:/allin1_mpvinewood_paleto_bridge/" },
             };
 
         static int Main(string[] args)
@@ -75,6 +81,7 @@ namespace RpfPatcher
                     "  RpfPatcher.exe build-ytd    <dds_folder> <output_ytd> [legacy|gen9]\n" +
                     "  RpfPatcher.exe unpack-ytd   <ytd_path> <output_folder> [legacy|gen9]\n" +
                     "  RpfPatcher.exe extract-entry <gta_path> <rpf_path> <name> <output>\n" +
+                    "  RpfPatcher.exe extract-exact-entry <gta_path> <rpf_path> <entry_path> <output>\n" +
                     "  RpfPatcher.exe replace-entry <gta_path> <rpf_path> <entry_path> <payload>\n" +
                     "  RpfPatcher.exe delete-entry <gta_path> <rpf_path> <entry_path>\n" +
                     "  RpfPatcher.exe extract-entries <gta_path> <rpf_path> <manifest_tsv> <output_root>\n" +
@@ -137,6 +144,12 @@ namespace RpfPatcher
                 return UnpackYtd(args);
             if (command == "extract-entry")
                 return ExtractEntry(args);
+            if (command == "extract-exact-entry")
+                return ExtractExactEntry(args);
+            if (command == "extract-exact-nested-entry")
+                return ExtractExactNestedEntry(args);
+            if (command == "replace-exact-nested-entry")
+                return ReplaceExactNestedEntry(args);
             if (command == "replace-entry")
                 return ReplaceEntry(args);
             if (command == "delete-entry")
@@ -1400,6 +1413,19 @@ namespace RpfPatcher
                 if (found != null) return found;
             }
             return null;
+        }
+
+        static int ExtractExactEntry(string[] args)
+        {
+            if (args.Length != 5)
+            {
+                Console.Error.WriteLine(
+                    "Usage: RpfPatcher.exe extract-exact-entry <gta_path> <rpf_path> <entry_path> <output>");
+                return 1;
+            }
+            return ExtractVirtualEntry(new[] {
+                "extract-virtual-entry", args[1], args[2], string.Empty, args[3], args[4]
+            });
         }
 
         static int ExtractVirtualEntry(string[] args)
@@ -2741,50 +2767,51 @@ namespace RpfPatcher
 
         static RpfFileEntry FindExactFileEntry(RpfFile rpf, string entryPath)
         {
-            string requested = entryPath.Replace('\\', '/').Trim('/');
-            var matches = rpf.AllEntries?
-                .OfType<RpfFileEntry>()
-                .Where(entry =>
-                {
-                    string relative = RelativeRpfEntryPath(rpf, entry);
-                    return string.Equals(relative, requested,
-                            StringComparison.OrdinalIgnoreCase)
-                        || relative.EndsWith("/" + requested,
-                            StringComparison.OrdinalIgnoreCase);
-                })
-                .ToArray() ?? Array.Empty<RpfFileEntry>();
-            if (matches.Length > 1)
-                throw new InvalidOperationException(
-                    "RPF entry path is ambiguous: " + entryPath);
-            return matches.SingleOrDefault();
+            return FindExactEntry(rpf, entryPath) as RpfFileEntry;
         }
 
         static RpfDirectoryEntry FindExactDirectory(RpfFile rpf, string directoryPath)
         {
-            string requested = directoryPath.Replace('\\', '/').Trim('/');
-            if (string.IsNullOrEmpty(requested)) return rpf.Root;
-            var matches = rpf.AllEntries?
-                .OfType<RpfDirectoryEntry>()
-                .Where(entry =>
-                {
-                    string relative = RelativeRpfEntryPath(rpf, entry).TrimEnd('/');
-                    return string.Equals(relative, requested,
-                            StringComparison.OrdinalIgnoreCase)
-                        || relative.EndsWith("/" + requested,
-                            StringComparison.OrdinalIgnoreCase);
-                })
-                .ToArray() ?? Array.Empty<RpfDirectoryEntry>();
-            if (matches.Length > 1)
-                throw new InvalidOperationException(
-                    "RPF directory path is ambiguous: " + directoryPath);
-            return matches.SingleOrDefault();
+            if (directoryPath == string.Empty) return rpf.Root;
+            return FindExactEntry(rpf, directoryPath) as RpfDirectoryEntry;
+        }
+
+        // Resolve from the selected archive's root one segment at a time.
+        // Suffix matching can otherwise select x/data/global.gxt2 when the
+        // requested data/global.gxt2 is absent. Entry.Path is display metadata,
+        // not identity; nested archives must be selected explicitly beforehand.
+        static RpfEntry FindExactEntry(RpfFile rpf, string entryPath)
+        {
+            string requested = entryPath?.Replace('\\', '/');
+            if (string.IsNullOrEmpty(requested)) return null;
+            if (requested.Length > 2048 || requested.Any(char.IsControl)
+                || requested.Contains(':') || requested.Contains('!')
+                || requested.Split('/').Any(part =>
+                    string.IsNullOrEmpty(part) || part == "." || part == ".."))
+                throw new InvalidDataException("Unsafe exact RPF entry path: " + entryPath);
+            RpfEntry current = rpf.Root;
+            foreach (string segment in requested.Split('/'))
+            {
+                if (!(current is RpfDirectoryEntry directory)) return null;
+                var matches = directory.Directories.Cast<RpfEntry>()
+                    .Concat(directory.Files)
+                    .Where(entry => string.Equals(entry.Name, segment,
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                if (matches.Length > 1)
+                    throw new InvalidOperationException(
+                        "RPF entry path is ambiguous: " + entryPath);
+                current = matches.SingleOrDefault();
+                if (current == null) return null;
+            }
+            return current;
         }
 
         static RpfFile OpenWritableRpf(string gtaPath, string rpfPath)
         {
             bool isGen9 = File.Exists(Path.Combine(gtaPath, "GTA5_Enhanced.exe"))
                        || File.Exists(Path.Combine(gtaPath, "eboot.bin"));
-            GTA5Keys.LoadFromPath(gtaPath, isGen9, null);
+            LoadReadOnlyArchiveKeys(gtaPath, isGen9, rpfPath);
             var rpf = new RpfFile(rpfPath, rpfPath);
             rpf.ScanStructure(null,
                 err => Console.Error.WriteLine($"RPF scan warning: {err}"));
@@ -6348,10 +6375,495 @@ namespace RpfPatcher
         //  patch / unpatch: Modify dlclist.xml inside mods/update.rpf
         // ================================================================
 
+        private const string DlcListTransactionOwner =
+            "ALLIN1.RpfPatcher.dlclist";
+
+        private sealed class DlcListArchiveTransactionJournal
+        {
+            public int Schema { get; set; } = 1;
+            public string Owner { get; set; } = DlcListTransactionOwner;
+            public string TransactionId { get; set; }
+            public string Phase { get; set; }
+            public string Command { get; set; }
+            public bool TargetExisted { get; set; }
+            public long SourceLength { get; set; }
+            public long SourceLastWriteUtcTicks { get; set; }
+            public string SourceSha256 { get; set; }
+            public long StagedLength { get; set; }
+            public string StagedSha256 { get; set; }
+            public string ExpectedDlcListSha256 { get; set; }
+        }
+
+        private static string DlcListTransactionJournalPath(string target)
+        {
+            return target + ".allin1-dlclist.transaction.json";
+        }
+
+        private static string DlcListTransactionLockPath(string target)
+        {
+            return target + ".allin1-dlclist.lock";
+        }
+
+        private static string DlcListTransactionStagePath(
+            string target, string transactionId)
+        {
+            return target + ".allin1-dlclist." + transactionId + ".stage";
+        }
+
+        private static string DlcListTransactionBackupPath(
+            string target, string transactionId)
+        {
+            return target + ".allin1-dlclist." + transactionId + ".rollback";
+        }
+
+        private static int DlcListTransactionPhaseRank(string phase)
+        {
+            switch (phase)
+            {
+                case "copying": return 0;
+                case "staged": return 1;
+                case "prepared": return 2;
+                case "committed": return 3;
+                default: return -1;
+            }
+        }
+
+        private static void ValidateDlcListTransactionJournal(
+            DlcListArchiveTransactionJournal journal)
+        {
+            if (journal == null || journal.Schema != 1 ||
+                !string.Equals(journal.Owner, DlcListTransactionOwner,
+                    StringComparison.Ordinal) ||
+                string.IsNullOrWhiteSpace(journal.TransactionId) ||
+                !Regex.IsMatch(journal.TransactionId, "^[a-f0-9]{32}$") ||
+                (journal.Command != "patch" && journal.Command != "unpatch") ||
+                DlcListTransactionPhaseRank(journal.Phase) < 0)
+                throw new InvalidDataException(
+                    "The dlclist transaction journal is invalid; no transaction artifacts were removed.");
+
+            if ((journal.Phase == "staged" ||
+                 journal.Phase == "prepared" ||
+                 journal.Phase == "committed") &&
+                (journal.SourceLength <= 0 ||
+                 journal.SourceLastWriteUtcTicks <= 0 ||
+                 !Regex.IsMatch(journal.SourceSha256 ?? "", "^[a-f0-9]{64}$")))
+                throw new InvalidDataException(
+                    "The dlclist transaction journal has no valid source identity.");
+
+            if ((journal.Phase == "prepared" ||
+                 journal.Phase == "committed") &&
+                (journal.StagedLength <= 0 ||
+                 !Regex.IsMatch(journal.StagedSha256 ?? "", "^[a-f0-9]{64}$") ||
+                 !Regex.IsMatch(journal.ExpectedDlcListSha256 ?? "",
+                     "^[a-f0-9]{64}$")))
+                throw new InvalidDataException(
+                    "The prepared dlclist transaction has no valid post-image identity.");
+        }
+
+        private static DlcListArchiveTransactionJournal ReadDlcListJournal(
+            string path)
+        {
+            DlcListArchiveTransactionJournal journal;
+            try
+            {
+                journal = JsonSerializer.Deserialize<
+                    DlcListArchiveTransactionJournal>(File.ReadAllText(path));
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidDataException(
+                    $"Could not parse dlclist transaction journal '{path}'. " +
+                    "No transaction artifacts were removed.", ex);
+            }
+            ValidateDlcListTransactionJournal(journal);
+            return journal;
+        }
+
+        private static void WriteDlcListJournal(
+            string path, DlcListArchiveTransactionJournal journal)
+        {
+            ValidateDlcListTransactionJournal(journal);
+            string pending = path + ".write";
+            if (File.Exists(pending))
+                throw new IOException(
+                    $"A pending dlclist journal write already exists: {pending}");
+
+            string json = JsonSerializer.Serialize(journal,
+                new JsonSerializerOptions { WriteIndented = true }) + "\n";
+            try
+            {
+                using (var stream = new FileStream(pending, FileMode.CreateNew,
+                    FileAccess.Write, FileShare.None, 4096,
+                    FileOptions.WriteThrough))
+                using (var writer = new StreamWriter(stream,
+                    new UTF8Encoding(false), 4096, true))
+                {
+                    writer.Write(json);
+                    writer.Flush();
+                    stream.Flush(true);
+                }
+
+                if (File.Exists(path))
+                    File.Replace(pending, path, null, true);
+                else
+                    File.Move(pending, path);
+            }
+            catch
+            {
+                // Leave a possibly complete pending journal in place. Recovery
+                // will promote it only after validating its owner and identity.
+                throw;
+            }
+        }
+
+        private static string HashFileSha256(string path)
+        {
+            using (var algorithm = SHA256.Create())
+            using (var stream = new FileStream(path, FileMode.Open,
+                FileAccess.Read, FileShare.Read, 1024 * 1024,
+                FileOptions.SequentialScan))
+                return Convert.ToHexString(algorithm.ComputeHash(stream))
+                    .ToLowerInvariant();
+        }
+
+        private static string CopyFileWithHash(
+            string source, string destination, out long length,
+            out long sourceLastWriteUtcTicks)
+        {
+            var before = new FileInfo(source);
+            length = before.Length;
+            sourceLastWriteUtcTicks = before.LastWriteTimeUtc.Ticks;
+            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            using (var input = new FileStream(source, FileMode.Open,
+                FileAccess.Read, FileShare.Read, 1024 * 1024,
+                FileOptions.SequentialScan))
+            using (var output = new FileStream(destination, FileMode.CreateNew,
+                FileAccess.Write, FileShare.None, 1024 * 1024,
+                FileOptions.SequentialScan | FileOptions.WriteThrough))
+            {
+                var buffer = new byte[1024 * 1024];
+                int count;
+                while ((count = input.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    hash.AppendData(buffer, 0, count);
+                    output.Write(buffer, 0, count);
+                }
+                output.Flush(true);
+            }
+
+            var after = new FileInfo(source);
+            if (after.Length != length ||
+                after.LastWriteTimeUtc.Ticks != sourceLastWriteUtcTicks)
+                throw new IOException(
+                    "The source update.rpf changed while its staged copy was being created.");
+            if (new FileInfo(destination).Length != length)
+                throw new IOException(
+                    "The staged update.rpf failed length verification.");
+
+            string sourceHash = Convert.ToHexString(hash.GetHashAndReset())
+                .ToLowerInvariant();
+            string stagedHash = HashFileSha256(destination);
+            if (!string.Equals(sourceHash, stagedHash,
+                    StringComparison.OrdinalIgnoreCase))
+                throw new IOException(
+                    "The staged update.rpf failed SHA-256 copy verification.");
+            return sourceHash;
+        }
+
+        private static bool TryLoadDlcListEncryptionKeys(
+            string gtaPath, out int errorCode)
+        {
+            errorCode = 0;
+            bool isGen9 = File.Exists(Path.Combine(
+                    gtaPath, "GTA5_Enhanced.exe")) ||
+                File.Exists(Path.Combine(gtaPath, "eboot.bin"));
+            string exeName = isGen9 ? "GTA5_Enhanced.exe" : "GTA5.exe";
+            if (!File.Exists(Path.Combine(gtaPath, exeName)))
+            {
+                Console.Error.WriteLine(
+                    $"ERROR: {exeName} not found in {gtaPath}");
+                errorCode = 2;
+                return false;
+            }
+
+            Console.WriteLine($"Edition: {(isGen9 ? "Enhanced" : "Legacy")}");
+            Console.WriteLine("Loading encryption keys...");
+            GTA5Keys.LoadFromPath(gtaPath, isGen9, null);
+            if (GTA5Keys.PC_AES_KEY == null)
+            {
+                Console.Error.WriteLine(
+                    "ERROR: Failed to load encryption keys.");
+                errorCode = 3;
+                return false;
+            }
+            Console.WriteLine("Encryption keys loaded.");
+            return true;
+        }
+
+        private static RpfFile OpenDlcListArchive(
+            string path, bool ensureOpenEncryption)
+        {
+            Console.WriteLine($"Opening staged archive: {path}");
+            var rpf = new RpfFile(path, path);
+            rpf.ScanStructure(null, warning => Console.Error.WriteLine(
+                $"RPF scan warning: {warning}"));
+            if (rpf.AllEntries == null || rpf.AllEntries.Count == 0)
+                throw new InvalidDataException(
+                    "RPF scan returned no entries.");
+
+            if (ensureOpenEncryption)
+            {
+                Console.WriteLine(
+                    "Ensuring OPEN encryption on the staged archive...");
+                RpfFile.EnsureValidEncryption(rpf, null, true);
+                rpf = new RpfFile(path, path);
+                rpf.ScanStructure(null, warning => Console.Error.WriteLine(
+                    $"RPF post-conversion scan warning: {warning}"));
+                if (rpf.AllEntries == null || rpf.AllEntries.Count == 0)
+                    throw new InvalidDataException(
+                        "RPF post-conversion scan returned no entries.");
+            }
+            return rpf;
+        }
+
+        private static byte[] VerifyDlcListArchive(
+            string archive, string expectedDlcListSha256 = null)
+        {
+            var rpf = OpenDlcListArchive(archive, false);
+            var entry = FindFileRecursive(rpf, "dlclist.xml");
+            if (entry == null)
+                throw new InvalidDataException(
+                    "dlclist.xml was not found in the staged update.rpf.");
+            byte[] payload = entry.File.ExtractFile(entry);
+            if (payload == null || payload.Length == 0)
+                throw new InvalidDataException(
+                    "The staged dlclist.xml is empty.");
+            string text = Encoding.UTF8.GetString(payload).TrimStart('\uFEFF');
+            XDocument document = XDocument.Parse(text);
+            if (document.Root?.Element("Paths") == null)
+                throw new InvalidDataException(
+                    "The staged dlclist.xml has no <Paths> element.");
+            if (expectedDlcListSha256 != null &&
+                !string.Equals(Sha256(payload), expectedDlcListSha256,
+                    StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException(
+                    "The staged dlclist.xml does not match the prepared post-image.");
+            return payload;
+        }
+
+        private static void ResolvePendingDlcListJournalWrite(string journalPath)
+        {
+            string pending = journalPath + ".write";
+            if (!File.Exists(pending)) return;
+
+            DlcListArchiveTransactionJournal pendingJournal =
+                ReadDlcListJournal(pending);
+            if (!File.Exists(journalPath))
+            {
+                File.Move(pending, journalPath);
+                return;
+            }
+
+            DlcListArchiveTransactionJournal current =
+                ReadDlcListJournal(journalPath);
+            if (!string.Equals(current.TransactionId,
+                    pendingJournal.TransactionId, StringComparison.Ordinal))
+                throw new InvalidDataException(
+                    "The pending dlclist journal belongs to a different transaction.");
+
+            if (DlcListTransactionPhaseRank(pendingJournal.Phase) >=
+                DlcListTransactionPhaseRank(current.Phase))
+                File.Replace(pending, journalPath, null, true);
+            else
+                File.Delete(pending);
+        }
+
+        private static void EnsureNoUnknownDlcListTransactionArtifacts(
+            string target, DlcListArchiveTransactionJournal journal = null)
+        {
+            string directory = Path.GetDirectoryName(target);
+            if (!Directory.Exists(directory)) return;
+            string prefix = Path.GetFileName(target) + ".allin1-dlclist.";
+            var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                Path.GetFullPath(DlcListTransactionJournalPath(target)),
+                Path.GetFullPath(DlcListTransactionJournalPath(target) + ".write"),
+                Path.GetFullPath(DlcListTransactionLockPath(target)),
+            };
+            if (journal != null)
+            {
+                allowed.Add(Path.GetFullPath(DlcListTransactionStagePath(
+                    target, journal.TransactionId)));
+                allowed.Add(Path.GetFullPath(DlcListTransactionBackupPath(
+                    target, journal.TransactionId)));
+            }
+
+            string[] unknown = Directory.GetFiles(directory, prefix + "*")
+                .Select(Path.GetFullPath)
+                .Where(path => !allowed.Contains(path))
+                .ToArray();
+            if (unknown.Length > 0)
+                throw new InvalidDataException(
+                    "Unknown dlclist transaction artifacts require manual review: " +
+                    string.Join(", ", unknown));
+        }
+
+        private static FileStream AcquireDlcListTransactionLock(string target)
+        {
+            string lockPath = DlcListTransactionLockPath(target);
+            FileStream stream;
+            try
+            {
+                stream = new FileStream(lockPath, FileMode.OpenOrCreate,
+                    FileAccess.ReadWrite, FileShare.None, 1,
+                    FileOptions.WriteThrough);
+            }
+            catch (IOException ex)
+            {
+                throw new IOException(
+                    "Another dlclist archive transaction is already active.", ex);
+            }
+
+            if (stream.Length != 0)
+            {
+                stream.Dispose();
+                throw new InvalidDataException(
+                    $"The reserved dlclist transaction lock contains unknown data: {lockPath}");
+            }
+            return stream;
+        }
+
+        private static void ReleaseDlcListTransactionLock(
+            FileStream stream, string target)
+        {
+            if (stream == null) return;
+            stream.Dispose();
+            string lockPath = DlcListTransactionLockPath(target);
+            try
+            {
+                if (File.Exists(lockPath) &&
+                    new FileInfo(lockPath).Length == 0)
+                    File.Delete(lockPath);
+            }
+            catch (Exception ex) when (
+                ex is IOException || ex is UnauthorizedAccessException)
+            {
+                // A zero-byte lock left by a crash or cleanup race is safe to
+                // reuse. Never delete a non-empty reserved lock artifact.
+            }
+        }
+
+        private static void RecoverDlcListArchiveTransaction(string target)
+        {
+            string journalPath = DlcListTransactionJournalPath(target);
+            ResolvePendingDlcListJournalWrite(journalPath);
+            if (!File.Exists(journalPath))
+            {
+                EnsureNoUnknownDlcListTransactionArtifacts(target);
+                return;
+            }
+
+            DlcListArchiveTransactionJournal journal =
+                ReadDlcListJournal(journalPath);
+            EnsureNoUnknownDlcListTransactionArtifacts(target, journal);
+            string stage = DlcListTransactionStagePath(
+                target, journal.TransactionId);
+            string backup = DlcListTransactionBackupPath(
+                target, journal.TransactionId);
+
+            if (journal.Phase == "copying")
+            {
+                if (File.Exists(backup) ||
+                    (journal.TargetExisted && !File.Exists(target)) ||
+                    (!journal.TargetExisted && File.Exists(target)))
+                    throw new InvalidDataException(
+                        "The interrupted copying transaction has an impossible filesystem state.");
+                if (File.Exists(stage)) File.Delete(stage);
+                File.Delete(journalPath);
+                Console.WriteLine(
+                    "Cleaned an interrupted pre-commit dlclist staging copy.");
+                return;
+            }
+
+            bool targetExists = File.Exists(target);
+            bool stageExists = File.Exists(stage);
+            bool backupExists = File.Exists(backup);
+            string targetHash = targetExists ? HashFileSha256(target) : null;
+            string stageHash = stageExists ? HashFileSha256(stage) : null;
+            string backupHash = backupExists ? HashFileSha256(backup) : null;
+            bool targetIsSource = targetExists && string.Equals(
+                targetHash, journal.SourceSha256,
+                StringComparison.OrdinalIgnoreCase);
+            bool targetIsPost = targetExists && string.Equals(
+                targetHash, journal.StagedSha256,
+                StringComparison.OrdinalIgnoreCase);
+            bool stageIsPost = stageExists && string.Equals(
+                stageHash, journal.StagedSha256,
+                StringComparison.OrdinalIgnoreCase);
+            bool backupIsSource = backupExists && string.Equals(
+                backupHash, journal.SourceSha256,
+                StringComparison.OrdinalIgnoreCase);
+
+            if (journal.Phase == "staged")
+            {
+                bool targetUnchanged = journal.TargetExisted
+                    ? targetIsSource : !targetExists;
+                if (!targetUnchanged || backupExists)
+                    throw new InvalidDataException(
+                        "The interrupted staged transaction cannot be safely classified.");
+                if (stageExists) File.Delete(stage);
+                File.Delete(journalPath);
+                Console.WriteLine(
+                    "Cleaned an interrupted pre-commit dlclist transaction.");
+                return;
+            }
+
+            bool preCommit = journal.TargetExisted
+                ? targetIsSource && stageIsPost && !backupExists
+                : !targetExists && stageIsPost && !backupExists;
+            if (journal.Phase == "prepared" && preCommit)
+            {
+                File.Delete(stage);
+                File.Delete(journalPath);
+                Console.WriteLine(
+                    "Cleaned a prepared but uncommitted dlclist transaction.");
+                return;
+            }
+
+            bool committed = journal.TargetExisted
+                ? targetIsPost && !stageExists &&
+                    (backupIsSource ||
+                     (journal.Phase == "committed" && !backupExists))
+                : targetIsPost && !stageExists && !backupExists;
+            if (!committed)
+                throw new InvalidDataException(
+                    "The dlclist transaction artifacts do not match a verified pre- or post-image; no files were removed.");
+
+            VerifyDlcListArchive(target, journal.ExpectedDlcListSha256);
+            if (backupExists) File.Delete(backup);
+            File.Delete(journalPath);
+            Console.WriteLine(
+                "Verified and finalized an interrupted committed dlclist transaction.");
+        }
+
+        private static void VerifyPreparedDlcListMutation(
+            XDocument expected, byte[] actualPayload)
+        {
+            string actualText = Encoding.UTF8.GetString(actualPayload)
+                .TrimStart('\uFEFF');
+            XDocument actual = XDocument.Parse(actualText);
+            if (!XNode.DeepEquals(expected, actual))
+                throw new InvalidDataException(
+                    "The staged dlclist.xml differs from the requested mutation; unrelated entries were not committed.");
+        }
+
         static int PatchCommand(
             string command, string[] args, bool allowManifestOwnedPack = false)
         {
             string gtaPath = args[1];
+
+            string transactionTarget = null;
+            FileStream transactionLock = null;
 
             try
             {
@@ -6380,8 +6892,85 @@ namespace RpfPatcher
                     }
                 }
 
-                var rpf = OpenModsUpdateRpf(gtaPath, out int err);
-                if (rpf == null) return err;
+                if (IsGtaProcessRunning())
+                {
+                    Console.Error.WriteLine(
+                        "ERROR: Close GTA V before modifying dlclist.xml.");
+                    return 8;
+                }
+
+                if (!TryLoadDlcListEncryptionKeys(gtaPath, out int err))
+                    return err;
+
+                string stock = Path.Combine(
+                    gtaPath, "update", "update.rpf");
+                string modsDirectory = Path.Combine(
+                    gtaPath, "mods", "update");
+                string target = Path.Combine(modsDirectory, "update.rpf");
+                transactionTarget = target;
+                if (!File.Exists(stock))
+                {
+                    Console.Error.WriteLine($"ERROR: {stock} not found");
+                    return 4;
+                }
+                if (Directory.Exists(target))
+                {
+                    Console.Error.WriteLine(
+                        $"ERROR: Expected an RPF file but found a directory: {target}");
+                    return 7;
+                }
+                Directory.CreateDirectory(modsDirectory);
+                transactionLock = AcquireDlcListTransactionLock(target);
+                RecoverDlcListArchiveTransaction(target);
+
+                if (File.Exists(target) &&
+                    File.GetLastWriteTimeUtc(target).AddSeconds(1) <
+                    File.GetLastWriteTimeUtc(stock))
+                {
+                    Console.Error.WriteLine(
+                        "ERROR: mods/update/update.rpf predates the current game archive. " +
+                        "Refresh it before using the RPF loader.");
+                    return 6;
+                }
+
+                string source = File.Exists(target) ? target : stock;
+                long sourceLength = new FileInfo(source).Length;
+                var drive = new DriveInfo(Path.GetPathRoot(
+                    Path.GetFullPath(target)));
+                if (drive.AvailableFreeSpace < sourceLength + 268435456L)
+                    throw new IOException(
+                        "Not enough free disk space to stage update.rpf safely.");
+
+                string transactionId = Guid.NewGuid().ToString("N");
+                string journalPath = DlcListTransactionJournalPath(target);
+                string stage = DlcListTransactionStagePath(
+                    target, transactionId);
+                string backup = DlcListTransactionBackupPath(
+                    target, transactionId);
+                if (File.Exists(journalPath) || File.Exists(stage) ||
+                    File.Exists(backup))
+                    throw new IOException(
+                        "A dlclist transaction artifact already exists.");
+
+                var journal = new DlcListArchiveTransactionJournal
+                {
+                    TransactionId = transactionId,
+                    Phase = "copying",
+                    Command = command,
+                    TargetExisted = File.Exists(target),
+                };
+                WriteDlcListJournal(journalPath, journal);
+                Console.WriteLine(
+                    $"Staging update.rpf beside the live archive: {stage}");
+                journal.SourceSha256 = CopyFileWithHash(
+                    source, stage, out long copiedLength,
+                    out long copiedWriteTicks);
+                journal.SourceLength = copiedLength;
+                journal.SourceLastWriteUtcTicks = copiedWriteTicks;
+                journal.Phase = "staged";
+                WriteDlcListJournal(journalPath, journal);
+
+                var rpf = OpenDlcListArchive(stage, true);
 
                 // --- Find dlclist.xml ---
                 var dlclistEntry = FindFileRecursive(rpf, "dlclist.xml");
@@ -6435,6 +7024,8 @@ namespace RpfPatcher
                 if (!modified)
                 {
                     Console.WriteLine("No changes needed — dlclist.xml already up to date.");
+                    File.Delete(stage);
+                    File.Delete(journalPath);
                     return 0;
                 }
 
@@ -6453,7 +7044,57 @@ namespace RpfPatcher
                     return 7;
                 }
 
-                Console.WriteLine("dlclist.xml updated successfully in mods/update/update.rpf.");
+                byte[] verifiedPayload = VerifyDlcListArchive(stage);
+                VerifyPreparedDlcListMutation(doc, verifiedPayload);
+                journal.StagedLength = new FileInfo(stage).Length;
+                journal.StagedSha256 = HashFileSha256(stage);
+                journal.ExpectedDlcListSha256 = Sha256(verifiedPayload);
+                journal.Phase = "prepared";
+                WriteDlcListJournal(journalPath, journal);
+
+                if (journal.TargetExisted)
+                {
+                    if (!File.Exists(target) ||
+                        new FileInfo(target).Length != journal.SourceLength ||
+                        !string.Equals(HashFileSha256(target),
+                            journal.SourceSha256,
+                            StringComparison.OrdinalIgnoreCase))
+                        throw new IOException(
+                            "The live mods archive changed before commit; transaction aborted.");
+                    File.Replace(stage, target, backup, true);
+                }
+                else
+                {
+                    if (File.Exists(target))
+                        throw new IOException(
+                            "A live mods archive appeared before commit; transaction aborted.");
+                    File.Move(stage, target);
+                }
+
+                if (new FileInfo(target).Length != journal.StagedLength ||
+                    !string.Equals(HashFileSha256(target),
+                        journal.StagedSha256,
+                        StringComparison.OrdinalIgnoreCase))
+                    throw new IOException(
+                        "The committed mods archive failed post-image verification.");
+                VerifyDlcListArchive(
+                    target, journal.ExpectedDlcListSha256);
+
+                if (journal.TargetExisted &&
+                    (!File.Exists(backup) ||
+                     new FileInfo(backup).Length != journal.SourceLength ||
+                     !string.Equals(HashFileSha256(backup),
+                         journal.SourceSha256,
+                         StringComparison.OrdinalIgnoreCase)))
+                    throw new IOException(
+                        "The dlclist rollback archive failed pre-image verification.");
+
+                journal.Phase = "committed";
+                WriteDlcListJournal(journalPath, journal);
+                RecoverDlcListArchiveTransaction(target);
+                Console.WriteLine(
+                    "dlclist.xml updated successfully in mods/update/update.rpf " +
+                    "using an atomic archive transaction.");
                 return 0;
             }
             catch (Exception ex)
@@ -6461,6 +7102,25 @@ namespace RpfPatcher
                 Console.Error.WriteLine($"ERROR: Unexpected error: {ex.Message}");
                 Console.Error.WriteLine(ex.StackTrace);
                 return 99;
+            }
+            finally
+            {
+                if (!string.IsNullOrWhiteSpace(transactionTarget) &&
+                    transactionLock != null)
+                {
+                    try
+                    {
+                        RecoverDlcListArchiveTransaction(transactionTarget);
+                    }
+                    catch (Exception recoveryError)
+                    {
+                        Console.Error.WriteLine(
+                            "ERROR: Transaction recovery was withheld: " +
+                            recoveryError.Message);
+                    }
+                }
+                ReleaseDlcListTransactionLock(
+                    transactionLock, transactionTarget);
             }
         }
 

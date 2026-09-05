@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-close-launcher"
+description = "Enables the close_launcher command without any pre-configured scope."
+commands.allow = ["close_launcher"]
+
+[[permission]]
+identifier = "deny-close-launcher"
+description = "Denies the close_launcher command without any pre-configured scope."
+commands.deny = ["close_launcher"]

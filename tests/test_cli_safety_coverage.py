@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import subprocess
 import zipfile
 from pathlib import Path
@@ -35,6 +36,30 @@ def _game(path: Path) -> Path:
     path.mkdir(parents=True)
     (path / "GTA5_Enhanced.exe").write_bytes(b"exe")
     return path
+
+
+def _register_online_content(game: Path) -> ExtensionRegistry:
+    manifest = ExtensionManifest.load(ONLINE_DESCRIPTOR)
+    destination_root = (
+        game / "scripts" / "ALLIN1" / "Maps" / manifest.extension_id
+    )
+    destination_root.mkdir(parents=True, exist_ok=True)
+    records = []
+    for source in sorted(
+        (ROOT / "data" / "maps" / "allin1-online-content").glob(
+            "*.maps.json"
+        )
+    ):
+        destination = destination_root / source.name
+        payload = source.read_bytes()
+        destination.write_bytes(payload)
+        records.append({
+            "path": destination.relative_to(game).as_posix(),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        })
+    registry = ExtensionRegistry(game)
+    registry.register_builtin(manifest, map_files=records)
+    return registry
 
 
 def _invoke(
@@ -236,9 +261,7 @@ def test_content_set_restores_every_tracked_file_after_writer_failure(
     scripts = game / "scripts"
     scripts.mkdir()
     (scripts / "ALLIN1.dll").write_bytes(b"runtime")
-    manifest = ExtensionManifest.load(ONLINE_DESCRIPTOR)
-    registry = ExtensionRegistry(game)
-    registry.register_builtin(manifest)
+    registry = _register_online_content(game)
     config = Config.default()
     config.general.gta_path = str(game)
     config_path = tmp_path / "config.toml"

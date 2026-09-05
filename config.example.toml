@@ -61,6 +61,16 @@ enable_logging = false
 # Replace vanilla police cars with DLC police vehicles.
 enable_dlc_police = false
 
+# Deprecated compatibility alias for older configs. When gbay_ui_backend is
+# absent, true selects the Legacy browser. New configs should choose the backend
+# below; this value does not disable Auto or Reactor.
+gbay_menu_enabled = false
+
+# Choose the GBAY interface: auto prefers Reactor V and uses the compatibility
+# browser only if Reactor is unavailable; reactor requires Reactor; legacy uses
+# the original in-game browser. This does not change purchase or save rules.
+gbay_ui_backend = "auto"
+
 # Key to open the GBAY vehicle shop menu (default: F9).
 # Uses .NET Keys enum names: F1-F12, NumPad0-9, etc.
 gbay_key = "F9"

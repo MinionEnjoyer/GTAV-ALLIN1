@@ -22,6 +22,10 @@ namespace ALLIN1
 
     internal static class AmmoRefillPolicy
     {
+        internal static int Price(int rounds, int unitPrice, bool freeMode) =>
+            freeMode ? 0 : (int)System.Math.Min(int.MaxValue,
+                (long)System.Math.Max(0, rounds) * System.Math.Max(1, unitPrice));
+
         private const int RefillMagazineCount = 10;
         private const int AbsoluteRefillLimit = 600;
 

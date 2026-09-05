@@ -1,8 +1,9 @@
 # Optional mod packages
 
 The launcher can install local, user-supplied mod packages without bundling or
-downloading third-party mods. Select **Mods > Import & install package** and open
-the package's `mod.toml` file.
+downloading third-party mods. In React, use **Packages** to select and review
+the package's `mod.toml` or supported package archive. The older **Mods > Import
+& install package** menu belongs to the retained Tkinter interface.
 
 A package is a directory containing `mod.toml` plus the payload files named by
 its `[[files]]` and/or `[[rpf_entries]]` entries. Packages placed under

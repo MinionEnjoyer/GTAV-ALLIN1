@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "id": "grapeseed-garage",
+  "package_id": "allin1.online-content",
+  "name": "Grapeseed Garage",
+  "version": "0.6.1",
+  "editions": [
+    "enhanced"
+  ],
+  "streaming": {
+    "mode": "ipl",
+    "pack_name": "mpheist",
+    "content_group": null,
+    "ipls": [
+      "hei_hw1_blimp_interior_v_garagem_milo_"
+    ],
+    "keep_resident": true
+  },
+  "levels": [
+    {
+      "id": "rural",
+      "name": "Grapeseed Garage Interior",
+      "center": {
+        "x": 199.9716,
+        "y": -999.6678,
+        "z": -99,
+        "heading": 0
+      },
+      "ipls": [
+        "hei_hw1_blimp_interior_v_garagem_milo_"
+      ]
+    }
+  ],
+  "portals": [
+    {
+      "id": "rural-vehicle",
+      "name": "Grapeseed vehicle entrance",
+      "mode": "vehicle",
+      "from": {
+        "level": "world",
+        "position": {
+          "x": 2551.461,
+          "y": 4674.325,
+          "z": 33.9819,
+          "heading": 0
+        }
+      },
+      "to": {
+        "level": "rural",
+        "position": {
+          "x": 206.3603,
+          "y": -999.0687,
+          "z": -99,
+          "heading": 90
+        }
+      },
+      "radius": 3,
+      "one_way": false
+    },
+    {
+      "id": "rural-ped",
+      "name": "Grapeseed pedestrian entrance",
+      "mode": "ped",
+      "from": {
+        "level": "world",
+        "position": {
+          "x": 2553.459,
+          "y": 4650.636,
+          "z": 34.0768,
+          "heading": 90
+        }
+      },
+      "to": {
+        "level": "rural",
+        "position": {
+          "x": 206.3603,
+          "y": -999.0687,
+          "z": -99,
+          "heading": 90
+        }
+      },
+      "radius": 2.5,
+      "one_way": false
+    }
+  ],
+  "garages": [
+    {
+      "id": "rural",
+      "name": "Grapeseed Garage",
+      "level_id": "rural",
+      "entrance_portal_id": "rural-vehicle",
+      "capacity": 6,
+      "vehicle_types": [
+        "land"
+      ],
+      "slots": [
+        {
+          "id": "slot-01",
+          "position": {
+            "x": 193.6,
+            "y": -1004.6,
+            "z": -99.56,
+            "heading": 90
+          }
+        },
+        {
+          "id": "slot-02",
+          "position": {
+            "x": 193.6,
+            "y": -1000.4,
+            "z": -99.56,
+            "heading": 90
+          }
+        },
+        {
+          "id": "slot-03",
+          "position": {
+            "x": 193.6,
+            "y": -996.2,
+            "z": -99.56,
+            "heading": 90
+          }
+        },
+        {
+          "id": "slot-04",
+          "position": {
+            "x": 202.7,
+            "y": -1004.6,
+            "z": -99.56,
+            "heading": 270
+          }
+        },
+        {
+          "id": "slot-05",
+          "position": {
+            "x": 202.7,
+            "y": -1000.4,
+            "z": -99.56,
+            "heading": 270
+          }
+        },
+        {
+          "id": "slot-06",
+          "position": {
+            "x": 202.7,
+            "y": -996.2,
+            "z": -99.56,
+            "heading": 270
+          }
+        }
+      ],
+      "rules": {
+        "allow_store": true,
+        "allow_retrieve": true,
+        "save_policy": "story_save_only"
+      }
+    }
+  ]
+}

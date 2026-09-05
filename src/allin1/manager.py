@@ -8,14 +8,17 @@ from typing import Callable
 
 from allin1.config import Config
 from allin1 import __version__
-from allin1.detector import detect_gta_path, validate_gta_path
+from allin1.detector import (
+    inspect_detected_gta_path as detect_gta_path,
+    inspect_gta_path as validate_gta_path,
+)
 from allin1.extensions import (
     ExtensionCatalog,
     ExtensionRegistry,
     settings_from_config,
 )
 from allin1.installer import InstallResult, install, uninstall
-from allin1.health import inspect_windows_binary
+from allin1.health import inspect_windows_binary, is_shvdn_runtime_ready
 from allin1.launch_policy import remove_retired_offline_policy
 from allin1.rpf_loader import inspect_rpf_loader
 from allin1.vehicles.database import VehicleDatabase
@@ -59,7 +62,7 @@ class ModManager:
         example = self.project_root / "config.example.toml"
         return Config.load(example) if example.exists() else Config.default()
 
-    def save_config(self, config: Config, *, sync_runtime: bool = True) -> None:
+    def save_config(self, config: Config, *, sync_runtime: bool = True, cleanup_inactive_editions: bool = True) -> None:
         config.validate()
         gta_path = self.resolve_path(config)
         runtime_scripts_present = bool(
@@ -68,7 +71,7 @@ class ModManager:
         # The 0.5.0 offline-launch experiment was removed before release.
         # Clean up only arguments proven to have been inserted by ALLIN1,
         # including markers left under the inactive configured edition.
-        cleanup_paths = set(self.resolve_paths(config).values())
+        cleanup_paths = set(self.resolve_paths(config).values()) if cleanup_inactive_editions else set()
         if gta_path is not None:
             cleanup_paths.add(gta_path)
         for candidate in cleanup_paths:
@@ -205,7 +208,7 @@ class ModManager:
             edition=edition,
             mod_installed=inspect_windows_binary(scripts / "ALLIN1.dll").valid,
             scripthookv_installed=inspect_windows_binary(gta_path / "ScriptHookV.dll").valid,
-            shvdn_installed=inspect_windows_binary(gta_path / "ScriptHookVDotNet.asi").valid,
+            shvdn_installed=is_shvdn_runtime_ready(gta_path),
             openrpf_installed=rpf_installed,
             installed_version=installed_version,
             rpf_loader_status=rpf_status,
@@ -216,19 +219,22 @@ class ModManager:
         config: Config,
         progress: Callable[[int, str], None] | None = None,
         rpf_loader_consent: Callable[[Path, bool], bool] | None = None,
+        reactor_consent: Callable[[Path, bool], bool] | None = None,
     ) -> InstallResult:
         # The installer deploys the same saved configuration and creates the
         # extension registry transactionally. Avoid touching a detected live
         # installation twice before that operation begins.
         self.save_config(config, sync_runtime=False)
         database = VehicleDatabase.load(self.database_path)
-        if progress is None and rpf_loader_consent is None:
+        if progress is None and rpf_loader_consent is None and reactor_consent is None:
             return self._install(config, database)
         kwargs = {}
         if progress is not None:
             kwargs["progress"] = progress
         if rpf_loader_consent is not None:
             kwargs["rpf_loader_consent"] = rpf_loader_consent
+        if reactor_consent is not None:
+            kwargs["reactor_consent"] = reactor_consent
         return self._install(config, database, **kwargs)
 
     def uninstall(self, config: Config) -> list[Path]:

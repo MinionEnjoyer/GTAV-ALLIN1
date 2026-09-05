@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gta-v-allin1"
-version = "0.6.1"
+version = "0.6.4"
 description = "GTA V Story Mode launcher, mod manager, and package lifecycle tooling"
 requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
@@ -19,7 +19,7 @@ dependencies = [
 allin1 = "allin1.cli:main"
 
 [project.gui-scripts]
-allin1-gui = "allin1.gui:main"
+allin1-gui = "allin1.desktop_entry:main"
 
 [tool.setuptools.package-data]
 allin1 = ["assets/*.png", "assets/*.ico"]
@@ -44,17 +44,7 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 fail_under = 91
-omit = [
-    "src/allin1/gui.py",
-    "src/allin1/customization_ui.py",
-    "src/allin1/addon_sdk_ui.py",
-    "src/allin1/asset_viewer.py",
-    "src/allin1/rpf_explorer.py",
-    "src/allin1/reactor_bootstrap_ui.py",
-    "src/allin1/help_center.py",
-    "src/allin1/sdk_installer_ui.py",
-    "src/allin1/ui_theme.py",
-]
+precision = 2
 
 [tool.setuptools.packages.find]
 where = ["src"]

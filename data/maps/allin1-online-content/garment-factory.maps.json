@@ -1,0 +1,200 @@
+{
+  "schema_version": 1,
+  "id": "garment-factory-garage",
+  "package_id": "allin1.online-content",
+  "name": "Garment Factory Garage",
+  "version": "0.6.1",
+  "editions": [
+    "legacy",
+    "enhanced"
+  ],
+  "streaming": {
+    "mode": "ipl",
+    "pack_name": "mp2024_02",
+    "content_group": null,
+    "ipls": [
+      "m24_2_int_placement",
+      "m24_2_int_placement_interior_int_hacker_garage_milo_"
+    ],
+    "activation_radius": 220,
+    "release_radius": 420,
+    "keep_resident": false
+  },
+  "levels": [
+    {
+      "id": "garment_factory",
+      "name": "Garment Factory Garage Interior",
+      "center": {
+        "x": 748.5,
+        "y": -986.8,
+        "z": -67.75383,
+        "heading": 0
+      },
+      "ipls": [
+        "m24_2_int_placement",
+        "m24_2_int_placement_interior_int_hacker_garage_milo_"
+      ]
+    }
+  ],
+  "portals": [
+    {
+      "id": "garment-factory-vehicle",
+      "name": "Garment Factory vehicle entrance",
+      "mode": "vehicle",
+      "from": {
+        "level": "world",
+        "position": {
+          "x": 762.1525,
+          "y": -899.2333,
+          "z": 25.1761,
+          "heading": 270
+        }
+      },
+      "to": {
+        "level": "garment_factory",
+        "position": {
+          "x": 751.035,
+          "y": -975.4493,
+          "z": -67.5536,
+          "heading": 180
+        }
+      },
+      "radius": 3,
+      "one_way": false
+    },
+    {
+      "id": "garment-factory-ped",
+      "name": "Garment Factory pedestrian entrance",
+      "mode": "ped",
+      "from": {
+        "level": "world",
+        "position": {
+          "x": 760.7663,
+          "y": -909.4583,
+          "z": 25.2538,
+          "heading": 270
+        }
+      },
+      "to": {
+        "level": "garment_factory",
+        "position": {
+          "x": 751.035,
+          "y": -975.4493,
+          "z": -67.5536,
+          "heading": 180
+        }
+      },
+      "radius": 2.5,
+      "one_way": false
+    }
+  ],
+  "garages": [
+    {
+      "id": "garment_factory",
+      "name": "Garment Factory Garage",
+      "level_id": "garment_factory",
+      "entrance_portal_id": "garment-factory-vehicle",
+      "capacity": 10,
+      "vehicle_types": [
+        "land"
+      ],
+      "slots": [
+        {
+          "id": "slot-01",
+          "position": {
+            "x": 735.8997,
+            "y": -977.9629,
+            "z": -67.0919,
+            "heading": 176.4
+          }
+        },
+        {
+          "id": "slot-02",
+          "position": {
+            "x": 740.9352,
+            "y": -977.9629,
+            "z": -67.0903,
+            "heading": 184.68
+          }
+        },
+        {
+          "id": "slot-03",
+          "position": {
+            "x": 745.956,
+            "y": -977.9629,
+            "z": -67.0887,
+            "heading": 175.22
+          }
+        },
+        {
+          "id": "slot-04",
+          "position": {
+            "x": 755.9915,
+            "y": -977.9629,
+            "z": -67.0856,
+            "heading": 179.9
+          }
+        },
+        {
+          "id": "slot-05",
+          "position": {
+            "x": 760.9529,
+            "y": -977.9629,
+            "z": -67.084,
+            "heading": 182.52
+          }
+        },
+        {
+          "id": "slot-06",
+          "position": {
+            "x": 760.9529,
+            "y": -995.7402,
+            "z": -67.0849,
+            "heading": 356.588
+          }
+        },
+        {
+          "id": "slot-07",
+          "position": {
+            "x": 755.9875,
+            "y": -995.7402,
+            "z": -67.0833,
+            "heading": 2.017
+          }
+        },
+        {
+          "id": "slot-08",
+          "position": {
+            "x": 745.9362,
+            "y": -995.7402,
+            "z": -67.0802,
+            "heading": 4.832
+          }
+        },
+        {
+          "id": "slot-09",
+          "position": {
+            "x": 740.9589,
+            "y": -995.7402,
+            "z": -67.0786,
+            "heading": 356.769
+          }
+        },
+        {
+          "id": "slot-10",
+          "position": {
+            "x": 736.1323,
+            "y": -995.7402,
+            "z": -67.077,
+            "heading": 354.687
+          }
+        }
+      ],
+      "rules": {
+        "allow_store": true,
+        "allow_retrieve": true,
+        "save_policy": "story_save_only"
+      }
+    }
+  ]
+}

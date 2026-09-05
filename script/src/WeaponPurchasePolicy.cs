@@ -65,8 +65,8 @@ namespace ALLIN1
             string category, int catalogUnitPrice, int fallbackAmmoPrice)
         {
             return IsQuantityPriced(category)
-                ? Math.Max(0, catalogUnitPrice)
-                : Math.Max(0, fallbackAmmoPrice);
+                ? Math.Max(1, catalogUnitPrice)
+                : Math.Max(1, fallbackAmmoPrice);
         }
 
         internal static int PriceActualQuantity(

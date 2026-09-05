@@ -71,3 +71,10 @@ tools/RpfPatcher/strings.txt
 
 # Local development reference; intentionally excluded from public source/releases.
 /documentation.md
+
+# React/Tauri Launcher generated outputs
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/src-tauri/resources/

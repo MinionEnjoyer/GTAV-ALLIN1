@@ -413,14 +413,17 @@ namespace ALLIN1
 
         public PoliceTacticsCoordinator()
         {
-            _current = this;
             _enabled = Allin1ExtensionApi.IsPackageEnabled(
                     Allin1ExtensionApi.ExperimentalGameplayPackageId) &&
                 NpcPhysicsExperiment.ReadBooleanSetting(
                     "enhanced_police_ai", false);
+            _current = _enabled ? this : null;
             Interval = _enabled ? 200 : 1000;
-            Tick += OnTick;
-            Aborted += OnAborted;
+            if (_enabled)
+            {
+                Tick += OnTick;
+                Aborted += OnAborted;
+            }
             PhysicsExperimentLog.Info("police_tactics_configuration_loaded",
                 new Dictionary<string, object>
                 {

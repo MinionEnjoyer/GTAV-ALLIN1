@@ -11,7 +11,8 @@ namespace ALLIN1
 {
     internal partial class GbayBrowser
     {
-        private enum WorkbenchRowKind { Ammo, Component, Tint, ComponentTint }
+        private enum WorkbenchRowKind { Ammo, Component, Tint, ComponentTint, ComponentRemove }
+        private int _workbenchPreviewRemovedComponent;
 
         private sealed class WorkbenchRow
         {
@@ -23,6 +24,25 @@ namespace ALLIN1
             internal int ComponentHash;
             internal int AttachmentPoint;
             internal int Tint;
+            internal bool SupportsLiveryTint;
+        }
+
+        /// <summary>
+        /// Detached description of one option from the established native
+        /// workbench discovery pipeline. It contains no camera, preview actor,
+        /// renderer, or writable authority.
+        /// </summary>
+        internal sealed class DetachedWorkbenchRow
+        {
+            internal string Kind;
+            internal string Label;
+            internal string Detail;
+            internal int Price;
+            internal int ComponentHash;
+            internal int AttachmentPoint;
+            internal int Tint;
+            internal bool Owned;
+            internal bool Active;
             internal bool SupportsLiveryTint;
         }
 
@@ -65,6 +85,7 @@ namespace ALLIN1
         private int _workbenchPreviousWeapon;
         private float _workbenchCameraAngle = -22f;
         private bool _workbenchPedFrozen;
+        private Ped _workbenchPlayer;
         private float _workbenchPreviousHeading;
         private Vector3 _workbenchAnchorPosition;
         private Vector3 _workbenchAnchorForward;
@@ -92,6 +113,10 @@ namespace ALLIN1
         private int _workbenchPreviewRestoreComponentTint = -1;
         private int _workbenchWeaponMismatchSince;
         private bool _workbenchWeaponRecoveryAttempted;
+        // Reactor owns the visible menu and input while this mode is active.
+        // The established native workbench is retained only as a world-space
+        // preview host (dummy, camera, pose, and temporary option preview).
+        private bool _reactorVisualWeaponPreview;
         private const int WORKBENCH_VISIBLE_ROWS = 7;
         private const int WORKBENCH_WEAPON_RECOVERY_DELAY_MS = 350;
         private const int WORKBENCH_LIVERY_TINT_COUNT = 32;
@@ -137,7 +162,124 @@ namespace ALLIN1
             return available;
         }
 
-        private void BeginWeaponCustomization(string weaponName, string displayName)
+        internal bool IsReactorWeaponPreviewOpen =>
+            _reactorVisualWeaponPreview && _workbenchPedFrozen &&
+            !string.IsNullOrWhiteSpace(_workbenchWeapon);
+
+        /// <summary>
+        /// Starts only the established in-world actor/camera portion of the
+        /// workbench. Reactor remains the sole visible menu and input owner.
+        /// </summary>
+        internal bool TryOpenReactorWeaponPreview(
+            string weaponName, string displayName)
+        {
+            if (_state != BrowserState.Closed)
+                return false;
+            try
+            {
+                BeginWeaponCustomization(
+                    weaponName, displayName, reactorVisualOnly: true);
+            }
+            catch
+            {
+                EndWeaponCustomization();
+                throw;
+            }
+            return IsReactorWeaponPreviewOpen;
+        }
+
+        /// <summary>
+        /// Updates the temporary dummy preview from a host-validated detached
+        /// option. This never charges money or writes character inventory.
+        /// </summary>
+        internal bool TryPreviewReactorWeaponOption(
+            string weaponName, string kind, int componentHash,
+            int attachmentPoint, int tint)
+        {
+            if (!IsReactorWeaponPreviewOpen || !string.Equals(
+                    _workbenchWeapon, weaponName,
+                    StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            // Drop the previous temporary option, then synchronize purchases
+            // and equipped state before staging the newly focused option.
+            RestoreWorkbenchPreview();
+            if (_workbenchDummy != null && _workbenchDummy.Exists())
+                CharacterInventory.ApplyWeaponCustomizationNow(
+                    _workbenchDummy, _workbenchWeapon);
+            int index = _workbenchRows.FindIndex(row =>
+                WorkbenchRowMatchesPreview(
+                    row, kind, componentHash, attachmentPoint, tint));
+            // The option set is stable while hovering. A newly purchased
+            // livery can legitimately add tint rows, so refresh from the
+            // storefront cache only when the requested row is absent.
+            if (index < 0 && TryPopulateWorkbenchRowsFromStorefrontCache())
+                index = _workbenchRows.FindIndex(row =>
+                    WorkbenchRowMatchesPreview(
+                        row, kind, componentHash, attachmentPoint, tint));
+            if (index < 0) return false;
+
+            _workbenchSelected = index;
+            _workbenchScroll = Math.Max(0,
+                Math.Min(index, Math.Max(0,
+                    _workbenchRows.Count - WORKBENCH_VISIBLE_ROWS)));
+            ApplyWorkbenchPreviewForSelection();
+            SetWeaponCameraFocusTarget();
+            return true;
+        }
+
+        internal void TickReactorWeaponPreview()
+        {
+            if (!IsReactorWeaponPreviewOpen) return;
+            Ped ped = Game.Player.Character;
+            if (ped == null || !ped.Exists() || ped.IsDead || Game.IsLoading ||
+                !MaintainWeaponWorkbenchPose(ped))
+            {
+                EndWeaponCustomization();
+                return;
+            }
+            UpdateWeaponCameraFocus();
+        }
+
+        internal void CloseReactorWeaponPreview()
+        {
+            if (_reactorVisualWeaponPreview)
+                EndWeaponCustomization();
+        }
+
+        private static bool WorkbenchRowMatchesPreview(
+            WorkbenchRow row, string kind, int componentHash,
+            int attachmentPoint, int tint)
+        {
+            if (row == null) return false;
+            string normalized = (kind ?? "").Trim().ToLowerInvariant();
+            switch (row.Kind)
+            {
+                case WorkbenchRowKind.Ammo:
+                    return normalized == "ammo";
+                case WorkbenchRowKind.Component:
+                    return normalized == "component" &&
+                        row.ComponentHash == componentHash &&
+                        row.AttachmentPoint == attachmentPoint;
+                case WorkbenchRowKind.ComponentRemove:
+                    return normalized == "component_remove" &&
+                        row.ComponentHash == componentHash &&
+                        row.AttachmentPoint == attachmentPoint && tint == 0;
+                case WorkbenchRowKind.Tint:
+                    return normalized == "tint" && row.Tint == tint;
+                case WorkbenchRowKind.ComponentTint:
+                    return normalized == "component_tint" &&
+                        row.ComponentHash == componentHash &&
+                        row.AttachmentPoint == attachmentPoint &&
+                        row.Tint == tint;
+                default:
+                    return false;
+            }
+        }
+
+        private void BeginWeaponCustomization(
+            string weaponName, string displayName,
+            bool reactorVisualOnly = false)
         {
             EndWeaponCustomization();
             Ped ped = Game.Player.Character;
@@ -213,6 +355,12 @@ namespace ALLIN1
                 return;
             }
 
+            // Cleanup must target the exact player entity that was moved and
+            // hidden. During loading or a character switch
+            // Game.Player.Character can already refer to a replacement ped;
+            // restoring that replacement to this workbench's anchor would
+            // teleport or otherwise mutate the wrong protagonist.
+            _workbenchPlayer = ped;
             SeparateRealPlayerFromWorkbench(ped);
             _workbenchPedFrozen = true;
             _workbenchAimTaskStarted = false;
@@ -223,7 +371,9 @@ namespace ALLIN1
             _workbenchCameraFocusTarget = GetWeaponFocusPoint(
                 GetSelectedWorkbenchRow());
             _workbenchCameraFocus = _workbenchCameraFocusTarget;
-            _state = BrowserState.WeaponCustomize;
+            _reactorVisualWeaponPreview = reactorVisualOnly;
+            if (!reactorVisualOnly)
+                _state = BrowserState.WeaponCustomize;
             ApplyWorkbenchPreviewForSelection();
             CreateWeaponCamera(_workbenchDummy, false);
                 ClientLog.Info("GBAY", "weapon_workbench_opened",
@@ -339,8 +489,11 @@ namespace ALLIN1
             }
         }
 
-        private void BuildWorkbenchRows()
+        private void BuildWorkbenchRows(bool allowStorefrontCache = true)
         {
+            if (allowStorefrontCache &&
+                TryPopulateWorkbenchRowsFromStorefrontCache())
+                return;
             _workbenchRows.Clear();
             int rounds;
             int ammoCost = _shop.GetAmmoRefillInfo(_workbenchWeapon, out rounds);
@@ -402,7 +555,23 @@ namespace ALLIN1
                     compatibilityComponents++;
             }
 
-            int tintCount = Function.Call<int>(Hash.GET_WEAPON_TINT_COUNT, weaponHash);
+            // Explicit actions, not a toggle: a stale Equip request must never
+            // become Unequip (or the reverse) after the live state changes.
+            var removals = new List<WorkbenchRow>();
+            foreach (WorkbenchRow row in _workbenchRows)
+                if (row.Kind == WorkbenchRowKind.Component &&
+                    WeaponCustomizationPolicy.CanUnequipComponent(row.AttachmentPoint) &&
+                    !WeaponComponentDefaults.IsDefault(weaponHash, row.ComponentHash) &&
+                    HasLiveWorkbenchComponent(ped, weaponHash, row.ComponentHash))
+                    removals.Add(new WorkbenchRow {
+                        Kind = WorkbenchRowKind.ComponentRemove,
+                        Label = "Unequip " + row.Label, BaseLabel = row.BaseLabel,
+                        Detail = row.Detail + " · Keep owned attachment", Price = 0,
+                        ComponentHash = row.ComponentHash, AttachmentPoint = row.AttachmentPoint,
+                    });
+            _workbenchRows.AddRange(removals);
+            int tintCount = RuntimeWeaponCatalog.SupportedTintCount(_workbenchWeapon,
+                Function.Call<int>(Hash.GET_WEAPON_TINT_COUNT, weaponHash));
             for (int tint = 0; tint < tintCount; tint++)
             {
                 _workbenchRows.Add(new WorkbenchRow {
@@ -424,6 +593,55 @@ namespace ALLIN1
                 });
         }
 
+        private bool TryPopulateWorkbenchRowsFromStorefrontCache()
+        {
+            if (!_shop.TryGetCachedWeaponCustomizationCatalog(
+                    _workbenchWeapon,
+                    out IReadOnlyList<DetachedWorkbenchRow> cached) ||
+                cached == null)
+                return false;
+
+            _workbenchRows.Clear();
+            foreach (DetachedWorkbenchRow row in cached)
+            {
+                if (row == null) continue;
+                WorkbenchRowKind kind;
+                switch ((row.Kind ?? "").Trim().ToLowerInvariant())
+                {
+                    case "ammo":
+                        kind = WorkbenchRowKind.Ammo;
+                        break;
+                    case "component":
+                        kind = WorkbenchRowKind.Component;
+                        break;
+                    case "component_remove":
+                        kind = WorkbenchRowKind.ComponentRemove;
+                        break;
+                    case "component_tint":
+                        kind = WorkbenchRowKind.ComponentTint;
+                        break;
+                    case "tint":
+                        kind = WorkbenchRowKind.Tint;
+                        break;
+                    default:
+                        continue;
+                }
+                _workbenchRows.Add(new WorkbenchRow
+                {
+                    Kind = kind,
+                    Label = row.Label ?? "Weapon option",
+                    BaseLabel = row.Label ?? "Weapon option",
+                    Detail = row.Detail ?? "",
+                    Price = Math.Max(0, row.Price),
+                    ComponentHash = row.ComponentHash,
+                    AttachmentPoint = row.AttachmentPoint,
+                    Tint = row.Tint,
+                    SupportsLiveryTint = row.SupportsLiveryTint,
+                });
+            }
+            return true;
+        }
+
         private bool AddWorkbenchComponent(HashSet<int> seen, int weaponHash,
             int componentHash, int attachmentPoint, string pointName, string label)
         {
@@ -443,7 +661,8 @@ namespace ALLIN1
                 Label = label,
                 BaseLabel = baseLabel,
                 Detail = detail,
-                Price = WeaponCustomizationPolicy.ComponentPrice(detail, label),
+                Price = WeaponComponentDefaults.IsDefault(weaponHash, componentHash)
+                    ? 0 : WeaponCustomizationPolicy.ComponentPrice(detail, label),
                 ComponentHash = componentHash,
                 AttachmentPoint = attachmentPoint,
                 SupportsLiveryTint = livery,
@@ -758,6 +977,48 @@ namespace ALLIN1
             }
         }
 
+        /// <summary>
+        /// Reuses the same live SDK/DLC/component discovery as the established
+        /// workbench without entering its world-space preview or camera path.
+        /// </summary>
+        internal static IReadOnlyList<DetachedWorkbenchRow>
+            DescribeDetachedWeaponCustomization(
+                GbayShop shop, string weaponName,
+                bool allowStorefrontCache = true)
+        {
+            if (shop == null || string.IsNullOrWhiteSpace(weaponName))
+                return Array.Empty<DetachedWorkbenchRow>();
+            var catalog = new GbayBrowser(shop)
+            {
+                _workbenchWeapon = weaponName.Trim().ToUpperInvariant(),
+            };
+            catalog.BuildWorkbenchRows(allowStorefrontCache);
+            var result = new List<DetachedWorkbenchRow>(
+                catalog._workbenchRows.Count);
+            foreach (WorkbenchRow row in catalog._workbenchRows)
+            {
+                string kind = row.Kind == WorkbenchRowKind.Ammo ? "ammo"
+                    : row.Kind == WorkbenchRowKind.Component ? "component"
+                    : row.Kind == WorkbenchRowKind.ComponentRemove ? "component_remove"
+                    : row.Kind == WorkbenchRowKind.ComponentTint
+                        ? "component_tint" : "tint";
+                result.Add(new DetachedWorkbenchRow
+                {
+                    Kind = kind,
+                    Label = row.Label ?? "Weapon option",
+                    Detail = row.Detail ?? "",
+                    Price = Math.Max(0, row.Price),
+                    ComponentHash = row.ComponentHash,
+                    AttachmentPoint = row.AttachmentPoint,
+                    Tint = row.Tint,
+                    Owned = catalog.IsWorkbenchRowOwned(row),
+                    Active = catalog.IsWorkbenchRowActive(row),
+                    SupportsLiveryTint = row.SupportsLiveryTint,
+                });
+            }
+            return result;
+        }
+
         private Vector3 GetWeaponCameraPosition(Ped previewPed, float radians)
         {
             const float distance = 2.42f;
@@ -922,7 +1183,7 @@ namespace ALLIN1
                 _state = BrowserState.WeaponBrowser;
                 GbayRenderer.PlayError();
                 GTA.UI.Screen.ShowSubtitle(
-                    "~r~The weapon preview was interrupted. Please reopen it.",
+                    "~r~The weapon preview was interrupted and closed safely.",
                     3500);
                 return;
             }
@@ -1039,9 +1300,12 @@ namespace ALLIN1
 
         private bool IsWorkbenchRowOwned(WorkbenchRow row)
         {
+            if (row.Kind == WorkbenchRowKind.ComponentRemove) return true;
             if (row.Kind == WorkbenchRowKind.Ammo) return false;
             if (row.Kind == WorkbenchRowKind.Component)
-                return CharacterInventory.IsWeaponComponentOwned(
+                return WeaponComponentDefaults.IsDefault(
+                    CharacterInventory.GetWeaponHash(_workbenchWeapon), row.ComponentHash) ||
+                    CharacterInventory.IsWeaponComponentOwned(
                     _workbenchWeapon, row.ComponentHash) || IsWorkbenchRowActive(row);
             if (row.Kind == WorkbenchRowKind.ComponentTint)
                 return CharacterInventory.IsWeaponComponentTintOwned(
@@ -1052,6 +1316,7 @@ namespace ALLIN1
 
         private bool IsWorkbenchRowActive(WorkbenchRow row)
         {
+            if (row.Kind == WorkbenchRowKind.ComponentRemove) return false;
             if (row.Kind == WorkbenchRowKind.Ammo)
             {
                 int rounds;
@@ -1155,8 +1420,11 @@ namespace ALLIN1
         {
             if (input.Back || input.MouseRightClick)
             {
+                bool returnToReactor = _reactorWeaponWorkbenchHandoff;
                 EndWeaponCustomization();
-                _state = BrowserState.WeaponBrowser;
+                _reactorWeaponWorkbenchHandoff = false;
+                _state = returnToReactor
+                    ? BrowserState.Closed : BrowserState.WeaponBrowser;
                 GbayRenderer.PlayBack();
                 return;
             }
@@ -1197,6 +1465,9 @@ namespace ALLIN1
             else if (row.Kind == WorkbenchRowKind.Component)
                 success = _shop.ExecuteWeaponComponentPurchase(_workbenchWeapon,
                     row.ComponentHash, row.AttachmentPoint, row.Price);
+            else if (row.Kind == WorkbenchRowKind.ComponentRemove)
+                success = _shop.ExecuteWeaponComponentRemoval(_workbenchWeapon,
+                    row.ComponentHash, row.AttachmentPoint);
             else if (row.Kind == WorkbenchRowKind.ComponentTint)
                 success = _shop.ExecuteWeaponComponentTintPurchase(
                     _workbenchWeapon, row.ComponentHash, row.AttachmentPoint,
@@ -1241,8 +1512,30 @@ namespace ALLIN1
 
         private bool MaintainWeaponWorkbenchPose(Ped player)
         {
-            if (!_workbenchPedFrozen || player == null || !player.Exists())
+            if (!_workbenchPedFrozen || player == null || !player.Exists() ||
+                _workbenchPlayer == null || !_workbenchPlayer.Exists() ||
+                player.Handle != _workbenchPlayer.Handle)
                 return false;
+            int weaponHash = CharacterInventory.GetWeaponHash(
+                _workbenchWeapon);
+            bool playerOwnsWeapon = Function.Call<bool>(
+                Hash.HAS_PED_GOT_WEAPON,
+                player.Handle, weaponHash, false);
+            int playerSelectedWeapon = Function.Call<int>(
+                Hash.GET_SELECTED_PED_WEAPON, player.Handle);
+            if (!GbayWeaponWorkbenchStatePolicy.HasExpectedPlayerWeapon(
+                    playerOwnsWeapon, weaponHash, playerSelectedWeapon))
+            {
+                ClientLog.Warn("GBAY", "weapon_workbench_state_changed",
+                    new Dictionary<string, object>
+                    {
+                        { "weapon", _workbenchWeapon },
+                        { "owned", playerOwnsWeapon },
+                        { "selected_weapon", playerSelectedWeapon },
+                        { "expected_weapon", weaponHash },
+                    });
+                return false;
+            }
             if (_workbenchPlayerRelocated &&
                 player.Position.DistanceTo(_workbenchHiddenPlayerPosition) >
                     0.02f)
@@ -1275,7 +1568,6 @@ namespace ALLIN1
             Function.Call(Hash.SET_ENTITY_ALWAYS_PRERENDER, ped.Handle, true);
             Function.Call(Hash.SET_PED_CURRENT_WEAPON_VISIBLE,
                 ped.Handle, true, true, true, false);
-            int weaponHash = CharacterInventory.GetWeaponHash(_workbenchWeapon);
             if (Function.Call<int>(Hash.GET_SELECTED_PED_WEAPON,
                     ped.Handle) != weaponHash)
             {
@@ -1294,6 +1586,22 @@ namespace ALLIN1
                             { "weapon", _workbenchWeapon },
                             { "mismatch_ms", elapsed }
                         });
+                }
+                int mismatchMilliseconds = unchecked(
+                    Game.GameTime - _workbenchWeaponMismatchSince);
+                if (GbayWeaponWorkbenchStatePolicy
+                    .ShouldAbortPreviewMismatch(
+                        _workbenchWeaponRecoveryAttempted,
+                        mismatchMilliseconds))
+                {
+                    ClientLog.Warn("GBAY",
+                        "weapon_workbench_preview_mismatch_aborted",
+                        new Dictionary<string, object>
+                        {
+                            { "weapon", _workbenchWeapon },
+                            { "mismatch_ms", mismatchMilliseconds },
+                        });
+                    return false;
                 }
             }
             else
@@ -1380,7 +1688,18 @@ namespace ALLIN1
             if (ped == null || !ped.Exists()) return;
             WorkbenchRow row = _workbenchRows[_workbenchSelected];
             int weaponHash = CharacterInventory.GetWeaponHash(_workbenchWeapon);
-            if (row.Kind == WorkbenchRowKind.Component)
+            if (row.Kind == WorkbenchRowKind.ComponentRemove)
+            {
+                if (HasLiveWorkbenchComponent(ped, weaponHash, row.ComponentHash))
+                {
+                    Function.Call(Hash.REMOVE_WEAPON_COMPONENT_FROM_PED,
+                        ped.Handle, weaponHash, row.ComponentHash);
+                    WeaponComponentDefaults.RestoreAfterRemoval(ped.Handle, weaponHash,
+                        row.AttachmentPoint, row.ComponentHash);
+                    _workbenchPreviewRemovedComponent = row.ComponentHash;
+                }
+            }
+            else if (row.Kind == WorkbenchRowKind.Component)
             {
                 int active = GetActiveWorkbenchComponent(
                     row, ped, weaponHash);
@@ -1424,6 +1743,9 @@ namespace ALLIN1
             {
                 int weaponHash = CharacterInventory.GetWeaponHash(
                     _workbenchWeapon);
+                if (_workbenchPreviewRemovedComponent != 0)
+                    Function.Call(Hash.GIVE_WEAPON_COMPONENT_TO_PED,
+                        ped.Handle, weaponHash, _workbenchPreviewRemovedComponent);
                 if (_workbenchPreviewComponent != 0)
                 {
                     Function.Call(Hash.REMOVE_WEAPON_COMPONENT_FROM_PED,
@@ -1446,6 +1768,7 @@ namespace ALLIN1
                         _workbenchPreviewRestoreComponentTint);
             }
             _workbenchPreviewComponent = 0;
+            _workbenchPreviewRemovedComponent = 0;
             _workbenchPreviewRestoreComponent = 0;
             _workbenchPreviewTint = -1;
             _workbenchPreviewRestoreTint = -1;
@@ -1470,7 +1793,7 @@ namespace ALLIN1
             }
             _weaponCamera = null;
             DeleteWeaponWorkbenchDummy();
-            Ped ped = Game.Player.Character;
+            Ped ped = _workbenchPlayer;
             if (wasActive && ped != null && ped.Exists())
             {
                 if (_workbenchPlayerRelocated)
@@ -1498,8 +1821,6 @@ namespace ALLIN1
                         ped.Handle, _workbenchPreviousWeapon, true);
                 Function.Call(Hash.SET_PED_CURRENT_WEAPON_VISIBLE,
                     ped.Handle, true, true, true, false);
-                Function.Call(Hash.SET_LOCAL_PLAYER_INVISIBLE_LOCALLY, false);
-                Function.Call(Hash.SET_LOCAL_PLAYER_VISIBLE_LOCALLY, true);
                 Function.Call(Hash.SET_ENTITY_VISIBLE, ped.Handle, true, false);
                 Function.Call(Hash.RESET_ENTITY_ALPHA, ped.Handle);
                 bool liveApplied = CharacterInventory.ApplyWeaponCustomizationNow(
@@ -1510,7 +1831,16 @@ namespace ALLIN1
                         { "verified", liveApplied }
                     });
             }
+            if (wasActive)
+            {
+                // These natives affect the local player globally rather than
+                // the stored ped handle, so release them even when the
+                // original entity disappeared during a loading transition.
+                Function.Call(Hash.SET_LOCAL_PLAYER_INVISIBLE_LOCALLY, false);
+                Function.Call(Hash.SET_LOCAL_PLAYER_VISIBLE_LOCALLY, true);
+            }
             _workbenchPedFrozen = false;
+            _workbenchPlayer = null;
             _workbenchPlayerRelocated = false;
             _workbenchHiddenPlayerPosition = Vector3.Zero;
             _workbenchAimTaskStarted = false;
@@ -1530,6 +1860,7 @@ namespace ALLIN1
             _workbenchPreviousWeapon = 0;
             _workbenchWeapon = "";
             _workbenchRows.Clear();
+            _reactorVisualWeaponPreview = false;
         }
 
         private void DeleteWeaponWorkbenchDummy()

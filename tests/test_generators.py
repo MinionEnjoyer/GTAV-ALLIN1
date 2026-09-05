@@ -1,9 +1,13 @@
 """Tests for generator modules."""
 
+import pytest
 from lxml import etree
 
 from allin1.generators.dlclist import patch_dlclist, unpatch_dlclist
-from allin1.generators.gameconfig import patch_gameconfig
+from allin1.generators.gameconfig import (
+    patch_gameconfig,
+    restore_enhanced_pool_profile,
+)
 from allin1.generators.popgroups import create_base_template, generate_popgroups_xml
 from allin1.vehicles.database import Vehicle
 
@@ -140,7 +144,11 @@ class TestDlclist:
         empty = "<SMandatoryPacksData/>"
         patched, added = patch_dlclist(empty)
         assert "allin1_previews" in added
-        assert "allin1_maps" in added
+        assert "allin1_maps" not in added
+        patched = patched.replace(
+            "</Paths>",
+            "<Item>dlcpacks:/allin1_maps/</Item></Paths>",
+        )
         unpatched, removed = unpatch_dlclist(patched)
         assert removed == ["allin1_previews", "allin1_maps"]
         assert "allin1_previews" not in unpatched
@@ -199,3 +207,146 @@ class TestGameconfig:
             size = item.find("Size")
             if name is not None and name.text == "CVehicle":
                 assert int(size.get("value")) == 9999
+
+    def test_patch_enhanced_pool_sizes_and_preserve_full_document(self):
+        gameconfig = """<?xml version="1.0" encoding="UTF-8"?>
+<!-- keep this document-level comment -->
+<fwAllConfigs custom="preserved">
+  <ConfigArray>
+    <Item>
+      <Build>any</Build>
+      <Platforms>Any</Platforms>
+      <Config type="CGameConfig">
+        <PoolSizes>
+          <Entries>
+            <Item><PoolName>FragmentStore</PoolName><PoolSize value="42000"/></Item>
+            <Item><PoolName>MetaDataStore</PoolName><PoolSize value="3200"/></Item>
+            <Item><PoolName>TxdStore</PoolName><PoolSize value="80200"/></Item>
+            <Item><PoolName>DwdStore</PoolName><PoolSize value="20500"/></Item>
+            <Item><PoolName>UnrelatedPool</PoolName><PoolSize value="77"/></Item>
+          </Entries>
+        </PoolSizes>
+        <UnrelatedSection><Sentinel value="unchanged"/></UnrelatedSection>
+      </Config>
+    </Item>
+  </ConfigArray>
+</fwAllConfigs>"""
+
+        result = patch_gameconfig(gameconfig)
+        root = etree.fromstring(result.encode())
+        sizes = {
+            item.findtext("PoolName"): int(item.find("PoolSize").get("value"))
+            for item in root.iter("Item")
+            if item.find("PoolName") is not None
+        }
+
+        assert sizes == {
+            "FragmentStore": 52000,
+            "MetaDataStore": 4000,
+            "TxdStore": 100000,
+            "DwdStore": 25000,
+            "UnrelatedPool": 77,
+        }
+        assert root.get("custom") == "preserved"
+        assert root.find(".//UnrelatedSection/Sentinel").get("value") == "unchanged"
+        assert "keep this document-level comment" in result
+
+    def test_enhanced_does_not_lower_existing_values(self):
+        gameconfig = """<fwAllConfigs><ConfigArray><Item>
+  <Config type="CGameConfig"><PoolSizes><Entries>
+    <Item><PoolName>FragmentStore</PoolName><PoolSize value="64000"/></Item>
+    <Item><PoolName>MetaDataStore</PoolName><PoolSize value="6000"/></Item>
+  </Entries></PoolSizes></Config>
+</Item></ConfigArray></fwAllConfigs>"""
+
+        result = patch_gameconfig(gameconfig)
+        root = etree.fromstring(result.encode())
+        sizes = {
+            item.findtext("PoolName"): int(item.find("PoolSize").get("value"))
+            for item in root.iter("Item")
+            if item.find("PoolName") is not None
+        }
+        assert sizes == {"FragmentStore": 64000, "MetaDataStore": 6000}
+
+    def test_restore_map_pool_profile_only_reverts_exact_receipt_values(self):
+        gameconfig = """<fwAllConfigs><ConfigArray><Item>
+  <Config type="CGameConfig"><PoolSizes><Entries>
+    <Item><PoolName>FragmentStore</PoolName><PoolSize value="52000"/></Item>
+    <Item><PoolName>MetaDataStore</PoolName><PoolSize value="7000"/></Item>
+    <Item><PoolName>TxdStore</PoolName><PoolSize value="100000"/></Item>
+    <Item><PoolName>UnrelatedPool</PoolName><PoolSize value="77"/></Item>
+  </Entries></PoolSizes></Config>
+</Item></ConfigArray></fwAllConfigs>"""
+        receipt = {
+            "FragmentStore": {"before": 42000, "after": 52000},
+            "MetaDataStore": {"before": 3200, "after": 4000},
+            "TxdStore": {"before": 80200, "after": 100000},
+        }
+
+        result = restore_enhanced_pool_profile(gameconfig, receipt)
+        root = etree.fromstring(result.encode())
+        sizes = {
+            item.findtext("PoolName"): int(item.find("PoolSize").get("value"))
+            for item in root.iter("Item")
+            if item.find("PoolName") is not None
+        }
+
+        assert sizes == {
+            "FragmentStore": 42000,
+            # A value changed after ALLIN1's transaction remains user-owned.
+            "MetaDataStore": 7000,
+            "TxdStore": 80200,
+            "UnrelatedPool": 77,
+        }
+
+    @pytest.mark.parametrize(
+        "receipt",
+        [
+            {},
+            {"UnknownPool": {"before": 1, "after": 2}},
+            {"FragmentStore": {"before": 52000, "after": 42000}},
+            {"FragmentStore": {"before": 42000, "after": "52000"}},
+        ],
+    )
+    def test_restore_map_pool_profile_rejects_untrusted_receipts(self, receipt):
+        gameconfig = """<fwAllConfigs><ConfigArray><Item>
+  <Config type="CGameConfig"><PoolSizes><Entries>
+    <Item><PoolName>FragmentStore</PoolName><PoolSize value="52000"/></Item>
+  </Entries></PoolSizes></Config>
+</Item></ConfigArray></fwAllConfigs>"""
+
+        with pytest.raises(ValueError):
+            restore_enhanced_pool_profile(gameconfig, receipt)
+
+    @pytest.mark.parametrize(
+        ("source", "message"),
+        [
+            ("", "non-empty XML text"),
+            ("<CGameConfig>", "Invalid gameconfig.xml"),
+            ("<CGameConfig><pools/></CGameConfig>", "no Legacy Name/Size"),
+            (
+                "<NotAGameConfig><Item><PoolName>FragmentStore</PoolName>"
+                "<PoolSize value='42000'/></Item></NotAGameConfig>",
+                "Unsupported gameconfig.xml root",
+            ),
+            (
+                "<fwAllConfigs><Item><PoolName>FragmentStore</PoolName>"
+                "<PoolSize value='42000'/></Item></fwAllConfigs>",
+                "no Legacy Name/Size",
+            ),
+            (
+                "<fwAllConfigs><ConfigArray><Item><Config type='CGameConfig'>"
+                "<PoolSizes><Entries><Item><PoolName>FragmentStore</PoolName>"
+                "</Item></Entries></PoolSizes></Config></Item></ConfigArray></fwAllConfigs>",
+                "PoolName and PoolSize must both be present",
+            ),
+            (
+                "<CGameConfig><pools><Item><Name>CVehicle</Name>"
+                "<Size value='many'/></Item></pools></CGameConfig>",
+                "invalid size",
+            ),
+        ],
+    )
+    def test_rejects_invalid_or_unsupported_documents(self, source, message):
+        with pytest.raises(ValueError, match=message):
+            patch_gameconfig(source)

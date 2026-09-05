@@ -136,10 +136,27 @@ def test_workspace_descriptor_maps_core_components_and_relationships() -> None:
         "RegistryAvailable",
         "GetEnabledPackageIds",
         "TryGetSetting",
+        "MapDescriptorDeclaration",
+        "GetMapDescriptors",
         "ReloadRegistry",
         "RegisterStorySaveParticipant",
         "RegisterWeaponComponentLifecycleParticipant",
     })
+    runtime_symbols = {
+        item["name"]: item for item in runtime_contract["symbols"]
+    }
+    assert runtime_symbols["MapDescriptorDeclaration"] == {
+        "name": "MapDescriptorDeclaration",
+        "kind": "type",
+        "capability": "world.maps",
+    }
+    assert runtime_symbols["GetMapDescriptors"] == {
+        "name": "GetMapDescriptors",
+        "kind": "method",
+        "capability": "world.maps",
+        "return_type": "IReadOnlyList<MapDescriptorDeclaration>",
+        "parameters": [{"name": "packageId", "type": "string"}],
+    }
 
 
 def test_workspace_descriptor_is_data_only_and_uses_tracked_relative_allowlists() -> None:

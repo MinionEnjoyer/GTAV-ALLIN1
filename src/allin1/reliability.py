@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -30,9 +31,11 @@ class SmokeAnalysis:
 
 
 def write_smoke_report(path: Path, edition: str, analysis: SmokeAnalysis) -> bool:
-    """Write the machine-readable result consumed by release qualification."""
+    """Write diagnostic analysis, not independent release acceptance evidence."""
     payload = {
         "schema": 2,
+        "kind": "diagnostic_smoke_analysis",
+        "release_qualifying": False,
         "edition": edition,
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "passed": analysis.passed,
@@ -110,8 +113,16 @@ def analyze_client_log(
             has_errors = True
         if component == "VehicleHelper" and message == "vehicle_created":
             observed.add("vehicle_spawn")
-        if (component == "GBAY" and isinstance(message, str) and
-                message.startswith("GiveWeapon:") and "price=$" in message):
+        if (component == "GBAY" and message == "weapon_purchase_completed"
+                and type(event.get("event_schema")) is int and event["event_schema"] == 1
+                and isinstance(event.get("weapon"), str) and event["weapon"].startswith("WEAPON_")
+                and type(event.get("quantity")) is int and event["quantity"] > 0
+                and type(event.get("unit_price")) is int and event["unit_price"] >= 0
+                and type(event.get("total_price")) is int and event["total_price"] >= 0):
+            observed.add("weapon_grant")
+        # Historical diagnostics remain readable; never match rejected grants.
+        if (component == "GBAY" and isinstance(message, str) and re.fullmatch(
+                r"GiveWeapon: WEAPON_[A-Z0-9_]+, (?:price=\$\d+|unit=\$\d+, quantity=[1-9]\d*, total=\$\d+)", message)):
             observed.add("weapon_grant")
         if component == "Garage" and isinstance(message, str):
             standard_enter |= message.startswith("EnterGarage: COMPLETE")

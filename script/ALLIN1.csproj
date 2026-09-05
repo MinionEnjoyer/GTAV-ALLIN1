@@ -3,9 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
     <AssemblyName>ALLIN1</AssemblyName>
-    <Version>0.6.1</Version>
-    <AssemblyVersion>0.6.1.0</AssemblyVersion>
-    <FileVersion>0.6.1.0</FileVersion>
+    <Version>0.6.4</Version>
+    <AssemblyVersion>0.6.4.0</AssemblyVersion>
+    <FileVersion>0.6.4.0</FileVersion>
     <RootNamespace>ALLIN1</RootNamespace>
     <OutputType>Library</OutputType>
     <PlatformTarget>x64</PlatformTarget>
@@ -19,16 +19,21 @@
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
     <Deterministic>true</Deterministic>
+    <!-- The candidate manifest binds the reviewed commit and DLL SHA-256.
+         Keep tracked runtime bytes reproducible across checkout locations and
+         avoid a new binary-only commit changing its own informational hash. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <PathMap>$(MSBuildProjectDirectory)=/_/ALLIN1/script</PathMap>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Remove="tools\**" />
     <Compile Remove="tests\**" />
+    <Compile Remove="reactor-bridge\**" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="ScriptHookVDotNet3" Version="3.6.0" />
-    <PackageReference Include="LemonUI.SHVDN3" Version="2.2.0" />
   </ItemGroup>
 
   <ItemGroup>

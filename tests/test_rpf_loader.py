@@ -271,3 +271,14 @@ def test_receipt_failure_rolls_back_and_bad_receipts_are_ignored(
     assert rpf_loader.uninstall_managed_rpf_loader(tmp_path) == []
     receipt.write_text('{"schema_version":99}', encoding="utf-8")
     assert rpf_loader.uninstall_managed_rpf_loader(tmp_path) == []
+
+
+@pytest.mark.parametrize("enhanced", [False, True])
+def test_uninstall_keeps_asi_loader_used_by_shared_reactor(tmp_path, monkeypatch, enhanced):
+    _plugin, _asi, download = _sources(monkeypatch)
+    result = rpf_loader.install_recommended_rpf_loader(tmp_path, enhanced, download=download)
+    (tmp_path / "ReactorV.RenderHook.asi").write_bytes(b"shared")
+    removed = rpf_loader.uninstall_managed_rpf_loader(tmp_path)
+    assert result.plugin in removed
+    assert result.asi_loader.is_file()
+    assert result.asi_loader not in removed

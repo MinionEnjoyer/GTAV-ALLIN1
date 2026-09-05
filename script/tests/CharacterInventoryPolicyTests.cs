@@ -7,6 +7,37 @@ namespace ALLIN1.Tests
     public sealed class CharacterInventoryPolicyTests
     {
         [Fact]
+        public void Unequipped_attachment_survives_serialization_and_reequips_without_losing_ownership()
+        {
+            var state = new CharacterInventory.WeaponCustomization();
+            CharacterInventory.SetWeaponComponentEquippedInMemory(state, 123, 10, true);
+            CharacterInventory.SetWeaponComponentEquippedInMemory(state, 456, 20, true);
+            CharacterInventory.SetWeaponComponentEquippedInMemory(state, 123, 10, false);
+            CharacterInventory.SetWeaponComponentEquippedInMemory(state, 123, 10, false);
+            Assert.Contains(123, state.owned_components);
+            Assert.Equal(new[] { 123 }, state.unequipped_components);
+            Assert.False(state.active_components.ContainsKey("10"));
+            Assert.Equal(456, state.active_components["20"]);
+            state = Newtonsoft.Json.JsonConvert.DeserializeObject<CharacterInventory.WeaponCustomization>(
+                Newtonsoft.Json.JsonConvert.SerializeObject(state));
+            Assert.Contains(123, state.unequipped_components);
+            CharacterInventory.SetWeaponComponentEquippedInMemory(state, 123, 10, true);
+            Assert.Empty(state.unequipped_components);
+            Assert.Equal(123, state.active_components["10"]);
+            Assert.Equal(2, state.owned_components.Count);
+        }
+
+        [Fact]
+        public void Removing_stale_component_does_not_clear_its_replacement()
+        {
+            var state = new CharacterInventory.WeaponCustomization();
+            CharacterInventory.SetWeaponComponentEquippedInMemory(state, 123, 10, true);
+            CharacterInventory.SetWeaponComponentEquippedInMemory(state, 456, 10, true);
+            CharacterInventory.SetWeaponComponentEquippedInMemory(state, 123, 10, false);
+            Assert.Equal(456, state.active_components["10"]);
+            Assert.Contains(123, state.owned_components);
+        }
+        [Fact]
         public void Unequipping_gear_removes_ownership_and_equipped_state()
         {
             var inventory = new CharacterInventory.Inventory();
@@ -54,6 +85,60 @@ namespace ALLIN1.Tests
                 inventory, "armor_super_heavy"));
             Assert.Single(inventory.gear);
             Assert.Single(inventory.equipped_gear);
+        }
+
+        [Fact]
+        public void Death_consumes_all_gear_without_touching_other_purchases()
+        {
+            var inventory = new CharacterInventory.Inventory();
+            inventory.gear.AddRange(GearList.All);
+            inventory.equipped_gear.AddRange(GearList.All);
+            inventory.weapons.Add("WEAPON_PISTOL");
+            inventory.weapon_ammo["WEAPON_PISTOL"] = 42;
+            inventory.weapon_customizations["WEAPON_PISTOL"] =
+                new CharacterInventory.WeaponCustomization();
+            inventory.properties.Add("ALLIN1_YACHT");
+            inventory.smoke_grenades["green"] = 3;
+
+            var removed = CharacterInventory.
+                ConsumeAllGearAfterDeathInMemory(inventory);
+
+            Assert.Equal(GearList.All, removed);
+            Assert.Empty(inventory.gear);
+            Assert.Empty(inventory.equipped_gear);
+            Assert.Equal(new[] { "WEAPON_PISTOL" }, inventory.weapons);
+            Assert.Equal(42, inventory.weapon_ammo["WEAPON_PISTOL"]);
+            Assert.True(inventory.weapon_customizations.ContainsKey(
+                "WEAPON_PISTOL"));
+            Assert.Equal(new[] { "ALLIN1_YACHT" }, inventory.properties);
+            Assert.Equal(3, inventory.smoke_grenades["green"]);
+        }
+
+        [Fact]
+        public void Repeated_death_gear_consumption_is_idempotent()
+        {
+            var inventory = new CharacterInventory.Inventory();
+            inventory.gear.Add("ARMOR_HEAVY");
+            inventory.equipped_gear.Add("ARMOR_HEAVY");
+
+            Assert.Single(CharacterInventory.
+                ConsumeAllGearAfterDeathInMemory(inventory));
+            Assert.Empty(CharacterInventory.
+                ConsumeAllGearAfterDeathInMemory(inventory));
+        }
+
+        [Theory]
+        [InlineData(true, 0, true)]
+        [InlineData(true, 300000, true)]
+        [InlineData(true, -1, false)]
+        [InlineData(true, 300001, false)]
+        [InlineData(false, 1000, false)]
+        public void Only_a_recent_observed_death_preserves_staging_across_load(
+            bool deathObserved, int timeSinceDeathMs, bool expected)
+        {
+            Assert.Equal(expected, CharacterInventory.
+                ShouldPreserveDeathAcrossLoading(
+                    deathObserved, timeSinceDeathMs));
         }
 
         [Fact]

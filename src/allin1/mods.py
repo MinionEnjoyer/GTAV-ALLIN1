@@ -24,8 +24,9 @@ from allin1.extensions import (
     ExtensionRegistry,
 )
 from allin1.processes import run_hidden
-from allin1.mod_package_contract import validate_mod_schema_envelope
+from allin1.mod_package_contract import validate_mod_schema_envelope, rpf_targets_overlap, split_nested_rpf_entry
 from allin1.vehicle_catalog import VehicleCatalog
+from allin1.weapon_catalog import WeaponCatalog
 from allin1.vehicles.database import VehicleDatabase
 
 if sys.version_info >= (3, 11):
@@ -54,6 +55,7 @@ _RESERVED_DESTINATIONS = frozenset({
     "scripts/allin1.dll",
     "scripts/allin1.toml",
 })
+_VEHICLE_WORKBENCH_RUNTIME_ROOT = "vehicleworkbenchaxles"
 _WINDOWS_INVALID_PATH_CHARS = frozenset('<>:"|?*')
 _WINDOWS_RESERVED_STEMS = frozenset({
     "con", "prn", "aux", "nul",
@@ -64,7 +66,9 @@ MAX_PACKAGE_ARCHIVE_MEMBERS = 4096
 MAX_PACKAGE_ARCHIVE_MEMBER_BYTES = 4 * 1024 * 1024 * 1024
 MAX_PACKAGE_ARCHIVE_BYTES = 8 * 1024 * 1024 * 1024
 MAX_PACKAGE_COMPRESSION_RATIO = 1000
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+from allin1.runtime_resources import resource_root
+
+_PROJECT_ROOT = resource_root()
 _OFFICIAL_VEHICLE_MODELS: frozenset[str] | None = None
 
 
@@ -181,6 +185,7 @@ class RpfEntryPatch:
     archive: PurePosixPath
     entry: PurePosixPath
     sha256: str | None = None
+    original_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -372,7 +377,7 @@ class ModManifest:
                     "RPF entry archives must be .rpf paths below the GTA V mods directory"
                 )
             key = (archive_key, entry.as_posix().casefold())
-            if key in rpf_destinations:
+            if any(key[0] == other[0] and rpf_targets_overlap(key[1], other[1]) for other in rpf_destinations):
                 raise ValueError(f"Duplicate RPF entry destination: {archive}/{entry}")
             rpf_destinations.add(key)
             checksum = raw_entry.get("sha256")
@@ -380,7 +385,12 @@ class ModManifest:
                 checksum = str(checksum).strip().lower()
                 if not _SHA256_PATTERN.fullmatch(checksum):
                     raise ValueError(f"Invalid SHA-256 for {source}")
-            rpf_entries.append(RpfEntryPatch(source, archive, entry, checksum))
+            original_checksum = raw_entry.get("original_sha256")
+            if original_checksum is not None and schema_version not in (3, 4):
+                raise ValueError("Original RPF checksums require schema_version = 3 or 4")
+            if "!" in entry.as_posix() and schema_version != 4:
+                raise ValueError("Nested RPF targets require schema_version = 4")
+            rpf_entries.append(RpfEntryPatch(source, archive, entry, checksum, original_checksum))
 
         if rpf_entries and mod_type not in {"rpf", "mixed"}:
             raise ValueError("RPF entry patches require an RPF or mixed package")
@@ -439,6 +449,26 @@ class ModManifest:
                 item.destination.as_posix().casefold(): item for item in files
             }
             for catalog in extension.gbay_catalogs:
+                if catalog.kind == "weapon":
+                    owned_file = files_by_destination[catalog.source.as_posix().casefold()]
+                    weapon_catalog = WeaponCatalog.load(
+                        _contained_path(path.parent, owned_file.source)
+                    )
+                    if weapon_catalog.catalog_id != catalog.catalog_id:
+                        raise ValueError(
+                            "Weapon catalog id must match its GBAY catalog declaration"
+                        )
+                    weapon_catalog.validate_package_ownership(dlc_packs)
+                    if not any(
+                        requirement.mod_id == "allin1.online-content"
+                        and requirement.guarantees_minimum("0.6.1")
+                        for requirement in package_requirements
+                    ):
+                        raise ValueError(
+                            "GBAY weapon catalogs require allin1.online-content>=0.6.1 "
+                            "with the package-weapon catalog runtime update"
+                        )
+                    continue
                 if catalog.kind != "vehicle":
                     continue
                 owned_file = files_by_destination[catalog.source.as_posix().casefold()]
@@ -529,10 +559,16 @@ class ModManifest:
                 managed_tree = bool(parts) and parts[0] in {
                     "scripts", "plugins", "mods", "reshade-shaders",
                 }
-                if not root_plugin and not managed_tree:
+                axle_runtime_data = (
+                    len(parts) >= 2
+                    and parts[0] == _VEHICLE_WORKBENCH_RUNTIME_ROOT
+                    and suffix == ".json"
+                )
+                if not root_plugin and not managed_tree and not axle_runtime_data:
                     raise ValueError(
                         "Mixed package files must target a supported root plug-in "
-                        "or scripts/plugins/mods/reshade-shaders directory"
+                        "or scripts/plugins/mods/reshade-shaders directory, or a "
+                        "JSON file below the VehicleWorkbenchAxles runtime tree"
                     )
 
     def validate_payload(self) -> None:
@@ -869,7 +905,7 @@ class ModIntegrationService:
 
     def _rpf_patcher_path(self, purpose: str = "managed RPF entries") -> Path:
         patcher = (
-            Path(__file__).resolve().parents[2]
+            resource_root()
             / "tools" / "RpfPatcher" / "RpfPatcher.exe"
         )
         if not patcher.is_file():
@@ -914,7 +950,8 @@ class ModIntegrationService:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.unlink(missing_ok=True)
         result = self._run_rpf_command(
-            "extract-entry", archive, PurePosixPath(entry).as_posix(), output,
+            "extract-exact-nested-entry" if "!" in str(entry) else "extract-exact-entry",
+            archive, PurePosixPath(entry).as_posix(), output,
         )
         if result.returncode == 0:
             if not output.is_file():
@@ -923,13 +960,23 @@ class ModIntegrationService:
         detail = (result.stderr or result.stdout or "unknown helper error").strip()
         if allow_missing and result.returncode == 5 and "not found" in detail.casefold():
             return False
+        # Never fall back to basename extraction with an older helper: backup,
+        # verification and restore must all address the same exact member.
         raise RuntimeError(f"Could not extract RPF entry '{entry}': {detail}")
 
     def _replace_rpf_entry(
         self, archive: Path, entry: str | PurePosixPath, payload: Path,
+        *, expected_sha256: str | None = None,
     ) -> None:
+        nested = "!" in str(entry)
+        if nested:
+            split_nested_rpf_entry(str(entry))
+            if not expected_sha256 or not _SHA256_PATTERN.fullmatch(expected_sha256):
+                raise ValueError("Nested member replacement requires the expected current checksum")
         result = self._run_rpf_command(
-            "replace-entry", archive, PurePosixPath(entry).as_posix(), payload,
+            "replace-exact-nested-entry" if nested else "replace-entry",
+            archive, PurePosixPath(entry).as_posix(), payload,
+            *([expected_sha256, _sha256(payload)] if nested else []),
         )
         if result.returncode:
             detail = (result.stderr or result.stdout or "unknown helper error").strip()
@@ -946,6 +993,14 @@ class ModIntegrationService:
     def _rpf_entry_matches(
         self, item: dict[str, Any], expected: Path | None,
     ) -> bool:
+        if item.get("original_sha256") and expected is not None:
+            backup = _contained_path(self.gta_path, item["backup"])
+            applied = _contained_path(self.gta_path, item["applied"])
+            if expected not in (backup, applied):
+                raise ValueError("Unrecognized managed RPF comparison payload")
+            for cached, cached_digest in ((backup, item["original_sha256"]), (applied, item["sha256"])):
+                if not cached.is_file() or _sha256(cached) != cached_digest:
+                    raise ValueError("Managed RPF comparison payload checksum mismatch")
         archive = _contained_path(self.gta_path, item["archive"])
         probe = _contained_path(
             self.state_root,
@@ -965,6 +1020,23 @@ class ModIntegrationService:
         finally:
             probe.unlink(missing_ok=True)
 
+    def _check_rpf_preconditions(self, manifest: ModManifest) -> None:
+        # Inspect every original before creating a mods copy, receipt or backup.
+        # The exact extraction command also fails closed with an older helper.
+        with tempfile.TemporaryDirectory(prefix="allin1-rpf-preflight-") as directory:
+            for index, item in enumerate(manifest.rpf_entries):
+                if item.original_sha256 is None:
+                    continue
+                archive = _contained_path(self.gta_path, item.archive)
+                if not archive.exists():
+                    archive = _contained_path(self.gta_path, PurePosixPath(*item.archive.parts[1:]))
+                if not archive.is_file():
+                    raise FileNotFoundError(f"Base RPF archive is missing: {item.archive}")
+                probe = Path(directory) / str(index)
+                self._extract_rpf_entry(archive, item.entry, probe)
+                if _sha256(probe) != item.original_sha256:
+                    raise ValueError(f"Original RPF member checksum mismatch: {item.archive}/{item.entry}")
+
     def _restore_rpf_record(self, item: dict[str, Any]) -> None:
         archive = _contained_path(self.gta_path, item["archive"])
         backup_value = item.get("backup")
@@ -974,7 +1046,9 @@ class ModIntegrationService:
                 raise FileNotFoundError(
                     f"Managed RPF entry backup is missing: {backup}"
                 )
-            self._replace_rpf_entry(archive, item["entry"], backup)
+            if item.get("original_sha256") and _sha256(backup) != item["original_sha256"]:
+                raise ValueError("Managed RPF original backup checksum mismatch")
+            self._replace_rpf_entry(archive, item["entry"], backup, expected_sha256=item.get("sha256"))
         else:
             self._delete_rpf_entry(archive, item["entry"])
 
@@ -1080,6 +1154,11 @@ class ModIntegrationService:
             )
 
     def _check_conflicts(self, manifest: ModManifest) -> None:
+        from allin1.reactor_dependency import assert_package_paths_available
+        destinations = [item.destination.as_posix() for item in manifest.files]
+        if self._receipt_path(manifest.mod_id).exists():
+            destinations.extend(item["destination"] for item in self._read_receipt(manifest.mod_id)["files"])
+        assert_package_paths_available(self.gta_path, destinations)
         installed_statuses = self.list_installed()
         installed = {status.mod_id for status in installed_statuses}
         conflicts = installed.intersection(manifest.conflicts)
@@ -1117,14 +1196,20 @@ class ModIntegrationService:
         if collisions:
             raise ValueError(f"File destination is owned by: {', '.join(sorted(collisions))}")
         rpf_collisions = {
-            owned_rpf_entries[
-                (item.archive.as_posix().casefold(), item.entry.as_posix().casefold())
-            ]
-            for item in manifest.rpf_entries
-            if (
-                item.archive.as_posix().casefold(), item.entry.as_posix().casefold()
-            ) in owned_rpf_entries
+            owner for item in manifest.rpf_entries
+            for (archive, entry), owner in owned_rpf_entries.items()
+            if archive == item.archive.as_posix().casefold()
+            and rpf_targets_overlap(entry, item.entry.as_posix())
         }
+        # Whole outer archives and their members cannot be owned independently.
+        rpf_collisions.update(
+            owner for item in manifest.rpf_entries for destination, owner in owned_destinations.items()
+            if destination == item.archive.as_posix().casefold()
+        )
+        rpf_collisions.update(
+            owner for item in manifest.files for (archive, _entry), owner in owned_rpf_entries.items()
+            if item.destination.as_posix().casefold() == archive
+        )
         if rpf_collisions:
             raise ValueError(
                 "RPF entry destination is owned by: "
@@ -1136,6 +1221,7 @@ class ModIntegrationService:
         manifest: ModManifest,
         *,
         initial_settings: Mapping[str, Any] | None = None,
+        repair_managed: bool = False,
     ) -> ModStatus:
         manifest.validate_payload()
         if self.edition not in manifest.editions:
@@ -1152,12 +1238,15 @@ class ModIntegrationService:
                 manifest.extension.setting(key).validate(value)
         self._check_dependencies(manifest)
         self._check_conflicts(manifest)
+        self._check_rpf_preconditions(manifest)
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
         backup_dir = self.backup_root / manifest.mod_id / timestamp
         previous_receipt: dict[str, Any] | None = None
         previous_payloads: list[tuple[Path, str, Path | None]] = []
+        previous_missing_payloads: list[str] = []
         records: list[dict[str, Any]] = []
         rpf_records: list[dict[str, Any]] = []
+        owned_packs: list[str] = []
         registered_packs: list[str] = []
         install_enabled = True
         applied_root = self.state_root / ".payloads" / manifest.mod_id / timestamp
@@ -1179,7 +1268,18 @@ class ModIntegrationService:
                     target, disabled = self._loose_paths(old_item["destination"])
                     current = target if previous_enabled else disabled
                     if not current.is_file():
-                        raise FileNotFoundError(f"Managed mod file is missing: {current}")
+                        if current.exists() or current.is_symlink():
+                            raise FileNotFoundError(
+                                f"Managed mod file is not a regular file: {current}"
+                            )
+                        # A managed reinstall is also the repair path for an
+                        # incomplete prior installation. Preserve the missing
+                        # state for rollback, while still refusing changed or
+                        # non-file destinations.
+                        previous_missing_payloads.append(
+                            str(old_item["destination"])
+                        )
+                        continue
                     snapshot = _contained_path(snapshot_root, old_item["destination"])
                     snapshot.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(current, snapshot)
@@ -1199,7 +1299,21 @@ class ModIntegrationService:
                             underlying_snapshot,
                         )
                     )
-                self.uninstall(manifest.mod_id, check_dependents=False)
+                self.uninstall(
+                    manifest.mod_id,
+                    check_dependents=False,
+                    _allow_missing_managed_files=True,
+                    _allowed_repair_hashes={
+                        item.destination.as_posix(): (
+                            item.sha256
+                            or _sha256(_contained_path(
+                                manifest.package_root, item.source,
+                            ))
+                        )
+                        for item in manifest.files
+                    },
+                    _allow_changed_managed_files=repair_managed,
+                )
 
             for item in manifest.files:
                 source = _contained_path(manifest.package_root, item.source)
@@ -1212,9 +1326,15 @@ class ModIntegrationService:
                     backup = _contained_path(backup_dir, item.destination)
                     backup.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(target, backup)
-                temporary = target.with_name(f".{target.name}.allin1-install")
-                shutil.copy2(source, temporary)
-                temporary.replace(target)
+                legacy_temporary = target.with_name(
+                    f".{target.name}.allin1-install"
+                )
+                if legacy_temporary.exists() or legacy_temporary.is_symlink():
+                    raise ValueError(
+                        "Refusing an occupied legacy install-temporary path: "
+                        f"{legacy_temporary.name}"
+                    )
+                self._copy_atomic(source, target)
                 records.append({
                     "destination": item.destination.as_posix(),
                     "backup": str(backup.relative_to(self.gta_path)).replace("\\", "/")
@@ -1233,6 +1353,8 @@ class ModIntegrationService:
                 existed = self._extract_rpf_entry(
                     archive, item.entry, backup, allow_missing=True,
                 )
+                if item.original_sha256 is not None and (not existed or _sha256(backup) != item.original_sha256):
+                    raise ValueError(f"Original RPF member changed before replacement: {item.entry}")
                 if not existed:
                     backup.unlink(missing_ok=True)
                 applied = _contained_path(
@@ -1241,6 +1363,8 @@ class ModIntegrationService:
                 )
                 applied.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, applied)
+                if item.original_sha256 is not None and _sha256(applied) != item.sha256:
+                    raise ValueError(f"RPF replacement payload changed: {item.source}")
                 record = {
                     "owner": manifest.mod_id,
                     "archive": item.archive.as_posix(),
@@ -1250,8 +1374,10 @@ class ModIntegrationService:
                     "applied": str(applied.relative_to(self.gta_path)).replace("\\", "/"),
                     "sha256": _sha256(applied),
                 }
+                if item.original_sha256 is not None:
+                    record["original_sha256"] = item.original_sha256
                 rpf_records.append(record)
-                self._replace_rpf_entry(archive, item.entry, applied)
+                self._replace_rpf_entry(archive, item.entry, applied, expected_sha256=item.original_sha256)
                 if not self._rpf_entry_matches(record, applied):
                     raise RuntimeError(
                         f"RPF entry verification failed: {item.archive}/{item.entry}"
@@ -1264,9 +1390,25 @@ class ModIntegrationService:
                 for pack in manifest.dlc_packs:
                     if self._set_dlc_registration(pack, True):
                         registered_packs.append(pack)
+                        owned_packs.append(pack)
+            elif previous_receipt is not None:
+                # Updating a disabled package must preserve the DLC
+                # registrations it owns even though those registrations stay
+                # inactive during the transaction. Otherwise the replacement
+                # receipt forgets what to restore when the package is enabled.
+                previous_owned = {
+                    str(pack) for pack in previous_receipt.get(
+                        "owned_dlc_packs",
+                        previous_receipt.get("dlc_packs", []),
+                    )
+                }
+                owned_packs.extend(
+                    pack for pack in manifest.dlc_packs
+                    if pack in previous_owned
+                )
 
             receipt = {
-                "schema_version": 2 if manifest.extension else 1,
+                "schema_version": manifest.schema_version,
                 "id": manifest.mod_id,
                 "name": manifest.name,
                 "version": manifest.version,
@@ -1279,7 +1421,7 @@ class ModIntegrationService:
                 "dlc_packs": list(manifest.dlc_packs),
                 "requires": [str(requirement) for requirement in manifest.package_requirements],
                 "extension": manifest.extension.to_dict() if manifest.extension else None,
-                "owned_dlc_packs": list(registered_packs),
+                "owned_dlc_packs": list(owned_packs),
                 "files": records,
                 "rpf_entries": rpf_records,
             }
@@ -1312,6 +1454,10 @@ class ModIntegrationService:
                     shutil.copy2(snapshot, restored)
                     if not previous_enabled and underlying_snapshot is not None:
                         self._copy_atomic(underlying_snapshot, target)
+                for destination in previous_missing_payloads:
+                    target, disabled = self._loose_paths(destination)
+                    missing_managed = target if previous_enabled else disabled
+                    missing_managed.unlink(missing_ok=True)
                 self._write_receipt(previous_receipt)
                 if previous_enabled:
                     for pack in previous_receipt.get(
@@ -1405,6 +1551,8 @@ class ModIntegrationService:
 
     def set_enabled(self, mod_id: str, enabled: bool) -> ModStatus:
         receipt = self._read_receipt(mod_id)
+        from allin1.reactor_dependency import assert_package_paths_available
+        assert_package_paths_available(self.gta_path, (item["destination"] for item in receipt["files"]))
         current = bool(receipt.get("enabled", True))
         if current == enabled:
             if enabled and receipt.get("extension") is not None:
@@ -1531,7 +1679,7 @@ class ModIntegrationService:
                     applied = _contained_path(self.gta_path, item["applied"])
                     self._replace_rpf_entry(
                         _contained_path(self.gta_path, item["archive"]),
-                        item["entry"], applied,
+                        item["entry"], applied, expected_sha256=item.get("original_sha256"),
                     )
                     changed_rpf_entries.append(item)
                 for pack in dlc_packs:
@@ -1565,7 +1713,7 @@ class ModIntegrationService:
                         applied = _contained_path(self.gta_path, item["applied"])
                         self._replace_rpf_entry(
                             _contained_path(self.gta_path, item["archive"]),
-                            item["entry"], applied,
+                            item["entry"], applied, expected_sha256=item.get("original_sha256"),
                         )
                 except Exception:
                     pass
@@ -1599,8 +1747,18 @@ class ModIntegrationService:
             mod_id, receipt["name"], receipt["version"], receipt["type"], True, enabled
         )
 
-    def uninstall(self, mod_id: str, *, check_dependents: bool = True) -> None:
+    def uninstall(
+        self,
+        mod_id: str,
+        *,
+        check_dependents: bool = True,
+        _allow_missing_managed_files: bool = False,
+        _allowed_repair_hashes: Mapping[str, str] | None = None,
+        _allow_changed_managed_files: bool = False,
+    ) -> None:
         receipt = self._read_receipt(mod_id)
+        from allin1.reactor_dependency import assert_package_paths_available
+        assert_package_paths_available(self.gta_path, (item["destination"] for item in receipt["files"]))
         if check_dependents:
             self._check_dependents(mod_id)
         was_enabled = bool(receipt.get("enabled", True))
@@ -1609,16 +1767,38 @@ class ModIntegrationService:
 
         # Verify the complete loose-file layer before changing registrations,
         # archives, payloads, or the receipt.
+        missing_managed_destinations: set[str] = set()
         for item in receipt["files"]:
             target, disabled = self._loose_paths(item["destination"])
             current = target if was_enabled else disabled
             if not current.is_file():
-                raise FileNotFoundError(f"Managed mod file is missing: {current}")
-            expected_hash = item.get("sha256")
-            if expected_hash and _sha256(current) != expected_hash:
-                raise RuntimeError(
-                    f"Refusing to remove externally changed managed file: {current}"
-                )
+                if (
+                    _allow_missing_managed_files
+                    and not current.exists()
+                    and not current.is_symlink()
+                ):
+                    missing_managed_destinations.add(
+                        str(item["destination"])
+                    )
+                else:
+                    raise FileNotFoundError(
+                        f"Managed mod file is missing: {current}"
+                    )
+            else:
+                expected_hash = item.get("sha256")
+                current_hash = _sha256(current)
+                if expected_hash and current_hash != expected_hash:
+                    repair_hash = (_allowed_repair_hashes or {}).get(
+                        str(item["destination"])
+                    )
+                    if (
+                        not _allow_changed_managed_files
+                        and (not repair_hash or current_hash != repair_hash)
+                    ):
+                        raise RuntimeError(
+                            "Refusing to remove externally changed managed file: "
+                            f"{current}"
+                        )
             backup = self._backup_for_loose_file(item)
             if not was_enabled:
                 if backup is None and (target.exists() or target.is_symlink()):
@@ -1658,6 +1838,7 @@ class ModIntegrationService:
         changed_packs: list[str] = []
         changed_rpf: list[dict[str, Any]] = []
         staged_loose: list[tuple[dict[str, Any], Path, bool]] = []
+        restored_missing_targets: list[Path] = []
         uninstall_stage = (
             self.state_root / ".uninstall-rollback" / uuid.uuid4().hex
         )
@@ -1674,6 +1855,17 @@ class ModIntegrationService:
                 target, disabled = self._loose_paths(item["destination"])
                 managed = target if was_enabled else disabled
                 underlying_existed = target.exists() if not was_enabled else False
+                if str(item["destination"]) in missing_managed_destinations:
+                    if managed.exists() or managed.is_symlink():
+                        raise RuntimeError(
+                            "Managed path changed during repair: "
+                            f"{managed}"
+                        )
+                    backup = self._backup_for_loose_file(item)
+                    if backup is not None and not target.exists():
+                        self._copy_atomic(backup, target)
+                        restored_missing_targets.append(target)
+                    continue
                 stage_name = hashlib.sha256(
                     str(item["destination"]).encode("utf-8")
                 ).hexdigest()[:20] + ".payload"
@@ -1688,6 +1880,11 @@ class ModIntegrationService:
             receipt_path.unlink()
             ExtensionRegistry(self.gta_path).rebuild()
         except Exception:
+            for target in reversed(restored_missing_targets):
+                try:
+                    target.unlink(missing_ok=True)
+                except Exception:
+                    pass
             for item, stage, underlying_existed in reversed(staged_loose):
                 try:
                     target, disabled = self._loose_paths(item["destination"])
@@ -1710,7 +1907,7 @@ class ModIntegrationService:
                     applied = _contained_path(self.gta_path, item["applied"])
                     self._replace_rpf_entry(
                         _contained_path(self.gta_path, item["archive"]),
-                        item["entry"], applied,
+                        item["entry"], applied, expected_sha256=item.get("original_sha256"),
                     )
                 except Exception:
                     pass

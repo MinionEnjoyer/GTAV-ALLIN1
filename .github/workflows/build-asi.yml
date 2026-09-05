@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: build-allin1-${{ github.ref }}
@@ -25,57 +25,30 @@ jobs:
       - name: Restore NuGet packages
         run: |
           dotnet restore script/ALLIN1.csproj -v normal
-          dotnet restore mods/realistic-suppressors/RealisticSuppressors.csproj -v normal
+          dotnet restore script/reactor-bridge/ALLIN1.ReactorBridge.csproj -v normal
 
       - name: Build Release
         run: |
           dotnet build script/ALLIN1.csproj -c Release -o script/out --no-restore -v normal
-          dotnet build mods/realistic-suppressors/RealisticSuppressors.csproj -c Release --no-restore -v normal
+          dotnet build script/reactor-bridge/ALLIN1.ReactorBridge.csproj -c Release --no-restore -v normal
 
       - name: List output
         run: Get-ChildItem -Path script/out -Recurse | ForEach-Object { Write-Host $_.FullName }
 
-      - name: Copy binaries to dist
+      - name: Verify staged runtime pair
         run: |
-          New-Item -ItemType Directory -Path "script/dist" -Force | Out-Null
-          Copy-Item -Path "script/out/ALLIN1.dll" -Destination "script/dist/ALLIN1.dll" -Force
-          Copy-Item -Path "script/out/LemonUI.SHVDN3.dll" -Destination "script/dist/LemonUI.SHVDN3.dll" -Force
-
-      - name: Rebuild Suppressors Enhanced distributables
-        shell: pwsh
-        run: ./mods/realistic-suppressors/Build-ReleasePackage.ps1
+          # The bridge build stages ALLIN1.dll, the bridge, and their hash
+          # contract as one compatible set. Never overwrite either binary
+          # independently after that target runs.
+          Get-Item "script/dist/ALLIN1.dll", "script/dist/ALLIN1.ReactorBridge.plugin", "script/dist/ALLIN1.ReactorBridge.contract.json" | Out-Null
 
       - name: Upload artifact
-        # GitHub can temporarily report a full artifact quota for 6–12 hours
-        # after old artifacts are removed. The build and binary commit remain
-        # authoritative; storage availability must not fail the build itself.
-        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: ALLIN1-dll
+          name: ALLIN1-runtime-${{ github.sha }}
           path: |
             script/dist/ALLIN1.dll
-            script/dist/LemonUI.SHVDN3.dll
-            mods/realistic-suppressors/payload/RealisticSuppressors.dll
-            mods/realistic-suppressors/dist/*
-
-      - name: Commit pre-built binaries
-        # Feature branches receive the artifact above. Committing generated
-        # binaries there caused another complete Tests workflow, including the
-        # expensive real Windows toolchain job.
-        if: github.ref == 'refs/heads/main'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          $remoteMain = git rev-parse origin/main
-          if ($remoteMain -ne "${{ github.sha }}") {
-            Write-Host "Main advanced to $remoteMain while this build was queued; a newer build owns the packaged binaries."
-            exit 0
-          }
-          git add script/dist/ALLIN1.dll script/dist/LemonUI.SHVDN3.dll
-          git add mods/realistic-suppressors/payload/RealisticSuppressors.dll
-          git add mods/realistic-suppressors/standalone/payload/RealisticSuppressors.dll
-          git add mods/realistic-suppressors/dist mods/realistic-suppressors/standalone/dist
-          git diff --cached --quiet || git commit -m "Auto-build: update packaged DLLs"
-          git push origin HEAD:main
+            script/dist/ALLIN1.ReactorBridge.plugin
+            script/dist/ALLIN1.ReactorBridge.contract.json
+          if-no-files-found: error
+          retention-days: 14

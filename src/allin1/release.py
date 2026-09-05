@@ -15,6 +15,13 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 only
     import tomli as tomllib
 
 from allin1 import __version__
+from allin1.reactor_bridge_contract import (
+    BRIDGE_FILENAME,
+    CONTRACT_FILENAME,
+    CORE_FILENAME,
+    validate_reactor_bridge_pair,
+    validate_reactor_bridge_pair_payloads,
+)
 from allin1.updater import package_release
 
 
@@ -25,14 +32,39 @@ PUBLIC_SMOKE_EXAMPLE_SOURCES = (
     "tools/RpfPatcher/Program.cs",
 )
 
+PUBLIC_DOCUMENTATION_FILES = (
+    "desktop/README.md",
+    "docs/README.md",
+    "docs/architecture-review-react-0.6.4.md",
+    "docs/archive/release-notes-before-0.6.4.md",
+    "docs/cli-reference.md",
+    "docs/configuration-reference.md",
+    "docs/content-extension-api.md",
+    "docs/development.md",
+    "docs/enhanced-smoke-rpf-port.md",
+    "docs/gbay-weapon-catalogs.md",
+    "docs/gtaiv-npc-physics-experiment.md",
+    "docs/launcher-guide.md",
+    "docs/mpclothes-compatibility-architecture.md",
+    "docs/optional-assistant.md",
+    "docs/react-release-harness.md",
+    "docs/realistic-suppressors.md",
+    "docs/release-0.6.4.md",
+    "docs/rpf-authoring-safety.md",
+    "docs/suppressor-json-profiles.md",
+    "docs/suppressor-sleeve-tracking.md",
+    "docs/test-tools-capability-review.md",
+    "docs/vector-suppressor-integration.md",
+    "docs/ymt-limit-expansion-research-and-architecture.md",
+    "docs/catalog.json",
+)
+
+
 PUBLIC_ROOT_FILES = (
     "LICENSE",
     "README.md",
     "RELEASE_NOTES.md",
-    "docs/content-extension-api.md",
-    "docs/gtaiv-npc-physics-experiment.md",
-    "docs/optional-assistant.md",
-    "docs/realistic-suppressors.md",
+    *PUBLIC_DOCUMENTATION_FILES,
     "config.example.toml",
     "install.bat",
     "manager.bat",
@@ -45,6 +77,7 @@ PUBLIC_ROOT_FILES = (
     "prices_weapons.toml",
     "mods/README.md",
     "sdk/examples/colored_smokes/addon.json",
+    f"script/dist/{CONTRACT_FILENAME}",
     *PUBLIC_SMOKE_EXAMPLE_SOURCES,
 )
 
@@ -52,7 +85,7 @@ PUBLIC_TREE_RULES = {
     "src/allin1": frozenset({".py", ".png", ".ico"}),
     "content": frozenset({".json"}),
     "data": None,
-    "script/dist": frozenset({".dll", ".png"}),
+    "script/dist": frozenset({".dll", ".plugin", ".png"}),
 }
 
 FORBIDDEN_PARTS = frozenset({
@@ -107,6 +140,9 @@ def collect_public_files(root: Path, *, require_toolchain: bool = True) -> list[
     for relative, suffixes in PUBLIC_TREE_RULES.items():
         files.extend(_files_under(root, relative, suffixes))
 
+    from allin1.reactor_dependency import consumer_files
+    consumer_files(root / "data/reactor/allin1-ui", artwork=False)
+
     patcher = root / "tools" / "RpfPatcher"
     if require_toolchain:
         executable = patcher / "RpfPatcher.exe"
@@ -134,12 +170,21 @@ def _validate_public_path(relative: str) -> None:
     path = PurePosixPath(relative)
     normalized = path.as_posix()
     lowered_parts = {part.lower() for part in path.parts}
+    if tuple(part.casefold() for part in path.parts[:2]) == ("script", "dist"):
+        if path.suffix.casefold() in {".dll", ".plugin", ".asi", ".exe", ".zip", ".oiv"} and normalized not in {
+            f"script/dist/{CORE_FILENAME}", f"script/dist/{BRIDGE_FILENAME}",
+        }:
+            raise ValueError(f"Unapproved runtime component in ALLIN1 release: {relative}")
+    if normalized.startswith("data/reactor/") and path.suffix.lower() in {".exe", ".dll", ".asi", ".zip"}:
+        raise ValueError("Reactor runtime binaries must be downloaded as a shared dependency, not bundled")
     if path.is_absolute() or ".." in path.parts:
         raise ValueError(f"unsafe release path: {relative}")
     if path.name.lower() in FORBIDDEN_NAMES or lowered_parts & FORBIDDEN_PARTS:
         raise ValueError(f"development/private file is not allowed in a release: {relative}")
     if tuple(part.lower() for part in path.parts[:2]) == ("mods", "examples"):
         raise ValueError(f"sample/test mod is not allowed in a release: {relative}")
+    if path.parts and path.parts[0].casefold() == "mods" and normalized != "mods/README.md":
+        raise ValueError(f"Independent mod payload is not an ALLIN1 release component: {relative}")
     if (
         tuple(part.lower() for part in path.parts[:2]) == ("script", "src")
         and normalized not in PUBLIC_SMOKE_EXAMPLE_SOURCES
@@ -172,6 +217,16 @@ def validate_version_consistency(root: Path, version: str = __version__) -> Rele
     cs_version = re.search(r"<Version>([^<]+)</Version>", csproj)
     assembly_version = re.search(r"<AssemblyVersion>([^<]+)</AssemblyVersion>", csproj)
     file_version = re.search(r"<FileVersion>([^<]+)</FileVersion>", csproj)
+    bridge_csproj = (
+        root / "script" / "reactor-bridge" / "ALLIN1.ReactorBridge.csproj"
+    ).read_text(encoding="utf-8")
+    bridge_version = re.search(r"<Version>([^<]+)</Version>", bridge_csproj)
+    bridge_assembly_version = re.search(
+        r"<AssemblyVersion>([^<]+)</AssemblyVersion>", bridge_csproj,
+    )
+    bridge_file_version = re.search(
+        r"<FileVersion>([^<]+)</FileVersion>", bridge_csproj,
+    )
     online_content = json.loads(
         (root / "content" / "allin1-online-content" / "allin1.content.json")
         .read_text(encoding="utf-8")
@@ -189,6 +244,15 @@ def validate_version_consistency(root: Path, version: str = __version__) -> Rele
         "C# client": cs_version.group(1) if cs_version else "missing",
         "C# assembly": assembly_version.group(1).removesuffix(".0") if assembly_version else "missing",
         "C# file": file_version.group(1).removesuffix(".0") if file_version else "missing",
+        "Reactor bridge": bridge_version.group(1) if bridge_version else "missing",
+        "Reactor bridge assembly": (
+            bridge_assembly_version.group(1).removesuffix(".0")
+            if bridge_assembly_version else "missing"
+        ),
+        "Reactor bridge file": (
+            bridge_file_version.group(1).removesuffix(".0")
+            if bridge_file_version else "missing"
+        ),
         "Online content manifest": str(online_content.get("version", "missing")),
         "Experimental content manifest": str(
             experimental_content.get("version", "missing")
@@ -226,6 +290,9 @@ def build_public_release(root: Path, output: Path, version: str = __version__) -
     """Create the checksum-verified Windows distribution ZIP."""
     root = root.resolve()
     validate_version_consistency(root, version)
+    validate_reactor_bridge_pair(
+        root / "script" / "dist", expected_version=version,
+    )
     files = collect_public_files(root)
     metadata = {
         "format": 1,
@@ -274,12 +341,35 @@ def verify_public_release(archive_path: Path, version: str = __version__) -> Rel
             "content/allin1-vehicle-catalog.schema.json",
             "data/story_vehicles.json",
             "data/vehicle_grounding.json",
-            "script/dist/ALLIN1.dll",
-            "script/dist/LemonUI.SHVDN3.dll",
+            f"script/dist/{CORE_FILENAME}",
+            f"script/dist/{BRIDGE_FILENAME}",
+            f"script/dist/{CONTRACT_FILENAME}",
             "tools/RpfPatcher/RpfPatcher.exe",
         }
         missing = sorted(required - payload)
         if missing:
             raise ValueError("release is missing required files: " + ", ".join(missing))
+        from allin1.reactor_dependency import UI_REQUIRED, TAG
+        ui_prefix = "data/reactor/allin1-ui/"
+        manifest_name = ui_prefix + "allin1-ui.json"
+        if manifest_name not in payload:
+            raise ValueError("release is missing the ALLIN1 Reactor UI composition")
+        ui_manifest = json.loads(archive.read(manifest_name))
+        if (ui_manifest.get("schema_version"), ui_manifest.get("profile"), ui_manifest.get("reactor_release")) != (1, "allin1-composition", TAG):
+            raise ValueError("release contains an incompatible Reactor UI composition")
+        ui_files = ui_manifest.get("files", {})
+        if not isinstance(ui_files, dict) or not UI_REQUIRED <= ui_files.keys():
+            raise ValueError("release is missing ALLIN1 UI files or licenses")
+        if {name.removeprefix(ui_prefix) for name in payload if name.startswith(ui_prefix)} != {*ui_files, "allin1-ui.json"}:
+            raise ValueError("ALLIN1 UI manifest does not match the release payload")
+        for name, expected in ui_files.items():
+            if hashlib.sha256(archive.read(ui_prefix + name)).hexdigest() != expected:
+                raise ValueError(f"ALLIN1 UI checksum mismatch: {name}")
+        validate_reactor_bridge_pair_payloads(
+            archive.read(f"script/dist/{CORE_FILENAME}"),
+            archive.read(f"script/dist/{BRIDGE_FILENAME}"),
+            archive.read(f"script/dist/{CONTRACT_FILENAME}"),
+            expected_version=version,
+        )
         size = sum(archive.getinfo(name).file_size for name in payload)
     return ReleaseReport(version, len(payload), size, archive_path)

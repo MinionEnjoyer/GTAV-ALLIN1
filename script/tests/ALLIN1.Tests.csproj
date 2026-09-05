@@ -10,6 +10,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="Mono.Cecil" Version="0.11.6" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
       <PrivateAssets>all</PrivateAssets>
@@ -19,5 +21,38 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ALLIN1.csproj" />
+    <ProjectReference Include="..\reactor-bridge\ALLIN1.ReactorBridge.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
+
+  <Target Name="StagePackagedReactorBridgeFixture" AfterTargets="Build">
+    <PropertyGroup>
+      <ReactorFixtureDirectory>$(OutDir)reactor-package\scripts\ReactorV</ReactorFixtureDirectory>
+      <ReactorBridgePlugin>$(MSBuildThisFileDirectory)..\dist\ALLIN1.ReactorBridge.plugin</ReactorBridgePlugin>
+      <PackagedAllin1Core>$(MSBuildThisFileDirectory)..\dist\ALLIN1.dll</PackagedAllin1Core>
+      <ReactorPairContract>$(MSBuildThisFileDirectory)..\dist\ALLIN1.ReactorBridge.contract.json</ReactorPairContract>
+      <ReactorPairFixtureDirectory>$(OutDir)reactor-dist-pair</ReactorPairFixtureDirectory>
+      <PinnedReactorCore>$(MSBuildThisFileDirectory)..\reactor-bridge\lib\RageWebUI.Core.dll</PinnedReactorCore>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(ReactorBridgePlugin)')"
+           Text="The packaged ALLIN1 Reactor bridge fixture was not built: $(ReactorBridgePlugin)" />
+    <Error Condition="!Exists('$(PinnedReactorCore)')"
+           Text="The pinned Reactor Core fixture is missing: $(PinnedReactorCore)" />
+    <Error Condition="!Exists('$(PackagedAllin1Core)')"
+           Text="The packaged ALLIN1 core fixture was not built: $(PackagedAllin1Core)" />
+    <Error Condition="!Exists('$(ReactorPairContract)')"
+           Text="The packaged Reactor pair contract was not built: $(ReactorPairContract)" />
+    <MakeDir Directories="$(ReactorFixtureDirectory)" />
+    <MakeDir Directories="$(ReactorPairFixtureDirectory)" />
+    <Copy SourceFiles="$(ReactorBridgePlugin)"
+          DestinationFiles="$(ReactorFixtureDirectory)\ALLIN1.ReactorBridge.plugin" />
+    <Copy SourceFiles="$(PinnedReactorCore)"
+          DestinationFiles="$(ReactorFixtureDirectory)\RageWebUI.Core.dll" />
+    <Copy SourceFiles="$(PackagedAllin1Core)"
+          DestinationFiles="$(ReactorPairFixtureDirectory)\ALLIN1.dll" />
+    <Copy SourceFiles="$(ReactorBridgePlugin)"
+          DestinationFiles="$(ReactorPairFixtureDirectory)\ALLIN1.ReactorBridge.plugin" />
+    <Copy SourceFiles="$(ReactorPairContract)"
+          DestinationFiles="$(ReactorPairFixtureDirectory)\ALLIN1.ReactorBridge.contract.json" />
+  </Target>
 </Project>

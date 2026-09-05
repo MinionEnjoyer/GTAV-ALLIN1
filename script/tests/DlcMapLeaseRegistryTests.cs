@@ -2,18 +2,23 @@ using Xunit;
 
 namespace ALLIN1.Tests
 {
-    public sealed class YachtStreamingPolicyTests
+    public sealed class YachtMapResidencyTests
     {
-        [Theory]
-        [InlineData(false, 899f, true)]
-        [InlineData(false, 901f, false)]
-        [InlineData(true, 1199f, true)]
-        [InlineData(true, 1201f, false)]
-        public void YachtStreamingUsesHysteresis(
-            bool acquired, float distance, bool expected)
+        [Fact]
+        public void No_generic_official_map_group_is_session_resident()
         {
-            Assert.Equal(expected, YachtStreamingPolicy.ShouldAcquire(
-                acquired, distance, 900f, 1200f));
+            Assert.False(DeferredMapContentGroups.KeepResident(
+                DeferredMapProperty.Yacht));
+            Assert.False(DeferredMapContentGroups.KeepResident(
+                DeferredMapProperty.Grapeseed));
+            Assert.False(DeferredMapContentGroups.KeepResident(
+                DeferredMapProperty.Davis));
+            Assert.False(DeferredMapContentGroups.KeepResident(
+                DeferredMapProperty.Harmony));
+            Assert.False(DeferredMapContentGroups.KeepResident(
+                DeferredMapProperty.Paleto));
+            Assert.False(DeferredMapContentGroups.KeepResident(
+                DeferredMapProperty.GarmentFactory));
         }
     }
 }

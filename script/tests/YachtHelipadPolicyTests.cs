@@ -25,5 +25,29 @@ namespace ALLIN1.Tests
         {
             Assert.False(YachtHelipadPolicy.IsEligible(model));
         }
+
+        [Theory]
+        [InlineData(true, false, false, false, true)]
+        [InlineData(false, false, false, true, false)]
+        [InlineData(false, true, false, false, false)]
+        [InlineData(false, true, false, true, true)]
+        [InlineData(false, true, true, false, true)]
+        public void Helipad_tick_is_quiet_offsite_but_keeps_live_aircraft_serviced(
+            bool liveHandle, bool worldReady, bool playerNearby,
+            bool intervalElapsed, bool expected)
+        {
+            Assert.Equal(expected, GarageManager.ShouldServiceYachtHelipad(
+                liveHandle, worldReady, playerNearby, intervalElapsed));
+        }
+
+        [Theory]
+        [InlineData(false, 1000)]
+        [InlineData(true, 5000)]
+        public void Yacht_streaming_health_poll_relaxes_after_activation(
+            bool streamed, int expected)
+        {
+            Assert.Equal(expected,
+                YachtManager.GetStreamingPollInterval(streamed));
+        }
     }
 }

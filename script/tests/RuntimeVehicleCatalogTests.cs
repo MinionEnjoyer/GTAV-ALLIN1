@@ -43,6 +43,13 @@ namespace ALLIN1.Tests
             Assert.Equal("examplecar_card", record.PreviewTexture);
             Assert.True(record.TrafficEnabled);
             Assert.Equal(2.5, record.TrafficWeight);
+            Assert.False(record.HasValidatedRuntimeVehicleClass);
+
+            record.SetValidatedRuntimeVehicleClass(
+                GTA.VehicleClass.SportsClassics);
+            Assert.True(record.HasValidatedRuntimeVehicleClass);
+            Assert.Equal(GTA.VehicleClass.SportsClassics,
+                record.ValidatedRuntimeVehicleClass);
         }
 
         [Fact]
@@ -182,6 +189,25 @@ namespace ALLIN1.Tests
 
             Assert.DoesNotContain(merged, value => value.Model == "brioso");
             Assert.Contains(merged, value => value.Model == "uniqueaddoncar");
+        }
+
+        [Fact]
+        public void OnlyOfficialBaseMirrorsSuppressStaticCollisionNoise()
+        {
+            GbayVehicleRecord official = Assert.Single(Parse(
+                "official.story", "Official Story",
+                Vehicle("stretch", sourcePack: "base"),
+                packageId: Allin1ExtensionApi.OnlineContentPackageId).Vehicles);
+            GbayVehicleRecord thirdParty = Assert.Single(Parse(
+                "third.vehicles", "Third Party",
+                Vehicle("brioso"), packageId: "third.package").Vehicles);
+
+            Assert.False(RuntimeVehicleCatalog.ShouldReportModelCollision(
+                official, conflictsWithStaticModel: true));
+            Assert.True(RuntimeVehicleCatalog.ShouldReportModelCollision(
+                thirdParty, conflictsWithStaticModel: true));
+            Assert.True(RuntimeVehicleCatalog.ShouldReportModelCollision(
+                official, conflictsWithStaticModel: false));
         }
 
         [Fact]

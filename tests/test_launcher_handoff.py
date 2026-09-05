@@ -1,17 +1,12 @@
 import json
+import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
 
 from allin1 import cli
-from allin1.gui import (
-    ManagerWindow,
-    _parse_launcher_arguments,
-    _supports_package_traffic_intent,
-)
 from allin1.launcher_handoff import (
     LauncherHandoff,
     consume_launcher_handoffs,
@@ -132,20 +127,7 @@ def test_open_launcher_packages_uses_validated_process_arguments(monkeypatch, tm
     popen.assert_called_once_with([
         str(executable), "--workspace", "packages",
         "--package-id", "studio.pagani", "--traffic", "on",
-    ], close_fds=True)
-
-
-def test_gui_argument_contract_is_narrow_and_validated():
-    request = _parse_launcher_arguments([
-        "--workspace", "packages", "--package-id", "studio.pagani",
-        "--traffic", "on",
-    ])
-    assert request is not None
-    assert request.package_id == "studio.pagani"
-    assert request.traffic is True
-    assert _parse_launcher_arguments([]) is None
-    with pytest.raises(SystemExit):
-        _parse_launcher_arguments(["--package-id", "studio.pagani"])
+    ], close_fds=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
 def test_cli_route_forwards_selection_without_install_authority(monkeypatch, tmp_path):
@@ -167,67 +149,6 @@ def test_cli_route_forwards_selection_without_install_authority(monkeypatch, tmp
     assert "Opened Launcher Packages" in result.output
 
 
-def _handoff_window(manifest) -> ManagerWindow:
-    window = ManagerWindow.__new__(ManagerWindow)
-    window._select_workspace = Mock()
-    window._refresh_mods_if_changed = Mock()
-    window.mod_manifests = {"studio.pagani": manifest}
-    window.package_handoff_intents = {}
-    window.mod_tree = Mock()
-    window.mod_tree.exists.return_value = True
-    window._show_mod_details = Mock()
-    window.notice_text = Mock()
-    window.mod_details = Mock()
-    window.root = Mock()
-    return window
-
-
-def test_running_launcher_handoff_only_selects_discovered_package():
-    manifest = Mock()
-    manifest.extension = None
-    window = _handoff_window(manifest)
-
-    window._show_launcher_handoff(
-        LauncherHandoff.create("studio.pagani", traffic=True),
-    )
-
-    window._select_workspace.assert_called_once_with("mods")
-    window._refresh_mods_if_changed.assert_called_once_with()
-    window.mod_tree.selection_set.assert_called_once_with("studio.pagani")
-    window.mod_tree.focus.assert_called_once_with("studio.pagani")
-    window.mod_tree.see.assert_called_once_with("studio.pagani")
-    assert window.package_handoff_intents == {"studio.pagani": True}
-
-
-def test_running_launcher_refuses_to_select_undiscovered_package():
-    window = _handoff_window(Mock())
-    window.mod_manifests = {}
-    window.mod_tree.exists.return_value = False
-
-    window._show_launcher_handoff(LauncherHandoff.create("studio.unknown"))
-
-    window.mod_tree.selection_set.assert_not_called()
-    assert "not in the shared package library" in window.mod_details.set.call_args.args[0]
-
-
-def test_package_watcher_is_lazy_and_refreshes_only_on_change():
-    window = ManagerWindow.__new__(ManagerWindow)
-    window.root = Mock()
-    window.current_workspace = "setup"
-    window.mod_catalog = Mock()
-    window._mod_catalog_fingerprint = (("old", 1, 1),)
-    window.refresh_mods = Mock()
-
-    window._watch_package_library()
-    window.mod_catalog.fingerprint.assert_not_called()
-    window.refresh_mods.assert_not_called()
-
-    window.current_workspace = "mods"
-    window.mod_catalog.fingerprint.return_value = (("new", 2, 2),)
-    window._watch_package_library()
-    window.refresh_mods.assert_called_once_with()
-
-
 def test_catalog_fingerprint_tracks_manifests_without_walking_payloads(tmp_path):
     catalog_root = tmp_path / "catalog"
     package = catalog_root / "studio.pagani"
@@ -241,57 +162,3 @@ def test_catalog_fingerprint_tracks_manifests_without_walking_payloads(tmp_path)
     assert catalog.fingerprint() == before
     (package / "mod.toml").write_text("schema_version = 1\n")
     assert catalog.fingerprint() != before
-
-
-def _traffic_manifest() -> SimpleNamespace:
-    setting = SimpleNamespace(setting_type="boolean", default=False)
-    extension = SimpleNamespace(
-        capabilities=("launcher.settings", "traffic.catalog"),
-        setting=Mock(return_value=setting),
-    )
-    return SimpleNamespace(
-        mod_id="studio.pagani", name="Pagani", version="1.0.0",
-        extension=extension,
-    )
-
-
-def test_traffic_intent_requires_typed_default_off_package_setting():
-    manifest = _traffic_manifest()
-    assert _supports_package_traffic_intent(manifest) is True
-    manifest.extension.capabilities = ("launcher.settings",)
-    assert _supports_package_traffic_intent(manifest) is False
-
-
-def test_traffic_intent_is_confirmed_and_applied_only_after_install(
-    monkeypatch, tmp_path,
-):
-    manifest = _traffic_manifest()
-    service = SimpleNamespace(gta_path=tmp_path, install=Mock(return_value=Mock()))
-    window = ManagerWindow.__new__(ManagerWindow)
-    window.package_handoff_intents = {manifest.mod_id: True}
-    window._mod_service = Mock(return_value=service)
-    window._run = Mock(side_effect=lambda _label, operation: operation())
-    confirm = Mock(return_value=True)
-    monkeypatch.setattr("allin1.gui.messagebox.askyesno", confirm)
-
-    window._install_mod_manifest(manifest)
-
-    assert "allowed in ambient traffic" in confirm.call_args.args[1]
-    service.install.assert_called_once_with(
-        manifest, initial_settings={"traffic_enabled": True},
-    )
-    assert manifest.mod_id not in window.package_handoff_intents
-
-
-def test_declined_install_never_applies_traffic_intent(monkeypatch):
-    manifest = _traffic_manifest()
-    window = ManagerWindow.__new__(ManagerWindow)
-    window.package_handoff_intents = {manifest.mod_id: True}
-    window._mod_service = Mock()
-    window._run = Mock()
-    monkeypatch.setattr("allin1.gui.messagebox.askyesno", Mock(return_value=False))
-
-    window._install_mod_manifest(manifest)
-
-    window._mod_service.assert_not_called()
-    window._run.assert_not_called()

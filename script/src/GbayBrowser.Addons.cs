@@ -1,6 +1,7 @@
 // Receipt-authorized add-on routes for GBAY.
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace ALLIN1
 {
@@ -9,12 +10,14 @@ namespace ALLIN1
         private int _addonIndex;
         private int _addonScroll;
         private int _addonHover = -1;
+        private IReadOnlyList<GbayAddonAction> _addonActions =
+            Array.Empty<GbayAddonAction>();
         private const int ADDON_VISIBLE_ROWS = 7;
 
         private void OpenAddons()
         {
-            IReadOnlyList<GbayAddonAction> actions =
-                Allin1ExtensionApi.GetGbayActions();
+            RefreshAddonActions();
+            IReadOnlyList<GbayAddonAction> actions = _addonActions;
             if (actions.Count == 0)
             {
                 GTA.UI.Screen.ShowSubtitle(
@@ -29,8 +32,7 @@ namespace ALLIN1
 
         private void DrawAddons(FrameInput input)
         {
-            IReadOnlyList<GbayAddonAction> actions =
-                Allin1ExtensionApi.GetGbayActions();
+            IReadOnlyList<GbayAddonAction> actions = _addonActions;
             if (actions.Count == 0)
             {
                 _state = BrowserState.TopMenu;
@@ -103,6 +105,28 @@ namespace ALLIN1
                 _state = BrowserState.TopMenu;
                 _topMenuIndex = 5;
             }
+        }
+
+        private void RefreshAddonActions()
+        {
+            string packageId = "";
+            string route = "";
+            if (_addonActions != null && _addonActions.Count > 0)
+            {
+                int selected = Math.Max(0,
+                    Math.Min(_addonIndex, _addonActions.Count - 1));
+                packageId = _addonActions[selected].PackageId;
+                route = _addonActions[selected].Route;
+            }
+
+            _addonActions = Allin1ExtensionApi.GetGbayActions()
+                .Where(action => action != null)
+                .ToArray();
+            _addonIndex = GbayMenuAutoRefreshGate.FindAddonSelectionIndex(
+                _addonActions, packageId, route, _addonIndex);
+            _addonScroll = Math.Max(0, Math.Min(
+                _addonScroll,
+                Math.Max(0, _addonActions.Count - ADDON_VISIBLE_ROWS)));
         }
     }
 }

@@ -99,23 +99,70 @@ namespace ALLIN1
         }
     }
 
+    /// <summary>
+    /// Deterministic outcome of a guarded GBAY add-on callback invocation.
+    /// The host never reports success when authorization changed after the
+    /// menu snapshot was built or when the callback threw an exception.
+    /// </summary>
+    public sealed class GbayAddonInvocationResult
+    {
+        private GbayAddonInvocationResult(
+            bool succeeded, string code, string message)
+        {
+            Succeeded = succeeded;
+            Code = code;
+            Message = message;
+        }
+
+        public bool Succeeded { get; }
+        public string Code { get; }
+        public string Message { get; }
+
+        internal static GbayAddonInvocationResult Success(
+            string message) => new GbayAddonInvocationResult(
+                true, "addon_invoked", message);
+
+        internal static GbayAddonInvocationResult Failure(
+            string code, string message) => new GbayAddonInvocationResult(
+                false, code, message);
+    }
+
     /// <summary>A contained, launcher-authorized GBAY catalog declaration.</summary>
     public sealed class GbayCatalogDeclaration
     {
         internal GbayCatalogDeclaration(
             string packageId, string id, string kind,
-            string source, string sourcePath)
+            string source, string sourcePath, string expectedSha256 = null)
         {
             PackageId = packageId;
             Id = id;
             Kind = kind;
             Source = source;
             SourcePath = sourcePath;
+            ExpectedSha256 = expectedSha256;
         }
 
         public string PackageId { get; }
         public string Id { get; }
         public string Kind { get; }
+        public string Source { get; }
+        public string SourcePath { get; }
+        internal string ExpectedSha256 { get; }
+        public bool Exists => File.Exists(SourcePath);
+    }
+
+    /// <summary>A receipt-hashed custom map descriptor.</summary>
+    public sealed class MapDescriptorDeclaration
+    {
+        internal MapDescriptorDeclaration(
+            string packageId, string source, string sourcePath)
+        {
+            PackageId = packageId;
+            Source = source;
+            SourcePath = sourcePath;
+        }
+
+        public string PackageId { get; }
         public string Source { get; }
         public string SourcePath { get; }
         public bool Exists => File.Exists(SourcePath);
@@ -128,6 +175,7 @@ namespace ALLIN1
     /// </summary>
     public static class Allin1ExtensionApi
     {
+        private const long ShutdownSlowThresholdMilliseconds = 50;
         public const int ApiVersion = 1;
         public const string OnlineContentPackageId = "allin1.online-content";
         public const string ExperimentalGameplayPackageId =
@@ -305,7 +353,40 @@ namespace ALLIN1
                 .Where(value => value.IsCurrent())
                 .Select(value => new GbayCatalogDeclaration(
                     package.Id, value.Id, value.Kind,
-                    value.Source, value.SourcePath))
+                    value.Source, value.SourcePath, value.Sha256))
+                .ToArray();
+        }
+
+        /// <summary>
+        /// Return current receipt-authorized map descriptors for an enabled
+        /// package that declared the world.maps capability.
+        /// </summary>
+        public static IReadOnlyList<MapDescriptorDeclaration> GetMapDescriptors(
+            string packageId)
+        {
+            if (!RuntimeExtensionRegistry.IsSafeId(packageId))
+                return new MapDescriptorDeclaration[0];
+            lock (Sync)
+            {
+                RuntimeExtensionRegistry registry = RegistryLocked();
+                RuntimeExtensionPackage package;
+                if (!registry.Packages.TryGetValue(packageId, out package) ||
+                    !registry.IsEnabled(packageId) ||
+                    !package.Capabilities.Contains("world.maps"))
+                    return new MapDescriptorDeclaration[0];
+                return CurrentMapDescriptors(package);
+            }
+        }
+
+        internal static IReadOnlyList<MapDescriptorDeclaration>
+            CurrentMapDescriptors(RuntimeExtensionPackage package)
+        {
+            if (package == null)
+                return new MapDescriptorDeclaration[0];
+            return package.MapFiles
+                .Where(value => value.IsCurrent())
+                .Select(value => new MapDescriptorDeclaration(
+                    package.Id, value.RelativePath, value.SourcePath))
                 .ToArray();
         }
 
@@ -632,9 +713,13 @@ namespace ALLIN1
             }
         }
 
-        internal static void InvokeGbayAction(GbayAddonAction action)
+        internal static GbayAddonInvocationResult InvokeGbayAction(
+            GbayAddonAction action)
         {
-            if (action == null) return;
+            if (action == null)
+                return GbayAddonInvocationResult.Failure(
+                    "addon_unavailable",
+                    "That add-on action is no longer available.");
             lock (Sync)
             {
                 RuntimeExtensionRegistry registry = RegistryLocked();
@@ -643,7 +728,16 @@ namespace ALLIN1
                 if (!GbayActions.TryGetValue(key, out current) ||
                     !ReferenceEquals(current, action) ||
                     !AuthorizesGbayAction(registry, action))
-                    return;
+                {
+                    // A descriptor can be rendered immediately before a
+                    // launcher receipt, registry generation, or callback
+                    // registration changes. Treat that time-of-check/time-of-
+                    // use transition as an explicit failure, never a silent
+                    // no-op that the storefront could report as success.
+                    return GbayAddonInvocationResult.Failure(
+                        "addon_deauthorized",
+                        "That add-on action is no longer receipt-authorized.");
+                }
             }
             try
             {
@@ -652,6 +746,8 @@ namespace ALLIN1
                     new Dictionary<string, object> {
                         { "package", action.PackageId }, { "route", action.Route }
                     });
+                return GbayAddonInvocationResult.Success(
+                    action.Label + " was invoked.");
             }
             catch (Exception ex)
             {
@@ -659,6 +755,9 @@ namespace ALLIN1
                     new Dictionary<string, object> {
                         { "package", action.PackageId }, { "route", action.Route }
                     });
+                return GbayAddonInvocationResult.Failure(
+                    "addon_callback_failed",
+                    "The add-on action failed. Check the ALLIN1 client log.");
             }
         }
 
@@ -841,7 +940,17 @@ namespace ALLIN1
             {
                 try
                 {
-                    participant.Participant.Discard(context);
+                    using (ClientLog.Time("Extensions",
+                        "story_save_participant_discard",
+                        new Dictionary<string, object>
+                        {
+                            { "package", participant.PackageId },
+                            { "participant", participant.Id },
+                            { "reason", reason },
+                        }, ShutdownSlowThresholdMilliseconds))
+                    {
+                        participant.Participant.Discard(context);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -949,7 +1058,13 @@ namespace ALLIN1
                 return _registry;
             try
             {
-                _registry = RuntimeExtensionRegistry.Load(RegistryPath, ScriptsDirectory);
+                string registryJson;
+                _registry = EarlyStartupSnapshot.TryGetText(
+                        "extension-registry", out registryJson)
+                    ? RuntimeExtensionRegistry.Parse(
+                        registryJson, ScriptsDirectory)
+                    : RuntimeExtensionRegistry.Load(
+                        RegistryPath, ScriptsDirectory);
             }
             catch (Exception primary)
             {
@@ -1012,6 +1127,7 @@ namespace ALLIN1
     /// <summary>Core save monitor; content packages subscribe through the API.</summary>
     public sealed class ExtensionRuntimeHost : Script
     {
+        private const long ShutdownSlowThresholdMilliseconds = 50;
         private DateTime _lastStorySaveWriteUtc;
 
         public ExtensionRuntimeHost()
@@ -1043,8 +1159,17 @@ namespace ALLIN1
             // then clears anything still staged after that boundary. A hard
             // process exit naturally loses in-memory staging even if Aborted
             // cannot run.
-            Allin1ExtensionApi.NotifySessionEnd(
-                _lastStorySaveWriteUtc, "script_aborted");
+            using (ClientLog.Time("Extensions",
+                "shutdown_participant_discards",
+                new Dictionary<string, object>
+                {
+                    { "reason", "script_aborted" },
+                    { "last_save_write_utc", _lastStorySaveWriteUtc },
+                }, ShutdownSlowThresholdMilliseconds))
+            {
+                Allin1ExtensionApi.NotifySessionEnd(
+                    _lastStorySaveWriteUtc, "script_aborted");
+            }
         }
     }
 
@@ -1207,6 +1332,26 @@ namespace ALLIN1
         }
     }
 
+    internal sealed class RuntimeMapDescriptor
+    {
+        internal string RelativePath;
+        internal string SourcePath;
+        internal string Sha256;
+
+        internal bool IsCurrent()
+        {
+            try
+            {
+                return File.Exists(SourcePath) && string.Equals(
+                    RuntimeExtensionRegistry.Sha256(SourcePath), Sha256,
+                    StringComparison.OrdinalIgnoreCase);
+            }
+            catch (IOException) { return false; }
+            catch (UnauthorizedAccessException) { return false; }
+            catch (CryptographicException) { return false; }
+        }
+    }
+
     internal sealed class RuntimeExtensionPackage
     {
         internal string Id;
@@ -1220,6 +1365,8 @@ namespace ALLIN1
             new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
         internal List<RuntimeGbaySection> Sections = new List<RuntimeGbaySection>();
         internal List<RuntimeGbayCatalog> Catalogs = new List<RuntimeGbayCatalog>();
+        internal List<RuntimeMapDescriptor> MapFiles =
+            new List<RuntimeMapDescriptor>();
         internal List<RuntimeFileAuthorization> RuntimeFiles =
             new List<RuntimeFileAuthorization>();
 
@@ -1454,6 +1601,39 @@ namespace ALLIN1
                 if (catalogFiles.Count != 0)
                     throw new InvalidDataException(
                         "Catalog receipt does not match a declared GBAY catalog");
+
+                object[] mapFiles = AsOptionalArray(extension, "map_files");
+                bool mapCapability = package.Capabilities.Contains("world.maps");
+                if (!mapCapability && mapFiles.Length != 0)
+                    throw new InvalidDataException(
+                        "Map receipt requires the world.maps capability");
+                if (mapCapability &&
+                    string.Equals(package.Source, "package",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    mapFiles.Length != 1)
+                    throw new InvalidDataException(
+                        "A map package requires exactly one descriptor receipt");
+                var mapPaths = new HashSet<string>(
+                    StringComparer.OrdinalIgnoreCase);
+                foreach (object fileValue in mapFiles)
+                {
+                    Dictionary<string, object> file = AsObject(
+                        fileValue, "map file");
+                    string relative = Text(file, "path").Replace('\\', '/');
+                    string sha256 = Text(file, "sha256").ToLowerInvariant();
+                    string sourcePath = ContainedMapDescriptorPath(
+                        gameRoot, relative, package.Id);
+                    if (sourcePath == null || !Digest.IsMatch(sha256) ||
+                        !mapPaths.Add(relative))
+                        throw new InvalidDataException(
+                            "Invalid map descriptor authorization");
+                    package.MapFiles.Add(new RuntimeMapDescriptor
+                    {
+                        RelativePath = relative,
+                        SourcePath = sourcePath,
+                        Sha256 = sha256,
+                    });
+                }
                 var runtimePaths = new HashSet<string>(
                     StringComparer.OrdinalIgnoreCase);
                 foreach (object fileValue in AsOptionalArray(
@@ -1554,6 +1734,30 @@ namespace ALLIN1
                 root, Path.Combine(parts)));
             return candidate.StartsWith(root, StringComparison.OrdinalIgnoreCase)
                 ? candidate : null;
+        }
+
+        internal static string ContainedMapDescriptorPath(
+            string gameRoot, string relative, string packageId)
+        {
+            if (!IsSafeId(packageId) || string.IsNullOrWhiteSpace(relative))
+                return null;
+            string normalized = relative.Replace('\\', '/');
+            string directory = "scripts/ALLIN1/Maps/" +
+                packageId.ToLowerInvariant() + "/";
+            if (!normalized.StartsWith(directory,
+                    StringComparison.OrdinalIgnoreCase)) return null;
+            string leaf = normalized.Substring(directory.Length);
+            if (leaf.Contains("/") ||
+                !(string.Equals(leaf, "maps.json",
+                    StringComparison.OrdinalIgnoreCase) ||
+                  (leaf.EndsWith(".maps.json",
+                       StringComparison.OrdinalIgnoreCase) &&
+                   Regex.IsMatch(leaf,
+                       "^[a-z0-9][a-z0-9._-]{1,95}\\.maps\\.json$",
+                       RegexOptions.IgnoreCase |
+                       RegexOptions.CultureInvariant))))
+                return null;
+            return ContainedCatalogPath(gameRoot, normalized);
         }
 
         internal static string Sha256(string path)

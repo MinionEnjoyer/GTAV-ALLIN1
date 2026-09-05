@@ -5,6 +5,17 @@ namespace ALLIN1.Tests
 {
     public sealed class NpcPhysicsExperimentPolicyTests
     {
+        [Theory]
+        [InlineData(false, false, false)]
+        [InlineData(true, false, true)]
+        [InlineData(false, true, true)]
+        public void Disabled_experimental_runtime_has_no_scheduled_tick(
+            bool physicsEnabled, bool policeAiEnabled, bool expected)
+        {
+            Assert.Equal(expected, NpcPhysicsExperiment.ShouldScheduleRuntime(
+                physicsEnabled, policeAiEnabled));
+        }
+
         [Fact]
         public void Ambient_human_with_fresh_weapon_damage_can_react()
         {

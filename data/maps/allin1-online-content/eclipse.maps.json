@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "id": "eclipse-garage",
+  "package_id": "allin1.online-content",
+  "name": "Eclipse Garage",
+  "version": "0.6.1",
+  "editions": [
+    "legacy",
+    "enhanced"
+  ],
+  "streaming": {
+    "mode": "none",
+    "pack_name": "basegame",
+    "content_group": null,
+    "ipls": [],
+    "activation_radius": 220,
+    "release_radius": 420,
+    "keep_resident": false
+  },
+  "levels": [
+    {
+      "id": "eclipse",
+      "name": "Eclipse Garage Interior",
+      "center": {
+        "x": 231,
+        "y": -993,
+        "z": -100,
+        "heading": 0
+      },
+      "ipls": []
+    }
+  ],
+  "portals": [
+    {
+      "id": "eclipse-vehicle-entry",
+      "name": "Eclipse vehicle entrance",
+      "mode": "vehicle",
+      "from": {
+        "level": "world",
+        "position": {
+          "x": -796,
+          "y": 303,
+          "z": 85.2,
+          "heading": 180
+        }
+      },
+      "to": {
+        "level": "eclipse",
+        "position": {
+          "x": 240.65,
+          "y": -1004.86,
+          "z": -99.66,
+          "heading": 195
+        }
+      },
+      "radius": 3,
+      "one_way": true
+    },
+    {
+      "id": "eclipse-vehicle-exit",
+      "name": "Eclipse vehicle exit",
+      "mode": "vehicle",
+      "from": {
+        "level": "eclipse",
+        "position": {
+          "x": 228.2,
+          "y": -1004.3,
+          "z": -99,
+          "heading": 352.3
+        }
+      },
+      "to": {
+        "level": "world",
+        "position": {
+          "x": -796,
+          "y": 303,
+          "z": 85.2,
+          "heading": 180
+        }
+      },
+      "radius": 3,
+      "one_way": true
+    },
+    {
+      "id": "eclipse-ped",
+      "name": "Eclipse pedestrian entrance",
+      "mode": "ped",
+      "from": {
+        "level": "world",
+        "position": {
+          "x": -774,
+          "y": 310.2,
+          "z": 85.7,
+          "heading": 180
+        }
+      },
+      "to": {
+        "level": "eclipse",
+        "position": {
+          "x": 240.7,
+          "y": -1004.8,
+          "z": -99,
+          "heading": 82.8
+        }
+      },
+      "radius": 2.5,
+      "one_way": false
+    }
+  ],
+  "garages": [
+    {
+      "id": "eclipse",
+      "name": "Eclipse Garage",
+      "level_id": "eclipse",
+      "entrance_portal_id": "eclipse-vehicle-entry",
+      "capacity": 10,
+      "vehicle_types": [
+        "land"
+      ],
+      "slots": [
+        {
+          "id": "slot-01",
+          "position": {
+            "x": 224.57,
+            "y": -1002.75,
+            "z": -99.56,
+            "heading": 255
+          }
+        },
+        {
+          "id": "slot-02",
+          "position": {
+            "x": 224.36,
+            "y": -998.87,
+            "z": -99.56,
+            "heading": 255
+          }
+        },
+        {
+          "id": "slot-03",
+          "position": {
+            "x": 223.61,
+            "y": -993.94,
+            "z": -99.56,
+            "heading": 255
+          }
+        },
+        {
+          "id": "slot-04",
+          "position": {
+            "x": 223.65,
+            "y": -989.04,
+            "z": -99.56,
+            "heading": 255
+          }
+        },
+        {
+          "id": "slot-05",
+          "position": {
+            "x": 224.18,
+            "y": -983.51,
+            "z": -99.56,
+            "heading": 255
+          }
+        },
+        {
+          "id": "slot-06",
+          "position": {
+            "x": 233.94,
+            "y": -1000.9,
+            "z": -99.56,
+            "heading": 134
+          }
+        },
+        {
+          "id": "slot-07",
+          "position": {
+            "x": 233.18,
+            "y": -995.9,
+            "z": -99.56,
+            "heading": 134
+          }
+        },
+        {
+          "id": "slot-08",
+          "position": {
+            "x": 232.5,
+            "y": -991.15,
+            "z": -99.56,
+            "heading": 134
+          }
+        },
+        {
+          "id": "slot-09",
+          "position": {
+            "x": 232.44,
+            "y": -985.76,
+            "z": -99.56,
+            "heading": 134
+          }
+        },
+        {
+          "id": "slot-10",
+          "position": {
+            "x": 231.89,
+            "y": -981.39,
+            "z": -99.56,
+            "heading": 134
+          }
+        }
+      ],
+      "rules": {
+        "allow_store": true,
+        "allow_retrieve": true,
+        "save_policy": "story_save_only"
+      }
+    }
+  ]
+}

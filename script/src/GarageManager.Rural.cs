@@ -17,33 +17,33 @@ namespace ALLIN1
         private static readonly GarageDefinition RURAL_GARAGE =
             GarageDefinitions.Rural;
 
-        internal static readonly Vector3 RURAL_VEHICLE_ENTRANCE_POS =
+        internal static Vector3 RURAL_VEHICLE_ENTRANCE_POS =
             new Vector3(2551.4610f, 4674.3250f, 33.9819f);
-        private const float RURAL_VEHICLE_ENTRANCE_HEADING = 0f;
-        internal static readonly Vector3 RURAL_PED_ENTRANCE_POS =
+        private static float RURAL_VEHICLE_ENTRANCE_HEADING = 0f;
+        internal static Vector3 RURAL_PED_ENTRANCE_POS =
             new Vector3(2553.4590f, 4650.6360f, 34.0768f);
-        private const float RURAL_PED_ENTRANCE_HEADING = 90f;
+        private static float RURAL_PED_ENTRANCE_HEADING = 90f;
 
         // Native pedestrian exit at the six-car garage's internal door.
-        private static readonly Vector3 RURAL_INTERIOR_PED =
+        private static Vector3 RURAL_INTERIOR_PED =
             new Vector3(206.3603f, -999.0687f, -99.0000f);
-        private const float RURAL_INTERIOR_PED_HEADING = 90f;
+        private static float RURAL_INTERIOR_PED_HEADING = 90f;
         private const float RURAL_FLOOR_Z = -100.0000f;
-        private static readonly Vector3 RURAL_INTERIOR_CENTER =
+        private static Vector3 RURAL_INTERIOR_CENTER =
             new Vector3(199.9716f, -999.6678f, -99.0000f);
         private const int RURAL_INTERIOR_LOAD_TIMEOUT_MS = 6000;
         private const int RURAL_INTERIOR_FALLBACK_SETTLE_MS = 1000;
 
-        private static readonly string[] RURAL_IPLS =
+        private static string[] RURAL_IPLS =
         {
             // v_garagem is the interior type/name, not a requestable IPL.
             // Enhanced's six-car shell is this explicit High Life MILO.
-            "hw1_blimp_interior_v_garagem_milo_",
+            "hei_hw1_blimp_interior_v_garagem_milo_",
         };
 
         // Native v_garagem six-car layout. The shared garage placement helper
         // applies measured per-model ground offsets after each spawn.
-        internal static readonly ParkingSlot[] RuralSlots =
+        internal static ParkingSlot[] RuralSlots =
         {
             new ParkingSlot(193.60f, -1004.60f, -99.56f, 90f, RURAL_FLOOR_Z),
             new ParkingSlot(193.60f, -1000.40f, -99.56f, 90f, RURAL_FLOOR_Z),
@@ -65,6 +65,8 @@ namespace ALLIN1
         private static readonly Vehicle[] _ruralHandles =
             new Vehicle[RURAL_SLOT_COUNT];
         private static bool _isPlayerInRuralGarage;
+        private static bool _ruralMapLeaseHeld;
+        private static bool _ruralMapLeaseCreatedForCurrentEntry;
         private static bool _ruralInitialized;
         private static int _ruralExitCooldownFrames;
         private static Blip _ruralVehicleBlip;
@@ -176,15 +178,23 @@ namespace ALLIN1
 
             Ped player = Game.Player.Character;
             if (player == null || player.IsDead) return;
-            if (!_isPlayerInRuralGarage && !GbayShop.TryGetCurrentCharacter(out _))
-                return;
-            Color markerColor = CharacterMarkerColor();
+            Color markerColor;
 
             if (!_isPlayerInRuralGarage)
             {
-                if (EvaluateGarageEntry(RURAL_GARAGE) ==
-                    GarageEntryDenial.MissionActive) return;
-                if (player.IsInVehicle())
+                bool inVehicle = player.IsInVehicle();
+                Vector3 activeEntrance = inVehicle
+                    ? RURAL_VEHICLE_ENTRANCE_POS
+                    : RURAL_PED_ENTRANCE_POS;
+                if (!ShouldServiceExteriorMarker(
+                        player.Position, activeEntrance))
+                    return;
+                if (!GbayShop.TryGetCurrentCharacter(out _))
+                    return;
+                markerColor = CharacterMarkerColor();
+
+                if (!ShouldServiceGarageExterior()) return;
+                if (inVehicle)
                 {
                     World.DrawMarker(GTA.MarkerType.VerticalCylinder,
                         RURAL_VEHICLE_ENTRANCE_POS - new Vector3(0f, 0f, 1f),
@@ -232,6 +242,7 @@ namespace ALLIN1
                 return;
             }
 
+            markerColor = CharacterMarkerColor();
             EnforceRuralVehicleState();
             if (player.IsInVehicle())
             {
@@ -259,26 +270,67 @@ namespace ALLIN1
         private static void EnterRuralGarage()
         {
             if (RejectGarageEntry(RURAL_GARAGE)) return;
+            if (!DeferredMapContentRuntime.CanBeginOfficialGarageEntry(
+                    DeferredMapProperty.Grapeseed, out _))
+            {
+                GTA.UI.Screen.ShowSubtitle(
+                    DeferredMapContentRuntime
+                        .GrapeseedEntryUnavailableMessage(), 5000);
+                return;
+            }
             if (!BeginTransition("EnterRuralGarage")) return;
-            try { EnterRuralGarageCore(); }
+            _ruralMapLeaseCreatedForCurrentEntry = false;
+            var transition = CreateRuralEntryStreamingTransition();
+            try { EnterRuralGarageCore(transition); }
             catch (Exception ex)
             {
+                transition.Fail("entry_exception:" + ex.GetType().Name);
                 LogException("EnterRuralGarage", ex);
-                UnloadRuralInterior();
                 RecoverTransition("EnterRuralGarage",
                     RURAL_PED_ENTRANCE_POS, RURAL_PED_ENTRANCE_HEADING);
+                Script.Wait(100);
+                UnloadRuralInterior(
+                    force: _ruralMapLeaseCreatedForCurrentEntry);
                 GTA.UI.Screen.ShowSubtitle(
                     "~r~Grapeseed Garage entry failed safely. See ALLIN1_gbay.log.", 4000);
             }
-            finally { EndTransition("EnterRuralGarage"); }
+            finally
+            {
+                transition.Dispose();
+                EndTransition("EnterRuralGarage");
+            }
         }
 
-        private static void EnterRuralGarageCore()
+        private static OfficialGarageTransitionCoordinator
+            CreateRuralEntryStreamingTransition()
+        {
+            return new OfficialGarageTransitionCoordinator(
+                RURAL_GARAGE.Id,
+                "entry",
+                () => Environment.TickCount,
+                ObserveOfficialGarageTransition,
+                () =>
+                {
+                    _isPlayerInRuralGarage = false;
+                    ClearRuralHandles();
+                    bool forceRelease =
+                        _ruralMapLeaseCreatedForCurrentEntry;
+                    UnloadRuralInterior(force: forceRelease);
+                    if (!_ruralMapLeaseHeld)
+                        _ruralMapLeaseCreatedForCurrentEntry = false;
+                },
+                () => Function.Call(Hash.DO_SCREEN_FADE_IN, 0));
+        }
+
+        private static void EnterRuralGarageCore(
+            OfficialGarageTransitionCoordinator transition)
         {
             Ped player = Game.Player.Character;
             Vehicle rideInToDelete = null;
             string confirmation = null;
-            bool interiorLoaded = false;
+            List<StoredVehicle> storedListDuringEntry = null;
+            StoredVehicle storedDuringEntry = null;
+            bool storageCommitted = false;
             if (player.IsInVehicle())
             {
                 Vehicle rideIn = player.CurrentVehicle;
@@ -297,57 +349,87 @@ namespace ALLIN1
                     }
                     int slotIndex = FindEmptyRuralSlot(list);
                     if (slotIndex < 0) return;
-                    StoredVehicle stored = CaptureVehicleState(
+                    storedListDuringEntry = list;
+                    storedDuringEntry = CaptureVehicleState(
                         rideIn, modelName, slotIndex);
-                    if (!LoadRuralInterior())
-                    {
-                        GTA.UI.Screen.ShowSubtitle(
-                            "~r~The Grapeseed Garage interior could not be loaded.", 4000);
-                        return;
-                    }
-                    interiorLoaded = true;
-                    list.Add(stored);
-                    if (!RuralSave())
-                    {
-                        list.Remove(stored);
-                        UnloadRuralInterior();
-                        GTA.UI.Screen.ShowSubtitle(
-                            "~r~The vehicle could not be saved.", 3000);
-                        return;
-                    }
                     string display = RuntimeVehicleCatalog.GetDisplayName(modelName);
                     confirmation = $"~g~{display}~w~ stored in the Grapeseed Garage.";
-                    rideIn.IsPersistent = true;
                     rideInToDelete = rideIn;
                 }
             }
 
-            if (!interiorLoaded && !LoadRuralInterior())
+            // The verified Grapeseed IPL may only be acquired while this
+            // coordinator owns a fully black garage-entry transition. This
+            // prevents the interior from mutating the visible world.
+            transition.HoldFade(
+                () => BeginGarageBlackTransition("EnterRuralGarage"));
+            transition.Advance(
+                OfficialGarageTransitionPhase.LeaseRequested,
+                "grapeseed_map_lease_requested_while_black");
+            if (!LoadRuralInterior(transition))
             {
+                transition.Fail("map_activation_failed");
                 GTA.UI.Screen.ShowSubtitle(
-                    "~r~The Grapeseed Garage interior could not be loaded.", 4000);
+                    DeferredMapContentRuntime.GarageUnavailableMessage(
+                        "The Grapeseed Garage"), 4000);
                 return;
             }
-            ClearRuralHandles();
-            _isPlayerInRuralGarage = true;
-            BeginGarageBlackTransition("EnterRuralGarage");
-            player.IsPositionFrozen = true;
-            Function.Call(Hash.SET_ENTITY_COORDS, player,
-                RURAL_INTERIOR_PED.X, RURAL_INTERIOR_PED.Y,
-                RURAL_INTERIOR_PED.Z, false, false, false, true);
-            Function.Call(Hash.SET_ENTITY_HEADING, player,
-                RURAL_INTERIOR_PED_HEADING);
-            Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, player);
-            if (rideInToDelete != null && rideInToDelete.Exists())
-                rideInToDelete.Delete();
-            SpawnRuralGarageVehicles();
-            player.IsPositionFrozen = false;
-            Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
-            CompleteGarageBlackTransition(
-                "EnterRuralGarage", player, null,
-                () => IsPlayerInReadyInterior(player), _ruralHandles);
-            if (!string.IsNullOrEmpty(confirmation))
-                GTA.UI.Screen.ShowSubtitle(confirmation, 4000);
+
+            try
+            {
+                if (storedDuringEntry != null && storedListDuringEntry != null)
+                {
+                    storedListDuringEntry.Add(storedDuringEntry);
+                    storageCommitted = true;
+                    if (!RuralSave())
+                    {
+                        storedListDuringEntry.Remove(storedDuringEntry);
+                        storageCommitted = false;
+                        transition.Fail("vehicle_persistence_failed");
+                        GTA.UI.Screen.ShowSubtitle(
+                            "~r~The vehicle could not be saved.", 3000);
+                        return;
+                    }
+                    rideInToDelete.IsPersistent = true;
+                }
+
+                ClearRuralHandles();
+                _isPlayerInRuralGarage = true;
+                player.IsPositionFrozen = true;
+                Function.Call(Hash.SET_ENTITY_COORDS, player,
+                    RURAL_INTERIOR_PED.X, RURAL_INTERIOR_PED.Y,
+                    RURAL_INTERIOR_PED.Z, false, false, false, true);
+                Function.Call(Hash.SET_ENTITY_HEADING, player,
+                    RURAL_INTERIOR_PED_HEADING);
+                Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, player);
+                if (rideInToDelete != null && rideInToDelete.Exists())
+                    rideInToDelete.Delete();
+                SpawnRuralGarageVehicles();
+                player.IsPositionFrozen = false;
+                Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
+                transition.Complete(
+                    OfficialGarageTransitionPhase.Occupied,
+                    () => CompleteGarageBlackTransition(
+                        "EnterRuralGarage", player, null,
+                        () => IsPlayerInReadyInterior(player), _ruralHandles),
+                    "grapeseed_interior_occupied");
+                _ruralMapLeaseCreatedForCurrentEntry = false;
+                if (!string.IsNullOrEmpty(confirmation))
+                    GTA.UI.Screen.ShowSubtitle(confirmation, 4000);
+            }
+            catch
+            {
+                if (storageCommitted && storedDuringEntry != null &&
+                    storedListDuringEntry != null)
+                {
+                    storedListDuringEntry.Remove(storedDuringEntry);
+                    if (!RuralSave())
+                        Log("EnterRuralGarage: WARNING - entry rollback save failed");
+                    Log("EnterRuralGarage: rolled back drive-in storage after " +
+                        "transition failure");
+                }
+                throw;
+            }
         }
 
         private static void LeaveRuralGarage()
@@ -417,7 +499,8 @@ namespace ALLIN1
                     Hash.GET_INTERIOR_FROM_ENTITY, player) == 0);
         }
 
-        private static bool LoadRuralInterior()
+        private static bool LoadRuralInterior(
+            OfficialGarageTransitionCoordinator transition)
         {
             bool focusSet = false;
             try
@@ -427,7 +510,27 @@ namespace ALLIN1
                 // accept a merely resolved interior ID unless the actual MILO
                 // IPL is active; the old behavior admitted the player into an
                 // unloaded void below the map.
-                StandaloneMapPack.TryActivate(RURAL_IPLS);
+                if (!_ruralMapLeaseHeld)
+                {
+                    DeferredMapContentResult activation =
+                        DeferredMapContentRuntime.TryAcquireGrapeseedPhaseB(
+                            transition, RURAL_IPLS,
+                            RURAL_INTERIOR_LOAD_TIMEOUT_MS);
+                    if (!activation.Success)
+                    {
+                        if (DeferredMapContentRuntime
+                                .HasGrapeseedPhaseBCleanupPending)
+                        {
+                            _ruralMapLeaseHeld = true;
+                            _ruralMapLeaseCreatedForCurrentEntry = true;
+                        }
+                        Log("LoadRuralInterior: deferred map unavailable " +
+                            $"outcome={activation.Outcome} detail={activation.Detail}");
+                        return false;
+                    }
+                    _ruralMapLeaseHeld = true;
+                    _ruralMapLeaseCreatedForCurrentEntry = true;
+                }
                 foreach (string ipl in RURAL_IPLS)
                     Function.Call(Hash.REQUEST_IPL, ipl);
 
@@ -469,12 +572,27 @@ namespace ALLIN1
                     iplActive = true;
                     foreach (string ipl in RURAL_IPLS)
                         iplActive &= Function.Call<bool>(Hash.IS_IPL_ACTIVE, ipl);
+                    if (iplActive && transition != null &&
+                        transition.Phase ==
+                            OfficialGarageTransitionPhase.LeaseRequested)
+                    {
+                        transition.Advance(
+                            OfficialGarageTransitionPhase.IplReady,
+                            "grapeseed_ipls_active");
+                    }
                     int resolvedForMs = firstResolvedAt < 0 ? 0
                         : Game.GameTime - firstResolvedAt;
                     if (GarageInteriorReadinessPolicy.IsUsable(
                         interior, true, iplActive, interiorReady,
                         resolvedForMs, RURAL_INTERIOR_FALLBACK_SETTLE_MS))
                     {
+                        if (transition != null && transition.Phase ==
+                            OfficialGarageTransitionPhase.IplReady)
+                        {
+                            transition.Advance(
+                                OfficialGarageTransitionPhase.InteriorReady,
+                                "grapeseed_interior_ready");
+                        }
                         Log($"LoadRuralInterior: interior={interior} ready " +
                             $"readySignal={interiorReady} iplActive={iplActive} " +
                             $"fallback={!interiorReady} " +
@@ -496,13 +614,31 @@ namespace ALLIN1
                 if (focusSet)
                     Function.Call(Hash.CLEAR_FOCUS);
             }
+            UnloadRuralInterior(
+                force: _ruralMapLeaseCreatedForCurrentEntry);
             return false;
         }
 
-        private static void UnloadRuralInterior()
+        private static void UnloadRuralInterior(bool force = false)
         {
-            foreach (string ipl in RURAL_IPLS)
-                Function.Call(Hash.REMOVE_IPL, ipl);
+            if (!_ruralMapLeaseHeld) return;
+            DeferredMapContentResult released =
+                DeferredMapContentRuntime.Release(
+                    DeferredMapProperty.Grapeseed, RURAL_IPLS, force);
+            if (released.Outcome == DeferredMapContentOutcome.KeptResident)
+            {
+                Log("UnloadRuralInterior: verified Grapeseed map retained for " +
+                    "the Story session");
+                return;
+            }
+            if (released.ReleaseComplete)
+            {
+                _ruralMapLeaseHeld = false;
+                _ruralMapLeaseCreatedForCurrentEntry = false;
+            }
+            else
+                Log("UnloadRuralInterior: map release failed; lease retained " +
+                    released.Detail);
         }
 
         private static ParkingSlot ResolveRuralSlot(StoredVehicle stored)

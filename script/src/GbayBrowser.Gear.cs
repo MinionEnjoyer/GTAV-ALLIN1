@@ -355,8 +355,15 @@ namespace ALLIN1
             GbayRenderer.PlayNav();
         }
 
-        private void RebuildGearList()
+        private void RebuildGearList(bool preserveSelection = false)
         {
+            string selectedGear = null;
+            if (preserveSelection && _gearFiltered.Count > 0)
+            {
+                int selectedIndex = _gearPage * PAGE_SIZE + _gearSelectedCard;
+                if (selectedIndex >= 0 && selectedIndex < _gearFiltered.Count)
+                    selectedGear = _gearFiltered[selectedIndex].GearId;
+            }
             _gearFiltered.Clear();
             foreach (string gearId in GEAR_CATEGORIES[_gearCategoryIndex].Items)
             {
@@ -375,6 +382,25 @@ namespace ALLIN1
             }
             _gearTotalPages = Math.Max(
                 1, (_gearFiltered.Count + PAGE_SIZE - 1) / PAGE_SIZE);
+            int refreshedIndex = preserveSelection &&
+                !string.IsNullOrWhiteSpace(selectedGear)
+                ? _gearFiltered.FindIndex(card => string.Equals(
+                    card.GearId, selectedGear,
+                    StringComparison.OrdinalIgnoreCase)) : -1;
+            if (refreshedIndex >= 0)
+            {
+                _gearPage = refreshedIndex / PAGE_SIZE;
+                _gearSelectedCard = refreshedIndex % PAGE_SIZE;
+            }
+            else
+            {
+                _gearPage = Math.Max(0,
+                    Math.Min(_gearPage, _gearTotalPages - 1));
+                int count = Math.Max(0, Math.Min(PAGE_SIZE,
+                    _gearFiltered.Count - _gearPage * PAGE_SIZE));
+                _gearSelectedCard = count == 0 ? 0
+                    : Math.Max(0, Math.Min(_gearSelectedCard, count - 1));
+            }
         }
 
         private int GetGearPageCount()

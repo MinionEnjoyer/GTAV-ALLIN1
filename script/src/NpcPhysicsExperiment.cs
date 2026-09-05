@@ -842,7 +842,6 @@ namespace ALLIN1
 
         public NpcPhysicsExperiment()
         {
-            _current = this;
             bool packageEnabled = Allin1ExtensionApi.IsPackageEnabled(
                 Allin1ExtensionApi.ExperimentalGameplayPackageId);
             _enabled = packageEnabled &&
@@ -855,10 +854,15 @@ namespace ALLIN1
             // disables the experiment; otherwise a path/parser failure hides
             // the evidence needed to diagnose itself.
             PhysicsExperimentLog.Configure(_debug);
-            Interval = (_enabled || _enhancedPoliceAi)
-                ? ScanIntervalMs : 1000;
-            Tick += OnTick;
-            Aborted += OnAborted;
+            bool scheduled = ShouldScheduleRuntime(
+                _enabled, _enhancedPoliceAi);
+            _current = scheduled ? this : null;
+            Interval = scheduled ? ScanIntervalMs : 1000;
+            if (scheduled)
+            {
+                Tick += OnTick;
+                Aborted += OnAborted;
+            }
             PhysicsExperimentLog.Info("configuration_loaded",
                 new Dictionary<string, object>
                 {
@@ -881,6 +885,12 @@ namespace ALLIN1
             ClientLog.Info("NPC-PHYSICS", _enabled
                 ? "Expanded Euphoria runtime experiment enabled"
                 : "Runtime experiment disabled");
+        }
+
+        internal static bool ShouldScheduleRuntime(
+            bool physicsEnabled, bool policeAiEnabled)
+        {
+            return physicsEnabled || policeAiEnabled;
         }
 
         internal static bool ReadBooleanSetting(string requestedKey,

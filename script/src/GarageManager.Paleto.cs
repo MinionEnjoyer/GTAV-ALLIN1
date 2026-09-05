@@ -17,39 +17,39 @@ namespace ALLIN1
         private static readonly GarageDefinition PALETO_GARAGE =
             GarageDefinitions.Paleto;
 
-        internal static readonly Vector3 PALETO_VEHICLE_ENTRANCE_POS =
+        internal static Vector3 PALETO_VEHICLE_ENTRANCE_POS =
             new Vector3(-221.9008f, 6252.8020f, 31.4894f);
-        private const float PALETO_VEHICLE_ENTRANCE_HEADING = 45f;
-        internal static readonly Vector3 PALETO_PED_ENTRANCE_POS =
+        private static float PALETO_VEHICLE_ENTRANCE_HEADING = 45f;
+        internal static Vector3 PALETO_PED_ENTRANCE_POS =
             new Vector3(-224.5180f, 6244.2620f, 31.4926f);
-        private const float PALETO_PED_ENTRANCE_HEADING = 45f;
+        private static float PALETO_PED_ENTRANCE_HEADING = 45f;
 
         // Surveyed elevator landings in vw_dlc_casino_garage. The first is
         // also the pedestrian arrival point; either landing exits to Paleto.
-        private static readonly Vector3[] PALETO_INTERIOR_PED_EXITS =
+        private static Vector3[] PALETO_INTERIOR_PED_EXITS =
         {
             new Vector3(1295.3110f, 221.1703f, -49.0574f),
             new Vector3(1295.3350f, 260.7359f, -49.0574f),
         };
-        private static readonly float[] PALETO_INTERIOR_PED_EXIT_HEADINGS =
+        private static float[] PALETO_INTERIOR_PED_EXIT_HEADINGS =
         {
             0f,
             180f,
         };
         private const float PALETO_FLOOR_Z = -50.0574f;
-        private static readonly Vector3 PALETO_INTERIOR_CENTER =
+        private static Vector3 PALETO_INTERIOR_CENTER =
             new Vector3(1295.0000f, 230.0000f, -50.0000f);
         private const int PALETO_INTERIOR_LOAD_TIMEOUT_MS = 10000;
         private const int PALETO_INTERIOR_FALLBACK_SETTLE_MS = 1500;
 
-        private static readonly string[] PALETO_IPLS =
+        private static string[] PALETO_IPLS =
         {
             "vw_casino_garage",
         };
 
         // Native Casino Penthouse Garage parking roots and headings from
         // Rockstar's am_mp_casino_apartment script (func_6196/func_6191).
-        internal static readonly ParkingSlot[] PaletoSlots =
+        internal static ParkingSlot[] PaletoSlots =
         {
             new ParkingSlot(1281.4710f, 241.6617f, -49.3467f, 270f, PALETO_FLOOR_Z),
             new ParkingSlot(1281.4710f, 249.7067f, -49.3467f, 270f, PALETO_FLOOR_Z),
@@ -75,6 +75,7 @@ namespace ALLIN1
         private static readonly Vehicle[] _paletoHandles =
             new Vehicle[PALETO_SLOT_COUNT];
         private static bool _isPlayerInPaletoGarage;
+        private static bool _paletoMapLeaseHeld;
         private static bool _paletoInitialized;
         private static int _paletoExitCooldownFrames;
         private static Blip _paletoVehicleBlip;
@@ -187,15 +188,23 @@ namespace ALLIN1
 
             Ped player = Game.Player.Character;
             if (player == null || player.IsDead) return;
-            if (!_isPlayerInPaletoGarage && !GbayShop.TryGetCurrentCharacter(out _))
-                return;
-            Color markerColor = CharacterMarkerColor();
+            Color markerColor;
 
             if (!_isPlayerInPaletoGarage)
             {
-                if (EvaluateGarageEntry(PALETO_GARAGE) ==
-                    GarageEntryDenial.MissionActive) return;
-                if (player.IsInVehicle())
+                bool inVehicle = player.IsInVehicle();
+                Vector3 activeEntrance = inVehicle
+                    ? PALETO_VEHICLE_ENTRANCE_POS
+                    : PALETO_PED_ENTRANCE_POS;
+                if (!ShouldServiceExteriorMarker(
+                        player.Position, activeEntrance))
+                    return;
+                if (!GbayShop.TryGetCurrentCharacter(out _))
+                    return;
+                markerColor = CharacterMarkerColor();
+
+                if (!ShouldServiceGarageExterior()) return;
+                if (inVehicle)
                 {
                     World.DrawMarker(GTA.MarkerType.VerticalCylinder,
                         PALETO_VEHICLE_ENTRANCE_POS - new Vector3(0f, 0f, 1f),
@@ -243,6 +252,7 @@ namespace ALLIN1
                 return;
             }
 
+            markerColor = CharacterMarkerColor();
             EnforcePaletoVehicleState();
             if (player.IsInVehicle())
             {
@@ -276,26 +286,52 @@ namespace ALLIN1
         private static void EnterPaletoGarage()
         {
             if (RejectGarageEntry(PALETO_GARAGE)) return;
+            if (!DeferredMapContentRuntime.CanBeginOfficialGarageEntry(
+                    DeferredMapProperty.Paleto, out _)) return;
             if (!BeginTransition("EnterPaletoGarage")) return;
-            try { EnterPaletoGarageCore(); }
+            bool newLease = !_paletoMapLeaseHeld;
+            var transition = CreateScopedInteriorEntryTransition(
+                PALETO_GARAGE.Id, () =>
+                {
+                    _isPlayerInPaletoGarage = false;
+                    ClearPaletoHandles();
+                    UnloadPaletoInterior(force: newLease);
+                });
+            try { EnterPaletoGarageCore(transition); }
             catch (Exception ex)
             {
+                transition.Fail("entry_exception:" + ex.GetType().Name);
                 LogException("EnterPaletoGarage", ex);
-                UnloadPaletoInterior();
                 RecoverTransition("EnterPaletoGarage",
                     PALETO_PED_ENTRANCE_POS, PALETO_PED_ENTRANCE_HEADING);
+                Script.Wait(100);
+                UnloadPaletoInterior();
                 GTA.UI.Screen.ShowSubtitle(
                     "~r~Paleto Bay Garage entry failed safely. See ALLIN1_gbay.log.", 4000);
             }
-            finally { EndTransition("EnterPaletoGarage"); }
+            finally
+            {
+                transition.Dispose();
+                EndTransition("EnterPaletoGarage");
+            }
         }
 
-        private static void EnterPaletoGarageCore()
+        private static void EnterPaletoGarageCore(OfficialGarageTransitionCoordinator transition)
         {
             Ped player = Game.Player.Character;
             Vehicle rideInToDelete = null;
             string confirmation = null;
-            bool interiorLoaded = false;
+            transition.HoldFade(() => BeginGarageBlackTransition("EnterPaletoGarage"));
+            transition.Advance(OfficialGarageTransitionPhase.LeaseRequested);
+            if (!LoadPaletoInterior(transition))
+            {
+                transition.Fail("map_activation_failed");
+                GTA.UI.Screen.ShowSubtitle(
+                    DeferredMapContentRuntime.GarageUnavailableMessage("Paleto Bay"), 4000);
+                return;
+            }
+            transition.Advance(OfficialGarageTransitionPhase.IplReady);
+            transition.Advance(OfficialGarageTransitionPhase.InteriorReady);
             if (player.IsInVehicle())
             {
                 Vehicle rideIn = player.CurrentVehicle;
@@ -316,13 +352,6 @@ namespace ALLIN1
                     if (slotIndex < 0) return;
                     StoredVehicle stored = CaptureVehicleState(
                         rideIn, modelName, slotIndex);
-                    if (!LoadPaletoInterior())
-                    {
-                        GTA.UI.Screen.ShowSubtitle(
-                            "~r~The Paleto Bay Garage interior could not be loaded.", 4000);
-                        return;
-                    }
-                    interiorLoaded = true;
                     list.Add(stored);
                     if (!PaletoSave())
                     {
@@ -339,15 +368,8 @@ namespace ALLIN1
                 }
             }
 
-            if (!interiorLoaded && !LoadPaletoInterior())
-            {
-                GTA.UI.Screen.ShowSubtitle(
-                    "~r~The Paleto Bay Garage interior could not be loaded.", 4000);
-                return;
-            }
             ClearPaletoHandles();
             _isPlayerInPaletoGarage = true;
-            BeginGarageBlackTransition("EnterPaletoGarage");
             player.IsPositionFrozen = true;
             Vector3 pedArrival = PALETO_INTERIOR_PED_EXITS[0];
             Function.Call(Hash.SET_ENTITY_COORDS, player,
@@ -361,9 +383,9 @@ namespace ALLIN1
             SpawnPaletoGarageVehicles();
             player.IsPositionFrozen = false;
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
-            CompleteGarageBlackTransition(
-                "EnterPaletoGarage", player, null,
-                () => IsPlayerInReadyInterior(player), _paletoHandles);
+            transition.Complete(OfficialGarageTransitionPhase.Occupied,
+                () => CompleteGarageBlackTransition("EnterPaletoGarage", player, null,
+                    () => IsPlayerInReadyInterior(player), _paletoHandles));
             if (!string.IsNullOrEmpty(confirmation))
                 GTA.UI.Screen.ShowSubtitle(confirmation, 4000);
         }
@@ -408,8 +430,6 @@ namespace ALLIN1
             player.IsPositionFrozen = true;
             if (playerVehicle != null)
                 playerVehicle.IsPositionFrozen = true;
-            UnloadPaletoInterior();
-            Script.Wait(250);
 
             if (playerVehicle != null)
             {
@@ -431,6 +451,8 @@ namespace ALLIN1
                     PALETO_PED_ENTRANCE_HEADING);
                 player.IsPositionFrozen = false;
             }
+            Script.Wait(100);
+            UnloadPaletoInterior();
             PaletoSave();
             _isPlayerInPaletoGarage = false;
             _paletoExitCooldownFrames = 60;
@@ -440,7 +462,7 @@ namespace ALLIN1
                     Hash.GET_INTERIOR_FROM_ENTITY, player) == 0);
         }
 
-        private static bool LoadPaletoInterior()
+        private static bool LoadPaletoInterior(OfficialGarageTransitionCoordinator transition)
         {
             bool focusSet = false;
             try
@@ -450,10 +472,19 @@ namespace ALLIN1
                     Log("LoadPaletoInterior: blocked during unsafe game transition");
                     return false;
                 }
-                if (!StandaloneMapPack.TryActivate(PALETO_IPLS))
+                if (!_paletoMapLeaseHeld)
                 {
-                    Log("LoadPaletoInterior: standalone map unavailable");
-                    return false;
+                    DeferredMapContentResult activation =
+                        DeferredMapContentRuntime.TryAcquireInteriorUnderBlackTransition(
+                            DeferredMapProperty.Paleto, transition, PALETO_IPLS,
+                            PALETO_INTERIOR_LOAD_TIMEOUT_MS);
+                    if (!activation.Success)
+                    {
+                        Log("LoadPaletoInterior: deferred map unavailable " +
+                            $"outcome={activation.Outcome} detail={activation.Detail}");
+                        return false;
+                    }
+                    _paletoMapLeaseHeld = true;
                 }
                 foreach (string ipl in PALETO_IPLS)
                     Function.Call(Hash.REQUEST_IPL, ipl);
@@ -525,10 +556,17 @@ namespace ALLIN1
             return false;
         }
 
-        private static void UnloadPaletoInterior()
+        private static void UnloadPaletoInterior(bool force = false)
         {
-            foreach (string ipl in PALETO_IPLS)
-                Function.Call(Hash.REMOVE_IPL, ipl);
+            if (!_paletoMapLeaseHeld || !force) return;
+            DeferredMapContentResult released =
+                DeferredMapContentRuntime.Release(
+                    DeferredMapProperty.Paleto, PALETO_IPLS, force: force);
+            if (released.ReleaseComplete)
+                _paletoMapLeaseHeld = false;
+            else
+                Log("UnloadPaletoInterior: map release failed; lease retained " +
+                    released.Detail);
         }
 
         private static void SpawnPaletoGarageVehicles()

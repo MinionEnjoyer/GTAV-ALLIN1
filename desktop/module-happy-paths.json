@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "modules": [
+    {
+      "module": "client-uninstall-user-data-preservation",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "reviews client removal and preserves character garage and preference files"
+    },
+    {
+      "module": "service-recovery-without-replay",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "reconnects without replaying an interrupted save or discarding its draft"
+    },
+    {
+      "module": "independent-character-draft-identities",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "does not rebase a garage draft when another save refreshes changed files"
+    },
+    {
+      "module": "legacy-keyboard-shortcuts",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "supports legacy application shortcuts without bypassing review or draft guards"
+    },
+    {
+      "module": "manual-release-channel",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "shows a readable manual-download release result without installing anything"
+    },
+    {
+      "module": "legacy-preference-migration",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "imports previous preferences only after review and preserves the old folder"
+    },
+    {
+      "module": "preinstall-content-preferences",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "saves preinstall content preferences without installing a package"
+    },
+    {
+      "module": "package-initial-settings-and-third-party-content",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "edits initial package settings and manages installed third-party content"
+    },
+    {
+      "module": "launcher-assistant-provisioning",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "configures and manages a local assistant pack independently of the SDK"
+    },
+    {
+      "module": "activity-copy-and-retention",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "copies visible activity and clearing the view preserves the structured journal"
+    },
+    {
+      "module": "setup",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "saves settings and named profiles after explicit review"
+    },
+    {
+      "module": "gameplay",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "opens Gameplay without an error or a write"
+    },
+    {
+      "module": "input",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "saves settings and named profiles after explicit review"
+    },
+    {
+      "module": "content",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "saves content-owned settings and adopts their persisted configuration bindings"
+    },
+    {
+      "module": "packages",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "imports, disables, enables and uninstalls an actual fixture package"
+    },
+    {
+      "module": "characters",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "saves character money and garage vehicles to the synthetic game"
+    },
+    {
+      "module": "sdk-manager",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "installs and removes a validated SDK archive without launching its synthetic binaries"
+    },
+    {
+      "module": "activity",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "exports diagnostics to a new archive and filters the real help catalog"
+    },
+    {
+      "module": "help-center",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "exports diagnostics to a new archive and filters the real help catalog"
+    },
+    {
+      "module": "application-shell",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "guards dirty native close and flips collapsed navigation"
+    },
+    {
+      "module": "sdk-handoff",
+      "test_file": "src/Launcher.integration.test.tsx",
+      "test_title": "requires deliberate navigation for an SDK handoff and never applies its traffic request"
+    }
+  ]
+}

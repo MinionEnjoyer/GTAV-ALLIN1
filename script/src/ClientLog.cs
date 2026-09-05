@@ -9,6 +9,7 @@ namespace ALLIN1
 {
     internal static class ClientLog
     {
+        internal const string PortablePath = "scripts/ALLIN1_client.log";
         private const long MaxBytes = 5L * 1024L * 1024L;
         private const int Archives = 3;
         private static readonly object Sync = new object();
@@ -31,7 +32,18 @@ namespace ALLIN1
         internal static void Error(string component, string message, Exception ex,
             IDictionary<string, object> fields = null) => Write("ERROR", component, message, fields, ex);
         internal static IDisposable Time(string component, string operation,
-            IDictionary<string, object> fields = null) => new TimedOperation(component, operation, fields);
+            IDictionary<string, object> fields = null,
+            long slowThresholdMilliseconds = -1) => new TimedOperation(
+                component, operation, fields, slowThresholdMilliseconds);
+
+        internal static bool IsSlowOperation(
+            long elapsedMilliseconds, long slowThresholdMilliseconds)
+        {
+            return slowThresholdMilliseconds >= 0 &&
+                elapsedMilliseconds > slowThresholdMilliseconds;
+        }
+
+        internal static string RuntimePath => LogPath;
 
         private static void EnsureStarted()
         {
@@ -106,14 +118,39 @@ namespace ALLIN1
         {
             private readonly string _component, _operation;
             private readonly IDictionary<string, object> _fields;
+            private readonly long _slowThresholdMilliseconds;
             private readonly Stopwatch _watch = Stopwatch.StartNew();
-            internal TimedOperation(string component, string operation, IDictionary<string, object> fields)
-            { _component = component; _operation = operation; _fields = fields; Info(component, operation + "_started", fields); }
+            internal TimedOperation(
+                string component, string operation,
+                IDictionary<string, object> fields,
+                long slowThresholdMilliseconds)
+            {
+                _component = component;
+                _operation = operation;
+                _fields = fields;
+                _slowThresholdMilliseconds = slowThresholdMilliseconds;
+                Info(component, operation + "_started", fields);
+            }
+
             public void Dispose()
             {
                 _watch.Stop();
                 var fields = _fields == null ? new Dictionary<string, object>() : new Dictionary<string, object>(_fields);
                 fields["elapsed_ms"] = _watch.ElapsedMilliseconds;
+                if (_slowThresholdMilliseconds >= 0)
+                {
+                    bool slow = IsSlowOperation(
+                        _watch.ElapsedMilliseconds,
+                        _slowThresholdMilliseconds);
+                    fields["slow"] = slow;
+                    fields["slow_threshold_ms"] =
+                        _slowThresholdMilliseconds;
+                    if (slow)
+                    {
+                        Warn(_component, _operation + "_completed", fields);
+                        return;
+                    }
+                }
                 Info(_component, _operation + "_completed", fields);
             }
         }

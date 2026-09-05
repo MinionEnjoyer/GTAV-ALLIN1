@@ -17,22 +17,23 @@ namespace ALLIN1
         private static readonly GarageDefinition GARMENT_GARAGE =
             GarageDefinitions.GarmentFactory;
 
-        internal static readonly Vector3 GARMENT_VEHICLE_ENTRANCE_POS =
+        internal static Vector3 GARMENT_VEHICLE_ENTRANCE_POS =
             new Vector3(762.1525f, -899.2333f, 25.1761f);
-        private const float GARMENT_VEHICLE_ENTRANCE_HEADING = 270f;
-        internal static readonly Vector3 GARMENT_PED_ENTRANCE_POS =
+        private static float GARMENT_VEHICLE_ENTRANCE_HEADING = 270f;
+        internal static Vector3 GARMENT_PED_ENTRANCE_POS =
             new Vector3(760.7663f, -909.4583f, 25.2538f);
-        private const float GARMENT_PED_ENTRANCE_HEADING = 270f;
+        private static float GARMENT_PED_ENTRANCE_HEADING = 270f;
 
         // Surveyed player-facing centre of the marked pedestrian exit door.
         // This is intentionally separate from Rockstar's deeper fast-travel
         // trigger so the world marker and interaction sit directly at the door.
-        private static readonly Vector3 GARMENT_INTERIOR_PED =
+        private static Vector3 GARMENT_INTERIOR_PED =
             new Vector3(751.0350f, -975.4493f, -67.5536f);
-        private const float GARMENT_INTERIOR_PED_HEADING = 180f;
+        private static float GARMENT_INTERIOR_PED_HEADING = 180f;
         private const float GARMENT_FLOOR_Z = -67.75383f;
+        private const int GARMENT_INTERIOR_LOAD_TIMEOUT_MS = 6000;
 
-        private static readonly string[] GARMENT_IPLS =
+        private static string[] GARMENT_IPLS =
         {
             "m24_2_int_placement",
             "m24_2_int_placement_interior_int_hacker_garage_milo_",
@@ -40,7 +41,7 @@ namespace ALLIN1
 
         // Rockstar's ten roots from am_mp_hacker_den. Standard cars are
         // shifted 0.8 m into their bays; large models retain these roots.
-        internal static readonly ParkingSlot[] GarmentFactorySlots =
+        internal static ParkingSlot[] GarmentFactorySlots =
         {
             new ParkingSlot(735.8997f, -977.9629f, -67.0919f, 176.4f, GARMENT_FLOOR_Z),
             new ParkingSlot(740.9352f, -977.9629f, -67.0903f, -175.32f, GARMENT_FLOOR_Z),
@@ -66,6 +67,8 @@ namespace ALLIN1
         private static readonly Vehicle[] _garmentHandles =
             new Vehicle[GARMENT_SLOT_COUNT];
         private static bool _isPlayerInGarmentGarage;
+        private static bool _garmentMapLeaseHeld;
+        private static bool _garmentMapLeaseCreatedForCurrentEntry;
         private static bool _garmentInitialized;
         private static int _garmentExitCooldownFrames;
         private static Blip _garmentVehicleBlip;
@@ -177,15 +180,23 @@ namespace ALLIN1
 
             Ped player = Game.Player.Character;
             if (player == null || player.IsDead) return;
-            if (!_isPlayerInGarmentGarage && !GbayShop.TryGetCurrentCharacter(out _))
-                return;
-            Color markerColor = CharacterMarkerColor();
+            Color markerColor;
 
             if (!_isPlayerInGarmentGarage)
             {
-                if (EvaluateGarageEntry(GARMENT_GARAGE) ==
-                    GarageEntryDenial.MissionActive) return;
-                if (player.IsInVehicle())
+                bool inVehicle = player.IsInVehicle();
+                Vector3 activeEntrance = inVehicle
+                    ? GARMENT_VEHICLE_ENTRANCE_POS
+                    : GARMENT_PED_ENTRANCE_POS;
+                if (!ShouldServiceExteriorMarker(
+                        player.Position, activeEntrance))
+                    return;
+                if (!GbayShop.TryGetCurrentCharacter(out _))
+                    return;
+                markerColor = CharacterMarkerColor();
+
+                if (!ShouldServiceGarageExterior()) return;
+                if (inVehicle)
                 {
                     World.DrawMarker(GTA.MarkerType.VerticalCylinder,
                         GARMENT_VEHICLE_ENTRANCE_POS - new Vector3(0f, 0f, 1f),
@@ -233,6 +244,7 @@ namespace ALLIN1
                 return;
             }
 
+            markerColor = CharacterMarkerColor();
             EnforceGarmentVehicleState();
             if (player.IsInVehicle())
             {
@@ -260,26 +272,74 @@ namespace ALLIN1
         private static void EnterGarmentGarage()
         {
             if (RejectGarageEntry(GARMENT_GARAGE)) return;
+            if (!DeferredMapContentRuntime.CanBeginOfficialGarageEntry(
+                    DeferredMapProperty.GarmentFactory, out _)) return;
             if (!BeginTransition("EnterGarmentGarage")) return;
-            try { EnterGarmentGarageCore(); }
+            _garmentMapLeaseCreatedForCurrentEntry = false;
+            var transition = CreateGarmentEntryStreamingTransition();
+            try { EnterGarmentGarageCore(transition); }
             catch (Exception ex)
             {
+                transition.Fail("entry_exception:" + ex.GetType().Name);
                 LogException("EnterGarmentGarage", ex);
-                UnloadGarmentInterior();
                 RecoverTransition("EnterGarmentGarage",
                     GARMENT_PED_ENTRANCE_POS, GARMENT_PED_ENTRANCE_HEADING);
+                Script.Wait(100);
+                UnloadGarmentInterior(
+                    force: _garmentMapLeaseCreatedForCurrentEntry);
                 GTA.UI.Screen.ShowSubtitle(
                     "~r~Garment Factory entry failed safely. See ALLIN1_gbay.log.", 4000);
             }
-            finally { EndTransition("EnterGarmentGarage"); }
+            finally
+            {
+                transition.Dispose();
+                EndTransition("EnterGarmentGarage");
+            }
         }
 
-        private static void EnterGarmentGarageCore()
+        private static OfficialGarageTransitionCoordinator
+            CreateGarmentEntryStreamingTransition()
+        {
+            return new OfficialGarageTransitionCoordinator(
+                GARMENT_GARAGE.Id,
+                "entry",
+                () => Environment.TickCount,
+                ObserveOfficialGarageTransition,
+                () =>
+                {
+                    _isPlayerInGarmentGarage = false;
+                    ClearGarmentHandles();
+                    UnloadGarmentInterior(
+                        force: _garmentMapLeaseCreatedForCurrentEntry);
+                    if (!_garmentMapLeaseHeld)
+                        _garmentMapLeaseCreatedForCurrentEntry = false;
+                },
+                () => Function.Call(Hash.DO_SCREEN_FADE_IN, 0));
+        }
+
+        private static void EnterGarmentGarageCore(
+            OfficialGarageTransitionCoordinator transition)
         {
             Ped player = Game.Player.Character;
             Vehicle rideInToDelete = null;
             string confirmation = null;
-            bool interiorLoaded = false;
+
+            // MP2024_02_MAP_UPDATE declares a loading-screen transition.
+            // Acquire its fixed dormant group only after the owned fade has
+            // reached full black, before any teleport or vehicle mutation.
+            transition.HoldFade(
+                () => BeginGarageBlackTransition("EnterGarmentGarage"));
+            transition.Advance(
+                OfficialGarageTransitionPhase.LeaseRequested,
+                "garment_map_lease_requested_while_black");
+            if (!LoadGarmentInterior(transition))
+            {
+                transition.Fail("map_activation_failed");
+                GTA.UI.Screen.ShowSubtitle(
+                    DeferredMapContentRuntime.GarageUnavailableMessage(
+                        "The Garment Factory"), 4000);
+                return;
+            }
 
             if (player.IsInVehicle())
             {
@@ -299,20 +359,12 @@ namespace ALLIN1
                     }
                     int slotIndex = FindEmptyGarmentSlot(list);
                     if (slotIndex < 0) return;
-                    if (!LoadGarmentInterior())
-                    {
-                        GTA.UI.Screen.ShowSubtitle(
-                            "~r~The Garment Factory map pack could not be loaded.", 4000);
-                        return;
-                    }
-                    interiorLoaded = true;
                     StoredVehicle stored = CaptureVehicleState(
                         rideIn, modelName, slotIndex);
                     list.Add(stored);
                     if (!GarmentSave())
                     {
                         list.Remove(stored);
-                        UnloadGarmentInterior();
                         GTA.UI.Screen.ShowSubtitle(
                             "~r~The vehicle could not be saved.", 3000);
                         return;
@@ -324,16 +376,8 @@ namespace ALLIN1
                 }
             }
 
-            if (!interiorLoaded && !LoadGarmentInterior())
-            {
-                GTA.UI.Screen.ShowSubtitle(
-                    "~r~The Garment Factory map pack could not be loaded.", 4000);
-                return;
-            }
-
             ClearGarmentHandles();
             _isPlayerInGarmentGarage = true;
-            BeginGarageBlackTransition("EnterGarmentGarage");
             player.IsPositionFrozen = true;
             Function.Call(Hash.SET_ENTITY_COORDS, player,
                 GARMENT_INTERIOR_PED.X, GARMENT_INTERIOR_PED.Y,
@@ -346,9 +390,13 @@ namespace ALLIN1
             SpawnGarmentGarageVehicles();
             player.IsPositionFrozen = false;
             Function.Call(Hash.FREEZE_ENTITY_POSITION, player, false);
-            CompleteGarageBlackTransition(
-                "EnterGarmentGarage", player, null,
-                () => IsPlayerInReadyInterior(player), _garmentHandles);
+            transition.Complete(
+                OfficialGarageTransitionPhase.Occupied,
+                () => CompleteGarageBlackTransition(
+                    "EnterGarmentGarage", player, null,
+                    () => IsPlayerInReadyInterior(player), _garmentHandles),
+                "garment_interior_occupied");
+            _garmentMapLeaseCreatedForCurrentEntry = false;
             if (!string.IsNullOrEmpty(confirmation))
                 GTA.UI.Screen.ShowSubtitle(confirmation, 4000);
         }
@@ -393,8 +441,6 @@ namespace ALLIN1
             player.IsPositionFrozen = true;
             if (playerVehicle != null)
                 playerVehicle.IsPositionFrozen = true;
-            UnloadGarmentInterior();
-            Script.Wait(250);
 
             if (playerVehicle != null)
             {
@@ -416,6 +462,8 @@ namespace ALLIN1
                     GARMENT_PED_ENTRANCE_HEADING);
                 player.IsPositionFrozen = false;
             }
+            Script.Wait(100);
+            UnloadGarmentInterior();
             GarmentSave();
             _isPlayerInGarmentGarage = false;
             _garmentExitCooldownFrames = 60;
@@ -425,12 +473,29 @@ namespace ALLIN1
                     Hash.GET_INTERIOR_FROM_ENTITY, player) == 0);
         }
 
-        private static bool LoadGarmentInterior()
+        private static bool LoadGarmentInterior(
+            OfficialGarageTransitionCoordinator transition = null)
         {
-            if (!StandaloneMapPack.TryActivate(GARMENT_IPLS))
+            if (!_garmentMapLeaseHeld)
             {
-                Log("LoadGarmentInterior: standalone map unavailable");
-                return false;
+                DeferredMapContentResult activation =
+                    DeferredMapContentRuntime.TryAcquireGarmentPhaseB(
+                        transition, GARMENT_IPLS,
+                        GARMENT_INTERIOR_LOAD_TIMEOUT_MS);
+                if (!activation.Success)
+                {
+                    if (DeferredMapContentRuntime
+                            .HasGarmentPhaseBCleanupPending)
+                    {
+                        _garmentMapLeaseHeld = true;
+                        _garmentMapLeaseCreatedForCurrentEntry = true;
+                    }
+                    Log("LoadGarmentInterior: deferred map unavailable " +
+                        $"outcome={activation.Outcome} detail={activation.Detail}");
+                    return false;
+                }
+                _garmentMapLeaseHeld = true;
+                _garmentMapLeaseCreatedForCurrentEntry = true;
             }
             foreach (string ipl in GARMENT_IPLS)
                 Function.Call(Hash.REQUEST_IPL, ipl);
@@ -441,6 +506,16 @@ namespace ALLIN1
             {
                 Function.Call(Hash.REFRESH_INTERIOR, interior);
                 Function.Call(Hash.PIN_INTERIOR_IN_MEMORY, interior);
+                if (transition != null && transition.Phase ==
+                    OfficialGarageTransitionPhase.LeaseRequested)
+                    transition.Advance(
+                        OfficialGarageTransitionPhase.IplReady,
+                        "garment_ipls_active");
+                if (transition != null && transition.Phase ==
+                    OfficialGarageTransitionPhase.IplReady)
+                    transition.Advance(
+                        OfficialGarageTransitionPhase.InteriorReady,
+                        "garment_interior_ready");
                 return true;
             }
             Log("LoadGarmentInterior: WARNING - interior not found");
@@ -448,10 +523,25 @@ namespace ALLIN1
             return false;
         }
 
-        private static void UnloadGarmentInterior()
+        private static void UnloadGarmentInterior(bool force = false)
         {
-            foreach (string ipl in GARMENT_IPLS)
-                Function.Call(Hash.REMOVE_IPL, ipl);
+            if (!_garmentMapLeaseHeld) return;
+            DeferredMapContentResult released =
+                DeferredMapContentRuntime.Release(
+                    DeferredMapProperty.GarmentFactory, GARMENT_IPLS, force);
+            if (released.Outcome == DeferredMapContentOutcome.KeptResident)
+            {
+                Log("UnloadGarmentInterior: map retained for the Story session");
+                return;
+            }
+            if (released.ReleaseComplete)
+            {
+                _garmentMapLeaseHeld = false;
+                _garmentMapLeaseCreatedForCurrentEntry = false;
+            }
+            else
+                Log("UnloadGarmentInterior: map release failed; lease retained " +
+                    released.Detail);
         }
 
         private static ParkingSlot ResolveGarmentSlot(StoredVehicle stored)

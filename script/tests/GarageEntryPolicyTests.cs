@@ -176,5 +176,31 @@ namespace ALLIN1.Tests
             Assert.False(GarageInteriorReadinessPolicy.IsUsable(
                 0, true, true, true, 5000, 1500));
         }
+
+        [Theory]
+        [InlineData(1000, 1000, true)]
+        [InlineData(999, 1000, false)]
+        [InlineData(1200, 1000, true)]
+        [InlineData(int.MinValue + 5, int.MaxValue - 5, true)]
+        public void Periodic_garage_work_uses_wrap_safe_deadlines(
+            int now, int scheduledAt, bool expected)
+        {
+            Assert.Equal(expected,
+                GarageManager.PeriodicWorkDue(now, scheduledAt));
+        }
+
+        [Theory]
+        [InlineData(0f, 0f, 0f, 0f, 0f, 0f, true)]
+        [InlineData(250f, 0f, 0f, 0f, 0f, 0f, true)]
+        [InlineData(250.01f, 0f, 0f, 0f, 0f, 0f, false)]
+        [InlineData(0f, 0f, 251f, 0f, 0f, 0f, false)]
+        public void Exterior_garage_handlers_sleep_outside_marker_range(
+            float playerX, float playerY, float playerZ,
+            float markerX, float markerY, float markerZ, bool expected)
+        {
+            Assert.Equal(expected, GarageManager.ShouldServiceExteriorMarker(
+                new GTA.Math.Vector3(playerX, playerY, playerZ),
+                new GTA.Math.Vector3(markerX, markerY, markerZ)));
+        }
     }
 }

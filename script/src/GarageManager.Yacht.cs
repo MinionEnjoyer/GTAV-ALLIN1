@@ -21,6 +21,7 @@ namespace ALLIN1
         private const float YACHT_HELIPAD_DECK_Z = 11.9807f;
         private const float YACHT_HELIPAD_SPAWN_DISTANCE = 500f;
         private const int YACHT_HELIPAD_RESPAWN_DELAY_MS = 15000;
+        private const int YACHT_HELIPAD_OFFSITE_INTERVAL_MS = 250;
 
         internal static readonly Vector3 YachtHelipadPosition =
             new Vector3(-2043.9200f, -1031.4230f, YACHT_HELIPAD_DECK_Z);
@@ -41,6 +42,8 @@ namespace ALLIN1
         private static string _yachtHelipadHandleCharacter = "";
         private static bool _yachtHelipadInitialized;
         private static int _yachtHelipadNextRespawn;
+        private static int _yachtHelipadNextOffsiteCheck;
+        private static bool _yachtHelipadPlayerNearby;
 
         internal static void InitializeYachtHelipad()
         {
@@ -131,7 +134,10 @@ namespace ALLIN1
         {
             if (!_yachtHelipadInitialized) return;
 
-            if (_yachtHelipadHandle != null && !_yachtHelipadHandle.Exists())
+            bool liveHandle = _yachtHelipadHandle != null &&
+                _yachtHelipadHandle.Exists();
+
+            if (_yachtHelipadHandle != null && !liveHandle)
             {
                 _yachtHelipadHandle = null;
                 _yachtHelipadHandleCharacter = "";
@@ -139,16 +145,47 @@ namespace ALLIN1
                     YACHT_HELIPAD_RESPAWN_DELAY_MS;
             }
 
+            bool worldReady = YachtManager.IsWorldStreamed;
+            int now = Game.GameTime;
+            if (!ShouldServiceYachtHelipad(
+                    liveHandle, worldReady, _yachtHelipadPlayerNearby,
+                    now >= _yachtHelipadNextOffsiteCheck))
+                return;
+
+            // CharacterInventory resolves the current protagonist. Keep even
+            // that work behind the off-site interval when no aircraft exists.
+            bool featuresUnlocked = YachtManager.FeaturesUnlocked;
+            if (!liveHandle && !featuresUnlocked)
+            {
+                _yachtHelipadPlayerNearby = false;
+                _yachtHelipadNextOffsiteCheck = now +
+                    YACHT_HELIPAD_OFFSITE_INTERVAL_MS;
+                return;
+            }
+
+            Ped player = Game.Player.Character;
+            if (player == null || !player.Exists()) return;
+            float playerDistance = player.Position.DistanceTo(
+                YachtHelipadPosition);
+            _yachtHelipadPlayerNearby =
+                playerDistance <= YACHT_HELIPAD_SPAWN_DISTANCE;
+            if (!_yachtHelipadPlayerNearby)
+            {
+                _yachtHelipadNextOffsiteCheck = now +
+                    YACHT_HELIPAD_OFFSITE_INTERVAL_MS;
+                return;
+            }
+
             string key = CharacterKey();
-            if (_yachtHelipadHandle != null && _yachtHelipadHandle.Exists())
+            if (liveHandle)
             {
                 if (!string.Equals(_yachtHelipadHandleCharacter, key,
                         StringComparison.OrdinalIgnoreCase) &&
-                    Game.Player.Character.CurrentVehicle != _yachtHelipadHandle)
+                    player.CurrentVehicle != _yachtHelipadHandle)
                     DeleteYachtHelipadHandle();
                 else
                 {
-                    bool occupied = Game.Player.Character.CurrentVehicle ==
+                    bool occupied = player.CurrentVehicle ==
                         _yachtHelipadHandle;
                     _yachtHelipadHandle.IsPositionFrozen = !occupied &&
                         _yachtHelipadHandle.Position.DistanceTo(
@@ -156,22 +193,31 @@ namespace ALLIN1
                 }
             }
 
-            if (!YachtManager.FeaturesUnlocked ||
-                !YachtManager.IsWorldStreamed) return;
+            if (!featuresUnlocked || !worldReady) return;
 
             List<StoredVehicle> list = GetYachtHelipadStoredVehicles();
             if (list.Count == 0)
             {
-                DrawYachtHelipadMarker();
+                if (!ShouldServiceGarageExterior()) return;
+                if (ShouldServiceExteriorMarker(
+                        player.Position, YachtHelipadPosition))
+                    DrawYachtHelipadMarker(player);
                 return;
             }
             if (_yachtHelipadHandle != null && _yachtHelipadHandle.Exists())
                 return;
-            if (Game.GameTime < _yachtHelipadNextRespawn ||
-                Game.Player.Character.Position.DistanceTo(YachtHelipadPosition) >
-                    YACHT_HELIPAD_SPAWN_DISTANCE) return;
+            if (now < _yachtHelipadNextRespawn) return;
 
             SpawnYachtHelipadVehicle(list[0], key);
+        }
+
+        internal static bool ShouldServiceYachtHelipad(
+            bool liveHandle, bool worldReady, bool playerNearby,
+            bool offsiteIntervalElapsed)
+        {
+            if (liveHandle) return true;
+            if (!worldReady) return false;
+            return playerNearby || offsiteIntervalElapsed;
         }
 
         internal static void OnYachtWorldUnloaded()
@@ -187,13 +233,13 @@ namespace ALLIN1
                 DeleteYachtHelipadHandle();
         }
 
-        private static void DrawYachtHelipadMarker()
+        private static void DrawYachtHelipadMarker(Ped player)
         {
             World.DrawMarker(MarkerType.VerticalCylinder,
                 YachtHelipadPosition - new Vector3(0f, 0f, 0.8f),
                 Vector3.Zero, Vector3.Zero, new Vector3(3f, 3f, 0.35f),
                 CharacterMarkerColor());
-            if (Game.Player.Character.Position.DistanceTo(YachtHelipadPosition) < 4f)
+            if (player.Position.DistanceTo(YachtHelipadPosition) < 4f)
                 GTA.UI.Screen.ShowHelpTextThisFrame(
                     "Purchase a Swift Deluxe or SuperVolito Carbon from GBAY and select Yacht Helipad.");
         }

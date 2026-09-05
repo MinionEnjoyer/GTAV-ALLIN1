@@ -121,6 +121,7 @@ namespace ALLIN1
         private string _pendingSellModel = "";
         private string _pendingSellPlate = "";
         private int _pendingSellModelHash;
+        private int _pendingSellSlot = -1;
         private int _pendingSellGarageLocation;
         private int _garageLocationIndex;
         private int _deliveryGarageIndex;
@@ -194,32 +195,33 @@ namespace ALLIN1
         private struct WeaponCategory
         {
             internal string Label;
-            internal string[] Weapons;
+            private Func<string[]> _weapons;
+            internal string[] Weapons => _weapons();
             internal bool FavoritesOnly;
 
             internal WeaponCategory(
-                string label, string[] weapons, bool favoritesOnly = false)
+                string label, Func<string[]> weapons, bool favoritesOnly = false)
             {
                 Label = label;
-                Weapons = weapons;
+                _weapons = weapons;
                 FavoritesOnly = favoritesOnly;
             }
         }
 
         private static readonly WeaponCategory[] WEAPON_CATEGORIES =
         {
-            new WeaponCategory("All",             BuildSmokeWeaponCatalog(WeaponList.All)),
-            new WeaponCategory("Favorites",       BuildSmokeWeaponCatalog(WeaponList.All), true),
-            new WeaponCategory("Pistols",         WeaponList.Pistols),
-            new WeaponCategory("SMGs",            WeaponList.Smgs),
-            new WeaponCategory("Shotguns",        WeaponList.Shotguns),
-            new WeaponCategory("Assault Rifles",  WeaponList.Rifles),
-            new WeaponCategory("Machine Guns",    WeaponList.MachineGuns),
-            new WeaponCategory("Sniper Rifles",   WeaponList.Snipers),
-            new WeaponCategory("Heavy Weapons",   WeaponList.Heavy),
-            new WeaponCategory("Melee",           WeaponList.Melee),
-            new WeaponCategory("Throwables",      BuildSmokeWeaponCatalog(WeaponList.Throwables)),
-            new WeaponCategory("Miscellaneous",   WeaponList.Misc),
+            new WeaponCategory("All",             () => BuildSmokeWeaponCatalog(RuntimeWeaponCatalog.All)),
+            new WeaponCategory("Favorites",       () => BuildSmokeWeaponCatalog(RuntimeWeaponCatalog.All), true),
+            new WeaponCategory("Pistols",         () => RuntimeWeaponCatalog.Pistols),
+            new WeaponCategory("SMGs",            () => RuntimeWeaponCatalog.Smgs),
+            new WeaponCategory("Shotguns",        () => RuntimeWeaponCatalog.Shotguns),
+            new WeaponCategory("Assault Rifles",  () => RuntimeWeaponCatalog.Rifles),
+            new WeaponCategory("Machine Guns",    () => RuntimeWeaponCatalog.MachineGuns),
+            new WeaponCategory("Sniper Rifles",   () => RuntimeWeaponCatalog.Snipers),
+            new WeaponCategory("Heavy Weapons",   () => RuntimeWeaponCatalog.Heavy),
+            new WeaponCategory("Melee",           () => RuntimeWeaponCatalog.Melee),
+            new WeaponCategory("Throwables",      () => BuildSmokeWeaponCatalog(RuntimeWeaponCatalog.Throwables)),
+            new WeaponCategory("Miscellaneous",   () => RuntimeWeaponCatalog.Misc),
         };
 
         private static string[] BuildSmokeWeaponCatalog(string[] source)
@@ -231,7 +233,7 @@ namespace ALLIN1
                         StringComparison.OrdinalIgnoreCase))
                     result.Add(weapon);
             result.AddRange(SmokeGrenadeCatalog.ProductIds);
-            return result.ToArray();
+            return RuntimeWeaponCatalog.Sort(result);
         }
 
         // ------------------------------------------------------------------ //
@@ -239,6 +241,8 @@ namespace ALLIN1
         // ------------------------------------------------------------------ //
 
         private readonly GbayShop _shop;
+        private readonly GbayMenuAutoRefreshGate _autoRefresh =
+            new GbayMenuAutoRefreshGate();
         private BrowserState _state = BrowserState.Closed;
         private BrowserState _lastDrawState = BrowserState.Closed;
         private int _stateStartedAt;
@@ -287,6 +291,7 @@ namespace ALLIN1
         private string _weaponSearch = "";
         private bool _weaponKeyboardActive;
         private bool _weaponWorkbenchMode;
+        private bool _reactorWeaponWorkbenchHandoff;
 
         // ------------------------------------------------------------------ //
         //  Constructor                                                        //
@@ -302,12 +307,15 @@ namespace ALLIN1
         // ------------------------------------------------------------------ //
 
         internal bool IsOpen => _state != BrowserState.Closed;
+        internal bool IsWeaponCustomizationOpen =>
+            _state == BrowserState.WeaponCustomize;
 
         internal void Toggle()
         {
             if (_state == BrowserState.Closed)
             {
                 RuntimeVehicleCatalog.Refresh();
+                RuntimeWeaponCatalog.Refresh();
                 _helipadListAccessMode = false;
                 _harbourListAccessMode = false;
                 _state = BrowserState.Loading;
@@ -319,6 +327,7 @@ namespace ALLIN1
             else
             {
                 EndWeaponCustomization();
+                _reactorWeaponWorkbenchHandoff = false;
                 ReleaseAllDicts();
                 _state = BrowserState.Closed;
             }
@@ -327,6 +336,7 @@ namespace ALLIN1
         internal void Close()
         {
             EndWeaponCustomization();
+            _reactorWeaponWorkbenchHandoff = false;
             ReleaseAllDicts();
             _helipadListAccessMode = false;
             _harbourListAccessMode = false;
@@ -363,6 +373,67 @@ namespace ALLIN1
             _state = BrowserState.GarageView;
         }
 
+        /// <summary>
+        /// Migration fallback for an optional storefront UI. The external UI
+        /// may select a receipt-authorized listing, but ALLIN1 still opens its
+        /// established delivery screen and performs the eventual purchase.
+        /// </summary>
+        internal bool TryOpenVehicleDelivery(string model, int quotedPrice)
+        {
+            if (_state != BrowserState.Closed)
+                return false;
+            _helipadListAccessMode = false;
+            _harbourListAccessMode = false;
+            GbayRenderer.EnsureTextures();
+            GbayRenderer.RequestDict("phat_logo");
+            OpenDeliveryConfirm(model, quotedPrice);
+            return _state == BrowserState.DeliveryConfirm;
+        }
+
+        internal void SynchronizeVehicleListing(string model, int currentPrice)
+        {
+            if (string.Equals(_pendingModel, model,
+                    StringComparison.OrdinalIgnoreCase))
+                _pendingPrice = _shop.FreeMode ? 0 : currentPrice;
+            if (_state == BrowserState.VehicleBrowser ||
+                _state == BrowserState.DeliveryConfirm)
+                RebuildFilteredList(preserveSelection: true);
+        }
+
+        /// <summary>
+        /// Guarded handoff from Reactor to the preserved 0.5.0-style native
+        /// preview. The selected weapon is revalidated by the workbench before
+        /// any camera, actor, or purchase state is created.
+        /// </summary>
+        internal bool TryOpenWeaponCustomization(
+            string weaponName, string displayName)
+        {
+            if (_state != BrowserState.Closed)
+                return false;
+            _reactorWeaponWorkbenchHandoff = true;
+            GbayRenderer.EnsureTextures();
+            try
+            {
+                BeginWeaponCustomization(weaponName, displayName);
+            }
+            catch
+            {
+                // Native setup may fail after the real player has already
+                // been frozen or hidden. Always unwind the established
+                // camera/dummy/player state before allowing the bridge to
+                // report the failure.
+                EndWeaponCustomization();
+                ReleaseAllDicts();
+                _state = BrowserState.Closed;
+                _reactorWeaponWorkbenchHandoff = false;
+                throw;
+            }
+            if (_state == BrowserState.WeaponCustomize)
+                return true;
+            _reactorWeaponWorkbenchHandoff = false;
+            return false;
+        }
+
         // ------------------------------------------------------------------ //
         //  Main Draw (called every frame from GbayShop.OnTick)                //
         // ------------------------------------------------------------------ //
@@ -391,6 +462,8 @@ namespace ALLIN1
                     { "screen", _state.ToString() }
                 });
             }
+
+            RefreshVisibleGameState();
 
             // The workbench uses the live world as its showroom.  The normal
             // browser scrim reads as a translucent film over the character and
@@ -444,6 +517,34 @@ namespace ALLIN1
 
             DrawTransition();
             if (_state != BrowserState.Loading) GbayRenderer.DrawCursor();
+        }
+
+        private void RefreshVisibleGameState()
+        {
+            GbayMenuRefreshKind kind = _state == BrowserState.VehicleBrowser
+                ? GbayMenuRefreshKind.Vehicles
+                : _state == BrowserState.WeaponBrowser
+                    ? GbayMenuRefreshKind.Weapons
+                    : _state == BrowserState.GearBrowser
+                        ? GbayMenuRefreshKind.Gear
+                        : _state == BrowserState.Addons
+                            ? GbayMenuRefreshKind.Addons
+                        : GbayMenuRefreshKind.None;
+            Ped player = Game.Player.Character;
+            int characterModelHash = player != null && player.Exists()
+                ? player.Model.Hash : 0;
+            if (!_autoRefresh.ShouldRefresh(
+                    kind, characterModelHash, Game.GameTime))
+                return;
+
+            if (kind == GbayMenuRefreshKind.Vehicles)
+                RebuildFilteredList(preserveSelection: true);
+            else if (kind == GbayMenuRefreshKind.Weapons)
+                RebuildWeaponFilteredList(preserveSelection: true);
+            else if (kind == GbayMenuRefreshKind.Gear)
+                RebuildGearList(preserveSelection: true);
+            else if (kind == GbayMenuRefreshKind.Addons)
+                RefreshAddonActions();
         }
 
         private void DrawLoading()
@@ -1351,6 +1452,9 @@ namespace ALLIN1
             return GarageManager.GetGarageSizeTier(model) <= maximumSizeTier;
         }
 
+        private static bool DeliveryDestinationAvailable(int location) =>
+            OfficialMapContentPolicy.IsDeliveryDestinationAvailable(location);
+
         private static int CurrentGarageLocation()
         {
             if (GarageManager.IsPlayerInFloorGarage) return 1;
@@ -1365,6 +1469,14 @@ namespace ALLIN1
         {
             if (!_shop.ValidateVehiclePurchase(_pendingModel, _pendingPrice))
                 return;
+            if (!DeliveryDestinationAvailable(location))
+            {
+                GbayRenderer.PlayError();
+                GTA.UI.Screen.ShowSubtitle(
+                    "~r~That destination is not recognized by this build.",
+                    4000);
+                return;
+            }
             switch (location)
             {
                 case 1:
@@ -1436,8 +1548,9 @@ namespace ALLIN1
                 _deliveryGarageIndex = HARBOUR_INDEX;
             else if (GarageManager.IsHelipadVehicleEligible(model))
                 _deliveryGarageIndex = HELIPAD_INDEX;
-            else if (!GarageAcceptsVehicle(_deliveryGarageIndex, model))
-                _deliveryGarageIndex = HARMONY_GARAGE_INDEX;
+            else if (!GarageAcceptsVehicle(_deliveryGarageIndex, model) ||
+                !DeliveryDestinationAvailable(_deliveryGarageIndex))
+                _deliveryGarageIndex = 0;
 
             GbayRenderer.PlaySelect();
             _state = BrowserState.DeliveryConfirm;
@@ -1493,6 +1606,7 @@ namespace ALLIN1
                 int usedForRow = GetGarageUsedSlots(i);
                 int capacityForRow = GetGarageCapacity(i);
                 bool compatibleForRow = GarageAcceptsVehicle(i, _pendingModel);
+                bool mapAvailableForRow = DeliveryDestinationAvailable(i);
                 bool fullForRow = usedForRow >= capacityForRow;
                 float rowCY = destinationTop + i * destinationRowH +
                     destinationRowH / 2f;
@@ -1524,7 +1638,8 @@ namespace ALLIN1
                 bool hangarUnavailable = string.Equals(
                     RuntimeVehicleCatalog.GetStorage(_pendingModel), "hangar",
                     StringComparison.OrdinalIgnoreCase);
-                string status = yachtLocked ? "YACHT REQUIRED"
+                string status = !mapAvailableForRow ? "MAP CONTENT UNAVAILABLE"
+                    : yachtLocked ? "YACHT REQUIRED"
                     : yachtWrongType ? "YACHT HELIS ONLY"
                     : helipadWrongType ? "HELICOPTERS ONLY"
                     : harbourWrongType ? "BOATS ONLY"
@@ -1533,7 +1648,8 @@ namespace ALLIN1
                     : !compatibleForRow ? "TOO LARGE"
                     : fullForRow ? $"FULL {usedForRow}/{capacityForRow}"
                     : $"{usedForRow}/{capacityForRow} USED";
-                Color statusColor = !compatibleForRow || fullForRow
+                Color statusColor = !mapAvailableForRow ||
+                    !compatibleForRow || fullForRow
                     ? Color.FromArgb(255, 190, 75, 75) : GbayRenderer.TextPrice;
                 GbayRenderer.DrawTextFit(GARAGE_LOCATION_NAMES[i],
                     BROWSER_CX - destinationRowW / 2f + 0.014f,
@@ -1556,8 +1672,10 @@ namespace ALLIN1
             int cap = GetGarageCapacity(_deliveryGarageIndex);
             bool compatible = GarageAcceptsVehicle(
                 _deliveryGarageIndex, _pendingModel);
+            bool mapAvailable =
+                DeliveryDestinationAvailable(_deliveryGarageIndex);
             bool isFull = used >= cap;
-            bool canDeliver = compatible && !isFull;
+            bool canDeliver = mapAvailable && compatible && !isFull;
 
             float actionY = modalTop + 0.625f;
             float actionW = 0.15f;
@@ -1592,7 +1710,9 @@ namespace ALLIN1
                 !canDeliver)
             {
                 GbayRenderer.PlayError();
-                GTA.UI.Screen.ShowSubtitle(!compatible
+                GTA.UI.Screen.ShowSubtitle(!mapAvailable
+                    ? "~r~That destination is not recognized by this build."
+                    : !compatible
                     ? _deliveryGarageIndex == HELIPAD_INDEX
                         ? "~r~The Vespucci Helipad accepts helicopters only."
                     : _deliveryGarageIndex == YACHT_HELIPAD_INDEX
@@ -1952,7 +2072,7 @@ namespace ALLIN1
                             return;
                         }
                         BeginSell(sv.Model, sv.PlateText, sv.ModelHash,
-                            i, _garageLocationIndex);
+                            sv.Slot, i, _garageLocationIndex);
                         return;
                     }
                 }
@@ -1982,7 +2102,7 @@ namespace ALLIN1
                     GarageManager.StoredVehicle selected =
                         vehicles[_garageVehicleIdx];
                     BeginSell(selected.Model, selected.PlateText,
-                        selected.ModelHash, _garageVehicleIdx,
+                        selected.ModelHash, selected.Slot, _garageVehicleIdx,
                         _garageLocationIndex);
                     return;
                 }
@@ -2072,7 +2192,7 @@ namespace ALLIN1
         }
 
         private void BeginSell(string model, string plateText, int modelHash,
-            int index, int garageLocation)
+            int slot, int index, int garageLocation)
         {
             if (GarageManager.IsProtectedStoryVehicle(
                     model, plateText, modelHash))
@@ -2087,6 +2207,7 @@ namespace ALLIN1
             _pendingSellModel = model;
             _pendingSellPlate = plateText ?? "";
             _pendingSellModelHash = modelHash;
+            _pendingSellSlot = slot;
             _pendingSellIndex = index;
             _pendingSellGarageLocation = garageLocation;
             _state = BrowserState.GarageSellConfirm;
@@ -2095,6 +2216,29 @@ namespace ALLIN1
 
         private void DrawGarageSellConfirm(FrameInput input)
         {
+            List<GarageManager.StoredVehicle> currentVehicles =
+                GetGarageVehicles(_pendingSellGarageLocation);
+            bool selectionCurrent = _pendingSellIndex >= 0 &&
+                _pendingSellIndex < currentVehicles.Count;
+            if (selectionCurrent)
+            {
+                GarageManager.StoredVehicle current =
+                    currentVehicles[_pendingSellIndex];
+                selectionCurrent = GbayMenuAutoRefreshGate.SameGarageVehicle(
+                    _pendingSellModel, _pendingSellPlate,
+                    _pendingSellModelHash, _pendingSellSlot,
+                    current.Model, current.PlateText,
+                    current.ModelHash, current.Slot);
+            }
+            if (!selectionCurrent)
+            {
+                ClearPendingGarageSale();
+                _state = BrowserState.GarageView;
+                GTA.UI.Screen.ShowSubtitle(
+                    "~y~Garage contents changed. The list was updated.", 2500);
+                return;
+            }
+
             // Do not redraw the garage browser behind the modal. GTA text can
             // be submitted after native rectangles, which allowed the selected
             // vehicle row to bleed through the dialog title.
@@ -2148,21 +2292,13 @@ namespace ALLIN1
                     _pendingSellModel, _pendingSellIndex, _pendingSellGarageLocation,
                     _pendingSellPlate, _pendingSellModelHash);
                 _garageVehicleIdx = Math.Max(0, _pendingSellIndex - 1);
-                _pendingSellIndex = -1;
-                _pendingSellModel = "";
-                _pendingSellPlate = "";
-                _pendingSellModelHash = 0;
-                _pendingSellGarageLocation = 0;
+                ClearPendingGarageSale();
                 _state = BrowserState.GarageView;
             }
             else if (input.Back || input.MouseRightClick ||
                      (input.MouseClick && sellBackHover))
             {
-                _pendingSellIndex = -1;
-                _pendingSellModel = "";
-                _pendingSellPlate = "";
-                _pendingSellModelHash = 0;
-                _pendingSellGarageLocation = 0;
+                ClearPendingGarageSale();
                 _state = BrowserState.GarageView;
                 GbayRenderer.PlayBack();
             }
@@ -2691,8 +2827,17 @@ namespace ALLIN1
             }
         }
 
-        private void RebuildWeaponFilteredList()
+        private void RebuildWeaponFilteredList(bool preserveSelection = false)
         {
+            RuntimeWeaponCatalog.Refresh();
+            string selectedWeapon = null;
+            if (preserveSelection && _weaponFiltered.Count > 0)
+            {
+                int selectedIndex = _weaponPage * PAGE_SIZE +
+                    _weaponSelectedCard;
+                if (selectedIndex >= 0 && selectedIndex < _weaponFiltered.Count)
+                    selectedWeapon = _weaponFiltered[selectedIndex].WeaponName;
+            }
             _weaponFiltered.Clear();
 
             Ped player = Game.Player.Character;
@@ -2705,16 +2850,16 @@ namespace ALLIN1
                     weaponName, out SmokeGrenadeProduct smokeProduct);
                 if (_weaponWorkbenchMode && isSmoke) continue;
                 string displayName = isSmoke ? smokeProduct.DisplayName
-                    : WeaponList.DisplayNames.ContainsKey(weaponName)
-                        ? WeaponList.DisplayNames[weaponName] : weaponName;
+                    : RuntimeWeaponCatalog.DisplayNames.ContainsKey(weaponName)
+                        ? RuntimeWeaponCatalog.DisplayNames[weaponName] : weaponName;
 
                 int price = isSmoke ? smokeProduct.UnitPrice : 0;
-                if (!isSmoke && WeaponList.Prices.ContainsKey(weaponName))
-                    price = WeaponList.Prices[weaponName];
+                if (!isSmoke && RuntimeWeaponCatalog.Prices.ContainsKey(weaponName))
+                    price = RuntimeWeaponCatalog.Prices[weaponName];
 
                 string category = isSmoke ? "Throwables"
-                    : WeaponList.CategoryNames.ContainsKey(weaponName)
-                        ? WeaponList.CategoryNames[weaponName] : "";
+                    : RuntimeWeaponCatalog.CategoryNames.ContainsKey(weaponName)
+                        ? RuntimeWeaponCatalog.CategoryNames[weaponName] : "";
                 WeaponPurchaseQuote quote = _shop.GetWeaponPurchaseQuote(
                     weaponName, price);
 
@@ -2756,7 +2901,27 @@ namespace ALLIN1
                 });
             }
 
-            _weaponTotalPages = Math.Max(1, (_weaponFiltered.Count + PAGE_SIZE - 1) / PAGE_SIZE);
+            _weaponTotalPages = Math.Max(1,
+                (_weaponFiltered.Count + PAGE_SIZE - 1) / PAGE_SIZE);
+            int refreshedIndex = preserveSelection &&
+                !string.IsNullOrWhiteSpace(selectedWeapon)
+                ? _weaponFiltered.FindIndex(card => string.Equals(
+                    card.WeaponName, selectedWeapon,
+                    StringComparison.OrdinalIgnoreCase)) : -1;
+            if (refreshedIndex >= 0)
+            {
+                _weaponPage = refreshedIndex / PAGE_SIZE;
+                _weaponSelectedCard = refreshedIndex % PAGE_SIZE;
+            }
+            else
+            {
+                _weaponPage = Math.Max(0,
+                    Math.Min(_weaponPage, _weaponTotalPages - 1));
+                int count = Math.Max(0, Math.Min(PAGE_SIZE,
+                    _weaponFiltered.Count - _weaponPage * PAGE_SIZE));
+                _weaponSelectedCard = count == 0 ? 0
+                    : Math.Max(0, Math.Min(_weaponSelectedCard, count - 1));
+            }
         }
 
         private void UpdateWeaponSearchKeyboard()
@@ -2874,8 +3039,25 @@ namespace ALLIN1
             }
         }
 
-        private void RebuildFilteredList()
+        private void ClearPendingGarageSale()
         {
+            _pendingSellIndex = -1;
+            _pendingSellModel = "";
+            _pendingSellPlate = "";
+            _pendingSellModelHash = 0;
+            _pendingSellSlot = -1;
+            _pendingSellGarageLocation = 0;
+        }
+
+        private void RebuildFilteredList(bool preserveSelection = false)
+        {
+            string selectedModel = null;
+            if (preserveSelection && _filtered.Count > 0)
+            {
+                int selectedIndex = _currentPage * PAGE_SIZE + _selectedCard;
+                if (selectedIndex >= 0 && selectedIndex < _filtered.Count)
+                    selectedModel = _filtered[selectedIndex].Model;
+            }
             _filtered.Clear();
 
             Category activeCategory = CATEGORIES[_activeCategoryIndex];
@@ -2921,7 +3103,27 @@ namespace ALLIN1
                 });
             }
 
-            _totalPages = Math.Max(1, (_filtered.Count + PAGE_SIZE - 1) / PAGE_SIZE);
+            _totalPages = Math.Max(1,
+                (_filtered.Count + PAGE_SIZE - 1) / PAGE_SIZE);
+            int refreshedIndex = preserveSelection &&
+                !string.IsNullOrWhiteSpace(selectedModel)
+                ? _filtered.FindIndex(card => string.Equals(
+                    card.Model, selectedModel,
+                    StringComparison.OrdinalIgnoreCase)) : -1;
+            if (refreshedIndex >= 0)
+            {
+                _currentPage = refreshedIndex / PAGE_SIZE;
+                _selectedCard = refreshedIndex % PAGE_SIZE;
+            }
+            else
+            {
+                _currentPage = Math.Max(0,
+                    Math.Min(_currentPage, _totalPages - 1));
+                int count = Math.Max(0, Math.Min(PAGE_SIZE,
+                    _filtered.Count - _currentPage * PAGE_SIZE));
+                _selectedCard = count == 0 ? 0
+                    : Math.Max(0, Math.Min(_selectedCard, count - 1));
+            }
             UpdateActiveDicts();
         }
 

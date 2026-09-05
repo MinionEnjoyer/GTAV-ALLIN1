@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>ALLIN1.ReactorBridge</AssemblyName>
+    <RootNamespace>ALLIN1.ReactorBridge</RootNamespace>
+    <OutputType>Library</OutputType>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <Version>0.6.4</Version>
+    <AssemblyVersion>0.6.4.0</AssemblyVersion>
+    <FileVersion>0.6.4.0</FileVersion>
+    <!-- Compile against the pinned contract artifact checked into this repo.
+         The DLL is never copied into the game by this project; Reactor V owns
+         the runtime assembly. Developers may explicitly override this path
+         when qualifying a newer contract. -->
+    <ReactorCorePath Condition="'$(ReactorCorePath)' == ''">$(MSBuildThisFileDirectory)lib\RageWebUI.Core.dll</ReactorCorePath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <Deterministic>true</Deterministic>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <PathMap>$(MSBuildProjectDirectory)=/_/ALLIN1/script/reactor-bridge</PathMap>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ALLIN1.csproj" Private="false" />
+    <Reference Include="RageWebUI.Core" HintPath="$(ReactorCorePath)" Private="false" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <!-- The bridge has a compile-time dependency on ALLIN1's public contract.
+       It must never be staged independently: doing so can leave an older
+       ALLIN1.dll beside a newer plug-in and fail at runtime with a
+       MissingMethodException.  The manifest is written last and therefore
+       invalidates any interrupted or manually mixed staging operation. -->
+  <Target Name="StageCompatibleClientPair" AfterTargets="Build">
+    <PropertyGroup>
+      <Allin1CoreOutput>$(MSBuildThisFileDirectory)..\bin\$(Configuration)\ALLIN1.dll</Allin1CoreOutput>
+      <ClientDistDirectory>$(MSBuildThisFileDirectory)..\dist</ClientDistDirectory>
+      <DistCore>$(ClientDistDirectory)\ALLIN1.dll</DistCore>
+      <DistBridge>$(ClientDistDirectory)\ALLIN1.ReactorBridge.plugin</DistBridge>
+      <PairContract>$(ClientDistDirectory)\ALLIN1.ReactorBridge.contract.json</PairContract>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(Allin1CoreOutput)')"
+           Text="The compatible ALLIN1 core output is missing: $(Allin1CoreOutput)" />
+    <MakeDir Directories="$(ClientDistDirectory)" />
+    <Copy SourceFiles="$(Allin1CoreOutput)" DestinationFiles="$(DistCore)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(DistBridge)" />
+    <GetFileHash Files="$(DistCore)" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="DistCoreHashItem" />
+    </GetFileHash>
+    <GetFileHash Files="$(DistBridge)" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="DistBridgeHashItem" />
+    </GetFileHash>
+    <PropertyGroup>
+      <DistCoreHash>@(DistCoreHashItem-&gt;'%(FileHash)')</DistCoreHash>
+      <DistBridgeHash>@(DistBridgeHashItem-&gt;'%(FileHash)')</DistBridgeHash>
+      <PairContractJson>{&quot;schema_version&quot;:1,&quot;version&quot;:&quot;$(Version)&quot;,&quot;core_file&quot;:&quot;ALLIN1.dll&quot;,&quot;core_sha256&quot;:&quot;$(DistCoreHash)&quot;,&quot;bridge_file&quot;:&quot;ALLIN1.ReactorBridge.plugin&quot;,&quot;bridge_sha256&quot;:&quot;$(DistBridgeHash)&quot;}</PairContractJson>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(PairContract)"
+                      Lines="$(PairContractJson)"
+                      Overwrite="true"
+                      Encoding="UTF-8" />
+  </Target>
+
+  <Target Name="RequirePinnedReactorContract" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(ReactorCorePath)')"
+           Text="The pinned Reactor V integration contract is missing: $(ReactorCorePath)" />
+  </Target>
+</Project>

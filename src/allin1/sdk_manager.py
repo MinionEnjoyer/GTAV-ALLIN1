@@ -17,6 +17,8 @@ from urllib.request import Request, urlopen
 
 from allin1 import __version__
 from allin1.versioning import is_newer, normalize_version
+from allin1.release_paths import no_links, contained, filesystem_path, strict_json, unique_paths, tree_files
+from allin1.sdk_installation import SHELL, SIDECAR, validated_payloads, validate_tauri, install_archive
 
 SDK_REPOSITORY_URL = "https://github.com/MinionEnjoyer/ALLIN1-SDK"
 SDK_RELEASES_API = "https://api.github.com/repos/MinionEnjoyer/ALLIN1-SDK/releases/latest"
@@ -31,7 +33,7 @@ MAX_ARCHIVE_BYTES = 768 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_ARCHIVE_FILES = 20_000
 _ARCHIVE_PATTERN = re.compile(
-    r"^ALLIN1-SDK-(?P<version>\d+(?:\.\d+){1,3})-win-x64\.zip$",
+    r"^ALLIN1-SDK-(?P<version>\d+(?:\.\d+){1,3})-(?:win-x64|portable)\.zip$",
     re.IGNORECASE,
 )
 
@@ -146,7 +148,28 @@ def register_sdk_cli(root: Path, *, remove: bool = False) -> None:
 
 
 def read_sdk_status(root: Path | None = None) -> SdkStatus:
-    root = (root or default_sdk_root()).resolve()
+    root = root or default_sdk_root()
+    try:
+        root = no_links(root)
+        metadata_path = filesystem_path(contained(root, SDK_RELEASE_METADATA))
+        if metadata_path.is_file():
+            metadata = strict_json(metadata_path.read_bytes())
+            if isinstance(metadata, dict) and metadata.get("format") == "tauri-v2":
+                checksums = strict_json(filesystem_path(contained(root, SDK_CHECKSUMS)).read_bytes())
+                identity = strict_json(filesystem_path(contained(root, "build-identity.json")).read_bytes())
+                validate_tauri(metadata, identity, checksums)
+                _verify_installed_payloads(root, checksums)
+                resources = strict_json(filesystem_path(contained(root, "resource-checksums.json")).read_bytes())
+                _verify_resource_contract(resources, checksums)
+                _verify_resource_tree(root, resources)
+                for entry in (SHELL, SIDECAR):
+                    with filesystem_path(contained(root, entry)).open("rb") as stream:
+                        if stream.read(2) != b"MZ": raise ValueError("SDK executable is invalid")
+                version = metadata["version"]
+                normalize_version(version)
+                return SdkStatus(root, root / SHELL, version, True, f"SDK {version} payload integrity verified (build {metadata['build_id']}); live acceptance is separate")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        return SdkStatus(root, None, None, False, f"Installation metadata is invalid: {exc}")
     executable = root / SDK_EXECUTABLE
     if not executable.is_file():
         return SdkStatus(root, None, None, False, "Not installed")
@@ -189,7 +212,45 @@ def read_sdk_status(root: Path | None = None) -> SdkStatus:
                 root, executable, version, False,
                 f"SDK updater cannot be read: {exc}",
             )
-    return SdkStatus(root, executable, version, True, f"ALLIN1 SDK {version} is ready")
+    try:
+        _verify_installed_payloads(root, strict_json(contained(root, SDK_CHECKSUMS).read_bytes()))
+    except (OSError, ValueError, TypeError) as exc:
+        return SdkStatus(root, executable, version, False, f"SDK payload verification failed: {exc}")
+    return SdkStatus(root, executable, version, True, f"ALLIN1 SDK {version} payload integrity verified")
+
+
+def _verify_installed_payloads(root, checksums):
+    if not isinstance(checksums, dict) or not checksums: raise ValueError("Invalid SDK checksum manifest")
+    unique_paths(list(checksums))
+    for name, expected in checksums.items():
+        if not isinstance(expected, str) or not re.fullmatch("[0-9a-f]{64}", expected): raise ValueError("Invalid SDK checksum")
+        digest = hashlib.sha256()
+        with filesystem_path(contained(root, name)).open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""): digest.update(chunk)
+        if digest.hexdigest() != expected: raise ValueError(f"SDK checksum mismatch: {name}")
+
+
+def _verify_resource_contract(resources, checksums):
+    if not isinstance(resources, dict): raise ValueError("Invalid SDK resource manifest")
+    unique_paths(list(resources))
+    if set(resources) != set(checksums) - {SHELL, SIDECAR, "resource-checksums.json", "release.json"}:
+        raise ValueError("SDK resource manifest does not match packaged resources")
+    if any(checksums.get(name) != digest for name, digest in resources.items()):
+        raise ValueError("SDK companion resource checksum mismatch")
+
+
+def _verify_resource_tree(root: Path, resources: dict) -> None:
+    """Match the frozen SDK's exact resource-directory policy.
+
+    Root-level projects/preferences remain unowned. Unknown files inside a
+    packaged resource directory must not produce a healthy installation that
+    the SDK itself refuses to start. Never delete those files during repair.
+    """
+    for directory in {name.split("/", 1)[0] for name in resources if "/" in name}:
+        actual = {f"{directory}/{name}" for name in tree_files(contained(root, directory))}
+        expected = {name for name in resources if name.startswith(directory + "/")}
+        if actual != expected:
+            raise ValueError(f"Stale or unlisted SDK resources: {directory}")
 
 
 def _github_request(url: str) -> Request:
@@ -207,11 +268,10 @@ def fetch_latest_sdk_release(*, timeout: float = 8.0, opener=urlopen) -> SdkRele
     normalize_version(version)
     assets = payload.get("assets", [])
     expected_name = f"ALLIN1-SDK-{version}-win-x64.zip"
-    archive = next(
-        (item for item in assets if str(item.get("name", "")).casefold()
-         == expected_name.casefold()),
-        None,
-    )
+    exact = [item for item in assets if str(item.get("name", "")).casefold() == expected_name.casefold()]
+    if len(exact) > 1:
+        raise ValueError("latest SDK release has ambiguous archive assets")
+    archive = exact[0] if exact else None
     if archive is None:
         matching = [
             item for item in assets
@@ -225,11 +285,11 @@ def fetch_latest_sdk_release(*, timeout: float = 8.0, opener=urlopen) -> SdkRele
     if asset_version is None or normalize_version(asset_version.group("version")) != normalize_version(version):
         raise ValueError("SDK archive version does not match its release tag")
     checksum_name = archive_name + ".sha256"
-    checksum = next(
-        (item for item in assets if str(item.get("name", "")).casefold()
-         == checksum_name.casefold()),
-        None,
-    )
+    matching_checksums = [item for item in assets
+                          if str(item.get("name", "")).casefold() == checksum_name.casefold()]
+    if len(matching_checksums) > 1:
+        raise ValueError("latest SDK release has ambiguous checksum assets")
+    checksum = matching_checksums[0] if matching_checksums else None
     if checksum is None:
         raise ValueError(f"latest SDK release is missing {checksum_name}")
     size = int(archive.get("size", 0))
@@ -289,6 +349,7 @@ def _safe_member(info: zipfile.ZipInfo) -> PurePosixPath:
 
 def inspect_sdk_archive(archive_path: Path, expected_version: str | None = None) -> SdkPackageInfo:
     """Validate archive structure, metadata, and every internal payload checksum."""
+    archive_path = no_links(archive_path)
     if archive_path.stat().st_size > MAX_ARCHIVE_BYTES:
         raise ValueError("SDK archive exceeds the allowed size")
     with zipfile.ZipFile(archive_path) as archive:
@@ -298,7 +359,25 @@ def inspect_sdk_archive(archive_path: Path, expected_version: str | None = None)
         unpacked = sum(item.file_size for item in files)
         if unpacked > MAX_EXTRACTED_BYTES:
             raise ValueError("SDK archive expands beyond the allowed size")
-        names = {_safe_member(item).as_posix(): item for item in files}
+        for item in archive.infolist(): _safe_member(item)
+        checksums, names = validated_payloads(archive)
+        try:
+            metadata = strict_json(archive.read(names[SDK_RELEASE_METADATA]))
+            if not isinstance(metadata, dict): raise ValueError("SDK release metadata is invalid")
+        except (KeyError, TypeError) as exc:
+            raise ValueError("SDK release metadata is invalid") from exc
+        if metadata.get("format") == "tauri-v2":
+            identity = strict_json(archive.read(names["build-identity.json"]))
+            validate_tauri(metadata, identity, checksums)
+            _verify_resource_contract(strict_json(archive.read(names["resource-checksums.json"])), checksums)
+            version = metadata["version"]
+            normalize_version(version)
+            if expected_version and normalize_version(version) != normalize_version(expected_version):
+                raise ValueError(f"SDK package version {version} does not match {expected_version}")
+            for entry in (SHELL, SIDECAR):
+                with archive.open(names[entry]) as stream:
+                    if stream.read(2) != b"MZ": raise ValueError(f"SDK executable is not a Windows PE file: {entry}")
+            return SdkPackageInfo(version, len(checksums), unpacked)
         required = {
             SDK_EXECUTABLE, SDK_CLI_EXECUTABLE, SDK_AGENT_EXECUTABLE,
             SDK_RELEASE_METADATA, SDK_CHECKSUMS,
@@ -354,44 +433,12 @@ def install_sdk_archive(
     expected_version: str | None = None,
 ) -> SdkStatus:
     """Install a verified SDK package with an atomic directory swap."""
-    root = (root or default_sdk_root()).resolve()
+    root = no_links(root or default_sdk_root())
     package = inspect_sdk_archive(archive_path, expected_version)
-    root.parent.mkdir(parents=True, exist_ok=True)
-    pending = root.with_name(root.name + ".installing")
-    backup = root.with_name(root.name + ".previous")
-    for transient in (pending, backup):
-        if transient.exists():
-            shutil.rmtree(transient)
-    pending.mkdir()
-    try:
-        with zipfile.ZipFile(archive_path) as archive:
-            for info in archive.infolist():
-                path = _safe_member(info)
-                target = pending.joinpath(*path.parts)
-                if info.is_dir():
-                    target.mkdir(parents=True, exist_ok=True)
-                    continue
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with archive.open(info) as source, target.open("wb") as destination:
-                    shutil.copyfileobj(source, destination)
-        if root.exists():
-            root.replace(backup)
-        try:
-            pending.replace(root)
-        except Exception:
-            if backup.exists() and not root.exists():
-                backup.replace(root)
-            raise
-        if backup.exists():
-            shutil.rmtree(backup)
-    except Exception:
-        if pending.exists():
-            shutil.rmtree(pending)
-        raise
-    status = read_sdk_status(root)
+    status = install_archive(archive_path, root, read_sdk_status)
     if not status.healthy or status.version != package.version:
         raise RuntimeError("SDK installation did not pass its post-install verification")
-    if root == default_sdk_root():
+    if root == default_sdk_root() and (root / SDK_CLI_EXECUTABLE).is_file():
         try:
             register_sdk_cli(root)
         except OSError as exc:
@@ -411,13 +458,20 @@ def install_sdk_release(
     progress: ProgressCallback | None = None,
 ) -> SdkStatus:
     """Download, externally verify, and transactionally install a release."""
+    # SdkRelease is also a public API input, not only a value returned by the
+    # GitHub resolver. Validate it before network access or opening any output.
+    match = _ARCHIVE_PATTERN.fullmatch(release.archive_name) if isinstance(release.archive_name, str) else None
+    if match is None or normalize_version(match.group("version")) != normalize_version(release.version):
+        raise ValueError("SDK archive name must be a safe release-version-matched filename")
+    if type(release.archive_size) is not int or not 1 <= release.archive_size <= MAX_ARCHIVE_BYTES:
+        raise ValueError("SDK archive size is outside the allowed range")
     with opener(_github_request(release.checksum_url), timeout=timeout) as response:
         expected = _parse_checksum(_read_limited_response(response, 16 * 1024), release.archive_name)
     with tempfile.TemporaryDirectory(prefix="allin1-sdk-download-") as temporary:
-        archive_path = Path(temporary) / release.archive_name
+        archive_path = contained(Path(temporary), release.archive_name)
         digest = hashlib.sha256()
         downloaded = 0
-        with opener(_github_request(release.archive_url), timeout=timeout) as response, archive_path.open("wb") as output:
+        with opener(_github_request(release.archive_url), timeout=timeout) as response, archive_path.open("xb") as output:
             while True:
                 chunk = response.read(1024 * 1024)
                 if not chunk:
@@ -445,14 +499,21 @@ def sdk_update_available(status: SdkStatus, release: SdkRelease) -> bool:
 
 
 def uninstall_sdk(root: Path | None = None) -> bool:
-    """Remove only the explicitly managed SDK application directory."""
-    root = (root or default_sdk_root()).resolve()
-    if not root.exists():
+    """Retire the managed SDK to a recoverable sibling; never erase user files."""
+    import uuid
+    root = no_links(root or default_sdk_root())
+    if not filesystem_path(root).exists():
         return False
+    if root == Path.home() or root.parent == root: raise ValueError("Invalid managed SDK root")
+    tree_files(root)
+    manifest = strict_json(filesystem_path(contained(root, SDK_CHECKSUMS)).read_bytes())
+    if not isinstance(manifest, dict) or not manifest: raise ValueError("Missing SDK ownership manifest")
+    unique_paths(list(manifest))
+    retired = no_links(root.with_name(root.name + ".uninstalled-" + uuid.uuid4().hex))
+    filesystem_path(root).replace(filesystem_path(retired))
     if root == default_sdk_root():
         try:
             register_sdk_cli(root, remove=True)
         except OSError:
             pass
-    shutil.rmtree(root)
     return True

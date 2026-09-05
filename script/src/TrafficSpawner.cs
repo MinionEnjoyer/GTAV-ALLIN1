@@ -12,6 +12,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using GTA;
 using GTA.Math;
@@ -109,6 +110,14 @@ namespace ALLIN1
             DuplicateModel,
         }
 
+        internal enum ReplacementValidationOutcome
+        {
+            Ready,
+            CloneFailed,
+            CommitBlocked,
+            SourceChanged,
+        }
+
         // --- Logging ---
         private static readonly string LOG_PATH = Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory, "ALLIN1.log");
@@ -121,6 +130,8 @@ namespace ALLIN1
             new Dictionary<VehicleClass, List<string>>();
         private readonly Dictionary<string, double> _trafficWeights =
             new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        private readonly SelectedModelValidationCache _modelValidation =
+            new SelectedModelValidationCache();
         private readonly HashSet<int> _seenVehicleHandles = new HashSet<int>();
         private readonly Queue<KeyValuePair<int, int>> _seenVehicleOrder =
             new Queue<KeyValuePair<int, int>>();
@@ -134,6 +145,14 @@ namespace ALLIN1
         private int _lastScanTime;
         private int _lastCleanupTime;
         private int _lastPlayerProtectionPruneTime;
+        private int _lastSourceChangeDiagnosticTime = int.MinValue;
+        private int _sourceChangeSkipCount;
+        private int _lastTrafficWorkTime;
+        private int _lastActivityDiagnosticTime;
+        private int _drivenAttemptsSinceDiagnostic;
+        private int _drivenSuccessesSinceDiagnostic;
+        private int _replacementScansSinceDiagnostic;
+        private bool _preferReplacementWork;
         private bool _initialized;
         private bool _enabled = true;
         private string _lastSuppressionReason = "";
@@ -144,6 +163,22 @@ namespace ALLIN1
         private const int SEEN_HANDLE_TTL_MS = 90000;
         private const int MAX_TRACKED_SEEN_HANDLES = 512;
         private const float MAX_PARKED_REPLACEMENT_SPEED = 0.75f;
+        private const int SOURCE_CHANGE_DIAGNOSTIC_INTERVAL_MS = 30000;
+        // Vehicle streaming, creation, ped setup, and replacement cloning are
+        // the expensive operations in this service. The old independent
+        // 5-second/3-second clocks could run both paths together and produced
+        // hundreds of stream/create attempts in a short play session. One
+        // staggered budget keeps traffic varied without periodic burst work.
+        private const int TRAFFIC_WORK_INTERVAL_MS = 15000;
+        private const int THROTTLED_TRAFFIC_WORK_INTERVAL_MS = 30000;
+        private const int ACTIVITY_DIAGNOSTIC_INTERVAL_MS = 60000;
+
+        internal enum TrafficWorkKind
+        {
+            None,
+            DrivenSpawn,
+            ReplacementScan,
+        }
 
         private sealed class SafehouseGarageZone
         {
@@ -197,8 +232,9 @@ namespace ALLIN1
 
         public TrafficSpawner()
         {
-            if (!Allin1ExtensionApi.IsPackageEnabled(
-                    Allin1ExtensionApi.OnlineContentPackageId))
+            bool packageEnabled = Allin1ExtensionApi.IsPackageEnabled(
+                Allin1ExtensionApi.OnlineContentPackageId);
+            if (!packageEnabled)
             {
                 _enabled = false;
                 PauseReason = "content package disabled";
@@ -206,12 +242,24 @@ namespace ALLIN1
                 return;
             }
             LoadSettings();
+            if (!ShouldAttachRuntimeHandlers(packageEnabled, _enabled))
+            {
+                PauseReason = "traffic disabled in settings";
+                Interval = 1000;
+                return;
+            }
             Tick += OnTick;
             // Traffic work is proximity/cooldown based and does not need to run
             // at rendering frequency. This substantially reduces idle CPU use.
             Interval = 100;
 
             Function.Call(Hash.DECOR_REGISTER, "MPBitset", 3);
+        }
+
+        internal static bool ShouldAttachRuntimeHandlers(
+            bool packageEnabled, bool trafficEnabled)
+        {
+            return packageEnabled && trafficEnabled;
         }
 
         private void LoadSettings()
@@ -293,6 +341,14 @@ namespace ALLIN1
                         new Dictionary<string, object> { { "reason", suppression } });
                 _lastSuppressionReason = suppression;
 
+                // Do not request/reap traffic models while the garage owns
+                // streaming. Leave a full work interval for world settling.
+                if (suppression == "garage_transition")
+                {
+                    _lastTrafficWorkTime = Game.GameTime;
+                    return;
+                }
+
                 // Suppression must stop existing ALLIN1 traffic as well as
                 // new spawns. Previously this early return skipped cleanup,
                 // allowing GTA to reap a released driver while its vehicle
@@ -330,19 +386,81 @@ namespace ALLIN1
             int effectiveMax = _throttled ? Math.Max(2, _maxDriven / 2) : _maxDriven;
             int effectiveDrivenCooldown = _throttled ? _drivenCooldownMs * 2 : _drivenCooldownMs;
             int effectiveScanCooldown = _throttled ? _scanCooldownMs * 2 : _scanCooldownMs;
-            if (now - _lastDrivenTime >= effectiveDrivenCooldown
-                && _spawned.Count < effectiveMax)
+            bool drivenDue = _maxDriven > 0 && _spawned.Count < effectiveMax
+                && unchecked((uint)(now - _lastDrivenTime)) >=
+                    (uint)Math.Max(0, effectiveDrivenCooldown);
+            bool scanDue = _replaceChance > 0f
+                && unchecked((uint)(now - _lastScanTime)) >=
+                    (uint)Math.Max(0, effectiveScanCooldown);
+            if (IsTrafficWorkDue(now, _lastTrafficWorkTime, _throttled))
             {
-                if (SpawnDriven())
-                    _lastDrivenTime = now;
+                TrafficWorkKind work = SelectTrafficWork(
+                    drivenDue, scanDue, _preferReplacementWork);
+                if (work != TrafficWorkKind.None)
+                {
+                    // Budget attempts rather than only successful mutations.
+                    // A failed stream or road-node lookup must not retry every
+                    // 100 ms and turn a transient condition into a hitch loop.
+                    _lastTrafficWorkTime = now;
+                    if (work == TrafficWorkKind.DrivenSpawn)
+                    {
+                        _lastDrivenTime = now;
+                        _drivenAttemptsSinceDiagnostic++;
+                        if (SpawnDriven()) _drivenSuccessesSinceDiagnostic++;
+                        _preferReplacementWork = true;
+                    }
+                    else
+                    {
+                        _lastScanTime = now;
+                        _replacementScansSinceDiagnostic++;
+                        ScanAndReplace();
+                        _preferReplacementWork = false;
+                    }
+                }
             }
+            EmitActivityDiagnostic(now);
+        }
 
-            // Replacement scanner
-            if (now - _lastScanTime >= effectiveScanCooldown)
-            {
-                ScanAndReplace();
-                _lastScanTime = now;
-            }
+        internal static bool IsTrafficWorkDue(
+            int now, int lastWorkTime, bool throttled)
+        {
+            int interval = throttled
+                ? THROTTLED_TRAFFIC_WORK_INTERVAL_MS
+                : TRAFFIC_WORK_INTERVAL_MS;
+            return unchecked((uint)(now - lastWorkTime)) >= (uint)interval;
+        }
+
+        internal static TrafficWorkKind SelectTrafficWork(
+            bool drivenDue, bool replacementDue, bool preferReplacement)
+        {
+            if (drivenDue && replacementDue)
+                return preferReplacement
+                    ? TrafficWorkKind.ReplacementScan
+                    : TrafficWorkKind.DrivenSpawn;
+            if (drivenDue) return TrafficWorkKind.DrivenSpawn;
+            if (replacementDue) return TrafficWorkKind.ReplacementScan;
+            return TrafficWorkKind.None;
+        }
+
+        private void EmitActivityDiagnostic(int now)
+        {
+            if (unchecked((uint)(now - _lastActivityDiagnosticTime)) <
+                    (uint)ACTIVITY_DIAGNOSTIC_INTERVAL_MS)
+                return;
+            _lastActivityDiagnosticTime = now;
+            ClientLog.Info("Traffic", "activity_summary",
+                new Dictionary<string, object>
+                {
+                    { "driven_attempts", _drivenAttemptsSinceDiagnostic },
+                    { "driven_successes", _drivenSuccessesSinceDiagnostic },
+                    { "replacement_scans", _replacementScansSinceDiagnostic },
+                    { "managed", _spawned.Count },
+                    { "smoothed_fps", Math.Round(_smoothedFps, 1) },
+                    { "throttled", _throttled },
+                });
+            _drivenAttemptsSinceDiagnostic = 0;
+            _drivenSuccessesSinceDiagnostic = 0;
+            _replacementScansSinceDiagnostic = 0;
         }
 
         private void UpdatePerformanceSample()
@@ -355,6 +473,7 @@ namespace ALLIN1
 
         private static string GetSuppressionReason()
         {
+            if (GarageManager.TransitionInProgress) return "garage_transition";
             Ped player = Game.Player.Character;
             if (player == null || !player.Exists() || player.IsDead) return "player_unavailable";
             if (Game.Player.WantedLevel > 0) return "wanted_level";
@@ -473,9 +592,11 @@ namespace ALLIN1
 
         private void Initialize()
         {
+            var initialization = Stopwatch.StartNew();
             _validModels.Clear();
             _classPools.Clear();
             _trafficWeights.Clear();
+            _modelValidation.Clear();
             _dlcModelHashes.Clear();
 
             // Build per-class pools of validated models.
@@ -486,8 +607,11 @@ namespace ALLIN1
 
                 foreach (string name in entry.Value)
                 {
-                    var m = new Model(name);
-                    if (m.IsInCdImage && m.IsVehicle)
+                    // VehicleList is generated from reviewed data, but game
+                    // editions do not necessarily expose every listed model.
+                    // Defer the native-backed check until a model is selected,
+                    // then cache or quarantine it for the rest of the session.
+                    if (!string.IsNullOrWhiteSpace(name))
                         _classPools[entry.Key].Add(name);
                 }
             }
@@ -510,7 +634,9 @@ namespace ALLIN1
             int packageAccepted = 0;
             try
             {
-                RuntimeVehicleCatalog.Refresh();
+                // TrafficEntries is already receipt-authorized and runtime-
+                // validated by RuntimeVehicleCatalog. Accessing it initializes
+                // the catalog only when needed; do not force a second refresh.
                 var packageEntries = new List<GbayVehicleRecord>(
                     RuntimeVehicleCatalog.TrafficEntries);
                 packageEntries.Sort((left, right) =>
@@ -566,23 +692,17 @@ namespace ALLIN1
                         continue;
                     }
 
-                    Model model = new Model(modelName);
-                    bool isInCdImage = model.IsInCdImage;
-                    bool isVehicle = model.IsVehicle;
-                    VehicleClass actualClass = declaredClass;
-                    if (isInCdImage && isVehicle)
-                    {
-                        int modelHash = Game.GenerateHash(modelName);
-                        actualClass = (VehicleClass)Function.Call<int>(
-                            Hash.GET_VEHICLE_CLASS_FROM_NAME, modelHash);
-                    }
+                    bool runtimeValidated =
+                        entry.HasValidatedRuntimeVehicleClass;
+                    VehicleClass actualClass = runtimeValidated
+                        ? entry.ValidatedRuntimeVehicleClass : declaredClass;
                     PackageTrafficCandidateDecision decision =
                         EvaluatePackageTrafficCandidate(
                             true,
                             modelName,
                             entry.Category,
-                            isInCdImage,
-                            isVehicle,
+                            runtimeValidated,
+                            runtimeValidated,
                             actualClass,
                             out declaredClass);
 
@@ -612,6 +732,7 @@ namespace ALLIN1
                     classPool.Add(modelName);
                     _validModels.Add(modelName);
                     _trafficWeights[modelName] = weight;
+                    _modelValidation.MarkValidated(modelName);
                     packageAccepted++;
                     ClientLog.Info("Traffic", "package_model_accepted",
                         new Dictionary<string, object>
@@ -639,20 +760,84 @@ namespace ALLIN1
             int now = Game.GameTime;
             _lastDrivenTime = now;
             _lastScanTime = now;
+            _lastTrafficWorkTime = now;
+            _lastActivityDiagnosticTime = now;
             _initialized = true;
 
             int total = 0;
             foreach (var arr in ROAD_CLASSES)
                 total += arr.Length;
 
-            Log($"=== ALLIN1 Initialized: {seen.Count}/{total + packageDeclared} " +
-                $"traffic models available ({packageAccepted}/{packageDeclared} package) ===");
-            foreach (var kv in _classPools)
-                Log($"  {kv.Key}: {kv.Value.Count} models");
+            initialization.Stop();
+            ClientLog.Info("Traffic", "catalog_initialized",
+                new Dictionary<string, object>
+                {
+                    { "models", seen.Count },
+                    { "declared_models", total + packageDeclared },
+                    { "curated_models", total },
+                    { "package_models", packageAccepted },
+                    { "package_declared", packageDeclared },
+                    { "runtime_probes", 0 },
+                    { "cached_package_validations", packageAccepted },
+                    { "lazy_validation_pending", seen.Count - packageAccepted },
+                    { "elapsed_ms", initialization.ElapsedMilliseconds },
+                });
 
             GTA.UI.Notification.Show(
                 $"~g~ALLIN1~w~: {seen.Count}/{total + packageDeclared} " +
                 "traffic models available");
+        }
+
+        internal enum SelectedModelValidationAction
+        {
+            UseCachedValidation,
+            ProbeOnce,
+            RejectQuarantined,
+        }
+
+        internal static SelectedModelValidationAction DecideSelectedModelValidation(
+            bool validated, bool quarantined)
+        {
+            if (quarantined)
+                return SelectedModelValidationAction.RejectQuarantined;
+            return validated
+                ? SelectedModelValidationAction.UseCachedValidation
+                : SelectedModelValidationAction.ProbeOnce;
+        }
+
+        internal sealed class SelectedModelValidationCache
+        {
+            private readonly HashSet<string> _validated =
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            private readonly HashSet<string> _quarantined =
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            internal SelectedModelValidationAction GetAction(string modelName)
+            {
+                return DecideSelectedModelValidation(
+                    _validated.Contains(modelName ?? ""),
+                    _quarantined.Contains(modelName ?? ""));
+            }
+
+            internal void MarkValidated(string modelName)
+            {
+                if (string.IsNullOrWhiteSpace(modelName)) return;
+                _quarantined.Remove(modelName);
+                _validated.Add(modelName);
+            }
+
+            internal bool Quarantine(string modelName)
+            {
+                if (string.IsNullOrWhiteSpace(modelName)) return false;
+                _validated.Remove(modelName);
+                return _quarantined.Add(modelName);
+            }
+
+            internal void Clear()
+            {
+                _validated.Clear();
+                _quarantined.Clear();
+            }
         }
 
         // ------------------------------------------------------------------ //
@@ -718,8 +903,6 @@ namespace ALLIN1
 
             ReleaseVehiclePhysics(veh, true);
 
-            Log($"SpawnDriven: vehicle={modelName} handle={veh.Handle}");
-
             // Attempt 1: Let the game pick a random ped model
             Ped driver = null;
             string pedMethod = "random";
@@ -734,7 +917,6 @@ namespace ALLIN1
 
             bool driverExists = driver != null && driver.Exists();
             bool seatFree = driverExists ? veh.IsSeatFree(VehicleSeat.Driver) : true;
-            Log($"  attempt1 (random): exists={driverExists} seatFree={seatFree}");
 
             // Attempt 2: If random ped failed, try explicit ped model
             if (!driverExists || seatFree)
@@ -751,12 +933,13 @@ namespace ALLIN1
                     _rng.Next(FALLBACK_PED_MODELS.Length)];
 
                 var pedModel = new Model(pedModelName);
-                pedModel.Request(MODEL_LOAD_TIMEOUT);
-
-                DateTime deadline = DateTime.UtcNow.AddMilliseconds(MODEL_LOAD_TIMEOUT);
+                pedModel.Request();
+                var pedLoadWait = Stopwatch.StartNew();
                 while (!pedModel.IsLoaded)
                 {
-                    if (DateTime.UtcNow > deadline)
+                    if (HasModelLoadTimedOut(
+                            pedLoadWait.ElapsedMilliseconds,
+                            MODEL_LOAD_TIMEOUT))
                     {
                         Log($"  attempt2 (explicit): ped model {pedModelName} load TIMEOUT");
                         break;
@@ -780,7 +963,6 @@ namespace ALLIN1
 
                 driverExists = driver != null && driver.Exists();
                 seatFree = driverExists ? veh.IsSeatFree(VehicleSeat.Driver) : true;
-                Log($"  attempt2 (explicit {pedModelName}): exists={driverExists} seatFree={seatFree}");
             }
 
             // Attempt 3: Raw native as last resort
@@ -819,16 +1001,17 @@ namespace ALLIN1
 
                 driverExists = driver != null && driver.Exists();
                 seatFree = driverExists ? veh.IsSeatFree(VehicleSeat.Driver) : true;
-                Log($"  attempt3 (native {nativePedName}): exists={driverExists} seatFree={seatFree}");
             }
-
-            // Keep the detailed result in the support log without interrupting gameplay.
-            string result = (driverExists && !seatFree) ? "OK" : "FAIL";
-            Log($"  RESULT: {modelName} | method={pedMethod} | {result}");
 
             // If all attempts failed, delete the empty vehicle
             if (!driverExists || seatFree)
             {
+                ClientLog.Warn("Traffic", "driven_spawn_failed",
+                    new Dictionary<string, object>
+                    {
+                        { "model", modelName },
+                        { "method", pedMethod },
+                    });
                 veh.IsPersistent = true;
                 veh.Delete();
                 if (driverExists)
@@ -1063,29 +1246,6 @@ namespace ALLIN1
 
             Vector3 pos = old.Position;
             float heading = old.Heading;
-            float speed = old.Speed;
-            List<AmbientOccupant> occupants;
-            try
-            {
-                occupants = CaptureAmbientOccupants(old);
-            }
-            catch (Exception ex)
-            {
-                ClientLog.Warn("Traffic", "occupant_capture_failed",
-                    new Dictionary<string, object> { { "exception", ex.Message } });
-                return false;
-            }
-
-            AmbientOccupant sourceDriver = occupants.Find(
-                occupant => occupant.SourceSeat == -1);
-            bool hadDriver = sourceDriver != null;
-            if (!CanStageSourceReplacement(
-                hadDriver, occupants.Count > 0, speed))
-                return false;
-            foreach (AmbientOccupant occupant in occupants)
-                if (occupant.SourcePed.IsPersistent)
-                    return false;
-
             Vector3 stagingPos = pos + new Vector3(0f, 0f, 50f);
             Vehicle replacement = LoadAndCreateVehicle(
                 newModelName, stagingPos, heading, placeOnGround: false);
@@ -1096,7 +1256,52 @@ namespace ALLIN1
                     {
                         { "model", newModelName },
                         { "source_handle", old.Handle }
-                    });
+                });
+                return false;
+            }
+
+            // Model streaming may yield for several seconds. Capture the
+            // source occupants only after that work completes; otherwise GTA
+            // can naturally update or reap the ambient source while the model
+            // loads, making every later validation fail even for an empty
+            // parked car. The source remains untouched during streaming.
+            List<AmbientOccupant> occupants = null;
+            Ped player = Game.Player.Character;
+            if (old == null || !old.Exists()
+                || player == null || !player.Exists()
+                || IsProtectedFromTrafficReplacement(old, player))
+            {
+                CleanupStagedReplacement(occupants, replacement);
+                return false;
+            }
+            pos = old.Position;
+            heading = old.Heading;
+            float speed = old.Speed;
+            try
+            {
+                occupants = CaptureAmbientOccupants(old);
+            }
+            catch (Exception ex)
+            {
+                ClientLog.Warn("Traffic", "occupant_capture_failed",
+                    new Dictionary<string, object> { { "exception", ex.Message } });
+                CleanupStagedReplacement(occupants, replacement);
+                return false;
+            }
+
+            AmbientOccupant sourceDriver = occupants.Find(
+                occupant => occupant.SourceSeat == -1);
+            bool hadDriver = sourceDriver != null;
+            if (!CanStageSourceReplacement(
+                    hadDriver, occupants.Count > 0, speed))
+            {
+                CleanupStagedReplacement(occupants, replacement);
+                return false;
+            }
+            foreach (AmbientOccupant occupant in occupants)
+            {
+                if (!occupant.SourcePed.IsPersistent) continue;
+                CleanupStagedReplacement(occupants, replacement);
                 return false;
             }
 
@@ -1131,28 +1336,44 @@ namespace ALLIN1
             bool driverReady = clonedDriver != null;
             bool commitAllowed = CanCommitReplacement(hadDriver, clonedDriver != null);
             bool sourceUnchanged = SourceOccupantsUnchanged(occupants, old);
-            if (!occupantsCloned || !commitAllowed || !sourceUnchanged)
+            ReplacementValidationOutcome validationOutcome =
+                EvaluateReplacementValidation(
+                    occupantsCloned, commitAllowed, sourceUnchanged);
+            if (validationOutcome != ReplacementValidationOutcome.Ready)
             {
-                ClientLog.Warn("Traffic", "replacement_clone_validation_failed",
-                    new Dictionary<string, object>
-                    {
-                        { "model", newModelName },
-                        { "source_handle", old.Handle },
-                        { "had_driver", hadDriver },
-                        { "occupants", occupants.Count },
-                        { "clone_settlement_required",
-                            cloneSettlementRequired },
-                        { "seats_assigned", seatsAssigned },
-                        { "occupants_cloned", occupantsCloned },
-                        { "driver_ready", driverReady },
-                        { "commit_allowed", commitAllowed },
-                        { "source_unchanged", sourceUnchanged }
-                    });
+                if (validationOutcome ==
+                    ReplacementValidationOutcome.SourceChanged)
+                {
+                    RecordSourceChangedBeforeCommit(
+                        newModelName, old.Handle, hadDriver,
+                        occupants.Count);
+                }
+                else
+                {
+                    ClientLog.Warn("Traffic",
+                        "replacement_clone_validation_failed",
+                        new Dictionary<string, object>
+                        {
+                            { "model", newModelName },
+                            { "source_handle", old.Handle },
+                            { "had_driver", hadDriver },
+                            { "occupants", occupants.Count },
+                            { "clone_settlement_required",
+                                cloneSettlementRequired },
+                            { "seats_assigned", seatsAssigned },
+                            { "occupants_cloned", occupantsCloned },
+                            { "driver_ready", driverReady },
+                            { "commit_allowed", commitAllowed },
+                            { "source_unchanged", sourceUnchanged },
+                            { "validation_outcome",
+                                validationOutcome.ToString() }
+                        });
+                }
                 CleanupStagedReplacement(occupants, replacement);
                 return false;
             }
 
-            Ped player = Game.Player.Character;
+            player = Game.Player.Character;
             if (player == null || !player.Exists()
                 || old.IsOnScreen
                 || old.Position.DistanceTo(player.Position) < _minReplaceDist
@@ -1237,6 +1458,51 @@ namespace ALLIN1
             Log($"ScanReplace committed: {newModelName} "
                 + $"driver={hadDriver} occupants={managedOccupants.Count}");
             return true;
+        }
+
+        internal static ReplacementValidationOutcome
+            EvaluateReplacementValidation(
+                bool occupantsCloned, bool commitAllowed,
+                bool sourceUnchanged)
+        {
+            if (!occupantsCloned)
+                return ReplacementValidationOutcome.CloneFailed;
+            if (!commitAllowed)
+                return ReplacementValidationOutcome.CommitBlocked;
+            if (!sourceUnchanged)
+                return ReplacementValidationOutcome.SourceChanged;
+            return ReplacementValidationOutcome.Ready;
+        }
+
+        internal static bool ShouldEmitSourceChangeDiagnostic(
+            int now, int lastDiagnosticTime)
+        {
+            if (lastDiagnosticTime == int.MinValue) return true;
+            return unchecked((uint)(now - lastDiagnosticTime)) >=
+                SOURCE_CHANGE_DIAGNOSTIC_INTERVAL_MS;
+        }
+
+        private void RecordSourceChangedBeforeCommit(
+            string model, int sourceHandle, bool hadDriver,
+            int occupantCount)
+        {
+            _sourceChangeSkipCount++;
+            int now = Game.GameTime;
+            if (!ShouldEmitSourceChangeDiagnostic(
+                    now, _lastSourceChangeDiagnosticTime))
+                return;
+
+            ClientLog.Info("Traffic", "replacement_source_changed_before_commit",
+                new Dictionary<string, object>
+                {
+                    { "model", model },
+                    { "source_handle", sourceHandle },
+                    { "had_driver", hadDriver },
+                    { "occupants", occupantCount },
+                    { "observed_since_last", _sourceChangeSkipCount }
+                });
+            _sourceChangeSkipCount = 0;
+            _lastSourceChangeDiagnosticTime = now;
         }
 
         internal static bool CanStageSourceReplacement(
@@ -1477,15 +1743,53 @@ namespace ALLIN1
                                               float heading,
                                               bool placeOnGround = true)
         {
+            if (string.IsNullOrWhiteSpace(modelName)) return null;
             var model = new Model(modelName);
-            model.Request(MODEL_LOAD_TIMEOUT);
+            SelectedModelValidationAction validationAction =
+                _modelValidation.GetAction(modelName);
+            if (validationAction ==
+                SelectedModelValidationAction.RejectQuarantined)
+                return null;
+            if (validationAction == SelectedModelValidationAction.ProbeOnce)
+            {
+                bool available;
+                try
+                {
+                    available = model.IsInCdImage && model.IsVehicle;
+                }
+                catch
+                {
+                    available = false;
+                }
+                if (!available)
+                {
+                    QuarantineModel(modelName, "edition_unavailable");
+                    return null;
+                }
+                _modelValidation.MarkValidated(modelName);
+            }
 
-            DateTime deadline = DateTime.UtcNow.AddMilliseconds(MODEL_LOAD_TIMEOUT);
+            // Parameterless Request queues the stream operation. Request(int)
+            // may itself wait up to the supplied timeout on SHVDN; combining it
+            // with another deadline loop could accidentally double the stall.
+            try
+            {
+                model.Request();
+            }
+            catch
+            {
+                QuarantineModel(modelName, "stream_request_failed");
+                return null;
+            }
+            var modelLoadWait = Stopwatch.StartNew();
             while (!model.IsLoaded)
             {
-                if (DateTime.UtcNow > deadline)
+                if (HasModelLoadTimedOut(
+                        modelLoadWait.ElapsedMilliseconds,
+                        MODEL_LOAD_TIMEOUT))
                 {
                     model.MarkAsNoLongerNeeded();
+                    QuarantineModel(modelName, "stream_timeout");
                     return null;
                 }
                 Script.Wait(0);
@@ -1509,6 +1813,30 @@ namespace ALLIN1
             Function.Call(Hash.DECOR_SET_INT, veh.Handle, "MPBitset", 0);
 
             return veh;
+        }
+
+        internal static bool HasModelLoadTimedOut(
+            long elapsedMilliseconds, int timeoutMilliseconds)
+        {
+            return elapsedMilliseconds >= Math.Max(0, timeoutMilliseconds);
+        }
+
+        private void QuarantineModel(string modelName, string reason)
+        {
+            if (string.IsNullOrWhiteSpace(modelName) ||
+                !_modelValidation.Quarantine(modelName)) return;
+            _validModels.RemoveAll(value => string.Equals(
+                value, modelName, StringComparison.OrdinalIgnoreCase));
+            foreach (List<string> pool in _classPools.Values)
+                pool.RemoveAll(value => string.Equals(
+                    value, modelName, StringComparison.OrdinalIgnoreCase));
+            _trafficWeights.Remove(modelName);
+            ClientLog.Warn("Traffic", "model_quarantined",
+                new Dictionary<string, object>
+                {
+                    { "model", modelName },
+                    { "reason", reason ?? "unavailable" },
+                });
         }
 
         // ------------------------------------------------------------------ //

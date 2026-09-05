@@ -144,6 +144,7 @@ echo ============================================================
 echo.
 echo [%date% %time%] Running allin1 install... >> %LOGFILE%
 allin1 install
+if errorlevel 3 goto :dependency_failure
 if errorlevel 1 (
     echo.
     echo [INFO] Auto-detection could not find GTA V.
@@ -177,6 +178,7 @@ if errorlevel 1 (
     echo.
     echo [%date% %time%] Retrying allin1 install with manual path... >> %LOGFILE%
     allin1 install
+    if errorlevel 3 goto :dependency_failure
 
     if errorlevel 1 (
         echo.
@@ -203,11 +205,21 @@ echo   Requires:
 echo     ScriptHookV:              http://www.dev-c.com/gtav/scripthookv/
 echo     ScriptHookVDotNet Enhanced: github.com/Chiheb-Bacha/scripthookvdotnetenhanced
 echo     RPF preview loader: offered during installation when needed
+echo     Reactor V: shared dependency offered and checksum-verified during install
 echo.
 echo   Full log saved to: allin1.log
 echo ============================================================
 echo.
 exit /b 0
+
+:dependency_failure
+echo.
+echo [ERROR] Installation was blocked. See the dependency or file error above.
+echo Close GTA before repair. Do not disable Reactor version checks.
+echo Correct the reported issue and run install.bat again.
+echo Your GTA folder selection has not been changed.
+pause
+exit /b 3
 
 :: Set PYTHON_EXE when a genuine Python 3.10+ runtime is available. Calling
 :: Python itself avoids treating the Microsoft Store alias as an installation.

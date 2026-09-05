@@ -1,0 +1,794 @@
+# Historical Launcher release notes before 0.6.4
+
+Preserved from the former release notes. These describe older versions, not the
+current release or current QA evidence. Return to [current release notes](../../RELEASE_NOTES.md).
+
+# GTA V ALLIN1 0.6.1
+
+Version 0.6.1 is a synchronized maintenance release for the launcher, Story
+Mode client, official content packs, and separately published ALLIN1 SDK.
+
+## Release coordination
+
+- Aligns every updater-facing launcher and client version surface on 0.6.1.
+- Keeps the SDK Manager compatible with the separately downloadable SDK 0.6.1
+  release and its vehicle-authoring workflow.
+- Requalifies the checksum-verifiable Windows package without enabling any
+  experimental gameplay feature by default.
+
+# GTA V ALLIN1 0.6.0
+
+Version 0.6.0 refreshes the desktop experience, reduces Story Mode startup
+work, and adds a guarded launcher handoff for the separately installed Reactor
+V overlay framework.
+
+## Desktop and startup polish
+
+- Added persistent Light, Dark, and System themes across the launcher and its
+  supporting workspaces without rebuilding or reopening the active panel.
+- Reduced the generated Story Mode map compatibility pack from 24 to 15 nested
+  archives by excluding nine unused sibling interiors. The verified pack is
+  about 60% smaller while retaining every ALLIN1 garage and yacht dependency.
+- Retired the temporary F10 world-vector overlay and removed its launcher
+  setting so production builds no longer expose developer placement tools.
+
+## Reactor V integration
+
+- Added a lightweight, non-activating startup strip that stays in the
+  upper-right while reporting fresh loader and script milestones. It remains
+  click-through and hands presentation to the centered in-game surface only
+  after Story Mode is stable.
+- Warm-loads Reactor's browser and React bundle invisibly, then waits for the
+  warmed controller and shared profile to be released before runtime handoff.
+  This integration activates only when the optional `ragewebui.framework`
+  package is installed, enabled, and receipt-verified; Reactor is distributed
+  independently rather than hidden inside the launcher archive.
+
+## Package and SDK lifecycle
+
+- Permits validated package payloads to target the isolated `plugins/`
+  directory alongside supported scripts, mods, and shader destinations.
+- Recognizes the standalone SDK updater entrypoint during archive inspection,
+  installation, health checks, and repair while remaining compatible with
+  earlier SDK archives that do not contain an updater.
+- Requalified the launcher, Story Mode client, official content descriptors,
+  generated binaries, and checksum-verifiable Windows package together.
+
+# GTA V ALLIN1 0.5.9
+
+Version 0.5.9 is the clean production companion to the expanded SDK axle
+authoring release. It keeps the launcher, Story Mode client, and official
+content packs on one qualified version while preserving a strict boundary
+between shipped features and private vehicle tests.
+
+## Release cleanup and qualification
+
+- Confirmed that the temporary F11 axle harness and its vehicle-specific
+  assets, scripts, configuration, and bindings are absent from the public
+  launcher and release archive.
+- Kept advanced axle authoring in the standalone SDK; ALLIN1 remains the
+  stable package, lifecycle, and Story Mode content launcher.
+- Requalified the launcher, in-game client, official content descriptors,
+  generated binaries, and checksum-verifiable Windows package together.
+- Hardened release sequencing so delayed generated-binary jobs cannot publish
+  stale payloads over a newer source revision.
+
+# GTA V ALLIN1 0.5.8
+
+Version 0.5.8 removes temporary gameplay test scaffolding and tightens the
+public release boundary ahead of the next SDK vehicle-authoring release.
+
+## Release cleanup
+
+- Retired the temporary F11 four-axle Chernobog gameplay harness after its
+  validation run. The standalone SDK axle configurator and runtime export
+  tooling remain available.
+- Kept internal development notes local and removed them from the public source
+  inventory and launcher archive.
+- Requalified the launcher, Story Mode client, official content manifests, and
+  checksum-verified release payload as one versioned build.
+
+# GTA V ALLIN1 0.5.7
+
+Version 0.5.7 synchronizes the launcher, in-game runtime, official content
+packs, and standalone SDK while adding a guarded four-axle gameplay fixture.
+
+## Four-axle Story Mode test
+
+- Added an opt-in F11 Chernobog test drive at Sandy Shores with four driven
+  and independently steered axle pairs.
+- Steering gains are derived from the vehicle's canonical wheel-bone positions,
+  producing progressive same-phase steering at the front and counter-steering
+  at the rear without assuming wheel collection order.
+- The harness validates all eight physical wheel bones, game-reported wheel
+  count, package state, key conflicts, and Story Mode state before applying
+  changes. Invalid or changing mappings fail closed and are logged.
+
+## Release hardening
+
+- Kept the axle experiment disabled by default and isolated inside ALLIN1
+  Experimental Gameplay.
+- Added official-content version checks to release qualification and expanded
+  launcher, runtime, geometry, restoration, and package-contract regressions.
+- Preserved the explicit release allowlist: local vehicle test mods remain
+  excluded, while the colored-smoke SDK example remains available.
+
+# GTA V ALLIN1 0.5.5
+
+Version 0.5.5 turns the vehicle add-on workflow into a connected but optional
+path between the standalone SDK, ALLIN1 Launcher, GBAY, and Story Mode traffic.
+
+## Vehicle catalogs and Launcher handoff
+
+- Added a versioned vehicle-catalog contract for official Story Mode vehicles
+  and package-owned add-on vehicles, including validated GBAY listings,
+  specialized storage, preview metadata, pricing, size tiers, and opt-in traffic.
+- Added a safe SDK-to-Launcher handoff that opens the Packages workspace,
+  preserves the selected package, refreshes live libraries, and presents the
+  normal trust confirmation before installation. Traffic choices are validated
+  and committed inside the same rollback boundary as the package install.
+- Hardened catalog discovery, duplicate-package handling, release contents, and
+  the separation between bundled ALLIN1 content and optional standalone mods.
+
+## Standalone SDK workflow
+
+- Added Quick Import for reviewed Legacy and Enhanced vehicle add-ons with
+  conservative metadata inference, placement-aware storage choices, explicit
+  pricing, placeholder-first previews, and safe atomic re-preparation.
+- Added deterministic Legacy OIV export through the desktop SDK, console, and
+  typed Agent API. This path works without ALLIN1 Launcher and never writes to
+  the game while authoring the package.
+- Unified the main authoring and Quick Import surfaces, tightened package/API
+  contracts, and expanded regression coverage using real-world vehicle fixtures.
+
+# GTA V ALLIN1 0.5.4
+
+Version 0.5.4 keeps the launcher, in-game client, content packages, and SDK on
+one package contract while expanding script-driven weapon and material support.
+
+## Launcher and package platform
+
+- Unified schema-1/schema-2 validation with the standalone SDK and added typed
+  declarations linking vanilla weapons, components, script entry points, and
+  package-owned visual assets.
+- Hardened extension loading and package inspection for script-driven vanilla
+  weapon enhancements that intentionally do not replace `weapons.meta`.
+- Updated the coordinated launcher, client, Online Content, and optional
+  Experimental Gameplay version surfaces to 0.5.4.
+
+## Suppressors Enhanced and SDK integration
+
+- Expanded the standalone Suppressors Enhanced package, heat materials,
+  lifecycle behavior, documentation, tests, and distributable packages.
+- Added recursive package-RPF inspection, resolved native shader identities,
+  material-progression rendering and diagnostics, and matching structured API
+  output in ALLIN1 SDK 0.5.4.
+
+# GTA V ALLIN1 0.5.3
+
+Version 0.5.3 keeps the launcher, in-game client, official content packs, and
+standalone SDK on one coordinated public release.
+
+## Coordinated release
+
+- Bumped the launcher, in-game client assembly, ALLIN1 Online Content, and
+  optional Experimental Gameplay package to 0.5.3.
+- Published the expanded 0.5.3 SDK with deeper weapon authoring, package and
+  archive inspection, workbench validation, and API coverage.
+- Hardened grounded assistant diagnostics with safer context margins,
+  query-focused symbol excerpts, evidence-aware confidence, and bounded repair.
+
+# GTA V ALLIN1 0.5.2
+
+Version 0.5.2 expands ALLIN1's package platform and standalone SDK while
+hardening the optional local assistant, authoring workspaces, and public
+release pipeline.
+
+## Package platform and launcher
+
+- Added schema-1/schema-2 package parity across the launcher and SDK, including
+  cross-repository contract fixtures and safe direct ZIP import with one
+  unambiguous nested `mod.toml`.
+- Added typed, advisory-only package settings proposals. The launcher validates
+  package identity, types, ranges, enabled state, receipts, and file hashes,
+  always previews the diff, and requires the exact proposal ID before applying.
+- Added provider capability and thinking controls to SDK Manager, along with
+  model SHA-256, llama.cpp revision, assistant schema, and SDK build identity.
+- Hardened package extraction, executable ownership, operation risk
+  classification, invalid command handling, and release qualification.
+
+## SDK workspaces and rendering
+
+- Consolidated vehicle, weapon, and ped authoring into a shared Content
+  Workbench with improved navigation, collapsible side panels, clearer tables,
+  keyboard access, and fewer detached windows.
+- Expanded archive graphs, persistent package programs, semantic dependency
+  inspection, guarded RPF change sets, native/binary workspaces, texture tools,
+  and console/Agent API coverage.
+- Added optimized interactive model previews, shaded viewport modes, compiled
+  studio rendering, Blender integration, and fullscreen render workflows.
+- Added an optional locally managed Qwen assistant with checksum-pinned model
+  packages, hardware checks, strict bounded JSON Schema responses, one repair
+  pass, and no model write authority.
+
+## Standalone GTA-V-FPV compatibility
+
+- GTA-V-FPV is distributed as an independent package and DLL. The generic
+  launcher package lifecycle can install, configure, disable, update, and
+  uninstall its receipt-owned files without embedding FPV code in ALLIN1.
+- Added a narrow receipt/capability/assembly-validated weapon-ammo ledger bridge
+  so authorized standalone payload mods can keep ALLIN1's optional character
+  inventory synchronized after a native ammo transaction.
+
+## Standalone Suppressors Enhanced package
+
+- Added Suppressors Enhanced (formerly Realistic Suppressors) as its own imported `realistic-suppressors`
+  package and independent DLL. It is lifecycle-managed by the ALLIN1 launcher,
+  but is not compiled into ALLIN1 or included in ALLIN1 Online Content.
+- Added witness-aware suppressed-fire stealth without globally muting player
+  noise or overriding missions, cutscenes, existing wanted levels, nearby
+  witnesses, line-of-fire cues, impacts, or sustained-fire detection.
+- Added research-calibrated per-weapon heat and persistent durability for all
+  39 stock removable-suppressor combinations, including cooling, visible glow
+  from 525 °C, accelerated hot wear, permanent component failure, and charged
+  replacement purchases through either vanilla Ammu-Nation or GBAY.
+- Added package-owned launcher controls for stealth, wear/breakage, and a
+  0.5×–3.0× durability multiplier. Disabling breakage preserves heat, cooling,
+  warnings, and glow without condition loss.
+- Added receipt-authorized, generic weapon-component lifecycle integration for
+  successful GBAY replacement purchases and verified launcher install, disable,
+  re-enable, and uninstall isolation. Uninstall removes only package-owned files
+  and intentionally retains condition under `%LOCALAPPDATA%\RealisticSuppressors`.
+
+# GTA V ALLIN1 0.5.1
+
+Version 0.5.1 completes the transition to a package-driven launcher and gives
+the SDK a focused vehicle-authoring workflow, while tightening release and
+runtime behavior across both applications.
+
+## Launcher and content packs
+
+- Finished the versioned content-extension surface for launcher settings,
+  GBAY routes, package-owned assemblies, lifecycle controls, and approved
+  console/API actions.
+- Registered the official Online Content and optional Experimental Gameplay
+  systems as visible managed packages without changing their familiar in-game
+  behavior.
+- Hardened package receipts, compatibility checks, executable destinations,
+  recovery behavior, update reporting, and RPF preview dependency handling.
+- Refined GBAY inventory, weapon customization, vehicle restrictions, smoke
+  content, experimental physics, police tactics, traffic, and input behavior.
+
+## SDK vehicle workbench and RPF tooling
+
+- Added an end-to-end vehicle project workbench for discovery, metadata,
+  handling, tuning, validation, packaging, and install-plan review.
+- Expanded visual archive workflows with guarded change plans, package recipes,
+  binary workspaces, previews, CLI commands, and approved agent API routes.
+- Reduced repeated scans, bounded parallel package reads, cached console
+  metadata, and lazy-loaded large workspaces for faster startup and navigation.
+- Cleaned release metadata and generated-workspace handling, and synchronized
+  launcher, content-pack, in-game client, and SDK version surfaces to 0.5.1.
+
+# GTA V ALLIN1 0.5.0
+
+Version 0.5.0 unifies the launcher, in-game client, and standalone SDK around a
+guarded package lifecycle and a more consistent professional desktop identity.
+
+## Launcher, client, and SDK integration
+
+- Added the first versioned ALLIN1 content-extension API. The launcher now discovers official and
+  third-party systems from declarative descriptors, renders typed settings in a shared Content
+  workspace, stores package-owned settings by namespace, and exposes approved `content` console
+  commands for validation, inspection, enable/disable, and setting changes.
+- Registered the existing gameplay surface as **ALLIN1 Online Content** and isolated the opt-in
+  police/physics work as **ALLIN1 Experimental Gameplay**. The runtime consumes the installed
+  registry while retaining a compatibility fallback for older installations.
+- Hardened executable extensions with package-owned destinations, receipt SHA-256 authorization,
+  dependency-aware lifecycle controls, and fail-closed manifest/API version checks.
+
+- Retired the pre-release offline-launch toggle after it proved capable of
+  blocking Rockstar authentication. ALLIN1 now uses the normal signed-in game
+  launch flow and removes only offline arguments it can prove it previously added.
+- Added structured SDK agent commands to list, install, and uninstall validated
+  packages through approved console/API actions with two-stage write consent,
+  closed-game checks, audit logging, checksums, receipts, backups, and rollback.
+- Restored distinct high-DPI launcher and SDK branding across window headers,
+  title bars, taskbar icons, packaged executables, and release documentation.
+- Kept the launcher as the interactive package and game-launch workspace while
+  exposing the same guarded package lifecycle to developer and AI tooling.
+- Bumped the launcher, in-game client assembly, and SDK release surfaces
+  together to 0.5.0.
+- Made Enhanced Police AI, experimental NPC physics, physics diagnostics, and
+  enhanced smoke effects explicit opt-ins. New installations and missing
+  settings now fail closed, while existing saved user choices remain intact.
+- Disabled verbose launcher/client logging in the public example profile so a
+  clean installation starts with production-oriented settings.
+
+# GTA V ALLIN1 0.4.9
+
+Version 0.4.9 promotes the standalone SDK from a read-only inspection surface
+to a guarded authoring workbench while keeping every archive mutation outside
+stock GTA V files.
+
+## SDK and launcher integration
+
+- Added transactional root and first-level nested RPF replacement, addition,
+  and deletion with checksummed plans, whole-archive backups, staged
+  verification, collision checks, rollback, and per-archive process locks.
+- Added persistent transaction history, interrupted-operation recovery, stale
+  lock inspection, and progress reporting in both the SDK desktop UI and CLI.
+- Added a real-archive canary that operates only on a disposable copy and proves
+  replace/add/delete rollback by comparing the final SHA-256 with its untouched
+  source. The Enhanced canary passed against a real installed archive.
+- Added semantic META/XML comparison and parse/serialize/reparse validation so
+  formatting-only changes can be distinguished from meaningful game-data
+  changes; binary PSO/RBF files remain routed to native inspection.
+- Fixed filename-sensitive Enhanced NG archive staging in the SDK and RPF
+  helper while preserving the exact outer archive name throughout a mutation.
+- Integrated the dedicated ALLIN1 SDK logo and favicon into the desktop app,
+  release package, documentation, and Windows build.
+- Added an in-app SDK Console backed by the real CLI, with Source-style
+  progressive command, option, path, and history suggestions, Tab completion,
+  keyboard history, persistent recall, and non-blocking command execution.
+- Bumped the launcher and in-game assembly version surfaces together to 0.4.9;
+  the launcher continues to discover and checksum-install the latest public SDK
+  release through its existing Install / Manage SDK panel.
+
+# GTA V ALLIN1 0.4.8
+
+Version 0.4.8 expands GBAY into a save-safe weapon workbench and develops the
+optional physics experiment into a coordinated police-response layer. It also
+hardens DLC vehicle compatibility, input handling, diagnostics, and the
+launcher controls used to configure the new systems.
+
+## GBAY weapon workbench and interface
+
+- Split **Purchase Weapons** and **Customize Weapons** into adjacent main-menu
+  destinations so buying and modifying a weapon cannot be confused.
+- Added a dedicated, controller-aware customization presentation with weapon
+  attachment and finish catalogs, equipped-state feedback, ammo refills,
+  shouldered preview poses, focused camera transitions, and clean restoration
+  of the player and world when the workbench closes.
+- Kept every GBAY purchase transactional until a real Story Mode save commits
+  the character state, including weapons, attachments, ammunition, and gear.
+- Added seven separately stocked GBAY smoke colours as independent, labeled
+  weapon-wheel throwables with separate ammo pools and per-throw consumption.
+  Capped each colour at five, reused the BZ Gas wheel icon, removed Reload
+  cycling, and left native Tear Gas unchanged.
+- Layered a bounded, colour-tinted bloom over the persistent smoke field,
+  enlarged its scale and footprint without adding emitters, retired settled
+  canisters to stop persistent rolling audio, added retry-safe particle loading
+  and sampled emission diagnostics, and verified that Enhanced already supplies
+  the M18-shaped smoke canister.
+- Required collided, grounded stability before deployment; removed native
+  trail/primed/explosion smoke from the generated color ammo; isolated colored
+  fields from multicomponent/native fallbacks; and added sampled projectile
+  motion, settlement, backend, overlap, and expiration diagnostics.
+- Improved GBAY readability, scrolling, navigation repeat behavior, catalog
+  recovery, preview cleanup, and structured client logging.
+
+## Experimental physics and Enhanced Police AI
+
+- Expanded impact, fall, blast, push, weapon-hit, disarm, and recovery behavior
+  with optional NaturalMotion and archive-level physics tuning.
+- Added coordinated police containment, defensive lines, bounded stack-and-rush
+  tactics, vehicle barriers, withdrawals, smoke cover, casualty collection,
+  stabilization, weapon recovery, and CASEVAC support.
+- Added recon, CAS, and safe hot-rope helicopter roles. Insertions prefer clear
+  rooftops or screened positions behind established firing lines, and stalled
+  scripted flight legs now return control to GTA's ambient aircraft AI.
+- Added comprehensive structured telemetry for physics reactions, tactical
+  decisions, cover failures, rappel interception, insertion planning, aerial
+  mission progress, and CASEVAC deferrals.
+
+## DLC vehicles and launcher
+
+- Split the developer experience into a separate `ALLIN1-SDK` repository and
+  desktop application. The launcher now hands off to that external process,
+  while the SDK owns its linker, importer, native asset viewer, RPF explorer,
+  help center, CLI, examples, pinned CodeWalker source, and release lifecycle.
+- Added an optional **Install / Manage SDK** panel backed by public SDK releases.
+  Downloads require a matching win-x64 asset and published SHA-256, then every
+  internal file is verified before an atomic per-user install. Update, repair,
+  offline package install, open, and uninstall remain isolated from GTA V.
+- Reworked the launcher around persistent Setup, Gameplay, Input, Packages,
+  and Activity work zones. Application menus and contextual dropdowns replace
+  dense button rows; the footer now keeps only game actions, save, and launch.
+- Added a searchable, contextual Help Center and a dedicated SDK help corpus.
+  The SDK, asset viewer, and RPF explorer expose their own Content, Review,
+  Archive/Entry, Package Intelligence, and Help menus.
+- Applied Story Mode getaway-vehicle suitability rules to DLC vehicles and
+  prevented aircraft and watercraft from entering ordinary car garages.
+- Improved traffic and special-vehicle compatibility for seats, weaponized
+  vehicles, and nonstandard vehicle classes.
+- Added launcher configuration for controller bindings, experimental physics,
+  archive tuning, and **Enhanced Police AI**.
+- Added a read-only **Add-on Content SDK** linker/viewer to the standalone SDK.
+  It explains and validates cross-file metadata, animation, native text,
+  Scaleform HUD, runtime, storefront, packaging, and rollback fields. The
+  complete colored-smoke integration ships as its first example.
+- Listed the colored-smoke integration in the launcher Packages catalog and
+  the SDK as a self-contained built-in example, and added safe loose-folder/OIV/ZIP inspection
+  that generates a reviewable SDK draft without extracting or installing the
+  source package. The importer rejects unsafe archive paths and XML entities,
+  discovers visible weapon/ammo/animation/shop links, and flags opaque RPF and
+  unresolved integration work for author review.
+- Refocused the player-facing desktop application as **ALLIN1 Launcher** and
+  moved authoring into **ALLIN1 SDK**. Both share a restrained visual system,
+  clear work zones, contextual actions, readable typography, and help surfaces.
+- Added a read-only SDK package asset viewer for loose DLC folders and OIV/ZIP
+  packages, with filtering, image/text previews, binary-format guidance,
+  bounded header inspection, hashing, and JSON inventory export.
+- Expanded the asset viewer with native RAGE header parsing, structured
+  CodeWalker XML for YTD/YDR/YDD/YFT/YBN/YMAP/YTYP/YMT/GXT2, automatic
+  Legacy/Enhanced decoder fallback, and visual YTD texture contact sheets.
+- Added an interactive RPF explorer backed by a versioned JSON helper contract.
+  It follows root and nested archives, searches and filters exact entries,
+  exposes storage/resource/page metadata, extracts nested assets for preview,
+  exports JSON/CSV, and creates inert checksummed replacement safety plans.
+- Extended package inspection to RAR/7z and linked vehicle, handling,
+  variation, tuning, streaming, and DLC-registration metadata. Missing model,
+  texture, tuning, and resource-manifest assets now fail visibly in SDK reports.
+- Expanded the importer beyond vehicle and weapon packages: mixed test folders
+  now distinguish managed scripts, native ASIs, ReShade add-ons and shaders,
+  replacements, standalone DLC archives, edition layouts, dependencies, and
+  inferred RPF targets. PE headers are inspected without executing plug-ins,
+  and every generated draft remains explicitly blocked for author review.
+- Added batch folder audits plus temporary, read-only inspection of packaged and
+  first-level nested RPFs. Reports retain resource-version evidence while all
+  extracted inspection copies are removed after the audit.
+- Added edition-aware loose-RPF inventory and transactional, manifest-owned DLC
+  registration. RPF packages declare `dlc_packs`; install/enable registers them,
+  while rollback/disable/uninstall removes or restores their entries.
+- Added independent Legacy and Enhanced installation paths plus an active-target
+  selector. Package rows now show Legacy, Enhanced, dual-edition, or unresolved
+  tags and route installs only to a compatible configured game root.
+- Connected the Add-on Content SDK to remembered external manifests, the local
+  package catalog, and installation receipts from every configured Legacy and
+  Enhanced root. Installed packages now appear in the SDK without duplicating
+  their payloads, with a receipt-only fallback when their source was removed.
+- Added reviewed `mixed` packages and transactionally managed `[[rpf_entries]]`.
+  Exact archive entries are backed up, verified, collision-checked, toggled, and
+  restored without replacing unrelated RPF content.
+- Corrected custom smoke artwork by linking all seven signed weapon hashes to
+  both native BZ Gas HUD frames; unknown hashes no longer fall back to C4.
+- Added a read-only OIV operation workbench based on the OIV 2.x grammar. It
+  previews ordered archive/file/delete/text/XML/PSO operations and exports a
+  managed package only when every action reduces to an owned file copy or exact
+  existing-RPF entry transaction.
+- Added an edition-aware DLC inventory that compares Rockstar and modded
+  `dlcpacks` folders, live `dlclist.xml` registrations, duplicates, missing or
+  incomplete payloads, and ALLIN1 receipt ownership without rewriting anything.
+- Added a cross-file vehicle data compiler joining `vehicles.meta`,
+  `handling.meta`, `carvariations.meta`, `carcols.meta`, streamed models and
+  textures, labels, and package registrations. It exports JSON, CSV, XLSX,
+  Markdown, and a separate unresolved-reference table.
+
+## Release
+
+- Bumped the desktop launcher and in-game assembly together to 0.4.8.
+- Rebuilt and verified the client and automated test suites for the release.
+
+---
+
+# GTA V ALLIN1 0.4.6
+
+Version 0.4.6 is a focused GBAY and garage-packaging hotfix. It corrects the
+five Ammu-Nation armor previews, prevents repeat gear purchases, and ensures
+every install or repair restores the standalone map data required by the DLC
+garage interiors.
+
+## GBAY inventory and artwork
+
+- Realigned Super Light, Light, Standard, Heavy, and Super Heavy Armor with
+  their correct in-game Ammu-Nation vest artwork.
+- Fixed gear ownership normalization so a newly purchased item is recorded
+  before it is equipped. Already-owned gear can no longer deduct money again.
+- Added regression coverage for case-insensitive duplicate gear purchases.
+
+## Standalone garage maps
+
+- Restored verified `allin1_maps` generation and registration during every
+  install and repair. This fixes the Garment Factory and other DLC-backed
+  garages becoming unavailable after the previous pack was cleaned up.
+- Made a missing map pack a visible repair failure instead of silently
+  completing with unusable garage interiors.
+- Kept repair progress monotonic while locally extracting, converting,
+  packaging, and verifying the required assets from the player's GTA install.
+
+## Release
+
+- Bumped the desktop launcher and in-game client together to 0.4.6.
+- Rebuilt and verified the public release archive with the corrected client,
+  artwork, installer, and automated coverage.
+
+---
+
+# GTA V ALLIN1 0.4.5
+
+Version 0.4.5 is a garage-transition reliability release. It converts the
+remaining multiplayer-dependent garage map data into standalone ALLIN1 packs,
+stabilizes Harmony's five-floor interior, and keeps transitions hidden until
+the destination is genuinely ready.
+
+## Garage transition reliability
+
+- Added standalone map-pack generation, installation, health checks, and
+  repair support for DLC-backed Story Mode garages without enabling the global
+  multiplayer map state.
+- Standardized every garage entry, exit, and Harmony floor switch on a shared
+  black-screen transition that waits for the destination interior, room,
+  collision, and stored vehicles to remain ready before fading in.
+- Moved Harmony's player arrival away from the elevator room boundary, restored
+  all five floor shells and fixed detail sets, and made failed floor switches
+  recover safely outside instead of exposing unloaded geometry.
+- Hardened vehicle grounding and exterior release so stored vehicles regain
+  collision, physics, controls, and a valid floor before the transition ends.
+- Corrected the Davis, Garment Factory, Grapeseed, Paleto Bay, and yacht map
+  leases and transition anchors uncovered by the full garage traversal pass.
+
+## Release cleanup
+
+- Bumped the desktop launcher and in-game client together to 0.4.5.
+- Removed the temporary F11 garage traversal laboratory and its test-only
+  runtime surface. F10 World Vector remains the sole production developer tool.
+- Kept logs, caches, test files, source-only tools, debug symbols, local
+  configuration, and build workspaces out of the checksum-verified public ZIP.
+
+---
+
+# GTA V ALLIN1 0.4.4
+
+Version 0.4.4 expands the persistent garage network, adds the purchasable Galaxy
+Super Yacht and its specialized helipad, and hardens GBAY, vehicle grounding,
+traffic replacement, and Story Mode map streaming for general release.
+
+## Garage and yacht expansion
+
+- Added the 10-car Paleto Bay Garage using the Casino Penthouse Garage shell,
+  with two internal elevator exits and separate exterior pedestrian and vehicle
+  anchors at the Paleto Bay repair shop.
+- Promoted Harmony Garage to five fully detailed floors and standardized
+  collision-aware vehicle grounding across every garage.
+- Added the Galaxy Super Yacht as a GBAY world asset. Its per-character,
+  save-backed helipad accepts the two GTA Online yacht aircraft: the Swift
+  Deluxe and SuperVolito Carbon.
+- Streamed the yacht IPL directly in Story Mode without crossing the global
+  multiplayer-map boundary, eliminating approach/departure loading screens and
+  avoiding missing Story interior furniture.
+
+## GBAY and catalog refinement
+
+- Replaced temporary 3D purchasing with an explicit destination picker covering
+  every compatible garage and the Yacht Helipad.
+- Reworked My Garage into a scrollable garage list and stored-vehicle panel,
+  repaired confirmation layering, and completed vehicle sale-price fallbacks.
+- Audited DLC vehicle listings and prices, added Special-world-asset purchasing,
+  and preserved independent native-resolution preview assets.
+
+## Runtime hardening
+
+- Tightened traffic replacement ownership, driver, physics, mission, recent-use,
+  and safehouse protections while retaining moving and parked ambient variety.
+- Vehicles and yacht aircraft are staged immediately but committed only with a
+  genuine Story Mode save, matching normal game persistence behavior.
+- Expanded release coverage to 149 C# tests and 380 passing Python tests, with
+  one intentional environment-specific skip.
+
+---
+
+# GTA V ALLIN1 0.4.3
+
+Version 0.4.3 adds a fifth persistent garage, standardizes garage identity across the client, and
+protects player and safehouse vehicles from DLC traffic replacement without reducing ambient
+parked-car variety.
+
+## Garage expansion and consistency
+
+- Added the six-car Grapeseed Garage with independent per-character persistence, exterior vehicle
+  and pedestrian access, GBAY delivery targeting, selling, recovery, map blips, and shared garage
+  entry rules.
+- Standardized the original locations as **Eclipse Garage** and **Harmony Garage** across GBAY,
+  diagnostics, map labels, prompts, and release documentation.
+- Applied the same mission, wanted-level, story-vehicle, capacity, size, and save-before-delete
+  policies to Grapeseed that protect every existing ALLIN1 garage.
+- Extended install, repair, diagnostics, backup recovery, and repository contracts to include the
+  Grapeseed save independently from Eclipse, Harmony, Davis, and the Garment Factory.
+
+## Traffic ownership protection
+
+- Added narrowly scoped Story Mode safehouse parking zones for Michael, Franklin, Trevor, Floyd,
+  and the Vanilla Unicorn so vehicles stored at those homes are never replaced by ALLIN1 traffic.
+- Protected the current, last-used, and recently interacted player vehicles, including Rockstar's
+  player-vehicle decorators, with a short identity cache that survives brief handle churn.
+- Revalidate replacement candidates immediately before and during replacement. Ordinary parked
+  vehicles outside protected safehouse storage remain eligible for ambient DLC replacement.
+
+## Release qualification
+
+- Bumped the desktop launcher and in-game client together to 0.4.3 and expanded automated
+  contracts for the fifth garage, save deployment, naming, and safehouse traffic policy.
+- Kept F10 World Vector as the sole production developer tool; retired labs and capture tools
+  remain excluded from the checksum-verified public archive.
+
+---
+
+# GTA V ALLIN1 0.4.2
+
+Version 0.4.2 completes the garage-grounding survey, retires the last temporary runtime
+laboratory, and tightens GBAY quantity purchasing for stackable weapons.
+
+## Production tool cleanup
+
+- Promoted the completed 827-model grounding run into the packaged catalog: 821 stable measured
+  offsets, six intentionally unsupported standalone models, and no unresolved outliers.
+- Retired the F11 grounding laboratory, its mutable runtime writer, and its outlier checkpoint.
+  F10 World Vector is now the only developer tool compiled into the public client.
+- Removed the dormant Seat Lab programmatic harness and the retired preview-capture key alias;
+  production seat switching retains its recovery logic and structured support logging without
+  exposing developer-only entry points.
+- Install and repair preserve valid measured offsets, merge the completed catalog, and remove old
+  grounding-lab checkpoint files.
+
+## Storefront and qualification
+
+- GBAY throwable listings now show unit price × quantity and charge the actual stack granted;
+  for example, 25 Sticky Bombs at $600 each cost $15,000.
+- Moving DLC traffic remains paired with its driver while managed. Mission, cutscene, interior,
+  wanted-level, and character-switch transitions purge off-screen managed traffic, and any moving
+  vehicle that loses its driver is removed instead of coasting through the world empty.
+- Bumped the desktop launcher and in-game client together to 0.4.2 and expanded release contracts
+  to prevent retired tools from returning to public builds.
+
+---
+
+# GTA V ALLIN1 0.4.1
+
+Version 0.4.1 expands the animation-only seat selector into a metadata-backed system covering the
+complete base game and installed DLC catalog, with a focused runtime laboratory for unconventional
+and mounted-weapon layouts.
+
+## Vehicle seat catalog and selector
+
+- Added a read-only RPF audit that resolves active `vehicles.meta` and `vehiclelayouts*.meta`
+  definitions across `common.rpf`, `update.rpf`, modern DLC packs, and early DLC consolidated in
+  root `x64*.rpf` archives.
+- Generated seat, occupant-access door, hatch, Rockstar layout, and source-pack records for all
+  935 installed Enhanced vehicle models with no unresolved layouts or extraction warnings.
+- Replaced generic high-index seat names with model-specific labels. Physical stations such as bed,
+  roof, top, rear, missile, cannon, grenade, and aircraft turrets are identified independently from
+  ordinary rear, bench, bed, rappel, deck, and interior passenger seats.
+- Corrected the Caracara, Technical, Turreted Limo, Barrage, Insurgent, APC, Khanjali, Valkyrie,
+  and other high-risk layouts. Armored Boxville and Savage passenger seats are no longer described
+  as turrets.
+- Retired the completed runtime Seat Lab after promoting its findings into the generated metadata
+  catalog and selector regression tests. F11 now runs only unresolved vehicle-grounding outliers;
+  the old F12 fleet and focused grounding modes are retired.
+
+## Catalog and qualification repairs
+
+- GBAY now prices throwable purchases and refills by the actual quantity granted. Listing cards
+  show the unit-price multiplication before purchase instead of charging one unit for a full stack.
+- Corrected the Grotti Veleno GT model identifier from the invalid `veleno` to Rockstar's
+  `velenogt` across the storefront, price data, preview queue, web catalog, and generated client.
+- Expanded repository contracts and runtime policy tests. The qualified release passes 349 Python
+  tests, 66 production C# tests, the 91% coverage gate, and public archive verification.
+
+---
+
+# GTA V ALLIN1 0.4.0
+
+Version 0.4.0 is a reliability release that replaces several permissive or synthetic safeguards
+with transactional runtime behavior and production-backed tests.
+
+## Data integrity and runtime repairs
+
+- Garage files are decoded with a strict, side-effect-free JSON codec. Incomplete, malformed,
+  duplicate-slot, and out-of-range data is rejected before live state changes, allowing the
+  recovery copy to load without silently emptying a garage.
+- GTA Online map data is reference-counted across the multi-floor and Davis interiors, and Story
+  Mode map state is restored after the final garage closes or emergency recovery runs. This
+  prevents missing beds, furniture, and other interior variants.
+- Every garage shares the same mission, protected-story-vehicle, and vehicle-size admission
+  policy. Unknown protagonist models fail closed instead of inheriting Michael's data.
+- DLC traffic replacements are created and validated off-screen before the original vehicle is
+  removed, preventing failed model loads from deleting ambient cars and occupants.
+- Online weapon and gear state is backed up with character saves, native ammunition failures are
+  reported accurately, and unsupported characters cannot mutate protagonist inventories.
+- Seat selection improves mounted-turret labeling and animation routing without adding teleport
+  fallbacks.
+
+## Diagnostics and qualification
+
+- ScriptHookV, ScriptHookVDotNet, ASI loaders, OpenRPF/OpenIV, and the ALLIN1 client are validated
+  as x64 PE binaries rather than accepted solely because a file exists.
+- GBAY distinguishes an installed preview plug-in from texture streaming that has actually been
+  observed in the current game session.
+- Release qualification now consumes hashed coverage, client assembly, and fresh single-session
+  smoke artifacts. Replayed, edited, stale, or mixed-session evidence is rejected.
+- Added a .NET Framework test assembly for production garage parsing, admission rules, map leases,
+  protagonist identity, ammunition handling, and preview diagnostics. These tests now run in local
+  release scripts and both Windows CI paths.
+- Install / Repair now reports determinate percentage progress, helper tools run without flashing
+  console windows, and repeated game-launch requests are suppressed during the Steam/Rockstar
+  handoff.
+
+## Verification
+
+- 36 production C# tests and 340 Python/repository tests pass for this source release. The optional
+  real Windows preview-tool integration remains isolated to its toolchain-qualified CI job.
+
+---
+
+# GTA V ALLIN1 0.3.1
+
+Version 0.3.1 is a stabilization release focused on garage data integrity, gear management,
+map-marker consistency, and a clearer desktop launcher.
+
+## Fixes and safeguards
+
+- Garage saves now preserve the vehicle's native model hash instead of relying on its display
+  label. Existing Furore GT entries saved as `furore` migrate to `furoregt`, keeping their plate
+  and customization data, and uncatalogued vehicles no longer become permanently protected.
+- Drive-in storage verifies that the garage save succeeded before removing the outside vehicle.
+- Character gear can be unequipped and re-equipped without another purchase, with owned-state
+  handling for armor, parachutes, night vision, and juggernaut armor.
+- ALLIN1 location markers use the active protagonist's color consistently.
+- Added regression coverage for native vehicle identities, legacy garage migration, gear ownership,
+  marker colors, and duplicate-purchase behavior.
+
+## Launcher improvements
+
+- The current installation state is summarized as ready, update available, missing dependencies,
+  or game folder required, with the next action stated plainly.
+- Launch, repair, save, and refresh controls remain accessible from every page, including at the
+  supported minimum window size.
+- Added unsaved-settings protection, operation progress, keyboard shortcuts, activity-log copy and
+  clear controls, and a shortcut to the diagnostics/log folder.
+- Improved status readability, destructive-action separation, tab navigation, scrolling, and
+  version visibility.
+
+## Qualification
+
+- The Python and repository-contract suite, C# Release build, real Enhanced installation health
+  check, structured in-game smoke report, and public archive verification must all pass before the
+  0.3.1 package is published.
+
+---
+
+# GTA V ALLIN1 0.3.0
+
+Version 0.3.0 is the first public release built around the complete GBAY preview pipeline and the
+expanded Story Mode garage, weapon, gear, and character systems.
+
+## Highlights
+
+- GBAY now includes vehicle, weapon, and gear storefronts with streamed preview artwork,
+  categories, search, favorites, ownership filtering, duplicate-purchase protection, and sales.
+- Persistent storage now covers Eclipse Towers, the three-floor garage, and the 10-car Davis Auto
+  Shop, including interior customization and improved placement for varied vehicle dimensions.
+- The vehicle preview set has been rebuilt and packaged into verified YTD dictionaries, including
+  water-based captures for boats and native-resolution PHAT and ALLIN1 artwork.
+- Character tools now support money, skills, loadouts, gear, outfits, and per-protagonist saves.
+- DLC traffic, police replacements, animation-first seat selection, safe mode, accessibility
+  controls, health checks, diagnostics, and local third-party mod packages are integrated into one
+  launcher.
+
+## Release hardening
+
+- Removed screenshot capture, marker-debug, spawn-notification, log-upload, and other retired
+  development surfaces. The F10 world-vector overlay remains as the single location-authoring tool.
+- Replaced the private-token updater with a link to the latest checksum-verified GitHub Release.
+- Added a strict public-file manifest, deterministic SHA-256 package generation, archive
+  verification, version-consistency checks, and release-contract tests.
+- GBAY preview artwork is now a supported, default-on option; it can still be disabled when
+  troubleshooting an OpenRPF/OpenIV loader conflict.
+
+## Installation
+
+Extract the release to a new folder, run `install.bat`, then open `manager.bat`. ScriptHookV and
+ScriptHookVDotNet Enhanced remain required. Enhanced preview artwork requires OpenRPF; Legacy uses
+OpenIV.asi.
+
+ALLIN1 is for GTA V Story Mode only. Do not use it in GTA Online.

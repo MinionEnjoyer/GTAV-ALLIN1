@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory)]
     [string]$ReactorRoot,
 
-    [string]$PackageRoot = (Join-Path $PSScriptRoot '..\.work\ReactorV-0.2.0-ALLIN1'),
+    [string]$PackageRoot = '',
 
     [string]$Version = '0.2.0'
 )
@@ -13,6 +13,9 @@ Set-StrictMode -Version Latest
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $workRoot = [IO.Path]::GetFullPath((Join-Path $repositoryRoot '.work'))
+if ([string]::IsNullOrWhiteSpace($PackageRoot)) {
+    $PackageRoot = Join-Path $workRoot 'ReactorV-0.2.0-ALLIN1'
+}
 $resolvedPackageRoot = [IO.Path]::GetFullPath($PackageRoot)
 $workPrefix = $workRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) +
     [IO.Path]::DirectorySeparatorChar
@@ -22,15 +25,91 @@ if (-not $resolvedPackageRoot.StartsWith(
     )) {
     throw "Refusing to synchronize a package outside the repository .work directory: $resolvedPackageRoot"
 }
+New-Item -ItemType Directory -Path $resolvedPackageRoot -Force | Out-Null
 
 $stagingRoot = [IO.Path]::GetFullPath((Join-Path $ReactorRoot 'artifacts\staging'))
 if (-not (Test-Path -LiteralPath $stagingRoot -PathType Container)) {
     throw "Reactor staging output was not found: $stagingRoot"
 }
 
+$allowedPackageEntries = @('mod.toml', 'allin1.content.json', 'payload')
+$unexpectedPackageEntries = @(
+    Get-ChildItem -LiteralPath $resolvedPackageRoot -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notin $allowedPackageEntries }
+)
+if ($unexpectedPackageEntries) {
+    throw (
+        "The Reactor package workspace contains unowned files. Move snapshots " +
+        "outside the package root before synchronization:`n" +
+        ($unexpectedPackageEntries.FullName -join "`n")
+    )
+}
+
+$unexpectedStagingEntries = @(
+    Get-ChildItem -LiteralPath $stagingRoot -Force -Recurse |
+        Where-Object {
+            ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+            (-not $_.PSIsContainer -and (
+                $_.Name -like '*Harness*' -or
+                $_.Extension -in @('.map', '.pdb', '.log', '.tmp')
+            )) -or
+            ($_.PSIsContainer -and $_.Name -eq 'node_modules')
+        }
+)
+if ($unexpectedStagingEntries) {
+    throw "Reactor staging contains development artifacts:`n$($unexpectedStagingEntries.FullName -join "`n")"
+}
+
 $contentManifest = Join-Path $resolvedPackageRoot 'allin1.content.json'
-if (-not (Test-Path -LiteralPath $contentManifest -PathType Leaf)) {
-    throw "The ALLIN1 content manifest is missing: $contentManifest"
+$contentContract = [ordered]@{
+    schema_version = 1
+    api_version = 1
+    id = 'ragewebui.framework'
+    name = 'REACTOR V'
+    version = $Version
+    description = 'Native HTML and React overlay framework for GTA V Story Mode using Direct3D 11 or Direct3D 12.'
+    capabilities = @(
+        'story.web-overlay'
+        'story.telemetry'
+        'story.actions'
+        'story.api-v2'
+        'story.extensions'
+        'story.menus'
+        'story.menu-presentation'
+        'story.menu-bound-parameters'
+        'story.events'
+        'story.lifecycle'
+        'story.semantic-input'
+    )
+    systems = @()
+    gbay = [ordered]@{
+        sections = @()
+        catalogs = @()
+    }
+    runtime = [ordered]@{
+        assemblies = @(
+            [ordered]@{
+                path = 'scripts/ReactorV/RageWebUI.Script.dll'
+                entry_point = 'RageWebUI.Script.RageWebUiScript'
+            }
+        )
+    }
+}
+$contentEncoding = [Text.UTF8Encoding]::new($false)
+[IO.File]::WriteAllText(
+    $contentManifest,
+    ($contentContract | ConvertTo-Json -Depth 8) + [Environment]::NewLine,
+    $contentEncoding
+)
+$content = Get-Content -LiteralPath $contentManifest -Raw | ConvertFrom-Json
+if (
+    $content.id -ne 'ragewebui.framework' -or
+    $content.version -ne $Version
+) {
+    throw (
+        "Reactor content contract mismatch: expected ragewebui.framework " +
+        "$Version, found $($content.id) $($content.version)."
+    )
 }
 
 $payloadRoot = Join-Path $resolvedPackageRoot 'payload'
@@ -48,7 +127,21 @@ function Get-RelativePackagePath {
         [Parameter(Mandatory)] [string]$Path
     )
 
-    return [IO.Path]::GetRelativePath($Base, $Path).Replace('\', '/')
+    # Windows PowerShell 5.1 runs on .NET Framework, which does not expose
+    # Path.GetRelativePath. Both paths are package-owned and must remain under
+    # the same payload root, so a validated prefix is clearer and portable.
+    $baseFull = [IO.Path]::GetFullPath($Base).TrimEnd(
+        [IO.Path]::DirectorySeparatorChar,
+        [IO.Path]::AltDirectorySeparatorChar
+    ) + [IO.Path]::DirectorySeparatorChar
+    $pathFull = [IO.Path]::GetFullPath($Path)
+    if (-not $pathFull.StartsWith(
+            $baseFull,
+            [StringComparison]::OrdinalIgnoreCase
+        )) {
+        throw "Package file is outside the synchronized payload root: $pathFull"
+    }
+    return $pathFull.Substring($baseFull.Length).Replace('\', '/')
 }
 
 function Add-FileRecord {
@@ -119,3 +212,12 @@ $encoding = [Text.UTF8Encoding]::new($false)
 
 Write-Host "Synchronized $($stagedFiles.Count) Reactor payload files."
 Write-Host "Generated: $manifestPath"
+
+$python = Join-Path $repositoryRoot '.venv\Scripts\python.exe'
+if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+    throw "The ALLIN1 validation environment is missing: $python"
+}
+& $python -m allin1.cli content validate $resolvedPackageRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "The synchronized Reactor package failed ALLIN1 validation."
+}

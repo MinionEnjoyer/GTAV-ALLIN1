@@ -35,6 +35,8 @@ def test_status_reports_complete_legacy_install(tmp_path):
     (tmp_path / "GTA5.exe").touch()
     _write_pe(tmp_path / "ScriptHookV.dll")
     _write_pe(tmp_path / "ScriptHookVDotNet.asi")
+    _write_pe(tmp_path / "ScriptHookVDotNet3.dll")
+    _write_pe(tmp_path / "MinHook.x64.dll")
     _write_pe(tmp_path / "OpenIV.asi")
     _write_pe(tmp_path / "dinput8.dll")
     scripts = tmp_path / "scripts"
@@ -54,7 +56,37 @@ def test_status_reports_complete_legacy_install(tmp_path):
     assert status.openrpf_installed is True
     assert status.rpf_loader_status == "Installed (OpenIV.asi validated)"
     assert status.installed_version == "0.2.0"
-    assert status.manager_version == "0.6.1"
+    from allin1 import __version__
+    assert status.manager_version == __version__
+
+
+def test_status_and_configured_path_resolution_preserve_discovery_cache(tmp_path, monkeypatch):
+    from allin1 import detector, manager
+    root = tmp_path / "application"; root.mkdir()
+    cache = root / ".gta_path"; cache.write_bytes(b"previous remembered choice")
+    game = tmp_path / "game"; game.mkdir(); (game / "GTA5.exe").write_bytes(b"inert")
+    monkeypatch.setattr(detector, "_project_root", lambda: root)
+    monkeypatch.setattr(detector.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(detector, "_detect_windows", lambda: game)
+    # Restore the actual pure discovery function hidden by the common fixture.
+    monkeypatch.setattr(manager, "detect_gta_path", detector.inspect_detected_gta_path)
+    config = Config.default(); config.general.gta_path = str(game)
+    service = _manager(root)
+    assert service.resolve_path(config) == game
+    assert service.status(config).valid_game
+    assert cache.read_bytes() == b"previous remembered choice"
+
+
+def test_status_rejects_shvdn_missing_minhook(tmp_path):
+    (tmp_path / "GTA5.exe").touch()
+    _write_pe(tmp_path / "ScriptHookVDotNet.asi")
+    _write_pe(tmp_path / "ScriptHookVDotNet3.dll")
+    config = Config.default()
+    config.general.gta_path = str(tmp_path)
+
+    status = _manager(tmp_path).status(config)
+
+    assert status.shvdn_installed is False
 
 
 def test_status_reports_invalid_manual_path(tmp_path):

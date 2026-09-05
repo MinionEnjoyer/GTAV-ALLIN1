@@ -15,6 +15,7 @@ import platform
 import re
 import shutil
 import stat
+import uuid
 import zipfile
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
@@ -24,6 +25,7 @@ from urllib.request import Request, urlopen
 
 from allin1 import __version__
 from allin1.versioning import normalize_version
+from allin1.release_paths import contained, no_links, relative_path, strict_json, tree_files, unique_paths
 
 
 ASSISTANT_PRODUCT = "ALLIN1-Assistant"
@@ -528,7 +530,7 @@ def default_assistant_root(environment: Mapping[str, str] | None = None) -> Path
 
 
 def assistant_config_path(root: Path | None = None) -> Path:
-    return (root or default_assistant_root()).resolve() / ASSISTANT_CONFIG
+    return contained(root or default_assistant_root(), ASSISTANT_CONFIG)
 
 
 def load_assistant_config(root: Path | None = None) -> AssistantConfig:
@@ -536,7 +538,7 @@ def load_assistant_config(root: Path | None = None) -> AssistantConfig:
     if not path.is_file():
         return AssistantConfig()
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = strict_json(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"Assistant configuration is invalid: {exc}") from exc
     if not isinstance(payload, dict):
@@ -547,15 +549,17 @@ def load_assistant_config(root: Path | None = None) -> AssistantConfig:
 def save_assistant_config(
     config: AssistantConfig, root: Path | None = None,
 ) -> Path:
-    target_root = (root or default_assistant_root()).resolve()
+    target_root = no_links(root or default_assistant_root())
     config.validate(target_root)
+    path = contained(target_root, ASSISTANT_CONFIG)
     target_root.mkdir(parents=True, exist_ok=True)
-    path = target_root / ASSISTANT_CONFIG
-    temporary = path.with_name(path.name + ".writing")
-    temporary.write_text(
-        json.dumps(config.to_dict(), indent=2) + "\n", encoding="utf-8",
-    )
-    temporary.replace(path)
+    temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".writing")
+    try:
+        with temporary.open("x", encoding="utf-8") as stream:
+            stream.write(json.dumps(config.to_dict(), indent=2, allow_nan=False) + "\n")
+        temporary.replace(no_links(path))
+    finally:
+        temporary.unlink(missing_ok=True)
     return path
 
 
@@ -564,8 +568,9 @@ def _validate_runtime(path: Path, label: str) -> None:
     if not resolved.is_file():
         raise ValueError(f"{label} was not found: {resolved}")
     try:
-        if resolved.read_bytes()[:2] != b"MZ":
-            raise ValueError(f"{label} is not a Windows executable")
+        with resolved.open("rb") as stream:
+            if stream.read(2) != b"MZ":
+                raise ValueError(f"{label} is not a Windows executable")
     except OSError as exc:
         raise ValueError(f"{label} cannot be read: {exc}") from exc
 
@@ -583,18 +588,43 @@ def _validate_model(path: Path, label: str) -> None:
 
 
 def _safe_member(info: zipfile.ZipInfo) -> PurePosixPath:
-    if "\\" in info.filename or "\x00" in info.filename:
-        raise ValueError(f"Unsafe assistant package member: {info.filename}")
-    path = PurePosixPath(info.filename)
-    if path.is_absolute() or not path.parts or ".." in path.parts:
-        raise ValueError(f"Unsafe assistant package member: {info.filename}")
-    if any(":" in part for part in path.parts):
-        raise ValueError(f"Unsafe assistant package member: {info.filename}")
+    try:
+        # zipfile normalizes Windows separators and truncates NUL-containing
+        # names on construction; inspect the original archive spelling too.
+        original = info.orig_filename
+        if original != info.filename:
+            raise ValueError("Archive member was normalized by zipfile")
+        path = relative_path(original[:-1] if original.endswith("/") else original)
+    except ValueError as exc:
+        raise ValueError(f"Unsafe assistant package member: {info.filename}") from exc
     if stat.S_ISLNK(info.external_attr >> 16):
         raise ValueError(f"Assistant package contains a symbolic link: {info.filename}")
     if info.flag_bits & 0x1:
         raise ValueError(f"Assistant package contains an encrypted member: {info.filename}")
     return path
+
+
+def _archive_entries(archive: zipfile.ZipFile):
+    entries = archive.infolist()
+    if len(entries) > MAX_ASSISTANT_FILES:
+        raise ValueError("Assistant package contains too many files")
+    if sum(entry.file_size for entry in entries) > MAX_ASSISTANT_EXTRACTED_BYTES:
+        raise ValueError("Assistant package expands beyond the allowed size")
+    planned = [(_safe_member(entry).as_posix(), entry) for entry in entries]
+    seen = set()
+    files = []
+    for name, entry in planned:
+        if name.casefold() in seen:
+            raise ValueError("Assistant package contains duplicate file names")
+        seen.add(name.casefold())
+        if not entry.is_dir(): files.append(name)
+    unique_paths(files)
+    file_names = {name.casefold() for name in files}
+    for name, entry in planned:
+        if entry.is_dir() and any(part.as_posix().casefold() in file_names
+                                 for part in (PurePosixPath(name), *PurePosixPath(name).parents)):
+            raise ValueError("Assistant file/directory destination collision")
+    return planned
 
 
 def _package_info(
@@ -603,7 +633,7 @@ def _package_info(
     try:
         if manifest.get("product") != ASSISTANT_PRODUCT:
             raise ValueError("Assistant manifest names the wrong product")
-        if int(manifest.get("schema", 0)) != 1:
+        if type(manifest.get("schema")) is not int or manifest["schema"] != 1:
             raise ValueError("Unsupported assistant package schema")
         package_id = str(manifest["package_id"])
         if not _PACKAGE_ID.fullmatch(package_id):
@@ -626,9 +656,10 @@ def _package_info(
         runtime_path = str(runtime["path"])
         model_path = str(model["path"])
         for value, label in ((runtime_path, "runtime"), (model_path, "model")):
-            parsed = PurePosixPath(value)
-            if parsed.is_absolute() or ".." in parsed.parts or not parsed.parts:
-                raise ValueError(f"Assistant {label} path is unsafe")
+            try:
+                relative_path(value)
+            except ValueError as exc:
+                raise ValueError(f"Assistant {label} path is unsafe") from exc
         minimum_ram = int(requirements["minimum_ram_gb"])
         recommended_ram = int(requirements["recommended_ram_gb"])
         if not 1 <= minimum_ram <= recommended_ram <= 256:
@@ -657,63 +688,69 @@ def _package_info(
 
 
 def inspect_assistant_archive(path: Path) -> AssistantPackageInfo:
-    archive_path = path.expanduser().resolve(strict=True)
+    archive_path = no_links(path.expanduser())
     if archive_path.stat().st_size > MAX_ASSISTANT_ARCHIVE_BYTES:
         raise ValueError("Assistant package exceeds the allowed download size")
     with zipfile.ZipFile(archive_path) as archive:
-        files = [entry for entry in archive.infolist() if not entry.is_dir()]
-        if len(files) > MAX_ASSISTANT_FILES:
-            raise ValueError("Assistant package contains too many files")
-        unpacked_size = sum(entry.file_size for entry in files)
-        if unpacked_size > MAX_ASSISTANT_EXTRACTED_BYTES:
-            raise ValueError("Assistant package expands beyond the allowed size")
-        names = {_safe_member(entry).as_posix(): entry for entry in files}
-        if len(names) != len(files):
-            raise ValueError("Assistant package contains duplicate file names")
-        required = {ASSISTANT_MANIFEST, ASSISTANT_CHECKSUMS}
-        missing = required - names.keys()
-        if missing:
-            raise ValueError("Assistant package is missing: " + ", ".join(sorted(missing)))
-        try:
-            manifest = json.loads(
-                archive.read(names[ASSISTANT_MANIFEST]).decode("utf-8")
-            )
-            checksums = json.loads(
-                archive.read(names[ASSISTANT_CHECKSUMS]).decode("utf-8")
-            )
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError(f"Assistant package metadata is invalid: {exc}") from exc
-        if not isinstance(manifest, dict) or not isinstance(checksums, dict):
-            raise ValueError("Assistant manifest and checksums must be objects")
-        payload_names = set(names) - {ASSISTANT_CHECKSUMS}
-        if set(checksums) != payload_names:
-            raise ValueError("Assistant checksums must exactly match the package payload")
-        for name, expected in checksums.items():
-            digest = str(expected).casefold()
-            if not re.fullmatch(r"[0-9a-f]{64}", digest):
-                raise ValueError(f"Invalid assistant checksum for {name}")
-            actual = hashlib.sha256()
-            with archive.open(names[name]) as stream:
-                while chunk := stream.read(1024 * 1024):
-                    actual.update(chunk)
-            if actual.hexdigest() != digest:
-                raise ValueError(f"Assistant package checksum mismatch: {name}")
-        info = _package_info(manifest, len(payload_names), unpacked_size)
-        if info.runtime_path not in names or info.model_path not in names:
-            raise ValueError("Assistant package runtime or model payload is missing")
-        licenses = manifest.get("licenses", [])
-        if not isinstance(licenses, list) or not licenses:
-            raise ValueError("Assistant package must retain runtime and model licenses")
-        for license_path in licenses:
-            if str(license_path) not in names:
-                raise ValueError(f"Assistant license file is missing: {license_path}")
-        with archive.open(names[info.runtime_path]) as runtime_stream:
-            if runtime_stream.read(2) != b"MZ":
-                raise ValueError("Assistant runtime is not a Windows executable")
-        with archive.open(names[info.model_path]) as model_stream:
-            if model_stream.read(4) != b"GGUF":
-                raise ValueError("Assistant model is not a GGUF file")
-        return info
+        return _inspect_assistant_zip(archive)
+
+
+def _inspect_assistant_zip(archive: zipfile.ZipFile) -> AssistantPackageInfo:
+    files = [entry for _, entry in _archive_entries(archive) if not entry.is_dir()]
+    if len(files) > MAX_ASSISTANT_FILES:
+        raise ValueError("Assistant package contains too many files")
+    unpacked_size = sum(entry.file_size for entry in files)
+    if unpacked_size > MAX_ASSISTANT_EXTRACTED_BYTES:
+        raise ValueError("Assistant package expands beyond the allowed size")
+    names = {_safe_member(entry).as_posix(): entry for entry in files}
+    if len(names) != len(files):
+        raise ValueError("Assistant package contains duplicate file names")
+    required = {ASSISTANT_MANIFEST, ASSISTANT_CHECKSUMS}
+    missing = required - names.keys()
+    if missing:
+        raise ValueError("Assistant package is missing: " + ", ".join(sorted(missing)))
+    try:
+        manifest = strict_json(
+            archive.read(names[ASSISTANT_MANIFEST]).decode("utf-8")
+        )
+        checksums = strict_json(
+            archive.read(names[ASSISTANT_CHECKSUMS]).decode("utf-8")
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Assistant package metadata is invalid: {exc}") from exc
+    if not isinstance(manifest, dict) or not isinstance(checksums, dict):
+        raise ValueError("Assistant manifest and checksums must be objects")
+    unique_paths(list(checksums))
+    payload_names = set(names) - {ASSISTANT_CHECKSUMS}
+    if set(checksums) != payload_names:
+        raise ValueError("Assistant checksums must exactly match the package payload")
+    for name, expected in checksums.items():
+        digest = str(expected).casefold()
+        if not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValueError(f"Invalid assistant checksum for {name}")
+        actual = hashlib.sha256()
+        with archive.open(names[name]) as stream:
+            while chunk := stream.read(1024 * 1024):
+                actual.update(chunk)
+        if actual.hexdigest() != digest:
+            raise ValueError(f"Assistant package checksum mismatch: {name}")
+    info = _package_info(manifest, len(payload_names), unpacked_size)
+    if info.runtime_path not in names or info.model_path not in names:
+        raise ValueError("Assistant package runtime or model payload is missing")
+    licenses = manifest.get("licenses", [])
+    if not isinstance(licenses, list) or not licenses:
+        raise ValueError("Assistant package must retain runtime and model licenses")
+    for license_path in licenses:
+        relative_path(license_path)
+        if license_path not in names:
+            raise ValueError(f"Assistant license file is missing: {license_path}")
+    with archive.open(names[info.runtime_path]) as runtime_stream:
+        if runtime_stream.read(2) != b"MZ":
+            raise ValueError("Assistant runtime is not a Windows executable")
+    with archive.open(names[info.model_path]) as model_stream:
+        if model_stream.read(4) != b"GGUF":
+            raise ValueError("Assistant model is not a GGUF file")
+    return info
 
 
 def _file_sha256(path: Path) -> str:
@@ -727,27 +764,27 @@ def _file_sha256(path: Path) -> str:
 def _read_installed_package(
     component_root: Path, *, verify_hashes: bool = False,
 ) -> AssistantPackageInfo:
-    manifest_path = component_root / ASSISTANT_MANIFEST
+    component_root = no_links(component_root)
+    manifest_path = contained(component_root, ASSISTANT_MANIFEST)
     if not manifest_path.is_file():
         raise ValueError("Assistant installation metadata is missing")
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = strict_json(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"Assistant installation metadata is invalid: {exc}") from exc
     if not isinstance(manifest, dict):
         raise ValueError("Assistant installation metadata must be an object")
-    checksums_path = component_root / ASSISTANT_CHECKSUMS
+    checksums_path = contained(component_root, ASSISTANT_CHECKSUMS)
     try:
-        checksums = json.loads(checksums_path.read_text(encoding="utf-8"))
+        checksums = strict_json(checksums_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"Assistant installation checksums are invalid: {exc}") from exc
     if not isinstance(checksums, dict):
         raise ValueError("Assistant installation checksums must be an object")
-    files = [path for path in component_root.rglob("*") if path.is_file()]
-    payload = {
-        path.relative_to(component_root).as_posix(): path
-        for path in files if path != checksums_path
-    }
+    unique_paths(list(checksums))
+    inventory = tree_files(component_root)
+    files = list(inventory.values())
+    payload = {name: path for name, path in inventory.items() if name != ASSISTANT_CHECKSUMS}
     if set(checksums) != set(payload):
         raise ValueError("Assistant installation checksums do not match its files")
     for name, path in payload.items():
@@ -757,8 +794,8 @@ def _read_installed_package(
         if verify_hashes and _file_sha256(path) != expected:
             raise ValueError(f"Installed assistant checksum mismatch: {name}")
     info = _package_info(manifest, len(files), sum(path.stat().st_size for path in files))
-    runtime = component_root.joinpath(*PurePosixPath(info.runtime_path).parts)
-    model = component_root.joinpath(*PurePosixPath(info.model_path).parts)
+    runtime = contained(component_root, info.runtime_path)
+    model = contained(component_root, info.model_path)
     _validate_runtime(runtime, "Managed assistant runtime")
     _validate_model(model, "Managed assistant model")
     return info
@@ -766,7 +803,7 @@ def _read_installed_package(
 
 def verify_assistant_install(root: Path | None = None) -> AssistantPackageInfo:
     """Perform a full on-disk hash verification of the managed component."""
-    target_root = (root or default_assistant_root()).resolve()
+    target_root = no_links(root or default_assistant_root())
     component = target_root / ASSISTANT_COMPONENT
     if not component.is_dir():
         raise ValueError("No managed local assistant is installed")
@@ -776,7 +813,7 @@ def verify_assistant_install(root: Path | None = None) -> AssistantPackageInfo:
 def read_assistant_status(
     root: Path | None = None, *, validate_config: bool = True,
 ) -> AssistantStatus:
-    target_root = (root or default_assistant_root()).resolve()
+    target_root = no_links(root or default_assistant_root())
     component = target_root / ASSISTANT_COMPONENT
     try:
         config = load_assistant_config(target_root)
@@ -823,20 +860,38 @@ def read_assistant_status(
 
 
 def _transaction_paths(target_root: Path) -> tuple[Path, Path, Path]:
-    component = target_root / ASSISTANT_COMPONENT
-    pending = target_root / f".{ASSISTANT_COMPONENT}.installing"
-    backup = target_root / f".{ASSISTANT_COMPONENT}.previous"
+    component = contained(target_root, ASSISTANT_COMPONENT)
+    pending = contained(target_root, f".{ASSISTANT_COMPONENT}.installing")
+    backup = contained(target_root, f".{ASSISTANT_COMPONENT}.previous")
     return component, pending, backup
 
 
+def _validate_transaction_roots(target_root: Path) -> tuple[Path, Path, Path]:
+    paths = _transaction_paths(target_root)
+    # Validate every root before the first cleanup, rename or destination write.
+    for path in paths:
+        if path.exists(): tree_files(path)
+    return paths
+
+
+def _remove_component_tree(target_root: Path, path: Path) -> None:
+    if path not in _transaction_paths(target_root):
+        raise ValueError("Assistant cleanup is outside its component roots")
+    if path.exists():
+        tree_files(path)
+        shutil.rmtree(path)
+
+
 def _prepare_assistant_transaction(target_root: Path) -> tuple[Path, Path, Path]:
+    component, pending, backup = _validate_transaction_roots(target_root)
+    if backup.exists() and not component.exists():
+        _read_installed_package(backup, verify_hashes=True)
     target_root.mkdir(parents=True, exist_ok=True)
-    component, pending, backup = _transaction_paths(target_root)
     if pending.exists():
-        shutil.rmtree(pending)
+        _remove_component_tree(target_root, pending)
     if backup.exists():
         if component.exists():
-            shutil.rmtree(backup)
+            _remove_component_tree(target_root, backup)
         else:
             backup.replace(component)
     pending.mkdir()
@@ -846,7 +901,7 @@ def _prepare_assistant_transaction(target_root: Path) -> tuple[Path, Path, Path]
 def _activate_assistant_transaction(
     target_root: Path, pending: Path, expected: AssistantPackageInfo,
 ) -> AssistantStatus:
-    component, expected_pending, backup = _transaction_paths(target_root)
+    component, expected_pending, backup = _validate_transaction_roots(target_root)
     if pending != expected_pending or not pending.is_dir():
         raise RuntimeError("Assistant staging directory is not valid")
     installed = _read_installed_package(pending, verify_hashes=True)
@@ -861,12 +916,12 @@ def _activate_assistant_transaction(
             raise RuntimeError("Assistant installation failed its post-install validation")
     except Exception:
         if component.exists():
-            shutil.rmtree(component)
+            _remove_component_tree(target_root, component)
         if backup.exists():
             backup.replace(component)
         raise
     if backup.exists():
-        shutil.rmtree(backup)
+        _remove_component_tree(target_root, backup)
     return status
 
 
@@ -874,37 +929,40 @@ def install_assistant_archive(
     archive_path: Path, root: Path | None = None, *,
     enforce_hardware: bool = True,
 ) -> AssistantStatus:
-    target_root = (root or default_assistant_root()).resolve()
-    info = inspect_assistant_archive(archive_path)
-    if enforce_hardware:
-        require_assistant_hardware(assess_assistant_hardware(
-            info.profile, target_root,
-            archive_size=archive_path.expanduser().resolve().stat().st_size,
-            unpacked_size=info.unpacked_size,
-            package=info,
-        ))
-    _component, pending, _backup = _prepare_assistant_transaction(target_root)
-    try:
-        with zipfile.ZipFile(archive_path) as archive:
-            for entry in archive.infolist():
-                relative = _safe_member(entry)
-                target = pending.joinpath(*relative.parts)
+    target_root = no_links(root or default_assistant_root())
+    archive_path = no_links(archive_path.expanduser())
+    if archive_path.stat().st_size > MAX_ASSISTANT_ARCHIVE_BYTES:
+        raise ValueError("Assistant package exceeds the allowed download size")
+    # Keep the validated archive handle open through extraction. Never reopen a
+    # different pathname's bytes after a successful preflight.
+    with zipfile.ZipFile(archive_path) as archive:
+        info = _inspect_assistant_zip(archive)
+        if enforce_hardware:
+            require_assistant_hardware(assess_assistant_hardware(
+                info.profile, target_root, archive_size=archive_path.stat().st_size,
+                unpacked_size=info.unpacked_size, package=info))
+        _component, pending, _backup = _prepare_assistant_transaction(target_root)
+        try:
+            for name, entry in _archive_entries(archive):
+                target = contained(pending, name)
                 if entry.is_dir():
                     target.mkdir(parents=True, exist_ok=True)
                 else:
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    with archive.open(entry) as source, target.open("wb") as output:
+                    with archive.open(entry) as source, no_links(target).open("xb") as output:
                         shutil.copyfileobj(source, output)
-        return _activate_assistant_transaction(target_root, pending, info)
-    except Exception:
-        if pending.exists():
-            shutil.rmtree(pending)
-        raise
+            return _activate_assistant_transaction(target_root, pending, info)
+        except Exception:
+            _remove_component_tree(target_root, pending)
+            raise
 
 
 def uninstall_assistant(root: Path | None = None) -> bool:
-    target_root = (root or default_assistant_root()).resolve()
-    component, pending, backup = _transaction_paths(target_root)
+    target_root = no_links(root or default_assistant_root())
+    component, pending, backup = _validate_transaction_roots(target_root)
+    contained(target_root, ASSISTANT_CONFIG)
+    logs = [contained(target_root, name) for name in ("runtime.log", "runtime-state.json")]
+    keys = [no_links(path) for path in target_root.glob(".runtime-api-key-*.txt")]
     try:
         config = load_assistant_config(target_root)
     except ValueError:
@@ -915,13 +973,12 @@ def uninstall_assistant(root: Path | None = None) -> bool:
     removed = any(path.exists() for path in managed_artifacts)
     for path in managed_artifacts:
         if path.exists():
-            shutil.rmtree(path)
-    for log_name in ("runtime.log", "runtime-state.json"):
-        log_path = target_root / log_name
+            _remove_component_tree(target_root, path)
+    for log_path in logs:
         if log_path.is_file():
             log_path.unlink()
             removed = True
-    for key_path in target_root.glob(".runtime-api-key-*.txt"):
+    for key_path in keys:
         if key_path.is_file():
             key_path.unlink()
             removed = True
@@ -959,9 +1016,10 @@ def _download_verified(
 ) -> int:
     digest = hashlib.sha256()
     received = 0
+    destination = no_links(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with opener(_download_request(download.url), timeout=timeout) as response:
-        with destination.open("wb") as output:
+        with destination.open("xb") as output:
             while True:
                 chunk = response.read(1024 * 1024)
                 if not chunk:
@@ -983,18 +1041,14 @@ def _download_verified(
 
 
 def _extract_runtime_archive(archive_path: Path, runtime_root: Path) -> None:
-    with zipfile.ZipFile(archive_path) as archive:
-        entries = archive.infolist()
-        if len(entries) > MAX_ASSISTANT_FILES:
-            raise ValueError("Assistant runtime archive contains too many files")
-        for entry in entries:
-            relative = _safe_member(entry)
-            target = runtime_root.joinpath(*relative.parts)
+    with zipfile.ZipFile(no_links(archive_path)) as archive:
+        planned = [(contained(runtime_root, name), entry) for name, entry in _archive_entries(archive)]
+        for target, entry in planned:
             if entry.is_dir():
                 target.mkdir(parents=True, exist_ok=True)
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
-            with archive.open(entry) as source, target.open("wb") as output:
+            with archive.open(entry) as source, no_links(target).open("xb") as output:
                 shutil.copyfileobj(source, output)
     _validate_runtime(runtime_root / "llama-server.exe", "Managed assistant runtime")
 
@@ -1046,7 +1100,7 @@ def install_qwen_source(
     selected = source or assistant_source(profile)
     if selected.profile != profile.casefold():
         raise ValueError("Assistant source profile does not match the selected profile")
-    target_root = (root or default_assistant_root()).resolve()
+    target_root = no_links(root or default_assistant_root())
     require_assistant_hardware(assess_assistant_hardware(
         selected.profile, target_root,
         archive_size=selected.total_download_bytes,
@@ -1105,6 +1159,5 @@ def install_qwen_source(
             progress("Verifying managed assistant", total, total)
         return _activate_assistant_transaction(target_root, pending, expected)
     except Exception:
-        if pending.exists():
-            shutil.rmtree(pending)
+        _remove_component_tree(target_root, pending)
         raise

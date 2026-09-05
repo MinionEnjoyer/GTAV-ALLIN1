@@ -77,33 +77,38 @@ namespace ALLIN1
         private const int SLOT_COUNT = 10;
         private const float ENTER_RADIUS = 2.5f;
         private const float EXIT_RADIUS = 4.0f;
+        private const float EXTERIOR_MARKER_SERVICE_RADIUS = 250f;
+        private const int STORY_READINESS_PROBE_INTERVAL_MS = 250;
+        private const int STORY_SAVE_STATUS_INTERVAL_MS = 100;
+        private const int BLIP_COLOR_REFRESH_INTERVAL_MS = 250;
         private static readonly GarageDefinition ECLIPSE_GARAGE =
             GarageDefinitions.Eclipse;
 
         // Outside entrance/exit positions (shared by all characters)
-        private static readonly Vector3 ENTRANCE_POS =
+        private static Vector3 ENTRANCE_POS =
             new Vector3(-796f, 303f, 85.2f);
+        private static float ENTRANCE_HEADING = 180f;
 
-        private static readonly Vector3 PED_EXIT_DEST =
+        private static Vector3 PED_EXIT_DEST =
             new Vector3(-774f, 310.2f, 85.7f);
-        private const float PED_EXIT_DEST_HEADING = 180f;
+        private static float PED_EXIT_DEST_HEADING = 180f;
 
         // Interior positions (shared underground garage)
-        private static readonly Vector3 INTERIOR_SPAWN =
+        private static Vector3 INTERIOR_SPAWN =
             new Vector3(240.65f, -1004.86f, -99.66f);
-        private const float INTERIOR_SPAWN_HEADING = -165f;
+        private static float INTERIOR_SPAWN_HEADING = -165f;
 
-        private static readonly Vector3 VEHICLE_EXIT_INTERIOR =
+        private static Vector3 VEHICLE_EXIT_INTERIOR =
             new Vector3(228.2f, -1004.3f, -99f);
-        private const float VEHICLE_EXIT_INTERIOR_HEADING = 352.3f;
+        private static float VEHICLE_EXIT_INTERIOR_HEADING = 352.3f;
 
-        private static readonly Vector3 PED_EXIT =
+        private static Vector3 PED_EXIT =
             new Vector3(240.7f, -1004.8f, -99f);
-        private const float PED_EXIT_HEADING = 82.8f;
+        private static float PED_EXIT_HEADING = 82.8f;
 
         // Ten surveyed parking bays in the apartment garage shell. FloorZ is
         // the physical plane; Position.Z remains the audited root fallback.
-        internal static readonly ParkingSlot[] Slots =
+        internal static ParkingSlot[] Slots =
         {
             // Left row (facing heading -105)
             new ParkingSlot(224.57f, -1002.75f, -99.56f, -105f, -100.0f),
@@ -201,8 +206,15 @@ namespace ALLIN1
         private static bool _vehicleSaveCommitInProgress;
         private static bool _storySaveWasInProgress;
         private static bool _discardStagedGarageStateAfterLoad;
+        private static bool _hasLocationVisibilityState;
+        private static bool _lastLocationMissionActive;
+        private static bool _lastLocationTransitionActive;
+        private static bool _lastLocationVisible;
         private static DateTime _lastStorySaveWriteUtc;
         private static DateTime _nextStorySavePollUtc;
+        private static int _nextStoryReadinessProbe;
+        private static int _nextStorySaveStatusProbe;
+        private static int _nextBlipColorRefresh;
 
         // ------------------------------------------------------------------ //
         //  Logging                                                            //
@@ -238,6 +250,17 @@ namespace ALLIN1
         {
             if (_initialized)
                 return;
+
+            // Resolve the receipt-authorized SDK descriptors only during
+            // ordinary game startup. Keeping this out of a type initializer
+            // preserves runtime-neutral policy/test helpers and avoids native
+            // GTA access merely because another subsystem classifies a map.
+            EnsureOfficialGarageDescriptorsBound();
+
+            // Start the Story-runtime stability clock during ordinary manager
+            // startup. Deferred map readiness must not begin only after the
+            // player's first garage transition has already acquired the lock.
+            DeferredMapContentRuntime.ObserveStoryRuntimeReadiness();
 
             try
             {
@@ -287,6 +310,11 @@ namespace ALLIN1
 
         internal static bool IsPlayerInGarage => _isPlayerInGarage;
         internal static bool IsTransitionInProgress => _transitionInProgress;
+        internal static bool IsEmergencyRecoveryAvailable =>
+            _transitionInProgress || _isPlayerInGarage ||
+            _isPlayerInFloorGarage || _isPlayerInDavisGarage ||
+            _isPlayerInGarmentGarage || _isPlayerInRuralGarage ||
+            _isPlayerInPaletoGarage;
 
         /// <summary>Emergency escape for a stuck interior or transition.</summary>
         internal static void EmergencyRecover()
@@ -370,12 +398,31 @@ namespace ALLIN1
             if (!_initialized)
                 return;
 
-            PollStorySaveAndPersistVehicles();
+            int now = Game.GameTime;
+            // These checks need to remain independent of a specific garage,
+            // but none requires render-frame frequency. Before this gate the
+            // readiness path alone issued up to five transition natives every
+            // frame while the player was anywhere in the world.
+            if (PeriodicWorkDue(now, _nextStoryReadinessProbe))
+            {
+                _nextStoryReadinessProbe = unchecked(
+                    now + STORY_READINESS_PROBE_INTERVAL_MS);
+                DeferredMapContentRuntime.ObserveStoryRuntimeReadiness();
+            }
 
-            // Every ALLIN1 location follows the active protagonist. Keep this
-            // before the garage/transition guards so switching characters in
-            // an interior cannot leave another location with a stale color.
-            UpdateLocationBlipColors();
+            PollStorySaveAndPersistVehicles(now);
+
+            // Every ALLIN1 location follows the active protagonist and stays
+            // off the map while Rockstar owns mission/cutscene state. A 250 ms
+            // refresh is imperceptible while avoiding native probes on every
+            // rendered frame.
+            if (PeriodicWorkDue(now, _nextBlipColorRefresh))
+            {
+                _nextBlipColorRefresh = unchecked(
+                    now + BLIP_COLOR_REFRESH_INTERVAL_MS);
+                UpdateLocationBlipColors();
+                UpdateLocationBlipVisibility();
+            }
 
             if (_transitionInProgress)
                 return;
@@ -396,18 +443,22 @@ namespace ALLIN1
             Ped player = Game.Player.Character;
             if (player == null || player.IsDead)
                 return;
-            if (!_isPlayerInGarage && !GbayShop.TryGetCurrentCharacter(out _))
-                return;
 
             if (!_isPlayerInGarage)
             {
-                // Never detach the player, passengers, or a mission vehicle
-                // from Rockstar's active mission script. Exits stay available
-                // if a mission flag appears while already inside a garage.
-                if (EvaluateGarageEntry(ECLIPSE_GARAGE) ==
-                    GarageEntryDenial.MissionActive) return;
-
                 bool inVehicle = player.IsInVehicle();
+                Vector3 activeEntrance = inVehicle
+                    ? ENTRANCE_POS : PED_EXIT_DEST;
+                if (!ShouldServiceExteriorMarker(
+                        player.Position, activeEntrance))
+                    return;
+                if (!GbayShop.TryGetCurrentCharacter(out _))
+                    return;
+
+                // Never detach the player, passengers, or a mission vehicle
+                // from Rockstar's active Story state. This gate is confined to
+                // the exterior branch so exits remain available once inside.
+                if (!ShouldServiceGarageExterior()) return;
 
                 // ---- Vehicle entrance — only when in a vehicle ----
                 if (inVehicle)
@@ -423,8 +474,7 @@ namespace ALLIN1
                     if (vehDist < ENTER_RADIUS)
                     {
                         Vehicle veh = player.CurrentVehicle;
-                        GarageEntryDenial denial = EvaluateGarageEntry(
-                            ECLIPSE_GARAGE, veh);
+                        GarageEntryDenial denial = EvaluateGarageEntry(ECLIPSE_GARAGE, veh);
                         if (denial != GarageEntryDenial.None)
                         {
                             GTA.UI.Screen.ShowHelpTextThisFrame(
@@ -722,11 +772,17 @@ namespace ALLIN1
             }
             finally
             {
-                UnloadFloorGarageInterior();
-                UnloadDavisAutoShopInterior();
-                UnloadGarmentInterior();
-                UnloadRuralInterior();
-                UnloadPaletoInterior();
+                TryRecoverTransitionCleanup(
+                    name, "UnloadHarmony", () => UnloadFloorGarageInterior());
+                TryRecoverTransitionCleanup(
+                    name, "UnloadDavis",
+                    () => UnloadDavisAutoShopInterior());
+                TryRecoverTransitionCleanup(
+                    name, "UnloadGarment", () => UnloadGarmentInterior());
+                TryRecoverTransitionCleanup(
+                    name, "UnloadGrapeseed", () => UnloadRuralInterior());
+                TryRecoverTransitionCleanup(
+                    name, "UnloadPaleto", () => UnloadPaletoInterior());
                 _isPlayerInGarage = false;
                 _isPlayerInFloorGarage = false;
                 _isPlayerInDavisGarage = false;
@@ -748,6 +804,16 @@ namespace ALLIN1
                 {
                     LogException($"{name}.RecoveryFade", fadeEx);
                 }
+            }
+        }
+
+        private static void TryRecoverTransitionCleanup(
+            string transitionName, string operation, Action cleanup)
+        {
+            try { cleanup(); }
+            catch (Exception ex)
+            {
+                LogException($"{transitionName}.Recovery.{operation}", ex);
             }
         }
 
@@ -789,6 +855,9 @@ namespace ALLIN1
                 Function.Call(Hash.DO_SCREEN_FADE_OUT, 0);
                 Script.Wait(0);
             }
+            if (!Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT))
+                throw new InvalidOperationException(
+                    $"{name} could not verify a fully black screen");
             Log($"{name}: black transition acquired in " +
                 $"{Game.GameTime - startedAt}ms");
         }
@@ -1206,7 +1275,15 @@ namespace ALLIN1
 
         private static bool IsMissionActive()
         {
-            try { return Function.Call<bool>(Hash.GET_MISSION_FLAG); }
+            try
+            {
+                // Only Rockstar's mission flag is authoritative for global
+                // garage visibility. Getaway preparation threads are a narrow
+                // compatibility signal and may remain resident during free
+                // roam, especially on Enhanced; treating them as a mission
+                // would permanently hide every garage marker.
+                return Function.Call<bool>(Hash.GET_MISSION_FLAG);
+            }
             catch (Exception ex)
             {
                 // Fail closed. Entering a scripted interior without knowing
@@ -1216,8 +1293,20 @@ namespace ALLIN1
             }
         }
 
-        private static void PollStorySaveAndPersistVehicles()
+        private static bool ShouldServiceGarageExterior()
         {
+            return GarageMarkerVisibilityPolicy.ShouldServiceExterior(
+                IsMissionActive(), IsUnsafeGarageTransitionActive(),
+                playerAlreadyInside: false);
+        }
+
+        private static void PollStorySaveAndPersistVehicles(int runtimeMs)
+        {
+            if (!PeriodicWorkDue(runtimeMs, _nextStorySaveStatusProbe))
+                return;
+            _nextStorySaveStatusProbe = unchecked(
+                runtimeMs + STORY_SAVE_STATUS_INTERVAL_MS);
+
             if (Game.IsLoading)
             {
                 _storySaveWasInProgress = false;
@@ -1262,19 +1351,48 @@ namespace ALLIN1
 
         internal static void OnScriptAborted()
         {
-            if (!_initialized) return;
             try
             {
-                DateTime latestWrite =
-                    CharacterInventory.LatestStorySaveWriteUtc();
-                if (latestWrite <= _lastStorySaveWriteUtc) return;
-                _lastStorySaveWriteUtc = latestWrite;
-                PersistVehiclesForStorySave("story_save_written_on_shutdown");
+                if (_initialized)
+                {
+                    DateTime latestWrite =
+                        CharacterInventory.LatestStorySaveWriteUtc();
+                    if (latestWrite > _lastStorySaveWriteUtc)
+                    {
+                        _lastStorySaveWriteUtc = latestWrite;
+                        PersistVehiclesForStorySave(
+                            "story_save_written_on_shutdown");
+                    }
+                }
             }
             catch (Exception ex)
             {
                 LogException("OnScriptAborted", ex);
             }
+            finally
+            {
+                try { DeferredMapContentRuntime.OnScriptAborted(); }
+                catch (Exception ex)
+                {
+                    LogException("OnScriptAborted.MapCleanup", ex);
+                }
+            }
+        }
+
+        internal static bool PeriodicWorkDue(int now, int scheduledAt)
+        {
+            return unchecked(now - scheduledAt) >= 0;
+        }
+
+        internal static bool ShouldServiceExteriorMarker(
+            Vector3 playerPosition, Vector3 markerPosition)
+        {
+            float x = playerPosition.X - markerPosition.X;
+            float y = playerPosition.Y - markerPosition.Y;
+            float z = playerPosition.Z - markerPosition.Z;
+            return x * x + y * y + z * z <=
+                EXTERIOR_MARKER_SERVICE_RADIUS *
+                EXTERIOR_MARKER_SERVICE_RADIUS;
         }
 
         private static void PersistVehiclesForStorySave(string reason)
@@ -1466,7 +1584,7 @@ namespace ALLIN1
             return true;
         }
 
-        private static bool IsUnsafeGarageTransitionActive()
+        internal static bool IsUnsafeGarageTransitionActive()
         {
             try
             {
@@ -1603,6 +1721,58 @@ namespace ALLIN1
         private static void SetBlipColor(Blip blip, BlipColor color)
         {
             if (blip != null && blip.Exists()) blip.Color = color;
+        }
+
+        private static void SetBlipVisibility(Blip blip, bool visible)
+        {
+            if (blip == null || !blip.Exists()) return;
+            int alpha = visible ? 255 : 0;
+            if (blip.Alpha != alpha) blip.Alpha = alpha;
+        }
+
+        private static void UpdateLocationBlipVisibility()
+        {
+            bool missionActive = IsMissionActive();
+            bool gameTransitionActive = IsUnsafeGarageTransitionActive();
+            bool visible = GarageMarkerVisibilityPolicy.ShouldShowMapLocations(
+                missionActive, gameTransitionActive);
+
+            if (!_hasLocationVisibilityState ||
+                missionActive != _lastLocationMissionActive ||
+                gameTransitionActive != _lastLocationTransitionActive ||
+                visible != _lastLocationVisible)
+            {
+                ClientLog.Info("Garage", "location_visibility_changed",
+                    new Dictionary<string, object>
+                    {
+                        { "mission_active", missionActive },
+                        { "transition_active", gameTransitionActive },
+                        { "visible", visible }
+                    });
+                _lastLocationMissionActive = missionActive;
+                _lastLocationTransitionActive = gameTransitionActive;
+                _lastLocationVisible = visible;
+                _hasLocationVisibilityState = true;
+            }
+
+            SetBlipVisibility(_entranceBlip, visible);
+            SetBlipVisibility(_pedEntranceBlip, visible);
+            SetBlipVisibility(_floorGarageEntranceBlip, visible);
+            SetBlipVisibility(_floorGaragePedBlip, visible);
+            SetBlipVisibility(_davisVehicleBlip, visible);
+            SetBlipVisibility(_davisPedBlip, visible);
+            SetBlipVisibility(_garmentVehicleBlip, visible);
+            SetBlipVisibility(_garmentPedBlip, visible);
+            SetBlipVisibility(_ruralVehicleBlip, visible);
+            SetBlipVisibility(_ruralPedBlip, visible);
+            SetBlipVisibility(_paletoVehicleBlip, visible);
+            SetBlipVisibility(_paletoPedBlip, visible);
+            SetBlipVisibility(_helipadAccessBlip, visible);
+            SetBlipVisibility(_helipadVehicleBlip, visible);
+            SetBlipVisibility(_harbourAccessBlip, visible);
+            SetBlipVisibility(_harbourVehicleBlip, visible);
+            SetBlipVisibility(_marinaAccessBlip, visible);
+            SetBlipVisibility(_marinaVehicleBlip, visible);
         }
 
         /// <summary>
@@ -2784,25 +2954,26 @@ namespace ALLIN1
             GarageDefinitions.ThreeFloor;
 
         // Outside entrance/exit — placeholder coordinates, will be set later
-        private static readonly Vector3 FLOOR_GARAGE_ENTRANCE_POS =
+        private static Vector3 FLOOR_GARAGE_ENTRANCE_POS =
             new Vector3(922.4f, 3564.8f, 33.8f);
 
-        private static readonly Vector3 FLOOR_GARAGE_PED_EXIT_DEST =
+        private static Vector3 FLOOR_GARAGE_PED_EXIT_DEST =
             new Vector3(906f, 3554.3f, 33.8f);
-        private const float FLOOR_GARAGE_PED_EXIT_DEST_HEADING = 180f;
+        private static float FLOOR_GARAGE_ENTRANCE_HEADING = 270f;
+        private static float FLOOR_GARAGE_PED_EXIT_DEST_HEADING = 180f;
 
         // Nightclub garage interior (DLC After Hours: BA_DLC_INT_02_BA)
         // Single physical room reused for all virtual floors
         // Must use full milo path names — short names don't load in SP
-        private static readonly string[] FLOOR_GARAGE_IPLS =
+        private static string[] FLOOR_GARAGE_IPLS =
         {
             "ba_int_placement_ba_interior_1_dlc_int_02_ba_milo_", // garage & storage
         };
-        private static readonly string[] FLOOR_GARAGE_REQUIRED_IPLS =
+        private static string[] FLOOR_GARAGE_REQUIRED_IPLS =
         {
             "ba_int_placement_ba_interior_1_dlc_int_02_ba_milo_",
         };
-        private static readonly Vector3 FLOOR_GARAGE_INTERIOR_CENTER =
+        private static Vector3 FLOOR_GARAGE_INTERIOR_CENTER =
             new Vector3(-1505.782f, -3012.587f, -80.0f);
         private const string FLOOR_GARAGE_INTERIOR_TYPE = "ba_dlc_int_02_ba";
         private const int FLOOR_GARAGE_INTERIOR_LOAD_TIMEOUT_MS = 8000;
@@ -2812,9 +2983,9 @@ namespace ALLIN1
         // Interior ped spawn — at elevator 1 position
         // Interior-side floor anchor. The elevator interaction marker is a
         // room-volume boundary and is not safe after physics resumes.
-        private static readonly Vector3 FLOOR_GARAGE_INTERIOR_PED =
+        private static Vector3 FLOOR_GARAGE_INTERIOR_PED =
             new Vector3(-1507.721f, -3011.700f, -80.2419f);
-        private const float FLOOR_GARAGE_INTERIOR_PED_HEADING = 0f;
+        private static float FLOOR_GARAGE_INTERIOR_PED_HEADING = 0f;
 
         // Elevator positions inside the garage (for floor switching + exit)
         private static readonly Vector3 FLOOR_GARAGE_ELEVATOR_1 =
@@ -2830,6 +3001,7 @@ namespace ALLIN1
         // are spawned at a time; switching floors despawns/respawns.
         private static int _currentFloor; // 0 through 4
         private static int _floorGarageInteriorId;
+        private static bool _floorGarageMapLeaseHeld;
         private static bool _elevatorMenuActive;
         private static int _elevatorMenuSelection; // floors 0-4, exit=5
 
@@ -2928,7 +3100,7 @@ namespace ALLIN1
         // Five surveyed positions in the Nightclub warehouse shell, reused by
         // each virtual floor. Vehicles face east into the aisle and remain six
         // metres apart so oversized bodies do not overlap adjacent vehicles.
-        private static readonly ParkingSlot[] _floorGaragePhysicalSlots =
+        private static ParkingSlot[] _floorGaragePhysicalSlots =
         {
             new ParkingSlot(-1517.0f, -3022.0f, -79.69f, 90f, -80.2422f),
             new ParkingSlot(-1517.0f, -3016.0f, -79.69f, 90f, -80.2422f),
@@ -2939,7 +3111,7 @@ namespace ALLIN1
 
         // 25 logical slots across 5 virtual floors (5 per floor).
         // All floors share the same physical positions — only current floor is spawned
-        internal static readonly ParkingSlot[] FloorGarageSlots =
+        internal static ParkingSlot[] FloorGarageSlots =
             BuildFloorGarageSlots();
 
         private static ParkingSlot[] BuildFloorGarageSlots()
@@ -3243,7 +3415,6 @@ namespace ALLIN1
 
             Ped player = Game.Player.Character;
             if (player == null || player.IsDead) return;
-            if (!_isPlayerInFloorGarage && !GbayShop.TryGetCurrentCharacter(out _)) return;
 
             // Don't show floor garage markers while in garage (and vice versa)
             if (_isPlayerInGarage || _isPlayerInDavisGarage ||
@@ -3252,10 +3423,17 @@ namespace ALLIN1
 
             if (!_isPlayerInFloorGarage)
             {
-                if (EvaluateGarageEntry(THREE_FLOOR_GARAGE) ==
-                    GarageEntryDenial.MissionActive) return;
-
                 bool inVehicle = player.IsInVehicle();
+                Vector3 activeEntrance = inVehicle
+                    ? FLOOR_GARAGE_ENTRANCE_POS
+                    : FLOOR_GARAGE_PED_EXIT_DEST;
+                if (!ShouldServiceExteriorMarker(
+                        player.Position, activeEntrance))
+                    return;
+                if (!GbayShop.TryGetCurrentCharacter(out _))
+                    return;
+
+                if (!ShouldServiceGarageExterior()) return;
 
                 if (inVehicle)
                 {
@@ -3484,39 +3662,68 @@ namespace ALLIN1
         private static void EnterFloorGarage()
         {
             if (RejectGarageEntry(THREE_FLOOR_GARAGE)) return;
+            if (!DeferredMapContentRuntime.CanBeginOfficialGarageEntry(
+                    DeferredMapProperty.Harmony, out _)) return;
             if (!BeginTransition("EnterFloorGarage")) return;
+            bool newLease = !_floorGarageMapLeaseHeld;
+            var transition = CreateScopedInteriorEntryTransition(
+                THREE_FLOOR_GARAGE.Id, () =>
+                {
+                    _isPlayerInFloorGarage = false;
+                    for (int i = 0; i < _floorGarageHandles.Length; i++)
+                    {
+                        if (_floorGarageHandles[i] != null && _floorGarageHandles[i].Exists())
+                            _floorGarageHandles[i].Delete();
+                        _floorGarageHandles[i] = null;
+                    }
+                    UnloadFloorGarageInterior(force: newLease);
+                });
             try
             {
-                using (ClientLog.Time("Garage", "enter_floor_garage")) EnterFloorGarageCore();
+                using (ClientLog.Time("Garage", "enter_floor_garage")) EnterFloorGarageCore(transition);
             }
             catch (Exception ex)
             {
+                transition.Fail("entry_exception:" + ex.GetType().Name);
                 LogException("EnterFloorGarage", ex);
                 RecoverTransition("EnterFloorGarage", FLOOR_GARAGE_PED_EXIT_DEST,
                     FLOOR_GARAGE_PED_EXIT_DEST_HEADING);
+                Script.Wait(100);
+                UnloadFloorGarageInterior();
                 GTA.UI.Screen.ShowSubtitle("~r~Floor garage entry failed safely. See ALLIN1_gbay.log.", 4000);
             }
             finally
             {
+                transition.Dispose();
                 EndTransition("EnterFloorGarage");
             }
         }
 
-        private static void EnterFloorGarageCore()
+        private static void EnterFloorGarageCore(OfficialGarageTransitionCoordinator transition)
         {
             Log("EnterFloorGarage: START");
             Ped player = Game.Player.Character;
             Vehicle rideInToDelete = null;
             string storedConfirmation = null;
-            StoredVehicle storedDuringEntry = null;
-            List<StoredVehicle> storedListDuringEntry = null;
 
             // This garage always opens on floor one. Set the virtual floor
             // before loading its entity sets so a prior visit cannot apply the
             // previous floor's customization during interior initialization.
             _currentFloor = 0;
 
-            // Drive-in: store the vehicle
+            transition.HoldFade(() => BeginGarageBlackTransition("EnterFloorGarage"));
+            transition.Advance(OfficialGarageTransitionPhase.LeaseRequested);
+            if (!LoadFloorGarageInterior(transition))
+            {
+                transition.Fail("map_activation_failed");
+                GTA.UI.Screen.ShowSubtitle(
+                    DeferredMapContentRuntime.GarageUnavailableMessage("Harmony"), 3500);
+                return;
+            }
+            transition.Advance(OfficialGarageTransitionPhase.IplReady);
+            transition.Advance(OfficialGarageTransitionPhase.InteriorReady);
+
+            // Drive-in storage is committed only after the interior is usable.
             if (player.IsInVehicle())
             {
                 Vehicle rideIn = player.CurrentVehicle;
@@ -3571,8 +3778,6 @@ namespace ALLIN1
                             "~r~The vehicle could not be saved; it was left outside.", 3000);
                         return;
                     }
-                    storedDuringEntry = sv;
-                    storedListDuringEntry = storedList;
 
                     string displayName = RuntimeVehicleCatalog.GetDisplayName(
                         modelName);
@@ -3588,22 +3793,6 @@ namespace ALLIN1
                 }
             }
 
-            Log("EnterFloorGarage: loading IPL");
-            // Load the nightclub garage IPL
-            if (!LoadFloorGarageInterior())
-            {
-                if (storedDuringEntry != null && storedListDuringEntry != null)
-                {
-                    storedListDuringEntry.Remove(storedDuringEntry);
-                    if (!FloorGarageSave())
-                        Log("EnterFloorGarage: WARNING - entry rollback save failed");
-                    Log("EnterFloorGarage: rolled back drive-in storage after interior load failure");
-                }
-                GTA.UI.Screen.ShowSubtitle(
-                    "~y~The Harmony Garage is unavailable during the current game transition.",
-                    3500);
-                return;
-            }
             Log("EnterFloorGarage: IPL loaded");
 
             // Clear existing handles
@@ -3617,7 +3806,6 @@ namespace ALLIN1
             _isPlayerInFloorGarage = true; // set early to block re-entry during fade
             Log("EnterFloorGarage: flag set, starting fade out");
 
-            BeginGarageBlackTransition("EnterFloorGarage");
             Log("EnterFloorGarage: fade done, teleporting");
 
             // Freeze and teleport player
@@ -3662,13 +3850,14 @@ namespace ALLIN1
             player.IsPositionFrozen = false;
 
             Log("EnterFloorGarage: waiting for destination readiness");
-            CompleteGarageBlackTransition(
+            transition.Complete(OfficialGarageTransitionPhase.Occupied,
+                () => CompleteGarageBlackTransition(
                 "EnterFloorGarage", player, null,
                 () => Function.Call<bool>(Hash.IS_INTERIOR_READY,
                         _floorGarageInteriorId) &&
                     IsFloorGaragePlayerAttached(
                         player, _floorGarageInteriorId, out _),
-                _floorGarageHandles);
+                _floorGarageHandles));
 
             if (!string.IsNullOrEmpty(storedConfirmation))
                 GTA.UI.Screen.ShowSubtitle(storedConfirmation, 4000);
@@ -3742,8 +3931,6 @@ namespace ALLIN1
             player.IsPositionFrozen = true;
             if (playerVehicle != null)
                 playerVehicle.IsPositionFrozen = true;
-            UnloadFloorGarageInterior();
-            Script.Wait(250);
 
             if (playerVehicle != null)
             {
@@ -3763,7 +3950,8 @@ namespace ALLIN1
 
                 playerVehicle.IsPersistent = true;
                 ReleaseGarageVehicleForDriving(playerVehicle,
-                    FLOOR_GARAGE_ENTRANCE_POS, 270f, "Harmony");
+                    FLOOR_GARAGE_ENTRANCE_POS,
+                    FLOOR_GARAGE_ENTRANCE_HEADING, "Harmony");
 
                 FloorGarageSave();
                 Log("LeaveFloorGarage: drove out in vehicle");
@@ -3781,6 +3969,9 @@ namespace ALLIN1
                 FloorGarageSave();
                 Log("LeaveFloorGarage: returned on foot");
             }
+
+            Script.Wait(100);
+            UnloadFloorGarageInterior();
 
             _isPlayerInFloorGarage = false;
             _floorGarageExitCooldownFrames = 60;
@@ -4006,7 +4197,7 @@ namespace ALLIN1
         /// <summary>
         /// Load the nightclub garage IPL and configure interior entity sets.
         /// </summary>
-        private static bool LoadFloorGarageInterior()
+        private static bool LoadFloorGarageInterior(OfficialGarageTransitionCoordinator transition)
         {
             // Recheck immediately before loading the local map asset. A
             // cutscene can begin after the proximity prompt was evaluated.
@@ -4016,10 +4207,20 @@ namespace ALLIN1
                 return false;
             }
 
-            if (!StandaloneMapPack.TryActivate(FLOOR_GARAGE_REQUIRED_IPLS, 1500))
+            if (!_floorGarageMapLeaseHeld)
             {
-                Log("LoadFloorGarageInterior: standalone map unavailable");
-                return false;
+                DeferredMapContentResult activation =
+                    DeferredMapContentRuntime.TryAcquireInteriorUnderBlackTransition(
+                        DeferredMapProperty.Harmony, transition,
+                        FLOOR_GARAGE_REQUIRED_IPLS,
+                        FLOOR_GARAGE_INTERIOR_LOAD_TIMEOUT_MS);
+                if (!activation.Success)
+                {
+                    Log("LoadFloorGarageInterior: deferred map unavailable " +
+                        $"outcome={activation.Outcome} detail={activation.Detail}");
+                    return false;
+                }
+                _floorGarageMapLeaseHeld = true;
             }
 
             bool focusSet = false;
@@ -4123,8 +4324,11 @@ namespace ALLIN1
             return false;
         }
 
-        private static void UnloadFloorGarageInterior()
+        private static void UnloadFloorGarageInterior(bool force = false)
         {
+            // Successful stock closures remain resident for this Story session.
+            // Do not disable/unpin the room or churn its group on a normal exit.
+            if (_floorGarageMapLeaseHeld && !force) return;
             int interior = _floorGarageInteriorId;
             _floorGarageInteriorId = 0;
             if (interior != 0)
@@ -4132,8 +4336,29 @@ namespace ALLIN1
                 Function.Call(Hash.SET_INTERIOR_ACTIVE, interior, false);
                 Function.Call(Hash.UNPIN_INTERIOR, interior);
             }
+            // Remove non-probe IPLs before releasing the exact descriptor used
+            // to acquire the property group. This keeps ownership accounting
+            // stable if the requested and readiness sets diverge later.
             foreach (string ipl in FLOOR_GARAGE_IPLS)
-                Function.Call(Hash.REMOVE_IPL, ipl);
+            {
+                bool required = false;
+                foreach (string probe in FLOOR_GARAGE_REQUIRED_IPLS)
+                    required |= string.Equals(ipl, probe,
+                        StringComparison.OrdinalIgnoreCase);
+                if (!required) Function.Call(Hash.REMOVE_IPL, ipl);
+            }
+            if (_floorGarageMapLeaseHeld)
+            {
+                DeferredMapContentResult released =
+                    DeferredMapContentRuntime.Release(
+                        DeferredMapProperty.Harmony,
+                        FLOOR_GARAGE_REQUIRED_IPLS, force: force);
+                if (released.ReleaseComplete)
+                    _floorGarageMapLeaseHeld = false;
+                else
+                    Log("UnloadFloorGarageInterior: map release failed; " +
+                        "lease retained " + released.Detail);
+            }
         }
 
         /// <summary>

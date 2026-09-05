@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "profile": "allin1-composition",
+  "owner": "allin1",
+  "contains_consumer_content": true,
+  "reactor_release": "v0.2.0-preview.2"
+}

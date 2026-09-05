@@ -4,6 +4,18 @@ namespace ALLIN1
 {
     internal static class WeaponCustomizationPolicy
     {
+        // Removing a magazine, barrel, receiver or unknown slot may leave a
+        // weapon incomplete. Only known optional accessory slots support None.
+        internal static bool CanUnequipComponent(int point) =>
+            point == (int)GTA.WeaponAttachmentPoint.Scope ||
+            point == (int)GTA.WeaponAttachmentPoint.Scope2 ||
+            point == (int)GTA.WeaponAttachmentPoint.Supp ||
+            point == unchecked((int)GTA.WeaponAttachmentPoint.Supp2) ||
+            point == unchecked((int)GTA.WeaponAttachmentPoint.FlashLaser) ||
+            point == unchecked((int)GTA.WeaponAttachmentPoint.FlashLaser2) ||
+            point == unchecked((int)GTA.WeaponAttachmentPoint.Grip) ||
+            point == unchecked((int)GTA.WeaponAttachmentPoint.Grip2);
+
         internal static int ComponentPrice(string attachmentPoint, string name)
         {
             string point = attachmentPoint ?? "";

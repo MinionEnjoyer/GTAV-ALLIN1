@@ -52,6 +52,15 @@ namespace ALLIN1
         internal string PreviewTexture { get; }
         internal bool TrafficEnabled { get; }
         internal double TrafficWeight { get; }
+        internal bool HasValidatedRuntimeVehicleClass { get; private set; }
+        internal VehicleClass ValidatedRuntimeVehicleClass { get; private set; }
+
+        internal void SetValidatedRuntimeVehicleClass(VehicleClass vehicleClass)
+        {
+            ValidatedRuntimeVehicleClass = vehicleClass;
+            HasValidatedRuntimeVehicleClass = true;
+        }
+
         internal bool IsOfficialStoryVehicle =>
             string.Equals(PackageId,
                 Allin1ExtensionApi.OnlineContentPackageId,
@@ -235,7 +244,10 @@ namespace ALLIN1
             if (info.Length < 2 || info.Length > MaximumCatalogBytes)
                 throw new InvalidDataException(
                     "Vehicle catalog is empty or exceeds its 4 MiB limit");
-            string json = File.ReadAllText(declaration.SourcePath);
+            string json;
+            if (!EarlyStartupSnapshot.TryGetTextByPath(
+                    declaration.Source, out json))
+                json = File.ReadAllText(declaration.SourcePath);
             return Parse(json, declaration.PackageId, declaration.Id,
                 trafficSetting, trafficCapability);
         }
@@ -436,13 +448,23 @@ namespace ALLIN1
                 if (staticModels.Contains(record.Model) ||
                     records.ContainsKey(record.Model) || hashes.Contains(hash))
                 {
-                    ClientLog.Warn("VehicleCatalog", "model_collision",
-                        new Dictionary<string, object>
-                        {
-                            { "package", record.PackageId },
-                            { "catalog", record.CatalogId },
-                            { "model", record.Model },
-                        });
+                    // The official Story catalog deliberately describes base
+                    // vehicles so GBAY can expose their metadata. A small
+                    // subset is already present in the compiled compatibility
+                    // list; that trusted mirror is expected, not a package
+                    // authoring collision. Third-party and dynamic collisions
+                    // remain visible and fail closed below.
+                    if (ShouldReportModelCollision(
+                            record, staticModels.Contains(record.Model)))
+                    {
+                        ClientLog.Warn("VehicleCatalog", "model_collision",
+                            new Dictionary<string, object>
+                            {
+                                { "package", record.PackageId },
+                                { "catalog", record.CatalogId },
+                                { "model", record.Model },
+                            });
+                    }
                     continue;
                 }
                 if (records.Count >= MaximumDynamicVehicles)
@@ -490,6 +512,13 @@ namespace ALLIN1
                     { "dynamic_models", values.Length },
                     { "traffic_models", _trafficEntries.Count },
                 });
+        }
+
+        internal static bool ShouldReportModelCollision(
+            GbayVehicleRecord record, bool conflictsWithStaticModel)
+        {
+            return record == null || !conflictsWithStaticModel ||
+                !record.IsOfficialStoryVehicle;
         }
 
         internal static IReadOnlyList<GbayVehicleRecord> MergeForTests(
@@ -704,9 +733,16 @@ namespace ALLIN1
                 if (record.Storage == "hangar" && !plane) return false;
                 if (record.Storage == "garage" && (boat || heli || plane))
                     return false;
+                if (record.TrafficEnabled)
+                {
+                    record.SetValidatedRuntimeVehicleClass(
+                        (VehicleClass)Function.Call<int>(
+                            Hash.GET_VEHICLE_CLASS_FROM_NAME, hash));
+                }
                 // Category is a storefront grouping, not proof of the native
-                // class. TrafficSpawner performs its own stricter road-class
-                // check only for records that actually opt into traffic.
+                // class. TrafficSpawner performs its stricter road-class check
+                // against this cached result rather than repeating native model
+                // discovery for the same admitted record.
                 return true;
             }
             catch (Exception ex)

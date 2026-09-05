@@ -14,6 +14,29 @@ from allin1.vehicles.database import VehicleDatabase
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _assert_removal_preserves_save(name, tmp_path, monkeypatch):
+    """Check persistence behavior, not membership in an old deletion list."""
+    from allin1 import installer
+    from allin1.config import Config
+    game = tmp_path / "synthetic game"
+    scripts = game / "scripts"
+    scripts.mkdir(parents=True)
+    saved = scripts / name
+    backup = scripts / (name + ".bak")
+    saved.write_bytes(b'{"vehicle":"saved"}')
+    backup.write_bytes(b'{"vehicle":"previous save"}')
+    client = scripts / "ALLIN1.dll"
+    client.write_bytes(b"inert fixture; never executed")
+    monkeypatch.setattr(installer, "resolve_gta_path", lambda _: game)
+    # No real RPF fixtures or game installation are used by this contract.
+    monkeypatch.setattr(installer, "_unpatch_dlclist_rpf", lambda *a, **kw: None)
+    monkeypatch.setattr(installer, "_remove_preview_ytds", lambda *a, **kw: None)
+    installer.uninstall(Config.default())
+    assert not client.exists()
+    assert saved.read_bytes() == b'{"vehicle":"saved"}'
+    assert backup.read_bytes() == b'{"vehicle":"previous save"}'
+
+
 def test_vehicle_models_are_unique_and_well_formed():
     db = VehicleDatabase.load(ROOT / "data/vehicles.toml")
     models = [vehicle.model for vehicle in db]
@@ -138,9 +161,18 @@ def test_production_project_includes_only_supported_developer_tools():
 
 
 def test_prebuilt_runtime_artifacts_are_present_and_nonempty():
-    for relative in ("script/dist/ALLIN1.dll", "script/dist/LemonUI.SHVDN3.dll"):
+    for relative in (
+        "script/dist/ALLIN1.dll",
+        "script/dist/ALLIN1.ReactorBridge.plugin",
+    ):
         artifact = ROOT / relative
         assert artifact.stat().st_size > 1024
+
+
+def test_runtime_distribution_contains_only_the_core_dll():
+    assert sorted(
+        path.name for path in (ROOT / "script/dist").glob("*.dll")
+    ) == ["ALLIN1.dll"]
 
 
 def test_retired_native_asi_is_not_shipped_or_built():
@@ -181,9 +213,22 @@ def test_garage_transitions_are_guarded_and_recoverable():
     shop = (ROOT / "script/src/GbayShop.cs").read_text()
     for operation in ("EnterGarage", "LeaveGarage", "EnterFloorGarage", "LeaveFloorGarage"):
         assert f'BeginTransition("{operation}")' in garage
-        assert f"{operation}Core();" in garage
+        arguments = "transition" if operation == "EnterFloorGarage" else ""
+        assert f"{operation}Core({arguments});" in garage
         assert f'EndTransition("{operation}")' in garage
     assert "RecoverTransition(" in garage
+    assert "TryRecoverTransitionCleanup(" in garage
+    recover = garage[
+        garage.index("private static void RecoverTransition"):
+        garage.index("private static void EndTransition")
+    ]
+    assert recover.count("TryRecoverTransitionCleanup(") == 6
+    for operation in (
+        "UnloadFloorGarageInterior", "UnloadDavisAutoShopInterior",
+        "UnloadGarmentInterior", "UnloadRuralInterior",
+        "UnloadPaletoInterior",
+    ):
+        assert operation in recover
     assert "if (_transitionInProgress)" in garage
     assert "GarageManager.IsTransitionInProgress" in shop
 
@@ -222,6 +267,12 @@ def test_garage_vehicle_progress_only_commits_on_story_saves():
     assert "if (!_vehicleSaveCommitInProgress)" in garage
     assert "Aborted += OnAborted" in shop
     assert "GarageManager.OnScriptAborted();" in shop
+    aborted = garage[
+        garage.index("internal static void OnScriptAborted()"):
+        garage.index("private static void PersistVehiclesForStorySave")
+    ]
+    assert "finally" in aborted
+    assert "DeferredMapContentRuntime.OnScriptAborted();" in aborted
     assert "internal static DateTime LatestStorySaveWriteUtc()" in inventory
     assert "latestStorySaveWriteUtc > lastObservedStorySaveWriteUtc" in definitions
 
@@ -307,7 +358,7 @@ def test_temporary_f11_axle_harness_is_retired():
         for path in (
             "config.example.toml",
             "src/allin1/config.py",
-            "src/allin1/gui.py",
+            "desktop/src/App.tsx",
             "content/allin1-experimental-gameplay/allin1.content.json",
         )
     )
@@ -375,6 +426,8 @@ def test_watchdog_recovery_and_traffic_diagnostics_are_bounded():
     assert "ShouldPurgeManagedTraffic(suppression)" in traffic
     assert "managed_occupancy_released" in traffic
     assert "DecideManagedTrafficAction" in traffic
+    assert 'ClientLog.Info("Traffic", "replacement_source_changed_before_commit"' in traffic
+    assert '"validation_outcome"' in traffic
     assert "paused: " in browser
 
 
@@ -388,6 +441,93 @@ def test_floor_garage_initializes_after_temporary_safe_mode_expires():
     recovery = shop.index("!GarageManager.IsFloorGarageInitialized")
     floor_tick = shop.index("GarageManager.OnFloorGarageTick();", recovery)
     assert recovery < floor_tick
+
+
+def test_gbay_backend_is_optional_and_garage_services_stay_independent():
+    shop = (ROOT / "script/src/GbayShop.cs").read_text(encoding="utf-8")
+    assert 'key == "gbay_menu_enabled"' in shop
+    assert 'key == "gbay_ui_backend"' in shop
+    assert "private bool _menuEnabled;" in shop
+    assert "_menuEnabled = false;" in shop
+    assert "_menuEnabled = true;" not in shop
+    assert "GbayUiBackend.Auto" in shop
+    assert "TryInitializeReactorBridge" in shop
+    assert '"reactor_fallback_to_legacy"' in shop
+    assert "if (_uiBackend == GbayUiBackend.Reactor)" in shop
+    assert "if (_initialized && _onlineContentEnabled)" in shop
+    assert "GarageManager.OnTick();" in shop
+    assert "if (e.KeyCode == _openKey)" in shop
+    # World markers now route through the same typed Reactor handoff as the
+    # rest of the garage UI, while retaining the legacy browser callback as
+    # the explicit fallback.  Keep both services independent of GBAY startup.
+    assert "GarageManager.ConsumeHelipadListRequest()" in shop
+    assert "Allin1GarageWorldEntryLocation.VespucciHelipad" in shop
+    assert "() => EnsureBrowser().OpenHelipadList())" in shop
+    assert "GarageManager.ConsumeHarbourListRequest()" in shop
+    assert "Allin1GarageWorldEntryLocation.Harbour" in shop
+    assert "() => EnsureBrowser().OpenHarbourList())" in shop
+
+
+def test_reactor_bridge_keeps_allin1_authoritative_and_server_pages_catalog():
+    contracts = (ROOT / "script/src/GbayReactorContracts.cs").read_text(
+        encoding="utf-8"
+    )
+    bridge = (
+        ROOT / "script/reactor-bridge/Allin1ReactorBridge.cs"
+    ).read_text(encoding="utf-8")
+    project = (
+        ROOT / "script/reactor-bridge/ALLIN1.ReactorBridge.csproj"
+    ).read_text(encoding="utf-8")
+    assert "IAllin1VehicleStorefront" in contracts
+    assert "MaximumPageSize = 12" in contracts
+    assert "ValidateVehiclePurchase(model, request.QuotedPrice)" in contracts
+    assert "ConfirmVehicleDelivery" in contracts
+    assert "BuildDeliveryOptions(model)" in contracts
+    assert "DestinationCompatible" in contracts
+    assert "ExecuteDeliverToFloorGarage(model, request.QuotedPrice)" in contracts
+    assert "using ReactorV" not in contracts
+    assert "ReactorV.Integration" not in contracts
+    assert 'ExtensionId = "allin1.gbay"' in bridge
+    assert 'HomeMenuId = "home"' in bridge
+    assert '"Purchase Weapons"' in bridge
+    assert '"Customize Weapons"' in bridge
+    assert '"My Garage"' in bridge
+    assert '"vehicle.checkout"' in bridge
+    assert '"vehicle.delivery.confirm"' in bridge
+    assert '"weapon.purchase"' in bridge
+    assert '"gear.apply"' in bridge
+    assert '"garage.sell"' in bridge
+    assert '"garage.retrieve"' in bridge
+    assert '"quotedprice"' in bridge
+    assert '["presentation"] = "refresh"' in bridge
+    assert '["menuRevision"] = RevisionText()' in bridge
+    assert "TryPresentMenu(HomeMenuId, context)" in bridge
+    assert "IsMenuPresented(HomeMenuId)" in bridge
+    assert "TryDismissMenu(HomeMenuId)" in bridge
+    assert "_request.RefreshCatalog = true" not in bridge
+    assert "IAllin1GameStateBridge" in bridge
+    assert "TrySynchronizeGameStateCore" in bridge
+    assert "No catalog scan, menu rebuild, or native UI handoff" in bridge
+    assert '"legacyDeliveryModal"' not in bridge
+    garage_builder = bridge[
+        bridge.index("private ReactorMenuDescriptor BuildGarageMenu"):
+        bridge.index("private void AddGarageInteriorNodes")
+    ]
+    assert "GaragePageSize" not in garage_builder
+    assert "ReactorPaginationNode" not in garage_builder
+    assert "foreach (Allin1GarageVehicleListing value in filtered)" in garage_builder
+    assert '"CUSTOMIZE WEAPONS"' in bridge
+    assert '"weapon.customize.apply"' in bridge
+    assert "BrowseCustomizableWeapons" in contracts
+    assert "BrowseWeaponCustomization" in contracts
+    assert "ApplyWeaponCustomization" in contracts
+    assert "ReactorActionRisk.Persistent" in bridge
+    assert "AvailabilityStatus" in contracts
+    assert "Hash.IS_WEAPON_VALID" in contracts
+    assert "SmokeGrenadeCatalog.AvailableCustomWeaponCount()" in contracts
+    assert "countBeforeSale" in contracts
+    assert "GTA did not confirm the gear change" in contracts
+    assert 'Private="false"' in project
 
 
 def test_gbay_favorites_tabs_and_weapon_previews_are_integrated():
@@ -626,6 +766,41 @@ def test_all_gbay_mutations_commit_only_at_story_save_boundary():
     assert "ReloadCommittedGarageState();" in garage
 
 
+def test_character_death_consumes_gear_without_bypassing_story_save():
+    inventory = (ROOT / "script/src/CharacterInventory.cs").read_text()
+    handler = inventory[
+        inventory.index("private void HandlePlayerDeath"):
+        inventory.index("private void CompleteDeathCleanup")
+    ]
+    helper = inventory[
+        inventory.index(
+            "internal static List<string> ConsumeAllGearAfterDeathInMemory"):
+        inventory.index("private static bool ContainsIgnoreCase")
+    ]
+
+    assert "ConsumeAllGearAfterDeathInMemory(inventory)" in handler
+    assert 'StageStateLocked(_deathCharacter,' in handler
+    assert '"gear_lost_on_death"' in handler
+    assert "SaveStateLocked" not in handler
+    assert "inventory.gear = new List<string>();" in helper
+    assert "inventory.equipped_gear = new List<string>();" in helper
+    loading_guard = inventory[
+        inventory.index("private void OnTick"):
+        inventory.index("if (Game.IsLoading)")
+    ]
+    assert "Game.Player.IsDead" in loading_guard
+    post_load = inventory[
+        inventory.index("if (_discardStagedAfterLoad)"):
+        inventory.index("DateTime write =")
+    ]
+    assert "HandlePlayerDeath(player);" in loading_guard
+    assert "GET_TIME_SINCE_LAST_DEATH" in post_load
+    assert "ShouldPreserveDeathAcrossLoading(" in post_load
+    assert '"death_state_preserved_across_respawn_load"' in post_load
+    assert "Reload();" in post_load
+    assert "ResetDeathTracking();" in post_load
+
+
 def test_runtime_hot_paths_are_throttled_and_cached():
     traffic = (ROOT / "script/src/TrafficSpawner.cs").read_text()
     garage = (ROOT / "script/src/GarageManager.cs").read_text()
@@ -639,8 +814,13 @@ def test_runtime_hot_paths_are_throttled_and_cached():
 def test_traffic_replacements_clone_occupants_before_atomic_commit():
     traffic = (ROOT / "script/src/TrafficSpawner.cs").read_text()
     replace = traffic[traffic.index("private bool ReplaceVehicle"):]
+    stage = replace.index("LoadAndCreateVehicle")
+    capture = replace.index("CaptureAmbientOccupants")
     clone = replace.index("TryCloneOccupants")
     delete = replace.index("old.Delete()")
+    # Potentially slow model streaming finishes before the source snapshot so
+    # normal ambient churn during Request() cannot poison every validation.
+    assert stage < capture < clone
     assert clone < delete
     assert "occupant.SourcePed.Clone" in traffic
     assert "clone.SetIntoVehicle" in traffic
@@ -675,6 +855,11 @@ def test_all_garage_entrances_fail_closed_during_story_missions():
     rural = (ROOT / "script/src/GarageManager.Rural.cs").read_text()
     paleto = (ROOT / "script/src/GarageManager.Paleto.cs").read_text()
     definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
+    garage_compact = "".join(garage.split())
+    davis_compact = "".join(davis.split())
+    garment_compact = "".join(garment.split())
+    rural_compact = "".join(rural.split())
+    paleto_compact = "".join(paleto.split())
     assert "Hash.GET_MISSION_FLAG" in garage
     assert definitions.count("disableDuringMissions: true") == 6
     assert definitions.count("blockWantedLevel: true") == 6
@@ -693,12 +878,18 @@ def test_all_garage_entrances_fail_closed_during_story_missions():
     assert "RejectGarageEntry(GARMENT_GARAGE)" in garment
     assert "RejectGarageEntry(RURAL_GARAGE)" in rural
     assert "RejectGarageEntry(PALETO_GARAGE)" in paleto
-    assert "EvaluateGarageEntry(ECLIPSE_GARAGE)" in garage
-    assert "EvaluateGarageEntry(THREE_FLOOR_GARAGE)" in garage
-    assert "EvaluateGarageEntry(DAVIS_GARAGE)" in davis
-    assert "EvaluateGarageEntry(GARMENT_GARAGE)" in garment
-    assert "EvaluateGarageEntry(RURAL_GARAGE)" in rural
-    assert "EvaluateGarageEntry(PALETO_GARAGE)" in paleto
+    assert "EvaluateGarageEntry(ECLIPSE_GARAGE,veh)" in garage_compact
+    assert "EvaluateGarageEntry(ECLIPSE_GARAGE)" in garage_compact
+    assert "EvaluateGarageEntry(THREE_FLOOR_GARAGE,vehicle)" in garage_compact
+    assert "EvaluateGarageEntry(THREE_FLOOR_GARAGE)" in garage_compact
+    assert "EvaluateGarageEntry(DAVIS_GARAGE,vehicle)" in davis_compact
+    assert "EvaluateGarageEntry(DAVIS_GARAGE)" in davis_compact
+    assert "EvaluateGarageEntry(GARMENT_GARAGE,vehicle)" in garment_compact
+    assert "EvaluateGarageEntry(GARMENT_GARAGE)" in garment_compact
+    assert "EvaluateGarageEntry(RURAL_GARAGE,vehicle)" in rural_compact
+    assert "EvaluateGarageEntry(RURAL_GARAGE)" in rural_compact
+    assert "EvaluateGarageEntry(PALETO_GARAGE,vehicle)" in paleto_compact
+    assert "EvaluateGarageEntry(PALETO_GARAGE)" in paleto_compact
     assert '"entry_blocked"' in garage
 
 
@@ -716,7 +907,7 @@ def test_all_garages_block_unsafe_game_transitions_before_local_map_load():
     loader = garage[garage.index("private static bool LoadFloorGarageInterior"):
                     garage.index("private static void UnloadFloorGarageInterior")]
     assert loader.index("IsUnsafeGarageTransitionActive()") < loader.index(
-        "StandaloneMapPack.TryActivate(FLOOR_GARAGE_REQUIRED_IPLS, 1500)")
+        "DeferredMapContentRuntime.TryAcquireInteriorUnderBlackTransition(")
     assert "DlcMapState" not in loader
     assert "UnloadFloorGarageInterior();" in loader
     assert "Hash.SET_FOCUS_POS_AND_VEL" in loader
@@ -739,18 +930,20 @@ def test_all_garages_block_unsafe_game_transitions_before_local_map_load():
 
     entry = garage[garage.index("private static void EnterFloorGarageCore"):
                    garage.index("private static void LeaveFloorGarage()")]
-    assert "if (!LoadFloorGarageInterior())" in entry
-    assert "storedListDuringEntry.Remove(storedDuringEntry)" in entry
-    assert "rolled back drive-in storage after interior load failure" in entry
+    assert "if (!LoadFloorGarageInterior(transition))" in entry
+    # The new owned fade loads before any drive-in save, eliminating the
+    # old speculative persistence/rollback path on map failure.
+    assert entry.index("transition.HoldFade") < entry.index("LoadFloorGarageInterior(transition)")
+    assert entry.index("LoadFloorGarageInterior(transition)") < entry.index("storedList.Add(sv)")
+    assert 'transition.Fail("map_activation_failed")' in entry
 
 
-def test_grapeseed_garage_is_fully_integrated_and_persistent():
+def test_grapeseed_garage_is_fully_integrated_and_persistent(tmp_path, monkeypatch):
     rural = (ROOT / "script/src/GarageManager.Rural.cs").read_text()
     definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
     manager = (ROOT / "script/src/GarageManager.cs").read_text()
     browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
     shop = (ROOT / "script/src/GbayShop.cs").read_text()
-    installer = (ROOT / "src/allin1/installer.py").read_text()
     assert "private const int RURAL_SLOT_COUNT = 6" in rural
     assert "new Vector3(2551.4610f, 4674.3250f, 33.9819f)" in rural
     assert "RURAL_VEHICLE_ENTRANCE_HEADING = 0f" in rural
@@ -762,7 +955,7 @@ def test_grapeseed_garage_is_fully_integrated_and_persistent():
     assert "Grapeseed" in browser
     assert "ExecuteDeliverToRuralGarage" in shop
     assert "OnRuralGarageTick" in shop
-    assert "ALLIN1_rural_garage.json" in installer
+    _assert_removal_preserves_save("ALLIN1_rural_garage.json", tmp_path, monkeypatch)
     rural_definition = definitions[
         definitions.index("GarageDefinition Rural"):
         definitions.index("GarageDefinition Paleto")
@@ -777,7 +970,7 @@ def test_grapeseed_entry_streams_the_explicit_six_car_milo():
     entry = rural[rural.index("private static void EnterRuralGarageCore"):
                   rural.index("private static void LeaveRuralGarage")]
 
-    assert '"hw1_blimp_interior_v_garagem_milo_"' in rural
+    assert '"hei_hw1_blimp_interior_v_garagem_milo_"' in rural
     assert '"v_garagem",' not in rural
     assert "new Vector3(206.3603f, -999.0687f, -99.0000f)" in rural
     assert "RURAL_INTERIOR_PED_HEADING = 90f" in rural
@@ -794,18 +987,22 @@ def test_grapeseed_entry_streams_the_explicit_six_car_milo():
     assert "DlcMapState.Acquire(RURAL_GARAGE)" not in loader
     assert "ON_ENTER_MP" not in loader
     assert "RURAL_INTERIOR_LOAD_TIMEOUT_MS" in loader
-    assert "if (!interiorLoaded && !LoadRuralInterior())" in entry
+    assert "transition.HoldFade(" in entry
+    assert "LoadRuralInterior(transition)" in entry
+    assert entry.index("transition.HoldFade(") < entry.index(
+        "LoadRuralInterior(transition)"
+    )
+    assert "TryAcquireGrapeseedPhaseB(" in loader
     assert "DlcMapState.Release(RURAL_GARAGE)" not in rural
-    assert "Hash.REMOVE_IPL" in rural
+    assert "DeferredMapContentRuntime.Release" in rural
 
 
-def test_paleto_bay_garage_uses_native_casino_layout_and_full_integration():
+def test_paleto_bay_garage_uses_native_casino_layout_and_full_integration(tmp_path, monkeypatch):
     paleto = (ROOT / "script/src/GarageManager.Paleto.cs").read_text()
     definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
     manager = (ROOT / "script/src/GarageManager.cs").read_text()
     browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
     shop = (ROOT / "script/src/GbayShop.cs").read_text()
-    installer = (ROOT / "src/allin1/installer.py").read_text()
     diagnostics = (ROOT / "src/allin1/diagnostics.py").read_text()
 
     assert "private const int PALETO_SLOT_COUNT = 10" in paleto
@@ -837,7 +1034,7 @@ def test_paleto_bay_garage_uses_native_casino_layout_and_full_integration():
     assert "ExecuteDeliverToPaletoGarage" in shop
     assert "RemovePaletoGarageVehicle(listIndex)" in shop
     assert "OnPaletoGarageTick" in shop
-    assert "ALLIN1_paleto_garage.json" in installer
+    _assert_removal_preserves_save("ALLIN1_paleto_garage.json", tmp_path, monkeypatch)
     assert "ALLIN1_paleto_garage.json" in diagnostics
 
     assert "RequiresMultiplayerMap" not in definitions
@@ -855,7 +1052,41 @@ def test_traffic_protects_safehouse_storage_without_excluding_all_parked_cars():
     assert "PLAYER_INTERACTION_PROTECTION_MS" in traffic
     assert "hadDriver" not in traffic[traffic.index("IsEligibleForReplacement"):
                                       traffic.index("ReplaceVehicle")]
-def test_dlc_garages_use_only_local_story_map_assets():
+
+
+def test_traffic_disabled_baseline_is_handler_free_and_catalog_validation_is_reused():
+    traffic = (ROOT / "script/src/TrafficSpawner.cs").read_text()
+    constructor = traffic[traffic.index("public TrafficSpawner()"):
+                          traffic.index("private void LoadSettings")]
+    initializer = traffic[traffic.index("private void Initialize()"):
+                          traffic.index("SelectedModelValidationAction")]
+    assert constructor.index("if (!ShouldAttachRuntimeHandlers") < \
+        constructor.index("Tick += OnTick")
+    assert "Aborted +=" not in constructor
+    assert "RuntimeVehicleCatalog.Refresh()" not in initializer
+    assert "RuntimeVehicleCatalog.TrafficEntries" in initializer
+    assert "entry.ValidatedRuntimeVehicleClass" in initializer
+    assert "model.IsInCdImage" not in initializer
+    assert "model.IsVehicle" not in initializer
+    loader = traffic[traffic.index("private Vehicle LoadAndCreateVehicle"):
+                     traffic.index("private void QuarantineModel")]
+    assert "model.Request();" in loader
+    assert "model.Request(MODEL_LOAD_TIMEOUT)" not in loader
+    assert "HasModelLoadTimedOut" in loader
+
+
+def test_yacht_frame_consumers_use_cached_stream_state_and_offsite_gating():
+    yacht = (ROOT / "script/src/YachtManager.cs").read_text()
+    helipad = (ROOT / "script/src/GarageManager.Yacht.cs").read_text()
+    streamed_property = yacht[yacht.index("internal static bool IsWorldStreamed"):
+                               yacht.index("internal static bool FeaturesUnlocked")]
+    assert "Function.Call" not in streamed_property
+    assert "_worldStreamed" in streamed_property
+    assert "GetStreamingPollInterval(_worldStreamed)" in yacht
+    assert "ShouldServiceYachtHelipad" in helipad
+    assert "YACHT_HELIPAD_OFFSITE_INTERVAL_MS" in helipad
+    assert "ShouldServiceExteriorMarker" in helipad
+def test_dlc_garages_use_verified_property_groups_without_global_map_switches():
     definitions = (ROOT / "script/src/GarageDefinition.cs").read_text()
     garage = (ROOT / "script/src/GarageManager.cs").read_text()
     davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
@@ -863,6 +1094,8 @@ def test_dlc_garages_use_only_local_story_map_assets():
     garment = (ROOT / "script/src/GarageManager.GarmentFactory.cs").read_text()
     rural = (ROOT / "script/src/GarageManager.Rural.cs").read_text()
     standalone = (ROOT / "script/src/StandaloneMapPack.cs").read_text()
+    deferred = (ROOT / "script/src/DeferredMapContentRuntime.cs").read_text()
+    yacht = (ROOT / "script/src/YachtManager.cs").read_text()
     shop = (ROOT / "script/src/GbayShop.cs").read_text()
     assert "RequiresMultiplayerMap" not in definitions
     assert not (ROOT / "script/src/DlcMapState.cs").exists()
@@ -874,17 +1107,170 @@ def test_dlc_garages_use_only_local_story_map_assets():
     assert "allin1_maps.active" in standalone
     assert "Hash.IS_IPL_ACTIVE" in standalone
     assert "Hash.REQUEST_IPL" in standalone
-    assert "StandaloneMapPack.TryActivate(FLOOR_GARAGE_REQUIRED_IPLS, 1500)" in garage
-    assert "StandaloneMapPack.TryActivate(DAVIS_AUTO_SHOP_IPLS, 1500)" in davis
-    assert "StandaloneMapPack.TryActivate(GARMENT_IPLS)" in garment
-    assert "StandaloneMapPack.TryActivate(PALETO_IPLS)" in paleto
-    assert "StandaloneMapPack.TryActivate(RURAL_IPLS)" in rural
+    official_acquire = deferred[
+        deferred.index("internal static DeferredMapContentResult TryAcquire("):
+        deferred.index("private static DeferredMapContentResult ObserveOfficialGarageAttempt")
+    ]
+    assert '"verified_isolated_startup_ipl_pack"' in official_acquire
+    assert '"verified_metadata_bridge"' in official_acquire
+    assert "StandaloneMapPack.IsReferenceBridgeVerified" in official_acquire
+    assert "OfficialMapActivationPolicy.Resolve" in official_acquire
+    assert "OfficialMapActivationPolicy.Acquire" in official_acquire
+    assert "GROUP_MAP" not in official_acquire
+    assert "GROUP_MAP_SP" not in official_acquire
+    assert "0x6BEDF5769AC2DC07UL" in deferred
+    assert "0x3C1978285B036B25UL" in deferred
+    assert "DeferredMapProperty.Harmony" in garage
+    assert "DeferredMapProperty.Davis" in davis
+    assert "DeferredMapProperty.GarmentFactory" in garment
+    assert "DeferredMapProperty.Paleto" in paleto
+    assert "DeferredMapProperty.Grapeseed" in rural
+    assert "DeferredMapProperty.Yacht" in yacht
+    for source in (garage, davis, garment, paleto, rural):
+        assert "DeferredMapContentRuntime.TryAcquire" in source
+        assert "DeferredMapContentRuntime.Release" in source
+    assert "DeferredMapContentRuntime.TryAcquire" in yacht
+    assert "DeferredMapContentRuntime.Release" in yacht
+    assert '"verified_metadata_bridge"' in yacht
+    yacht_update = yacht[
+        yacht.index("private static void UpdateStreaming()"):
+        yacht.index("internal static int GetStreamingPollInterval")
+    ]
+    assert yacht_update.count("DeferredMapContentRuntime.TryAcquire(") == 1
+    acquire_guard = yacht_update.index("if (!_worldRequested)")
+    assert acquire_guard < yacht_update.index(
+        "DeferredMapContentRuntime.TryAcquire(")
+    assert "_worldRequested = true;" in yacht_update[acquire_guard:]
     assert "UnloadFloorGarageInterior();" in garage
     assert "UnloadDavisAutoShopInterior();" in davis
-    assert "standalone map unavailable" in garage
-    assert "standalone map unavailable" in davis
-    assert "standalone map unavailable" in garment
-    assert "standalone map unavailable" in paleto
+    assert "deferred map unavailable" in garage
+    assert "deferred map unavailable" in davis
+    assert "deferred map unavailable" in garment
+    assert "deferred map unavailable" in paleto
+
+
+def test_deferred_map_readiness_warms_before_transitions_and_retries_safely():
+    garage = (ROOT / "script/src/GarageManager.cs").read_text()
+    deferred = (
+        ROOT / "script/src/DeferredMapContentRuntime.cs"
+    ).read_text()
+
+    initialize = garage[
+        garage.index("internal static void Initialize()"):
+        garage.index("internal static bool IsPlayerInGarage")
+    ]
+    tick = garage[
+        garage.index("internal static void OnTick()"):
+        garage.index("internal static int GetUsedSlots()")
+    ]
+    readiness_call = (
+        "DeferredMapContentRuntime.ObserveStoryRuntimeReadiness();"
+    )
+    assert readiness_call in initialize
+    assert readiness_call in tick
+    assert tick.index(readiness_call) < tick.index(
+        "PollStorySaveAndPersistVehicles(now);")
+    assert tick.index(readiness_call) < tick.index(
+        "if (_transitionInProgress)")
+
+    assert "StoryRuntimeReadinessGate" in deferred
+    assert "GarageManager.IsUnsafeGarageTransitionActive()" in deferred
+    assert 'reason = "game_transition_active"' in deferred
+    assert "RuntimeSafetyRetryTimeoutMs = 15000" in deferred
+    assert "WaitForRuntimeSafe(" in deferred
+    assert '"activation_queued_unsafe_runtime"' in deferred
+    assert '"activation_runtime_ready_after_queue"' in deferred
+    assert "int activationStartedAt = _bridge.MonotonicMilliseconds" in deferred
+    assert (
+        "descriptor.Ipls, true, timeoutMs, activationStartedAt"
+        in deferred
+    )
+
+
+def test_davis_entry_holds_black_before_phase_b_activation_and_recovers():
+    davis = (ROOT / "script/src/GarageManager.Davis.cs").read_text()
+    coordinator = (
+        ROOT / "script/src/OfficialGarageStreamingTransition.cs"
+    ).read_text()
+    entry = davis[
+        davis.index("private static void EnterDavisGarageCore"):
+        davis.index("private static void LeaveDavisGarage()")
+    ]
+    loader = davis[
+        davis.index("private static bool LoadDavisAutoShopInterior"):
+        davis.index("private static void UnloadDavisAutoShopInterior")
+    ]
+
+    assert "enum OfficialGarageTransitionPhase" in coordinator
+    for phase in (
+        "FadeHeld", "LeaseRequested", "IplReady", "InteriorReady",
+        "Occupied", "FailedRecovery",
+    ):
+        assert phase in coordinator
+    assert "scope_disposed_before_completion" in coordinator
+    assert "official_garage_transition_phase" in davis
+    assert entry.index("transition.HoldFade(") < entry.index(
+        "OfficialGarageTransitionPhase.LeaseRequested")
+    assert entry.index(
+        "OfficialGarageTransitionPhase.LeaseRequested") < entry.index(
+        "LoadDavisAutoShopInterior(transition)")
+    assert "transition.Fail(\"map_activation_failed\")" in entry
+    assert "transition.Complete(" in entry
+    assert loader.index("OfficialGarageTransitionPhase.IplReady") < loader.index(
+        "OfficialGarageTransitionPhase.InteriorReady")
+
+
+def test_yacht_streaming_is_proximity_scoped_and_waits_for_stable_story():
+    yacht = (ROOT / "script/src/YachtManager.cs").read_text()
+    deferred = (
+        ROOT / "script/src/DeferredMapContentRuntime.cs"
+    ).read_text()
+    update = yacht[
+        yacht.index("private static void UpdateStreaming()"):
+        yacht.index("internal static int GetStreamingPollInterval")
+    ]
+
+    assert "internal static bool IsStoryRuntimeReady" in deferred
+    assert "YachtStreamingPolicy.ShouldAcquire" in update
+    assert update.index("YachtStreamingPolicy.ShouldAcquire(") < update.index(
+        "DeferredMapContentRuntime.TryAcquire"
+    )
+    assert "DeferredMapContentRuntime.TryAcquire" in update
+    assert '"verified_metadata_bridge"' in update
+    assert "private const float AcquireDistance = 900f" in yacht
+    assert "private const float ReleaseDistance = 1200f" in yacht
+    assert "player.Position.DistanceTo(WorldPosition)" in update
+    assert "RemoveWorld();" in update
+    assert "DeferredMapContentRuntime.Release" in update
+    assert "internal static bool KeepResident" in deferred
+    assert "false;" in deferred[
+        deferred.index("internal static bool KeepResident"):
+        deferred.index("internal sealed class DeferredMapContentDescriptor")
+    ]
+    assert '"session_streaming_deferred"' in yacht
+
+
+def test_deferred_garages_move_the_player_outside_before_releasing_maps():
+    cases = (
+        ("script/src/GarageManager.cs", "LeaveFloorGarageCore",
+         "UnloadFloorGarageInterior"),
+        ("script/src/GarageManager.Davis.cs", "LeaveDavisGarageCore",
+         "UnloadDavisAutoShopInterior"),
+        ("script/src/GarageManager.GarmentFactory.cs",
+         "LeaveGarmentGarageCore", "UnloadGarmentInterior"),
+        ("script/src/GarageManager.Paleto.cs", "LeavePaletoGarageCore",
+         "UnloadPaletoInterior"),
+        ("script/src/GarageManager.Rural.cs", "LeaveRuralGarageCore",
+         "UnloadRuralInterior"),
+    )
+    for relative, leave_name, unload_name in cases:
+        source = (ROOT / relative).read_text(encoding="utf-8")
+        start = source.index(f"private static void {leave_name}")
+        end = source.index("private static bool Load", start)
+        leave = source[start:end]
+        release_at = leave.index(f"{unload_name}();")
+        assert leave.index("ReleaseGarageVehicleForDriving(") < release_at
+        assert leave.index("Hash.SET_ENTITY_COORDS") < release_at
 
 
 def test_issue_five_playtest_regressions_are_guarded():
@@ -974,7 +1360,7 @@ def test_physics_live_hits_balance_without_standing_ground_writhe():
 
 def test_experimental_systems_are_independent_opt_in_launcher_options():
     config = (ROOT / "src/allin1/config.py").read_text()
-    gui = (ROOT / "src/allin1/gui.py").read_text()
+    gui = (ROOT / "src/allin1/desktop_content.py").read_text()
     example = (ROOT / "config.example.toml").read_text()
     coordinator = (ROOT / "script/src/PoliceTacticsCoordinator.cs").read_text()
     physics = (ROOT / "script/src/NpcPhysicsExperiment.cs").read_text()
@@ -990,8 +1376,8 @@ def test_experimental_systems_are_independent_opt_in_launcher_options():
     assert 'f"{boolean(self.script.enhanced_police_ai)}\\n"' in config
     assert '"label": "Enhanced Police AI"' in experiment_content
     assert '"default": false' in experiment_content
-    assert "content_setting_vars" in gui
-    assert "self.config.script.enhanced_police_ai" in gui
+    assert "config_key" in gui
+    assert "settings" in gui
     assert "enhanced_police_ai = false" in example
     assert "gta_iv_npc_physics = false" in example
     assert "gta_iv_npc_physics_debug = false" in example
@@ -1006,7 +1392,7 @@ def test_experimental_systems_are_independent_opt_in_launcher_options():
 
 def test_offline_launch_experiment_is_culled_from_release_surfaces():
     config = (ROOT / "src/allin1/config.py").read_text()
-    gui = (ROOT / "src/allin1/gui.py").read_text()
+    gui = (ROOT / "desktop/src/App.tsx").read_text()
     manager = (ROOT / "src/allin1/manager.py").read_text()
     policy = (ROOT / "src/allin1/launch_policy.py").read_text()
     example = (ROOT / "config.example.toml").read_text()
@@ -1103,22 +1489,23 @@ def test_gbay_world_property_purchase_bypasses_vehicle_delivery():
     assert "YachtManager.OnTick();" in shop
     assert "RequestWorld();" in yacht
     assert "_nextStreamCheck = Game.GameTime + 1000" in yacht
-    assert "YachtStreamingPolicy.ShouldAcquire" in yacht
-    assert "StandaloneMapPack.TryActivate(RequiredIpls, 1500)" in yacht
+    assert "DeferredMapContentRuntime.TryAcquire" in yacht
+    assert "DeferredMapContentRuntime.Release" in yacht
+    assert "DeferredMapProperty.Yacht" in yacht
     assert 'private static readonly string[] RequiredIpls' in yacht
     assert "DlcMapState" not in yacht
     assert "_activationBlockedUntilExit" in yacht
-    assert '"standalone_map_unavailable"' in yacht
+    assert '"session_streaming_ready"' in yacht
+    assert "DistanceTo(WorldPosition)" in yacht
     assert "Hash.SET_INSTANCE_PRIORITY_MODE" not in yacht
     assert "IS_IPL_ACTIVE" in yacht
 
 
-def test_yacht_helipad_is_a_persistent_specialized_garage():
+def test_yacht_helipad_is_a_persistent_specialized_garage(tmp_path, monkeypatch):
     helipad = (ROOT / "script/src/GarageManager.Yacht.cs").read_text()
     browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
     shop = (ROOT / "script/src/GbayShop.cs").read_text()
     manager = (ROOT / "script/src/GarageManager.cs").read_text()
-    installer = (ROOT / "src/allin1/installer.py").read_text()
     diagnostics = (ROOT / "src/allin1/diagnostics.py").read_text()
 
     assert "-2043.9200f" in helipad
@@ -1134,7 +1521,7 @@ def test_yacht_helipad_is_a_persistent_specialized_garage():
     assert "RemoveYachtHelipadVehicle(listIndex)" in shop
     assert "YachtHelipadUpdateStoredFromLive();" in manager
     assert "YachtHelipadSave();" in manager
-    assert "ALLIN1_yacht_helipad.json" in installer
+    _assert_removal_preserves_save("ALLIN1_yacht_helipad.json", tmp_path, monkeypatch)
     assert "ALLIN1_yacht_helipad.json" in diagnostics
 
 
@@ -1201,17 +1588,13 @@ def test_every_gbay_screen_uses_the_shared_green_title_badge():
 
 
 def test_launcher_packages_and_applies_allin1_branding():
-    gui = (ROOT / "src/allin1/gui.py").read_text()
+    native = json.loads((ROOT / "desktop/src-tauri/tauri.conf.json").read_text())
     project = (ROOT / "pyproject.toml").read_text()
     assert (ROOT / "src/allin1/assets/ALLIN1.png").stat().st_size > 0
     assert (ROOT / "src/allin1/assets/ALLIN1-icon.png").stat().st_size > 0
     assert (ROOT / "src/allin1/assets/ALLIN1.ico").stat().st_size > 0
-    assert "SetCurrentProcessExplicitAppUserModelID" in gui
-    assert "self.root.iconphoto(True, self._window_icon)" in gui
-    assert "user32.GetSystemMetricsForDpi(11, dpi)" in gui
-    assert "user32.SendMessageW(target, 0x0080, 1, icon_big)" in gui
-    assert "user32.SendMessageW(target, 0x0080, 2, icon_small)" in gui
-    assert gui.index("_register_windows_app()") < gui.rindex("root = tk.Tk()")
+    assert native["identifier"] == "com.minionenjoyer.allin1launcher"
+    assert native["bundle"]["icon"] == ["../../src/allin1/assets/ALLIN1.ico"]
     assert 'allin1 = ["assets/*.png", "assets/*.ico"]' in project
 
 
@@ -1271,7 +1654,7 @@ def test_all_garage_locations_share_protagonist_colors():
     ):
         assert f"SetBlipColor({blip}, charColor);" in garage
     assert davis.count("CharacterBlipColor()") >= 2
-    assert "Color markerColor = CharacterMarkerColor();" in davis
+    assert "markerColor = CharacterMarkerColor();" in davis
     assert "BlipColor.Green" not in davis
 
 
@@ -1597,7 +1980,10 @@ def test_every_garage_vehicle_exit_restores_full_drivability():
         (paleto_leave, "UnloadPaletoInterior"),
         (harmony_leave, "UnloadFloorGarageInterior"),
     ):
-        assert leave.index(unload) < leave.index(
+        # The player/vehicle must reach the exterior before reverting the
+        # deferred content group; otherwise its RPF is unmounted underneath
+        # the entity during the black transition.
+        assert leave.index(unload) > leave.index(
             "ReleaseGarageVehicleForDriving(playerVehicle"
         )
 
@@ -1637,6 +2023,115 @@ def test_gbay_search_ownership_and_emergency_recovery_contracts():
     assert "emergency_recovery_completed" in garage
     controller_source = (ROOT / "script/src/ControllerBindings.cs").read_text()
     assert "FrontendY" in controller_source and "FrontendX" in controller_source
+
+
+def test_reactor_weapon_workbench_keeps_react_controls_with_world_preview():
+    workbench = (ROOT / "script/src/GbayWeaponCustomization.cs").read_text()
+    browser = (ROOT / "script/src/GbayBrowser.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    contracts = (ROOT / "script/src/GbayReactorContracts.cs").read_text()
+    bridge = (ROOT / "script/reactor-bridge/Allin1ReactorBridge.cs").read_text()
+
+    provider = workbench[
+        workbench.index("DescribeDetachedWeaponCustomization"):
+        workbench.index("private Vector3 GetWeaponCameraPosition")
+    ]
+    assert "catalog.BuildWorkbenchRows(allowStorefrontCache);" in provider
+    assert "IsWorkbenchRowOwned(row)" in provider
+    assert "IsWorkbenchRowActive(row)" in provider
+    for forbidden in (
+        "BeginWeaponCustomization",
+        "CreateWeaponCamera",
+        "_weaponCamera",
+        "_workbenchDummy",
+        "GbayRenderer",
+    ):
+        assert forbidden not in provider
+
+    apply = contracts[
+        contracts.index("ApplyWeaponCustomization("):
+        contracts.index("public Allin1GearCatalogPage BrowseGear")
+    ]
+    assert apply.index("GetWeaponCustomizationCatalog(weapon)") < apply.index(
+        "ExecuteWeaponComponentPurchase"
+    )
+    cache = contracts[
+        contracts.index("GetWeaponCustomizationCatalog(string weapon)"):
+        contracts.index("internal bool TryGetCachedWeaponCustomizationCatalog")
+    ]
+    assert "GbayBrowser.DescribeDetachedWeaponCustomization(" in cache
+    assert "allowStorefrontCache: false" in cache
+    assert "ExecuteRefillAmmo" in apply
+    assert "ExecuteWeaponTintPurchase" in apply
+    assert "ExecuteWeaponComponentTintPurchase" in apply
+    assert "CustomizationPostconditionSatisfied" in apply
+    assert "request.QuotedPrice != currentPrice" in apply
+
+    assert '"owned-weapons"' in bridge
+    assert '"workbench-options"' in bridge
+    assert '"weapon.customize.apply"' in bridge
+    assert '"component_tint"' in bridge
+    assert '"Load owned weapons"' not in bridge
+    assert '"refresh-owned-weapons"' not in bridge
+    assert "TryOpenWeaponCustomization" in browser
+    assert "TryOpenReactorWeaponPreview" in shop
+    assert "IAllin1WeaponPreviewStorefront" in contracts
+    assert '"world-preview"' in bridge
+    assert "private Ped _workbenchPlayer;" in workbench
+    assert "player.Handle != _workbenchPlayer.Handle" in workbench
+    cleanup = workbench[
+        workbench.index("private void EndWeaponCustomization"):
+        workbench.index("private void DeleteWeaponWorkbenchDummy")
+    ]
+    assert "Ped ped = _workbenchPlayer;" in cleanup
+    assert "_workbenchPlayer = null;" in cleanup
+    handoff = browser[
+        browser.index("internal bool TryOpenWeaponCustomization"):
+        browser.index("//  Main Draw")
+    ]
+    assert "catch" in handoff
+    assert "EndWeaponCustomization();" in handoff
+    assert "_state = BrowserState.Closed;" in handoff
+    select = bridge[
+        bridge.index("private ReactorActionResult SelectCustomWeapon"):
+        bridge.index("private ReactorActionResult UpdateCustomizationView")
+    ]
+    assert "BeginWeaponPreview" in select
+    assert "BrowseWeaponCustomization" in select
+    assert "catch" in select
+    assert '"workbench_failed"' in select
+    assert "_customizationPage = page;" in select
+    lifecycle = bridge[
+        bridge.index("public void OnLifecycle"):
+        bridge.index("public void Dispose()")
+    ]
+    assert "ReactorLifecycleStage.OverlayClosed" in lifecycle
+    assert "StopWeaponPreviewCore" in lifecycle
+
+
+def test_reactor_gbay_automatically_synchronizes_game_state_without_refresh_controls():
+    contracts = (ROOT / "script/src/GbayReactorContracts.cs").read_text()
+    shop = (ROOT / "script/src/GbayShop.cs").read_text()
+    bridge = (
+        ROOT / "script/reactor-bridge/Allin1ReactorBridge.cs"
+    ).read_text()
+
+    assert "interface IAllin1GameStateBridge" in contracts
+    assert "GbayGameStateSynchronizationGate" in shop
+    assert "ObserveReactorGameState(activeCharacter)" in shop
+    assert "TrySynchronizeGameStateCore" in bridge
+    assert "PublishSynchronizedMenus" in bridge
+    assert "JsonConvert.SerializeObject" in bridge
+    assert 'builder.AddEvent(new ReactorEventDescriptor(' in bridge
+    assert '"state.changed"' in bridge
+    assert '_handle!.TryPublishEvent(' in bridge
+    for player_refresh_action in (
+        '"gbay.refresh"',
+        '"weapon.customize.refresh"',
+        '"garage.refresh"',
+        '"diagnostics.refresh"',
+    ):
+        assert player_refresh_action not in bridge
 
 
 def test_physics_experiment_has_observable_runtime_and_safe_archive_tooling():
@@ -1803,7 +2298,10 @@ def test_windows_toolchain_ci_is_cached_bounded_and_non_mutating():
     assert "windows-real-tools-v2-" in tests_workflow
     assert "timeout-minutes: 20" in tests_workflow
     assert "timeout-minutes: 8" in tests_workflow
-    assert "if: github.ref == 'refs/heads/main'" in build_workflow
+    assert "contents: read" in build_workflow
+    assert "ALLIN1-runtime-${{ github.sha }}" in build_workflow
+    assert "if-no-files-found: error" in build_workflow
+    assert "git push" not in build_workflow and "git commit" not in build_workflow
     assert '$env:CI -eq "true"' in tools_script
     assert "refusing to modify the hosted runner" in tools_script
     assert "-requires Microsoft.VisualStudio.Workload.NativeDesktop" in tools_script
@@ -1826,19 +2324,20 @@ def test_launcher_uses_gui_entry_point_without_console_window():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert "[project.gui-scripts]" in pyproject
     gui_section = pyproject.split("[project.gui-scripts]", 1)[1]
-    assert 'allin1-gui = "allin1.gui:main"' in gui_section
+    assert 'allin1-gui = "allin1.desktop_entry:main"' in gui_section
 
 
 def test_repair_progress_and_helper_consoles_are_managed_in_process():
-    gui = (ROOT / "src/allin1/gui.py").read_text(encoding="utf-8")
+    gui = (ROOT / "desktop/src/App.tsx").read_text(encoding="utf-8")
+    service = (ROOT / "src/allin1/desktop_service.py").read_text(encoding="utf-8")
     installer = (ROOT / "src/allin1/installer.py").read_text(encoding="utf-8")
     processes = (ROOT / "src/allin1/processes.py").read_text(encoding="utf-8")
     ytd_builder = (ROOT / "src/allin1/generators/ytd_builder.py").read_text(
         encoding="utf-8"
     )
-    assert '"Repairing"' in gui and 'kind == "progress"' in gui
-    assert 'mode="determinate"' in gui and "maximum=100" in gui
-    assert "launch_pending" in gui and "root.after(15000" in gui
+    assert "onProgress" in gui and "progress.percentage" in gui
+    assert "progress=self.progress" in service
+    assert "observe_gta_launch" in service
     assert "CREATE_NO_WINDOW" in processes and "STARTF_USESHOWWINDOW" in processes
     assert "subprocess.run(" not in installer
     assert "subprocess.run(" not in ytd_builder

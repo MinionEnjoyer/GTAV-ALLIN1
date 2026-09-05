@@ -78,6 +78,15 @@ def detect_gta_path() -> Path | None:
     Checks the ``.gta_path`` cache first, then runs platform-specific
     detection.  On success the result is cached for future runs.
     """
+    return _detect_gta_path(remember=True)
+
+
+def inspect_detected_gta_path() -> Path | None:
+    """Discover an installation without updating any remembered user path."""
+    return _detect_gta_path(remember=False)
+
+
+def _detect_gta_path(*, remember: bool) -> Path | None:
     cached = load_cached_path()
     if cached is not None:
         return cached
@@ -95,7 +104,8 @@ def detect_gta_path() -> Path | None:
 
     if result:
         log.info("GTA V found: %s", result)
-        save_cached_path(result)
+        if remember:
+            save_cached_path(result)
     else:
         log.warning("GTA V auto-detection failed — no valid install found")
 
@@ -674,6 +684,13 @@ def _get_windows_drives() -> list[Path]:
 
 def validate_gta_path(path: str | Path) -> Path:
     """Validate a user-provided or detected GTA V path. Raises ValueError if invalid."""
+    p = inspect_gta_path(path)
+    save_cached_path(p)
+    return p
+
+
+def inspect_gta_path(path: str | Path) -> Path:
+    """Validate a path without publishing a cache during read-only inspection."""
     p = Path(path)
     if not _validate_gta_path(p):
         log.error("Invalid GTA V path: %s", p)
@@ -682,7 +699,6 @@ def validate_gta_path(path: str | Path) -> Path:
             "Expected to find GTA5.exe or update/update.rpf."
         )
     log.info("Validated GTA V path: %s", p)
-    save_cached_path(p)
     return p
 
 

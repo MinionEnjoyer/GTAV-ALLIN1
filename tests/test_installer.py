@@ -1,15 +1,16 @@
 """Unit tests for game-file installation orchestration."""
 
 from pathlib import Path
+import hashlib
 import json
 import struct
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 
 from allin1.config import Config
-from allin1 import installer
+from allin1 import asi_loader, installer
 
 
 def _write_pe(path, *, size=4096):
@@ -26,6 +27,21 @@ def _game(tmp_path: Path, enhanced: bool = False) -> Path:
     game.mkdir()
     (game / ("GTA5_Enhanced.exe" if enhanced else "GTA5.exe")).touch()
     return game
+
+
+def _write_reactor_pair(
+    dist: Path, *, core: bytes = b"mod", bridge: bytes = b"bridge",
+) -> None:
+    (dist / "ALLIN1.dll").write_bytes(core)
+    (dist / "ALLIN1.ReactorBridge.plugin").write_bytes(bridge)
+    (dist / "ALLIN1.ReactorBridge.contract.json").write_text(json.dumps({
+        "schema_version": 1,
+        "version": installer.__version__,
+        "core_file": "ALLIN1.dll",
+        "core_sha256": hashlib.sha256(core).hexdigest(),
+        "bridge_file": "ALLIN1.ReactorBridge.plugin",
+        "bridge_sha256": hashlib.sha256(bridge).hexdigest(),
+    }))
 
 
 def test_resolve_gta_path_uses_configured_path(tmp_path):
@@ -75,12 +91,99 @@ def test_content_registry_deploys_trusted_story_vehicle_catalog(tmp_path):
     }]
 
 
+def test_content_registry_deploys_and_authorizes_all_trusted_map_descriptors(
+    tmp_path, monkeypatch,
+):
+    project = tmp_path / "project"
+    content_root = project / "content" / "allin1-online-content"
+    content_root.mkdir(parents=True)
+    source_root = project / "data" / "maps" / "allin1-online-content"
+    source_root.mkdir(parents=True)
+    descriptors = {
+        "city.maps.json": b'{"schema_version":1,"id":"city"}\n',
+        "country.maps.json": b'{"schema_version":1,"id":"country"}\n',
+    }
+    for name, content in descriptors.items():
+        (source_root / name).write_bytes(content)
+    (content_root / "allin1.content.json").write_text(json.dumps({
+        "schema_version": 1,
+        "api_version": 1,
+        "id": "allin1.online-content",
+        "name": "ALLIN1 Online Content",
+        "version": "1.0.0",
+        "description": "Map deployment fixture",
+        "capabilities": ["world.maps"],
+        "systems": [{"id": "garages", "name": "Garages"}],
+        "gbay": {"sections": [], "catalogs": []},
+        "runtime": {"assemblies": []},
+    }), encoding="utf-8")
+    game = _game(tmp_path)
+    (game / "scripts").mkdir()
+    monkeypatch.setattr(installer, "_PROJECT_ROOT", project)
+    monkeypatch.setattr(installer, "_BUILTIN_CATALOG_PAYLOADS", {})
+    monkeypatch.setattr(installer, "_BUILTIN_MAP_PAYLOADS", {
+        "allin1.online-content": source_root,
+    })
+
+    installer._deploy_content_registry(game, Config.default())
+
+    destination_root = (
+        game / "scripts" / "ALLIN1" / "Maps" / "allin1.online-content"
+    )
+    assert {
+        path.name: path.read_bytes()
+        for path in destination_root.glob("*.maps.json")
+    } == descriptors
+    registry = json.loads(
+        (game / "scripts" / ".allin1" / "extensions" / "registry.json")
+        .read_text(encoding="utf-8")
+    )
+    online = registry["extensions"][0]
+    assert online["enabled"] is True
+    assert online["map_files"] == [
+        {
+            "path": (
+                "scripts/ALLIN1/Maps/allin1.online-content/"
+                f"{name}"
+            ),
+            "sha256": hashlib.sha256(content).hexdigest(),
+        }
+        for name, content in descriptors.items()
+    ]
+
+
+def test_content_registry_refuses_world_maps_without_trusted_payloads(
+    tmp_path, monkeypatch,
+):
+    project = tmp_path / "project"
+    content_root = project / "content" / "allin1-online-content"
+    content_root.mkdir(parents=True)
+    (content_root / "allin1.content.json").write_text(json.dumps({
+        "schema_version": 1,
+        "api_version": 1,
+        "id": "allin1.online-content",
+        "name": "ALLIN1 Online Content",
+        "version": "1.0.0",
+        "description": "Missing map deployment fixture",
+        "capabilities": ["world.maps"],
+        "systems": [{"id": "garages", "name": "Garages"}],
+        "gbay": {"sections": [], "catalogs": []},
+        "runtime": {"assemblies": []},
+    }), encoding="utf-8")
+    game = _game(tmp_path)
+    monkeypatch.setattr(installer, "_PROJECT_ROOT", project)
+    monkeypatch.setattr(installer, "_BUILTIN_CATALOG_PAYLOADS", {})
+    monkeypatch.setattr(installer, "_BUILTIN_MAP_PAYLOADS", {})
+
+    with pytest.raises(FileNotFoundError, match="mapping is missing"):
+        installer._deploy_content_registry(game, Config.default())
+
+
 def test_deploy_script_copies_binaries_and_config(tmp_path, monkeypatch):
     project = tmp_path / "project"
     dist = project / "script" / "dist"
     dist.mkdir(parents=True)
-    (dist / "ALLIN1.dll").write_bytes(b"mod")
-    (dist / "LemonUI.SHVDN3.dll").write_bytes(b"ui")
+    _write_reactor_pair(dist)
     data = project / "data"
     data.mkdir()
     (data / "vehicle_grounding.json").write_text(
@@ -92,17 +195,147 @@ def test_deploy_script_copies_binaries_and_config(tmp_path, monkeypatch):
     game = _game(tmp_path)
     scripts = game / "scripts"
     scripts.mkdir()
+    foreign_lemonui = scripts / installer.RETIRED_LEMONUI_FILENAME
+    foreign_lemonui.write_bytes(b"owned by another mod")
     (scripts / "ALLIN1.ini").touch()
     monkeypatch.setattr(installer, "_PROJECT_ROOT", project)
     monkeypatch.setattr(installer, "_SCRIPT_DIST_DIR", dist)
 
     assert installer._deploy_script(game) is True
     assert (scripts / "ALLIN1.dll").read_bytes() == b"mod"
-    assert (scripts / "LemonUI.SHVDN3.dll").read_bytes() == b"ui"
+    assert foreign_lemonui.read_bytes() == b"owned by another mod"
+    assert (
+        scripts / "ReactorV" / "ALLIN1.ReactorBridge.plugin"
+    ).read_bytes() == b"bridge"
+    assert (
+        scripts / "ReactorV" / "ALLIN1.ReactorBridge.contract.json"
+    ).is_file()
     assert (scripts / "ALLIN1.toml").exists()
     assert (scripts / "ALLIN1_vehicle_grounding.json").exists()
-    assert (scripts / "ALLIN1.version").read_text().strip() == "0.6.1"
+    assert (scripts / ".reactorv" / "preload" / "allin1.json").exists()
+    assert (scripts / "ALLIN1.version").read_text().strip() == installer.__version__
     assert not (scripts / "ALLIN1.ini").exists()
+
+
+def test_deploy_script_blocks_reactor_only_backend_when_bridge_is_missing(
+    tmp_path, monkeypatch,
+):
+    project = tmp_path / "project"
+    dist = project / "script" / "dist"
+    dist.mkdir(parents=True)
+    (dist / "ALLIN1.dll").write_bytes(b"mod")
+    game = _game(tmp_path)
+    config = Config.default()
+    config.script.gbay_ui_backend = "reactor"
+    monkeypatch.setattr(installer, "_SCRIPT_DIST_DIR", dist)
+
+    assert installer._deploy_script(game, config) is False
+    assert not (game / "scripts" / "ALLIN1.dll").exists()
+
+
+def test_deploy_script_rejects_mixed_core_and_bridge_before_copy(
+    tmp_path, monkeypatch,
+):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    _write_reactor_pair(dist)
+    (dist / "ALLIN1.ReactorBridge.plugin").write_bytes(b"new-bridge")
+    game = _game(tmp_path)
+    monkeypatch.setattr(installer, "_SCRIPT_DIST_DIR", dist)
+
+    assert installer._deploy_script(game) is False
+    assert not (game / "scripts" / "ALLIN1.dll").exists()
+    assert not (
+        game / "scripts/ReactorV/ALLIN1.ReactorBridge.plugin"
+    ).exists()
+
+
+def test_deploy_script_rolls_back_both_binaries_on_partial_pair_failure(
+    tmp_path, monkeypatch,
+):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    _write_reactor_pair(dist, core=b"new-core", bridge=b"new-bridge")
+    game = _game(tmp_path)
+    scripts = game / "scripts"
+    reactor = scripts / "ReactorV"
+    reactor.mkdir(parents=True)
+    (scripts / "ALLIN1.dll").write_bytes(b"old-core")
+    (reactor / "ALLIN1.ReactorBridge.plugin").write_bytes(b"old-bridge")
+    (reactor / "ALLIN1.ReactorBridge.contract.json").write_bytes(b"old-contract")
+    monkeypatch.setattr(installer, "_SCRIPT_DIST_DIR", dist)
+    original_replace = installer.os.replace
+    replacements = 0
+
+    def fail_second_replace(source, destination):
+        nonlocal replacements
+        replacements += 1
+        if replacements == 2:
+            raise OSError("fixture pair deployment failure")
+        return original_replace(source, destination)
+
+    monkeypatch.setattr(installer.os, "replace", fail_second_replace)
+    with pytest.raises(OSError, match="fixture pair deployment failure"):
+        installer._deploy_script(game)
+
+    assert (scripts / "ALLIN1.dll").read_bytes() == b"old-core"
+    assert (
+        reactor / "ALLIN1.ReactorBridge.plugin"
+    ).read_bytes() == b"old-bridge"
+    assert (
+        reactor / "ALLIN1.ReactorBridge.contract.json"
+    ).read_bytes() == b"old-contract"
+
+
+def test_deploy_reactor_catalog_artwork_uses_only_allowlisted_ui_root(
+    tmp_path, monkeypatch,
+):
+    dist = tmp_path / "dist"
+    vehicle_source = dist / "previews"
+    weapon_source = dist / "weapon_previews"
+    gear_source = dist / "equipment_previews"
+    vehicle_source.mkdir(parents=True)
+    weapon_source.mkdir()
+    gear_source.mkdir()
+    (vehicle_source / "barrage.png").write_bytes(b"vehicle-art")
+    (vehicle_source / "notes.txt").write_text("not artwork")
+    (weapon_source / "weapon_pistol.png").write_bytes(b"weapon-art")
+    (gear_source / "armor_heavy.png").write_bytes(b"gear-art")
+    game = _game(tmp_path)
+    ui = game / "plugins" / "ReactorV" / "ui"
+    ui.mkdir(parents=True)
+    (ui / "index.html").write_text("<html></html>")
+    owned = ui / "assets" / "allin1"
+    (owned / "vehicles").mkdir(parents=True)
+    (owned / "vehicles" / "retired.png").write_bytes(b"stale")
+    (owned / "vehicles" / "keep.txt").write_text("foreign")
+    monkeypatch.setattr(installer, "_SCRIPT_DIST_DIR", dist)
+
+    assert installer._deploy_reactor_catalog_artwork(game) == 3
+    assert (owned / "vehicles" / "barrage.png").read_bytes() == b"vehicle-art"
+    assert (
+        owned / "weapons" / "weapon_pistol.png"
+    ).read_bytes() == b"weapon-art"
+    assert (owned / "gear" / "armor_heavy.png").read_bytes() == b"gear-art"
+    assert not (owned / "vehicles" / "retired.png").exists()
+    assert (owned / "vehicles" / "keep.txt").read_text() == "foreign"
+    assert not (owned / "vehicles" / "notes.txt").exists()
+
+    # Repair is content-aware: unchanged assets are not rewritten.
+    assert installer._deploy_reactor_catalog_artwork(game) == 0
+
+
+def test_deploy_reactor_catalog_artwork_skips_uninstalled_reactor(
+    tmp_path, monkeypatch,
+):
+    dist = tmp_path / "dist"
+    (dist / "previews").mkdir(parents=True)
+    (dist / "previews" / "barrage.png").write_bytes(b"vehicle-art")
+    game = _game(tmp_path)
+    monkeypatch.setattr(installer, "_SCRIPT_DIST_DIR", dist)
+
+    assert installer._deploy_reactor_catalog_artwork(game) == 0
+    assert not (game / installer._REACTOR_ARTWORK_RELATIVE).exists()
 
 
 def test_deploy_script_removes_retired_developer_artifacts(tmp_path, monkeypatch):
@@ -110,7 +343,6 @@ def test_deploy_script_removes_retired_developer_artifacts(tmp_path, monkeypatch
     dist = project / "script" / "dist"
     dist.mkdir(parents=True)
     (dist / "ALLIN1.dll").write_bytes(b"mod")
-    (dist / "LemonUI.SHVDN3.dll").write_bytes(b"ui")
     data = project / "data"
     data.mkdir()
     (data / "vehicle_grounding.json").write_text(
@@ -133,6 +365,34 @@ def test_deploy_script_removes_retired_developer_artifacts(tmp_path, monkeypatch
                for name in installer.RETIRED_DEVELOPER_ARTIFACTS)
     assert all(not (scripts / name).exists()
                for name in installer.RETIRED_DEVELOPER_DIRECTORIES)
+
+
+def test_retired_lemonui_cleanup_requires_historical_payload_hash(
+    tmp_path, monkeypatch,
+):
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    candidate = scripts / installer.RETIRED_LEMONUI_FILENAME
+    managed_payload = b"historical ALLIN1 LemonUI payload fixture"
+    monkeypatch.setattr(
+        installer,
+        "RETIRED_LEMONUI_SHA256",
+        hashlib.sha256(managed_payload).hexdigest().upper(),
+    )
+
+    candidate.write_bytes(b"foreign or locally changed dependency")
+    assert installer._remove_retired_lemonui_dependency(scripts) is None
+    assert candidate.read_bytes() == b"foreign or locally changed dependency"
+
+    candidate.write_bytes(managed_payload)
+    assert installer._remove_retired_lemonui_dependency(scripts) == candidate
+    assert not candidate.exists()
+
+
+def test_retired_lemonui_cleanup_uses_the_released_allin1_hash():
+    assert installer.RETIRED_LEMONUI_SHA256 == (
+        "B52EF80136152ED7AFDF335BD4FF16183977C8E27223AAF5C94A8C16E62E1AEB"
+    )
 
 
 def test_deploy_grounding_catalog_preserves_stable_user_data_and_fills_seed(tmp_path, monkeypatch):
@@ -275,7 +535,10 @@ def test_prerequisite_checks(tmp_path):
     assert installer._check_shvdn(game) is False
     _write_pe(game / "ScriptHookV.dll")
     _write_pe(game / "ScriptHookVDotNet.asi")
+    _write_pe(game / "ScriptHookVDotNet3.dll")
     assert installer._check_scripthookv(game) is True
+    assert installer._check_shvdn(game) is False
+    _write_pe(game / "MinHook.x64.dll")
     assert installer._check_shvdn(game) is True
 
 
@@ -294,6 +557,8 @@ def test_uninstall_removes_owned_files_and_preserves_other_flags(tmp_path, monke
     scripts.mkdir()
     for name in ("ALLIN1.dll", "ALLIN1.toml", "ALLIN1_garage.json"):
         (scripts / name).touch()
+    foreign_lemonui = scripts / installer.RETIRED_LEMONUI_FILENAME
+    foreign_lemonui.write_bytes(b"owned by another mod")
     story_catalog = scripts / "ALLIN1" / "Catalogs" / "story-vehicles.json"
     story_catalog.parent.mkdir(parents=True)
     story_catalog.write_text("{}", encoding="utf-8")
@@ -301,6 +566,20 @@ def test_uninstall_removes_owned_files_and_preserves_other_flags(tmp_path, monke
         "{}", encoding="utf-8",
     )
     (game / "commandline.txt").write_text("-windowed\n-nobattleye\n")
+    asi_loader.ensure_nobattleye(game, is_enhanced=False)
+    preload_manifest = scripts / ".reactorv" / "preload" / "allin1.json"
+    preload_manifest.parent.mkdir(parents=True)
+    preload_manifest.write_text("{}", encoding="utf-8")
+    reactor_bridge = scripts / "ReactorV" / "ALLIN1.ReactorBridge.plugin"
+    reactor_bridge.parent.mkdir(parents=True)
+    reactor_bridge.write_bytes(b"bridge")
+    reactor_contract = (
+        scripts / "ReactorV" / "ALLIN1.ReactorBridge.contract.json"
+    )
+    reactor_contract.write_text("{}")
+    reactor_artwork = game / installer._REACTOR_ARTWORK_RELATIVE
+    reactor_artwork.mkdir(parents=True)
+    (reactor_artwork / "fixture.png").write_bytes(b"art")
     config = Config.default()
     config.general.gta_path = str(game)
     unpatch = Mock()
@@ -311,13 +590,50 @@ def test_uninstall_removes_owned_files_and_preserves_other_flags(tmp_path, monke
     removed = installer.uninstall(config)
 
     assert not (scripts / "ALLIN1.dll").exists()
-    assert not (scripts / "ALLIN1.toml").exists()
+    assert (scripts / "ALLIN1.toml").exists()
+    assert (scripts / "ALLIN1_garage.json").exists()
     assert not story_catalog.exists()
     assert not story_catalog.with_name(story_catalog.name + ".bak").exists()
+    assert not preload_manifest.exists()
+    assert not reactor_bridge.exists()
+    assert not reactor_contract.exists()
+    assert not reactor_artwork.exists()
+    assert foreign_lemonui.read_bytes() == b"owned by another mod"
     assert (game / "commandline.txt").read_text() == "-windowed\n"
+    assert not (game / "args.txt").exists()
     assert scripts / "ALLIN1.dll" in removed
+    assert game / "args.txt" in removed
+    assert preload_manifest in removed
+    assert reactor_bridge in removed
+    assert reactor_contract in removed
+    assert reactor_artwork in removed
     unpatch.assert_called_once_with(game)
     remove_ytds.assert_called_once_with(game)
+
+
+def test_uninstall_removes_only_the_historical_allin1_lemonui_payload(
+    tmp_path, monkeypatch,
+):
+    game = _game(tmp_path)
+    scripts = game / "scripts"
+    scripts.mkdir()
+    candidate = scripts / installer.RETIRED_LEMONUI_FILENAME
+    managed_payload = b"historical ALLIN1 LemonUI payload fixture"
+    candidate.write_bytes(managed_payload)
+    monkeypatch.setattr(
+        installer,
+        "RETIRED_LEMONUI_SHA256",
+        hashlib.sha256(managed_payload).hexdigest().upper(),
+    )
+    monkeypatch.setattr(installer, "_unpatch_dlclist_rpf", Mock())
+    monkeypatch.setattr(installer, "_remove_preview_ytds", Mock())
+    config = Config.default()
+    config.general.gta_path = str(game)
+
+    removed = installer.uninstall(config)
+
+    assert not candidate.exists()
+    assert candidate in removed
 
 
 def test_uninstall_removes_owned_story_policy_but_preserves_other_flags(
@@ -357,7 +673,7 @@ def test_uninstall_removes_commandline_when_only_battleye_flag(tmp_path, monkeyp
     assert not (game / "commandline.txt").exists()
 
 
-def test_clean_legacy_files_removes_old_runtime_and_data(tmp_path):
+def test_clean_legacy_files_removes_old_runtime_but_preserves_unknown_data(tmp_path):
     game = _game(tmp_path)
     (game / "ALLIN1.asi").touch()
     (game / "ALLIN1.dll").touch()
@@ -370,7 +686,8 @@ def test_clean_legacy_files_removes_old_runtime_and_data(tmp_path):
 
     assert not (game / "ALLIN1.asi").exists()
     assert not (game / "ALLIN1.dll").exists()
-    assert not data.exists()
+    assert (data / "old.json").read_text() == "{}"
+    assert any("Preserved" in warning for warning in result.warnings)
     assert len(result.warnings) == 3
 
 
@@ -398,16 +715,26 @@ def test_install_orchestrates_steps_and_collects_preview_warning(tmp_path, monke
     game = _game(tmp_path, enhanced=True)
     config = Config.default()
     config.general.gta_path = str(game)
+    config.script.gbay_ui_backend = "legacy"
     monkeypatch.setattr(installer, "_clean_legacy_files", Mock())
     monkeypatch.setattr(installer, "_deploy_script", Mock(return_value=True))
     monkeypatch.setattr(installer, "_check_scripthookv", Mock(return_value=True))
     monkeypatch.setattr(installer, "_check_shvdn", Mock(return_value=False))
     monkeypatch.setattr(installer, "_check_openrpf", Mock(return_value=True))
     monkeypatch.setattr(installer, "_remove_preview_pack", Mock(return_value=[]))
-    monkeypatch.setattr(installer, "_remove_map_pack", Mock(return_value=[]))
-    monkeypatch.setattr(installer, "_unpatch_dlclist_rpf", Mock())
+    remove_map = Mock(return_value=[])
+    monkeypatch.setattr(installer, "_remove_map_pack", remove_map)
+    unpatch = Mock()
+    monkeypatch.setattr(installer, "_unpatch_dlclist_rpf", unpatch)
     map_deploy = Mock(return_value=True)
     monkeypatch.setattr(installer, "_deploy_standalone_map_dlc", map_deploy)
+    monkeypatch.setattr(
+        installer, "_deploy_garment_stock_bridge", Mock(return_value=True),
+    )
+    monkeypatch.setattr(
+        installer, "refresh_garage_map_detection",
+        Mock(return_value=SimpleNamespace(summary="map names verified")),
+    )
     monkeypatch.setattr(installer, "_deploy_preview_dlc", Mock(side_effect=RuntimeError("preview failed")))
     patch = Mock()
     monkeypatch.setattr(installer, "_patch_dlclist_rpf", patch)
@@ -422,6 +749,8 @@ def test_install_orchestrates_steps_and_collects_preview_warning(tmp_path, monke
     assert result.battleye_status == "set"
     assert result.warnings == ["Preview texture injection failed: preview failed"]
     map_deploy.assert_called_once_with(game, result, progress=None)
+    remove_map.assert_not_called()
+    unpatch.assert_not_called()
     patch.assert_not_called()
 
 
@@ -433,8 +762,7 @@ def test_install_uses_approved_optional_rpf_dependency(tmp_path, monkeypatch):
         ("_clean_legacy_files", None), ("_deploy_script", True),
         ("_check_scripthookv", True), ("_check_shvdn", True),
         ("_remove_preview_pack", []), ("_remove_map_pack", []),
-        ("_unpatch_dlclist_rpf", None),
-        ("_deploy_standalone_map_dlc", True), ("_deploy_preview_dlc", True),
+        ("_unpatch_dlclist_rpf", None), ("_deploy_preview_dlc", True),
     ):
         monkeypatch.setattr(installer, name, Mock(return_value=value))
     check = Mock(side_effect=[False, True])
@@ -461,6 +789,63 @@ def test_install_uses_approved_optional_rpf_dependency(tmp_path, monkeypatch):
     assert result.rpf_loader_provider == "RageOpenV v1.0"
 
 
+@pytest.mark.parametrize("loader_present", [False, True])
+def test_reactor_install_uses_png_artwork_and_retires_preview_dlc(
+    tmp_path, monkeypatch, loader_present,
+):
+    game = _game(tmp_path)
+    config = Config.default()
+    config.general.gta_path = str(game)
+    config.general.enable_rpf_previews = True
+    config.script.gbay_ui_backend = "reactor"
+    monkeypatch.setattr("allin1.reactor_dependency.dependency_recorded", lambda *_: True)
+    monkeypatch.setattr("allin1.reactor_dependency.install_dependency", Mock(return_value="Reactor V"))
+    monkeypatch.setattr(installer, "validate_reactor_bridge_pair", Mock())
+    for name, value in (
+        ("_clean_legacy_files", None), ("_deploy_script", True),
+            ("_check_scripthookv", True), ("_check_shvdn", True),
+            ("_remove_map_pack", []),
+            ("_deploy_garment_stock_bridge", True),
+    ):
+        monkeypatch.setattr(installer, name, Mock(return_value=value))
+    monkeypatch.setattr(
+        installer, "refresh_garage_map_detection",
+        Mock(return_value=SimpleNamespace(summary="map names verified")),
+    )
+    monkeypatch.setattr(
+        installer, "_check_openrpf", Mock(return_value=loader_present),
+    )
+    consent = Mock(return_value=True)
+    dependency = Mock()
+    deploy = Mock(return_value=True)
+    remove_preview = Mock(return_value=[])
+    unpatch = Mock(return_value=True)
+    monkeypatch.setattr(
+        installer, "install_recommended_rpf_loader", dependency,
+    )
+    monkeypatch.setattr(installer, "_deploy_preview_dlc", deploy)
+    monkeypatch.setattr(installer, "_remove_preview_pack", remove_preview)
+    monkeypatch.setattr(installer, "_unpatch_dlclist_rpf", unpatch)
+    monkeypatch.setattr(
+        installer.asi_loader, "ensure_nobattleye", Mock(return_value="set"),
+    )
+
+    result = installer.install(
+        config, Mock(), rpf_loader_consent=consent,
+    )
+
+    consent.assert_not_called()
+    dependency.assert_not_called()
+    deploy.assert_not_called()
+    remove_preview.assert_called_once_with(game)
+    assert unpatch.call_args_list == [
+        call(game, "allin1_maps"),
+        call(game, "allin1_previews"),
+    ]
+    assert result.rpf_previews_deployed is False
+    assert not any("RPF previews requested" in item for item in result.warnings)
+
+
 def test_optional_rpf_dependency_io_failure_does_not_block_repair(
     tmp_path, monkeypatch,
 ):
@@ -471,8 +856,7 @@ def test_optional_rpf_dependency_io_failure_does_not_block_repair(
         ("_clean_legacy_files", None), ("_deploy_script", True),
         ("_check_scripthookv", True), ("_check_shvdn", True),
         ("_remove_preview_pack", []), ("_remove_map_pack", []),
-        ("_unpatch_dlclist_rpf", None),
-        ("_deploy_standalone_map_dlc", True), ("_deploy_preview_dlc", True),
+        ("_unpatch_dlclist_rpf", None), ("_deploy_preview_dlc", True),
     ):
         monkeypatch.setattr(installer, name, Mock(return_value=value))
     monkeypatch.setattr(installer, "_check_openrpf", Mock(return_value=False))
@@ -493,63 +877,49 @@ def test_optional_rpf_dependency_io_failure_does_not_block_repair(
     assert any("access denied" in warning for warning in result.warnings)
 
 
-def test_install_rejects_missing_required_standalone_map_pack(tmp_path, monkeypatch):
+def test_install_replaces_legacy_map_pack_with_metadata_bridge(
+    tmp_path, monkeypatch,
+):
     game = _game(tmp_path, enhanced=True)
+    legacy_pack = game / "mods/update/x64/dlcpacks/allin1_maps/dlc.rpf"
+    legacy_pack.parent.mkdir(parents=True)
+    legacy_pack.write_bytes(b"retired compatibility pack")
     config = Config.default()
     config.general.gta_path = str(game)
     for name, value in (
         ("_clean_legacy_files", None), ("_deploy_script", True),
         ("_check_scripthookv", True), ("_check_shvdn", True),
         ("_check_openrpf", True), ("_remove_preview_pack", []),
-        ("_remove_map_pack", []), ("_unpatch_dlclist_rpf", None),
+        ("_deploy_preview_dlc", True),
     ):
         monkeypatch.setattr(installer, name, Mock(return_value=value))
+    def replace_with_bridge(_game, _result, progress=None):
+        assert progress is None
+        legacy_pack.unlink()
+        return True
+
+    build = Mock(side_effect=replace_with_bridge)
+    monkeypatch.setattr(installer, "_deploy_standalone_map_dlc", build)
     monkeypatch.setattr(
-        installer, "_deploy_standalone_map_dlc", Mock(return_value=False),
+        installer, "_deploy_garment_stock_bridge", Mock(return_value=True),
     )
-
-    with pytest.raises(RuntimeError, match="garage interiors would be unavailable"):
-        installer.install(config, Mock())
-
-
-def test_repair_preserves_existing_dlc_packs_when_rebuild_fails(
-    tmp_path, monkeypatch,
-):
-    game = _game(tmp_path, enhanced=True)
-    preview = game / "mods/update/x64/dlcpacks/allin1_previews/dlc.rpf"
-    maps = game / "mods/update/x64/dlcpacks/allin1_maps/dlc.rpf"
-    preview.parent.mkdir(parents=True)
-    maps.parent.mkdir(parents=True)
-    preview.write_bytes(b"working-preview")
-    maps.write_bytes(b"working-maps")
-
-    config = Config.default()
-    config.general.gta_path = str(game)
-    for name, value in (
-        ("_clean_legacy_files", None), ("_deploy_script", True),
-        ("_check_scripthookv", True), ("_check_shvdn", True),
-        ("_check_openrpf", True),
-    ):
-        monkeypatch.setattr(installer, name, Mock(return_value=value))
-    monkeypatch.setattr(
-        installer, "_deploy_standalone_map_dlc",
-        Mock(side_effect=RuntimeError("helper blocked")),
-    )
-    remove_preview = Mock()
-    remove_maps = Mock()
-    unpatch = Mock()
-    monkeypatch.setattr(installer, "_remove_preview_pack", remove_preview)
-    monkeypatch.setattr(installer, "_remove_map_pack", remove_maps)
+    unpatch = Mock(return_value=True)
     monkeypatch.setattr(installer, "_unpatch_dlclist_rpf", unpatch)
+    monkeypatch.setattr(
+        installer, "refresh_garage_map_detection",
+        Mock(return_value=SimpleNamespace(summary="map names verified")),
+    )
+    monkeypatch.setattr(
+        installer.asi_loader, "ensure_nobattleye", Mock(return_value="set"),
+    )
 
-    with pytest.raises(RuntimeError, match="helper blocked"):
-        installer.install(config, Mock())
+    result = installer.install(config, Mock())
 
-    assert preview.read_bytes() == b"working-preview"
-    assert maps.read_bytes() == b"working-maps"
-    remove_preview.assert_not_called()
-    remove_maps.assert_not_called()
+    build.assert_called_once_with(game, result, progress=None)
     unpatch.assert_not_called()
+    assert not legacy_pack.exists()
+    assert result.standalone_maps_deployed is True
+    assert not any("temporarily unavailable" in item for item in result.warnings)
 
 
 def test_install_deploys_default_enabled_rpf_previews(tmp_path, monkeypatch):
@@ -560,8 +930,7 @@ def test_install_deploys_default_enabled_rpf_previews(tmp_path, monkeypatch):
         ("_clean_legacy_files", None), ("_deploy_script", True),
         ("_check_scripthookv", True), ("_check_shvdn", True),
         ("_check_openrpf", True), ("_remove_preview_pack", []),
-        ("_remove_map_pack", []), ("_deploy_standalone_map_dlc", True),
-        ("_unpatch_dlclist_rpf", None),
+        ("_remove_map_pack", []), ("_unpatch_dlclist_rpf", None),
     ):
         monkeypatch.setattr(installer, name, Mock(return_value=value))
     deploy = Mock(return_value=True)

@@ -1,0 +1,1 @@
+{"identifier":"launcher-main","description":"Bundled Launcher UI only; no shell, filesystem, or network plugin authority.","windows":["main"],"permissions":["core:event:allow-listen","core:event:allow-unlisten","allow-launcher-request","allow-select-path","allow-close-launcher","allow-frontend-ready","allow-initial-handoff"]}

@@ -340,6 +340,7 @@ def test_member_validation_rejects_platform_unsafe_entries(
 ) -> None:
     entry = zipfile.ZipInfo("safe")
     entry.filename = name
+    entry.orig_filename = name
     entry.external_attr = external
     entry.flag_bits = flags
     with pytest.raises(ValueError, match=match):
@@ -784,15 +785,15 @@ def test_hardware_and_file_probes_fail_closed_on_unavailable_os_data(
     model = tmp_path / "model.gguf"
     runtime.write_bytes(b"MZruntime")
     model.write_bytes(b"GGUFmodel")
-    original_read_bytes = Path.read_bytes
+    original_runtime_open = Path.open
     monkeypatch.setattr(
-        Path, "read_bytes",
-        lambda self: (_ for _ in ()).throw(OSError("locked"))
-        if self == runtime.resolve() else original_read_bytes(self),
+        Path, "open",
+        lambda self, *args, **kwargs: (_ for _ in ()).throw(OSError("locked"))
+        if self == runtime.resolve() else original_runtime_open(self, *args, **kwargs),
     )
     with pytest.raises(ValueError, match="cannot be read"):
         manager._validate_runtime(runtime, "Runtime")
-    monkeypatch.setattr(Path, "read_bytes", original_read_bytes)
+    monkeypatch.setattr(Path, "open", original_runtime_open)
 
     original_open = Path.open
     monkeypatch.setattr(
@@ -840,10 +841,9 @@ def test_transaction_recovery_rejects_changed_or_unhealthy_staging(
 
     recovered = tmp_path / "recovered"
     backup = recovered / ".component.previous"
-    backup.mkdir(parents=True)
-    (backup / "old.txt").write_text("old", encoding="utf-8")
+    shutil.copytree(donor / "component", backup)
     component, pending, _ = manager._prepare_assistant_transaction(recovered)
-    assert (component / "old.txt").read_text(encoding="utf-8") == "old"
+    assert verify_assistant_install(recovered).package_id == expected.package_id
     assert pending.is_dir()
     with pytest.raises(RuntimeError, match="staging directory"):
         manager._activate_assistant_transaction(

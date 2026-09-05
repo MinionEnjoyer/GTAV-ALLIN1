@@ -54,6 +54,12 @@ class VehiclesConfig:
 class ScriptConfig:
     enable_logging: bool = False
     enable_dlc_police: bool = False
+    # Deprecated compatibility alias. When gbay_ui_backend is absent, true
+    # selects the legacy browser for older configs. New configs use the backend.
+    gbay_menu_enabled: bool = False
+    # auto prefers Reactor and lazily falls back to the native browser;
+    # reactor fails closed to Reactor; legacy always uses the native browser.
+    gbay_ui_backend: str = "auto"
     gbay_key: str = "F9"
     night_vision_key: str = "N"
     seat_selector_enabled: bool = True
@@ -122,6 +128,9 @@ class Config:
         script = ScriptConfig(**{k: v for k, v in script_raw.items() if k in script_fields})
         if "gbay_free_mode" not in script_raw:
             script.gbay_free_mode = general.free_mode
+        if ("gbay_ui_backend" not in script_raw and
+                script.gbay_menu_enabled):
+            script.gbay_ui_backend = "legacy"
 
         return cls(general=general, traffic=traffic, vehicles=vehicles, script=script)
 
@@ -178,6 +187,8 @@ class Config:
             "[script]\n"
             f"enable_logging = {boolean(self.script.enable_logging)}\n"
             f"enable_dlc_police = {boolean(self.script.enable_dlc_police)}\n"
+            f"gbay_menu_enabled = {boolean(self.script.gbay_menu_enabled)}\n"
+            f"gbay_ui_backend = {quote(self.script.gbay_ui_backend)}\n"
             f"gbay_key = {quote(self.script.gbay_key)}\n"
             f"night_vision_key = {quote(self.script.night_vision_key)}\n"
             f"seat_selector_enabled = {boolean(self.script.seat_selector_enabled)}\n"
@@ -229,6 +240,12 @@ class Config:
                 "general.target_edition must be 'auto', 'legacy', or 'enhanced'"
             )
         self.general.target_edition = target_edition
+        gbay_ui_backend = self.script.gbay_ui_backend.strip().lower()
+        if gbay_ui_backend not in {"auto", "reactor", "legacy"}:
+            raise ValueError(
+                "script.gbay_ui_backend must be 'auto', 'reactor', or 'legacy'"
+            )
+        self.script.gbay_ui_backend = gbay_ui_backend
         keys = {
             "gbay_key": self.script.gbay_key,
             "night_vision_key": self.script.night_vision_key,
