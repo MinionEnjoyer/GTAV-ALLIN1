@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from allin1 import game_launcher, health, garage_map_detection, reactor_bootstrap, versioning
+from allin1 import desktop_service, game_launcher, health, garage_map_detection, reactor_bootstrap, versioning
 from tests.test_desktop_service import apply, service
 
 
@@ -70,9 +70,8 @@ def test_optional_map_refresh_failure_does_not_turn_launch_into_failure(service,
 
 
 def test_manual_release_page_is_fixed_and_cannot_execute_remote_metadata(service, monkeypatch):
-    import os
     opened = []
-    monkeypatch.setattr(os, "startfile", opened.append, raising=False)
+    monkeypatch.setattr(desktop_service, "os", SimpleNamespace(name="nt", startfile=opened.append))
     monkeypatch.setattr(versioning, "fetch_latest_release", lambda: versioning.ReleaseInfo("0.6.5", "file:///C:/untrusted.exe", True, "Next release"))
     with pytest.raises(ValueError, match="Check Launcher releases first"):
         service.read("open_launcher_release", {})

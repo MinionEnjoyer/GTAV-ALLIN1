@@ -1,10 +1,11 @@
 """Structured activity persistence must never obscure mutation outcomes."""
 import json
 import os
+from types import SimpleNamespace
 
 import pytest
 
-from allin1 import desktop_activity
+from allin1 import desktop_activity, desktop_service
 from allin1.desktop_service import LauncherService
 from tests.test_desktop_service import apply, service
 
@@ -20,7 +21,7 @@ def test_activity_survives_service_restart_without_progress_text_parsing(service
 
 def test_open_log_folder_uses_only_host_owned_path(service, monkeypatch):
     seen = []
-    monkeypatch.setattr(os, "startfile", lambda path: seen.append(path), raising=False)
+    monkeypatch.setattr(desktop_service, "os", SimpleNamespace(name="nt", startfile=seen.append))
     with pytest.raises(ValueError, match="No activity folder"):
         service.read("open_activity_folder", {})
     apply(service, "save_profile", name="Journal")

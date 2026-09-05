@@ -137,8 +137,13 @@ def test_packaging_scan_rejects_tk_and_legacy_gui_even_when_not_imported(name):
         candidate.assert_no_tk(["allin1.desktop_host", name])
 
 
-def test_runtime_staging_does_not_include_legacy_gui_or_user_preferences():
-    files = candidate.resource_inputs(ROOT)
+def test_runtime_staging_does_not_include_legacy_gui_or_user_preferences(tmp_path):
+    from tests.test_release import _release_tree
+    # A complete disposable fixture exercises the real inventory/filter without
+    # relying on developer-generated binaries. Candidate builds test real tools.
+    root = _release_tree(tmp_path)
+    (root / "config.toml").write_bytes(b"private preferences")
+    files = candidate.resource_inputs(root)
     assert "data/vehicles.toml" in files
     assert "script/dist/ALLIN1.dll" in files
     assert "tools/RpfPatcher/RpfPatcher.exe" in files

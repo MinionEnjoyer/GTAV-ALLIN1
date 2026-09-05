@@ -273,6 +273,7 @@ class _FakeWinFunction:
 
 
 def test_windows_process_snapshot_enumerates_and_closes_handle(monkeypatch):
+    monkeypatch.setattr(game_launcher, "os", SimpleNamespace(name="nt"))
     entries = iter(((41, "GTA5.exe"), (42, "GTA5_Enhanced.exe")))
 
     def write_next(_snapshot, pointer):
@@ -292,7 +293,7 @@ def test_windows_process_snapshot_enumerates_and_closes_handle(monkeypatch):
         CloseHandle=_FakeWinFunction(close),
     )
     monkeypatch.setattr(
-        game_launcher.ctypes, "windll", SimpleNamespace(kernel32=kernel32),
+        game_launcher.ctypes, "windll", SimpleNamespace(kernel32=kernel32), raising=False,
     )
 
     assert game_launcher._windows_processes() == {
@@ -303,6 +304,7 @@ def test_windows_process_snapshot_enumerates_and_closes_handle(monkeypatch):
 
 
 def test_windows_process_snapshot_rejects_invalid_handle(monkeypatch):
+    monkeypatch.setattr(game_launcher, "os", SimpleNamespace(name="nt"))
     kernel32 = SimpleNamespace(
         CreateToolhelp32Snapshot=_FakeWinFunction(lambda *_args: 0),
         Process32FirstW=_FakeWinFunction(lambda *_args: False),
@@ -310,13 +312,14 @@ def test_windows_process_snapshot_rejects_invalid_handle(monkeypatch):
         CloseHandle=_FakeWinFunction(lambda *_args: True),
     )
     monkeypatch.setattr(
-        game_launcher.ctypes, "windll", SimpleNamespace(kernel32=kernel32),
+        game_launcher.ctypes, "windll", SimpleNamespace(kernel32=kernel32), raising=False,
     )
 
     assert game_launcher._windows_processes() == {}
 
 
 def test_largest_visible_window_uses_largest_matching_client(monkeypatch):
+    monkeypatch.setattr(game_launcher, "os", SimpleNamespace(name="nt"))
     visible = {1: False, 2: True, 3: True, 4: True, 5: True}
     iconic = {2: True}
     process_ids = {3: 999, 4: 51, 5: 52}
@@ -350,12 +353,13 @@ def test_largest_visible_window_uses_largest_matching_client(monkeypatch):
         EnumWindows=enum_windows,
     )
     monkeypatch.setattr(
-        game_launcher.ctypes, "windll", SimpleNamespace(user32=user32),
+        game_launcher.ctypes, "windll", SimpleNamespace(user32=user32), raising=False,
     )
     monkeypatch.setattr(
         game_launcher.ctypes,
         "WINFUNCTYPE",
         lambda *_args: lambda callback: callback,
+        raising=False,
     )
 
     assert game_launcher._largest_visible_window_pid({51, 52}) == 52

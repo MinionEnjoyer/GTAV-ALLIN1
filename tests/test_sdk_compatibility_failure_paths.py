@@ -13,10 +13,10 @@ from allin1 import sdk_manager as sdk
 from tests.test_sdk_manager import _sdk_archive
 
 
-@pytest.mark.skipif(os.name != "nt", reason="Windows user registry contract")
 @pytest.mark.parametrize("initial", [None, "C:\\Tools", "same"])
 @pytest.mark.parametrize("remove", [False, True])
 def test_sdk_cli_registration_uses_only_mock_user_registry(tmp_path, monkeypatch, initial, remove):
+    monkeypatch.setattr(sdk, "os", SimpleNamespace(**{**vars(os), "name": "nt"}))
     root = tmp_path / "SDK with spaces"
     value = str(root) if initial == "same" else initial
     written, broadcasts = [], []
@@ -42,15 +42,15 @@ def test_sdk_cli_registration_uses_only_mock_user_registry(tmp_path, monkeypatch
     assert (str(root) in os.environ["PATH"].split(os.pathsep)) is not remove
 
 
-@pytest.mark.skipif(os.name != "nt", reason="Windows environment broadcast contract")
 @pytest.mark.parametrize("fail", [False, True])
 def test_environment_broadcast_is_best_effort_without_calling_windows(tmp_path, monkeypatch, fail):
     import ctypes
+    monkeypatch.setattr(sdk, "os", SimpleNamespace(name="nt"))
     calls = []
     def send(*args):
         calls.append(args[:6])
         if fail: raise OSError("synthetic desktop unavailable")
-    monkeypatch.setattr(ctypes, "windll", SimpleNamespace(user32=SimpleNamespace(SendMessageTimeoutW=send)))
+    monkeypatch.setattr(ctypes, "windll", SimpleNamespace(user32=SimpleNamespace(SendMessageTimeoutW=send)), raising=False)
     sdk._broadcast_environment_change()
     assert calls == [(0xFFFF, 0x001A, 0, "Environment", 0x0002, 5000)]
 
