@@ -24,9 +24,8 @@ automatic-update trust checks remain enforced. See the [0.6.4 notes](RELEASE_NOT
 | ALLIN1 Online Content | GBAY catalogs, vehicles/weapons/gear, garages, properties, character systems and traffic |
 | ALLIN1 Experimental Gameplay | Optional NPC physics/police features; off by default |
 | Reactor V | Separately provisioned in-game renderer dependency; not the SDK viewport |
-| Suppressors Enhanced / weapon pack bundle / GTA VR / FPV | Independent projects, not ALLIN1 release components |
 
-These four projects are not bundled in the ALLIN1 Launcher or SDK and have separate releases and test gates. Generic package management, weapon authoring and GBAY integration remain ALLIN1 capabilities; supporting a package does not make it bundled content.
+Package support does not imply bundled content. Consult each release's included components and dependency requirements before installing.
 
 ## What is available
 
