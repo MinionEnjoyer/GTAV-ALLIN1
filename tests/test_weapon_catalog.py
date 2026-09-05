@@ -209,7 +209,7 @@ def test_managed_weapon_catalog_lifecycle(tmp_path, monkeypatch, preexisting_reg
 
 
 def test_reserved_weapon_snapshot_matches_generated_client_baseline():
-    import tomllib
+    from allin1.config import tomllib
     root = Path(__file__).resolve().parents[1]
     stock = {row["name"] for row in tomllib.loads(
         (root / "data/weapons.toml").read_text(encoding="utf-8")

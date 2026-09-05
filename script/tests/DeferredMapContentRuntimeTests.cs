@@ -436,6 +436,8 @@ namespace ALLIN1.Tests
                 TaskCreationOptions.RunContinuationsAsynchronously);
             var resumeYield = new TaskCompletionSource<bool>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
+            var contenderEntered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
             var bridge = new FakeBridge
             {
                 ActivateOnRequest = true,
@@ -453,17 +455,34 @@ namespace ALLIN1.Tests
                 resumeYield.Task.GetAwaiter().GetResult();
             };
 
-            Task<DeferredMapContentResult> owner = Task.Run(() =>
-                manager.Acquire(descriptor, 500, false, false));
-            Assert.Same(enteredYield.Task, await Task.WhenAny(
-                enteredYield.Task, Task.Delay(TimeSpan.FromSeconds(2))));
-            Task<DeferredMapContentResult> contender = Task.Run(() =>
-                manager.Acquire(descriptor, 500, false, false));
-
-            Task first = await Task.WhenAny(contender, Task.Delay(500));
-            bool completedBeforeOwnerResumed = ReferenceEquals(
-                first, contender);
-            resumeYield.TrySetResult(true);
+            // Dedicated workers prevent thread-pool starvation from being
+            // mistaken for contention on the lease monitor. Keep the same
+            // 500 ms bound, measured only after the contender actually starts.
+            Task<DeferredMapContentResult> owner = Task.Factory.StartNew(() =>
+                manager.Acquire(descriptor, 500, false, false),
+                CancellationToken.None, TaskCreationOptions.LongRunning,
+                TaskScheduler.Default);
+            Task<DeferredMapContentResult> contender = null;
+            bool completedBeforeOwnerResumed = false;
+            try
+            {
+                Assert.Same(enteredYield.Task, await Task.WhenAny(
+                    enteredYield.Task, Task.Delay(TimeSpan.FromSeconds(2))));
+                contender = Task.Factory.StartNew(() =>
+                {
+                    contenderEntered.TrySetResult(true);
+                    return manager.Acquire(descriptor, 500, false, false);
+                }, CancellationToken.None, TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default);
+                Assert.Same(contenderEntered.Task, await Task.WhenAny(
+                    contenderEntered.Task, Task.Delay(TimeSpan.FromSeconds(2))));
+                Task first = await Task.WhenAny(contender, Task.Delay(500));
+                completedBeforeOwnerResumed = ReferenceEquals(first, contender);
+            }
+            finally
+            {
+                resumeYield.TrySetResult(true);
+            }
             Assert.Same(owner, await Task.WhenAny(
                 owner, Task.Delay(TimeSpan.FromSeconds(2))));
             Assert.Same(contender, await Task.WhenAny(
