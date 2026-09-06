@@ -112,6 +112,7 @@ class LauncherService:
         self.launcher_release = None
         self.startup_monitor = None
         self.launch_target = None
+        self.diagnostic_session = None
 
     def config(self):
         if self.manager.config_path.is_file(): return Config.load(no_links(self.manager.config_path))
@@ -574,6 +575,7 @@ class LauncherService:
         if not self.allow_launch: raise ValueError("Launch authority is required")
         from allin1.health import scan_launch_hazards, consume_rpf_canary
         from allin1.game_launcher import launch_gta, observe_gta_launch
+        from allin1.runtime_diagnostic_session import RuntimeSession
         from allin1.garage_map_detection import refresh_garage_map_detection
         from allin1.reactor_bootstrap import inspect_reactor_installation, start_reactor_preloader, ReactorStartupMonitor
         game = self.game(config)
@@ -585,17 +587,49 @@ class LauncherService:
         installation = inspect_reactor_installation(game)
         self.startup_monitor = ReactorStartupMonitor(game) if installation.available else None
         preloader = None
+        trace = None
+        def record(kind, data):
+            if trace is not None:
+                try: trace.event(kind, data)
+                except (OSError, ValueError) as error: self.progress(None, f"Runtime diagnostic recording unavailable: {error}")
+        def pending(item):
+            self.progress(30, item.message)
+            record("launch_observation", serializable(item))
+            # Bind the first observable game process, not only a stable launch.
+            # The observer can then correlate crashes during the startup window.
+            if trace is not None and trace.process is None and item.process_id is not None:
+                try:
+                    if trace.observe(item.process_id): trace.watch(item.process_id)
+                except (OSError,ValueError,KeyError,TypeError,RuntimeError) as error:
+                    record("observer_error",{"reason":str(error)[:300]})
         try:
             preloader = start_reactor_preloader(game, installation=installation)
+            try:
+                trace = RuntimeSession(game, self.state)
+                self.diagnostic_session = trace
+            except (OSError, ValueError) as error:
+                self.progress(None, f"Runtime diagnostic capture unavailable: {error}")
             target = launch_gta(game)
             self.launch_target = target
             if self.startup_monitor: self.startup_monitor.mark_launch_requested()
             consume_rpf_canary(game, "allin1_smoke")
             self.progress(30, f"Waiting for {target.description}")
-            observation = observe_gta_launch(target, on_pending=lambda item: self.progress(30, item.message))
+            observation = observe_gta_launch(target, on_pending=pending)
+            record("launch_observation", serializable(observation))
             if observation.status != "success": raise RuntimeError(observation.message)
-            return {**serializable(observation), "startup_monitoring": self.startup_monitor is not None}
-        except Exception:
+            if trace is not None and observation.process_id is not None:
+                try:
+                    if trace.observe(observation.process_id): trace.watch(observation.process_id)
+                except (OSError, ValueError, KeyError, TypeError) as error:
+                    record("observer_error", {"reason":str(error)[:300]})
+            return {**serializable(observation), "startup_monitoring": self.startup_monitor is not None,
+                "diagnostic_session_id":trace.value["session_id"] if trace else None,
+                "diagnostic_session_path":str(trace.path) if trace else None}
+        except Exception as error:
+            if trace is not None:
+                trace.value["status"] = "launch_failed"
+                record("session_end", {"reason":str(error)[:500],"crash_cause":"not_established"})
+                trace.stop.set()
             self.startup_monitor = None
             if preloader is not None: preloader.stop()
             raise

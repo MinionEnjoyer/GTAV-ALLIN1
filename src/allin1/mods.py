@@ -1224,6 +1224,8 @@ class ModIntegrationService:
         repair_managed: bool = False,
     ) -> ModStatus:
         manifest.validate_payload()
+        from allin1 import sdk_provenance
+        sdk_lineage = sdk_provenance.read(manifest, self.edition)
         if self.edition not in manifest.editions:
             raise ValueError(f"{manifest.name} does not support GTA V {self.edition.title()}")
         requested_settings = dict(initial_settings or {})
@@ -1425,6 +1427,13 @@ class ModIntegrationService:
                 "files": records,
                 "rpf_entries": rpf_records,
             }
+            if sdk_lineage is not None:
+                # Recheck the envelope and actual copied bytes before the
+                # existing installation commit/receipt. Failures use the same
+                # established package rollback path, not a second installer.
+                if sdk_provenance.read(manifest, self.edition) != sdk_lineage:
+                    raise ValueError("SDK artifact changed during installation")
+                receipt["sdk_provenance"] = sdk_provenance.installed(sdk_lineage, manifest, records, rpf_records)
             self._write_receipt(receipt)
             registry = ExtensionRegistry(self.gta_path)
             if requested_settings:
