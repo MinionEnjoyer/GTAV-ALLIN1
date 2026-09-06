@@ -42,6 +42,14 @@ def test_every_workspace_has_read_only_happy_path(service, module):
     json.dumps(result)
 
 
+def test_setup_exposes_required_reactor_without_retired_backend_fields(service):
+    result = service.read('inspect', {'module': 'setup'})
+    assert result['reactor']['available'] is False
+    assert 'not installed' in result['reactor']['reason']
+    assert 'gbay_ui_backend' not in result['config']['script']
+    assert 'gbay_menu_enabled' not in result['config']['script']
+
+
 def test_local_settings_profiles_and_export_do_not_touch_game(service, tmp_path):
     config = serializable(service.config()); config["script"]["ui_scale"] = 1.25
     game = service.game(service.config()); before = service.tree_identity(game)

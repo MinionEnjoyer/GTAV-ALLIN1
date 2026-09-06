@@ -11,7 +11,8 @@ def catalog(manager, game, config):
             {field: value for field, value in installed[key].items() if field in _MANIFEST_FIELDS})
         entry = installed.get(key, {})
         settings = {setting.key: setting.default for setting in manifest.settings}
-        settings.update(entry.get("settings", {}))
+        settings.update({key: value for key, value in entry.get("settings", {}).items()
+                         if key in settings})
         settings.update(settings_from_config(manifest, config))
         rows.append({**manifest.to_dict(), "installed": key in installed,
                      "source": entry.get("source", "built-in"), "enabled": entry.get("enabled", False),

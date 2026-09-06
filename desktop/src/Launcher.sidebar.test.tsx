@@ -8,6 +8,7 @@ function fixture(): Client {
   return {
     request: vi.fn(async (operation, payload) => operation === "catalog"
       ? { desktop_version: "0.6.4" }
+      : operation === "review" ? { action: payload?.action, request: payload, target: "test", game_write: true }
       : { module: payload?.module, config: { general: { target_edition: "auto" } } }),
     selectPath: vi.fn(async () => null),
     onClose: vi.fn(async () => () => {}),
@@ -18,6 +19,21 @@ function fixture(): Client {
 }
 
 describe("SDK-style Launcher sidebar", () => {
+  it("binds the preview skip choice to the reviewed launch request", async () => {
+    const client = fixture();
+    render(<App client={client} />);
+    await screen.findByRole("heading", { name: "Select your game installation" });
+    expect(screen.queryByRole("checkbox", { name: /Skip new previews/ })).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Launch Story Mode" }));
+    const review = await screen.findByRole("region", { name: "Review changes" });
+    const toggle = within(review).getByRole("checkbox", { name: /Skip new previews/ });
+    expect(toggle).not.toBeChecked();
+    await userEvent.setup().click(within(review).getByRole("checkbox", { name: "I reviewed these changes" }));
+    await userEvent.setup().click(toggle);
+    expect(client.request).toHaveBeenCalledWith("review", expect.objectContaining({ action: "launch", skip_previews: true }));
+    expect(within(review).getByRole("checkbox", { name: "I reviewed these changes" })).not.toBeChecked();
+    expect(within(review).getByRole("button", { name: "Apply reviewed changes" })).toBeDisabled();
+  });
   it("uses the divider arrow to collapse and restore the navigation", async () => {
     const { container } = render(<App client={fixture()} />);
     await screen.findByRole("heading", { name: "Select your game installation" });

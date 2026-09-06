@@ -5,6 +5,7 @@ import Characters from "./Characters";
 import ContentSettings from "./ContentSettings";
 import PackageDraft from "./PackageDraft";
 import AssistantSettings from "./AssistantSettings";
+import OperationProgress from "./OperationProgress";
 import logo from "../../src/allin1/assets/ALLIN1.png";
 import { descriptions, EmptyState, ReviewDialog, WorkspaceIcon } from "./WorkspaceChrome";
 
@@ -61,6 +62,12 @@ export default function App({ client = nativeClient }: { client?: Client }) {
   const [launcherRelease, setLauncherRelease] = useState<RecordData | null>(null);
   const [handoff, setHandoff] = useState<RecordData | null>(null);
   const [settingsSearch, setSettingsSearch] = useState("");
+  const [skipPreviews, setSkipPreviews] = useState(false);
+  const [operationProgress, setOperationProgress] = useState<RecordData | null>(null);
+  const [cancellingLaunch, setCancellingLaunch] = useState(false);
+  const cancelFlight = useRef(false);
+  const activeAction = useRef("");
+  const backgroundFlight = useRef<Promise<void> | null>(null);
   const dirty =
     (!!config && JSON.stringify(config) !== baseline) ||
     Object.keys(draft).length > 0;
@@ -75,6 +82,10 @@ export default function App({ client = nativeClient }: { client?: Client }) {
     payload: RecordData,
     adopt: (result: RecordData) => void = () => {},
   ) => {
+    // The host serializes requests. Queue a user action behind the short status
+    // read rather than dropping the click or toggling global busy on every poll.
+    if (backgroundFlight.current) await backgroundFlight.current;
+    if (!mounted.current) return false;
     if (flight.current) return false;
     flight.current = true;
     setBusy(true);
@@ -146,7 +157,14 @@ export default function App({ client = nativeClient }: { client?: Client }) {
     void client
       .onProgress((progress) => {
         if (!mounted.current) return;
-        setNotice(`${progress.percentage}% · ${progress.message}`);
+        if (activeAction.current) setOperationProgress((previous) => ({
+          action: activeAction.current, message: progress.message,
+          cancellable: progress.cancellable === true,
+          launch_review_id: progress.launch_review_id,
+          percentage: typeof progress.percentage === "number" && Number.isFinite(progress.percentage)
+            ? Math.max(previous?.percentage ?? 0, Math.min(100, Math.max(0, progress.percentage)))
+            : undefined,
+        }));
         setActivity((rows) => [...rows.slice(-199), progress.message]);
         setActivityCleared(false);
       })
@@ -194,12 +212,23 @@ export default function App({ client = nativeClient }: { client?: Client }) {
   }, [collapsed]);
   useEffect(() => {
     if (!startup?.active) return;
+    let disposed = false;
     const timer = window.setInterval(() => {
-      if (!flight.current && !review)
-        void run("startup_status", {}, setStartup);
+      if (flight.current || backgroundFlight.current || live.current.locked) return;
+      const poll = client.request("startup_status", {}).then((result) => {
+        if (mounted.current && !disposed) setStartup((current) =>
+          JSON.stringify(current) === JSON.stringify(result) ? current : result);
+      }).catch((reason) => {
+        if (mounted.current && !disposed) setStartup((current) => ({
+          ...current, active: false, failure: `Startup monitoring interrupted: ${String(reason)}`,
+        }));
+      }).finally(() => {
+        if (backgroundFlight.current === poll) backgroundFlight.current = null;
+      });
+      backgroundFlight.current = poll;
     }, 1000);
-    return () => window.clearInterval(timer);
-  }, [startup?.active, review]);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, [startup?.active, client]);
   const navigate = (target: string) => {
     if (locked || Object.keys(draft).length) {
       setError(
@@ -248,7 +277,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
   });
   const beginReview = (action: string, values: RecordData = {}) => {
     if (locked) return;
-    void run("review", { action, config, ...values }, (loaded) => {
+    void run("review", { action, config, ...(action === "launch" ? { skip_previews: skipPreviews } : {}), ...values }, (loaded) => {
       setReview(loaded);
       setConfirmed(false);
     });
@@ -256,6 +285,11 @@ export default function App({ client = nativeClient }: { client?: Client }) {
   const apply = async () => {
     if (!review || !confirmed || flight.current) return;
     const current = review;
+    activeAction.current = current.action;
+    setCancellingLaunch(false);
+    cancelFlight.current = false;
+    setOperationProgress({ action: current.action, message: "Preparing reviewed action…" });
+    if (current.action === "launch") setStartup(null);
     let appliedConfig = config;
     const succeeded = await run(
       "apply",
@@ -265,10 +299,15 @@ export default function App({ client = nativeClient }: { client?: Client }) {
         confirmed: true,
       },
       (result) => {
-        setNotice(result.warning || `${title(result.action)} completed`);
+        const cancelled = result.result?.status === "cancelled";
+        setNotice(result.warning || (cancelled
+          ? "Launch cancelled. GTA was not started; completed previews remain cached."
+          : result.action === "launch"
+          ? "GTA started. Startup readiness is tracked separately below."
+          : `${title(result.action)} completed`));
         setActivity((rows) => [
           ...rows.slice(-199),
-          `${title(result.action)} completed`,
+          `${title(result.action)} ${cancelled ? "cancelled" : "completed"}`,
         ]);
         if (result.saved_config) {
           appliedConfig = result.saved_config;
@@ -297,9 +336,30 @@ export default function App({ client = nativeClient }: { client?: Client }) {
           });
       },
     );
+    activeAction.current = "";
+    setOperationProgress(null);
     setReview(null);
     setConfirmed(false);
+    setCancellingLaunch(false);
+    cancelFlight.current = false;
     if (succeeded) await inspect(module, appliedConfig);
+  };
+  const cancelLaunch = async () => {
+    if (cancelFlight.current || !busy || review?.action !== "launch" ||
+        !operationProgress?.cancellable || operationProgress.launch_review_id !== review.review_id) return;
+    cancelFlight.current = true;
+    setCancellingLaunch(true);
+    const version = generation.current;
+    try {
+      // This control request must bypass the ordinary serialized action queue.
+      // Keep the UI locked until apply returns its definitive terminal result.
+      await client.request("cancel_launch", { review_id: review.review_id });
+    } catch (reason) {
+      if (mounted.current && generation.current === version) {
+        setError(String(reason)); setCancellingLaunch(false);
+        cancelFlight.current = false;
+      }
+    }
   };
   const choose = async (kind: string, then: (path: string) => void) => {
     if (flight.current || review) return;
@@ -493,7 +553,30 @@ export default function App({ client = nativeClient }: { client?: Client }) {
           <ReviewDialog busy={busy} cancel={() => { setReview(null); setConfirmed(false); }}>
           <section className="review" aria-label="Review changes">
             <h2>Review {title(review.action)}</h2>
+            {operationProgress && <OperationProgress
+              heading={operationProgress.action === "launch" ? "Preparing GTA launch" : title(operationProgress.action)}
+              message={operationProgress.message}
+              percentage={operationProgress.percentage} />}
+            {busy && review.action === "launch" && <div className="launch-cancel-control">
+              <button onClick={() => void cancelLaunch()}
+                disabled={cancellingLaunch || !operationProgress?.cancellable || operationProgress.launch_review_id !== review.review_id}
+                aria-busy={cancellingLaunch}>
+                {cancellingLaunch ? "Cancelling launch…" : "Cancel launch"}
+              </button>
+              <p>{cancellingLaunch ? "Stopping preparation safely. Completed previews will be kept."
+                : "Cancel preparation before GTA starts. This does not close a running game."}</p>
+            </div>}
             <p>Target: {review.target}</p>
+            {review.action === "launch" && <label className="check">
+              <input type="checkbox" checked={!!review.request?.skip_previews} disabled={busy}
+                onChange={(event) => {
+                  const skip = event.target.checked;
+                  setSkipPreviews(skip);
+                  setConfirmed(false);
+                  void run("review", { ...review.request, action: "launch", config: review.request?.config ?? config,
+                    skip_previews: skip }, (loaded) => { setReview(loaded); setConfirmed(false); });
+                }} /> Skip new previews (reuse valid cached artwork)
+            </label>}
             {review.preservation && <p>{review.preservation}</p>}
             {review.migration && (
               <div aria-label="Preference import plan">
@@ -555,6 +638,10 @@ export default function App({ client = nativeClient }: { client?: Client }) {
               </h2>
               <p>{session.status?.valid_game ? "Dependency availability for the selected installation. This is not an in-game runtime check." : "Choose a Legacy or Enhanced folder below, then refresh to inspect it. Nothing will be installed without your review."}</p>
               <div className="status-grid">
+                <div>
+                  <span>Reactor V · Required</span>
+                  <strong>{session.reactor?.available ? "Available" : "Needs attention"}</strong>
+                </div>
                 {[
                   ["mod_installed", "ALLIN1 client"],
                   ["scripthookv_installed", "ScriptHookV"],
@@ -658,6 +745,9 @@ export default function App({ client = nativeClient }: { client?: Client }) {
             </fieldset>
             <fieldset>
               <legend>Installation options</legend>
+              {!session.reactor?.available && <p>
+                {session.reactor?.reason} GBAY requires Reactor V; use Install / Repair below.
+              </p>}
               <Field
                 name="download_reactor_dependency"
                 value={reactorConsent}
@@ -665,14 +755,15 @@ export default function App({ client = nativeClient }: { client?: Client }) {
                 change={setReactorConsent}
               />
               <Field
-                name="download_rpf_preview_loader"
+                name="download_content_rpf_loader"
                 value={rpfConsent}
                 disabled={locked}
                 change={setRpfConsent}
               />
               <p>
-                Optional dependency downloads are included only when selected
-                here.
+                Reactor V is required for GBAY on both editions. Allow its
+                verified download to install or repair a missing dependency.
+                Existing verified installations can be reused without downloading.
               </p>
             </fieldset>
             <div className="toolbar">
@@ -1056,7 +1147,14 @@ export default function App({ client = nativeClient }: { client?: Client }) {
         )}
       </main>
       <footer>
-        <span className="footer-status"><i className={`activity-dot ${error ? "error" : busy ? "busy" : config ? "ready" : ""}`} />{busy ? "Working…" : dirty ? "Unsaved changes" : error ? "Needs attention" : !config ? "Connecting…" : "Ready"}</span>
+        {!review && (operationProgress || startup) && <OperationProgress
+          heading={operationProgress ? "Launcher operation" : startup?.failure ? "Startup needs attention" : startup?.active ? "GTA startup" : startup?.ready?.includes("story") ? "Story Mode ready" : "Startup monitoring finished"}
+          message={operationProgress?.message ?? startup?.failure ?? (startup?.active
+            ? "Waiting for game services. See the readiness checklist above; GTA does not report a loading percentage."
+            : "You can return to the game. No further startup polling is running.")}
+          percentage={operationProgress?.percentage}
+          active={!!operationProgress || !!startup?.active} />}
+        <span className="footer-status"><i className={`activity-dot ${error || startup?.failure ? "error" : busy || startup?.active ? "busy" : config ? "ready" : ""}`} />{busy ? "Working…" : dirty ? "Unsaved changes" : error || startup?.failure ? "Needs attention" : !config ? "Connecting…" : startup?.active ? "Game starting…" : startup?.ready?.includes("story") ? "Story Mode ready" : "Ready"}</span>
         <div className="toolbar">
           <button
             disabled={locked || !config || !dirty || Object.keys(draft).length > 0}

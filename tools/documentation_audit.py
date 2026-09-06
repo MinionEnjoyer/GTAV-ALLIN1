@@ -53,8 +53,8 @@ def render_config():
         "Generated from `Config.default()` by `documentation_audit.py`; these are source defaults, not your saved settings.", "",
         "The UI and `Config.validate()` enforce accepted ranges and combinations. Unknown or invalid values are not a migration shortcut.",
         "Use reviewed profile/configuration actions; edit live game configuration only with the game closed and a recoverable backup.", "",
-        "The deprecated `gbay_menu_enabled` field exists for old configurations. New configurations use `gbay_ui_backend` (`auto`, `reactor`, `legacy`).",
-        "`auto` prefers Reactor with a compatibility fallback; `reactor` does not silently select the legacy renderer."]
+        "GBAY requires Reactor V on both GTA editions. Imported `gbay_menu_enabled` and `gbay_ui_backend` keys are retired; saving removes them without changing gameplay settings. Install/Repair requires a verified Reactor installation or explicit download approval.",
+        "There is no legacy menu fallback. Native character/camera previews remain available inside the Reactor customizer."]
     for section in fields(config):
         value = getattr(config, section.name)
         output += ["", f"## [{section.name}]", "", "| Field | Type | Default |", "| --- | --- | --- |"]

@@ -1421,19 +1421,8 @@ def scan_installation(gta_path: Path, *, expected_hashes: dict[str, str] | None 
     for duplicate in duplicates:
         issues.append(HealthIssue("duplicate_mod", "error", "Duplicate ALLIN1.dll may load twice.", str(duplicate)))
 
-    # ``gbay_menu_enabled`` is only a deprecated compatibility alias in the
-    # runtime.  An explicit ``auto`` or ``reactor`` backend still attempts to
-    # load the bridge when that alias is false, so health must validate the
-    # selected backend rather than treating the old flag as an off switch.
-    backend: str | None = None
-    config_path = scripts / "ALLIN1.toml"
-    if config_path.is_file():
-        try:
-            script_config = Config.load(config_path).script
-            backend = script_config.gbay_ui_backend
-        except (OSError, UnicodeError, ValueError, TypeError):
-            backend = None
-    if backend in {"auto", "reactor"}:
+    # Missing/malformed/retired configuration must not bypass the dependency.
+    if dll.is_file():
         reactor_files = (
             scripts / "ReactorV" / "ALLIN1.ReactorBridge.plugin",
             scripts / "ReactorV" / "RageWebUI.Core.dll",
@@ -1475,14 +1464,11 @@ def scan_installation(gta_path: Path, *, expected_hashes: dict[str, str] | None 
             if not contract_valid:
                 invalid.append(reactor_contract)
         if unavailable or invalid:
-            severity = "error" if backend == "reactor" else "warning"
             detail = unavailable[0] if unavailable else invalid[0]
             issues.append(HealthIssue(
-                "gbay_reactor_unavailable", severity,
-                "The Reactor V GBAY backend is incomplete or invalid; " +
-                ("install or repair Reactor V before launching."
-                 if backend == "reactor" else
-                 "GBAY will use its compatibility menu until Reactor V is repaired."),
+                "gbay_reactor_unavailable", "error",
+                "GBAY requires Reactor V. The dependency is incomplete or invalid; "
+                "use Install / Repair and allow the verified Reactor V download before launching.",
                 str(detail),
             ))
     for old_name in ("ALLIN1.asi", "ALLIN1-Launcher.exe"):

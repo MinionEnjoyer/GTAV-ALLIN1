@@ -88,3 +88,16 @@ def test_included_content_and_sdk_examples_are_discoverable_without_writes(servi
     assert all(not item["installed"] for item in inspection["builtin_packages"])
     assert any(item["name"] == "ALLIN1 Colored Smoke Grenades" for item in inspection["sdk_examples"])
     assert service.tree_identity(tmp_path) == before
+
+
+def test_retired_installed_preview_setting_is_not_presented_or_resaved(service, monkeypatch):
+    shutil.copytree(PROJECT / "content", service.project / "content")
+    monkeypatch.setattr(ExtensionRegistry, "inspect", lambda self: {"extensions": [{
+        "id": "allin1.online-content", "enabled": True, "source": "built-in",
+        "settings": {"preview_artwork": False, "free_purchases": True},
+    }]})
+    rows = service.inspect({"module": "mods"})["builtin_packages"]
+    online = next(row for row in rows if row["id"] == "allin1.online-content")
+    assert "preview_artwork" not in online["settings"]
+    assert not any(setting["key"] == "preview_artwork" for setting in online["schema_settings"])
+    assert "free_purchases" in online["settings"]

@@ -48,7 +48,7 @@ def resource_inputs(root: Path) -> dict[str, Path]:
     result = {}
     for path in collect_public_files(root):
         name = path.relative_to(root).as_posix()
-        if name in allowed or name.startswith(("data/", "content/", "sdk/examples/", "script/dist/", "tools/RpfPatcher/")):
+        if name in allowed or name.startswith(("data/", "content/", "sdk/examples/", "script/dist/", "tools/RpfPatcher/", "tools/WeaponPreview/")):
             if path.suffix.lower() not in {".cs", ".csproj", ".pdb"}:
                 result[name] = contained(root, name)
     unique_paths(list(result))
@@ -414,6 +414,8 @@ def build(root: Path, *, service_only: bool = False, pnpm: str = "pnpm", cargo: 
         if version != __version__:
             raise ValueError("Stale desktop version: " + name)
     before = source_identity(root)
+    from tools.build_weapon_preview_worker import build as build_preview_worker
+    build_preview_worker(root)
     folder = contained(root, "build/launcher-candidates/" + uuid.uuid4().hex)
     folder.mkdir(parents=True, exist_ok=False)
     app = folder / "app"

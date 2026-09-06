@@ -19,7 +19,7 @@ EXTERNAL = {"open_activity_folder", "open_launcher_release"}
 # Explicit action parameters: adding a backend action requires a contract entry.
 ACTION_FIELDS = {
     "save_config": [], "sync_config": [], "install": ["reactor_consent", "rpf_loader_consent"],
-    "uninstall": [], "launch": [], "save_profile": ["name"], "delete_profile": ["name"],
+    "uninstall": [], "launch": ["skip_previews"], "prepare_previews": ["skip_previews"], "save_profile": ["name"], "delete_profile": ["name"],
     "export_profile": ["name", "destination"], "import_preferences": ["source"],
     "package_install": ["source", "settings", "expected_state_sha256"],
     "package_enable": ["id"], "package_disable": ["id"], "package_uninstall": ["id"],
@@ -36,7 +36,7 @@ ACTION_FIELDS = {
 
 def schema(fields, required=()):
     types = {"config": "object", "settings": "object", "document": "object", "assistant_config": "object",
-             "confirmed": "boolean", "reactor_consent": "boolean", "rpf_loader_consent": "boolean"}
+             "confirmed": "boolean", "reactor_consent": "boolean", "rpf_loader_consent": "boolean", "skip_previews": "boolean"}
     return {"type": "object", "additionalProperties": False,
             "properties": {field: {"type": types.get(field, "string")} for field in fields}, "required": list(required)}
 
@@ -56,6 +56,7 @@ def contract():
                 for action, fields in sorted(ACTION_FIELDS.items())]}},
             {"name": "apply", "risk": "reviewed_mutation", "input_schema": schema(
                 ["review_id", "review_sha256", "confirmed"], ["review_id", "review_sha256", "confirmed"])},
+            {"name": "cancel_launch", "risk": "launch_control", "input_schema": schema(["review_id"], ["review_id"])},
         ],
         "actions": [{"name": name, "risk": "launch" if name == "launch" else "game_write" if name in GAME_ACTIONS else "external_open" if name == "sdk_open" else "local_write",
                      "requires_review": True, "parameters": ["config", *fields]}
@@ -64,6 +65,7 @@ def contract():
                            "review: action=package_install, source=<export>, settings=<reviewed settings>, expected_state_sha256=<inspection>",
                            "apply: review_id, review_sha256, confirmed=true", "inspect: module=mods"],
         "notes": ["Keep one agent-api process alive for review/apply; review IDs are session-local and single-use.",
+                  "During a launch apply, send cancel_launch with its review_id in the same agent-api session. A requested acknowledgement is not completion; wait for the apply result. Cancellation never terminates GTA after dispatch.",
                   "CLI review emits a 5-minute plan; CLI apply requires its approval hash and explicit write authority.",
                   "No automatic action replay. Reinspect files/receipts after an interrupted write.",
                   "Field schemas describe the transport; the shared service validates package, path, configuration and domain constraints."],
@@ -80,6 +82,13 @@ class LauncherAPI:
 
     @progress.setter
     def progress(self, value): self.service.progress = value
+
+    @property
+    def launch_cancellation(self): return self.service.launch_cancellation
+
+    def cancel_launch(self, payload):
+        self.validate(payload, ["review_id"])
+        return self.service.cancel_launch(payload)
 
     @staticmethod
     def validate(payload, fields):

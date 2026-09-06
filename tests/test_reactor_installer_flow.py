@@ -9,12 +9,13 @@ from allin1.config import Config
 from allin1 import reactor_dependency as dep
 
 
-@pytest.mark.parametrize("backend,approved", [("reactor", False), ("reactor", True), ("auto", True)])
+@pytest.mark.parametrize("backend,approved", [(backend, approved) for backend in ('reactor', 'legacy', 'auto') for approved in (False, True)])
 def test_dependency_rejection_precedes_all_game_mutation(tmp_path, monkeypatch, backend, approved):
     (tmp_path / "GTA5.exe").touch()
-    config = Config.default()
+    old_config = tmp_path / 'old-config.toml'
+    old_config.write_text(f"[script]\ngbay_menu_enabled = true\ngbay_ui_backend = '{backend}'\n")
+    config = Config.load(old_config)
     config.general.gta_path = str(tmp_path)
-    config.script.gbay_ui_backend = backend
     cleanup = Mock()
     deploy = Mock()
     monkeypatch.setattr(installer, "_clean_legacy_files", cleanup)
@@ -27,7 +28,7 @@ def test_dependency_rejection_precedes_all_game_mutation(tmp_path, monkeypatch, 
     deploy.assert_not_called()
     # conftest redirects the launcher's path cache into this same temporary
     # directory. Selecting a game may update that cache, not the game payload.
-    assert {p.name for p in tmp_path.iterdir()} <= {"GTA5.exe", ".gta_path"}
+    assert {p.name for p in tmp_path.iterdir()} <= {"GTA5.exe", ".gta_path", 'old-config.toml'}
     assert not (tmp_path / "scripts").exists()
 
 

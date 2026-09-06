@@ -83,7 +83,6 @@ export function Field({
     );
   const options: Record<string, string[]> = {
     target_edition: ["auto", "legacy", "enhanced"],
-    gbay_ui_backend: ["auto", "reactor", "legacy"],
   };
   const choices = descriptor?.choices ?? options[name];
   return (

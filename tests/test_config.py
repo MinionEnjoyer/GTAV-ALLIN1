@@ -139,7 +139,7 @@ def test_default_config():
     assert config.traffic.replacement_chance == 0.30
     assert config.vehicles.enable_all is True
     assert config.traffic.adaptive_performance is True
-    assert config.general.enable_rpf_previews is True
+    assert not hasattr(config.general, "enable_rpf_previews")
     assert config.script.ui_scale == 1.0
     assert config.script.seat_selector_key == "L"
     assert config.script.garages_always_accessible is False
@@ -147,8 +147,8 @@ def test_default_config():
     assert config.script.gta_iv_npc_physics is False
     assert config.script.gta_iv_npc_physics_debug is False
     assert config.script.enhanced_smoke_effects is False
-    assert config.script.gbay_menu_enabled is False
-    assert config.script.gbay_ui_backend == "auto"
+    assert not hasattr(config.script, "gbay_menu_enabled")
+    assert not hasattr(config.script, "gbay_ui_backend")
     assert config.script.controller_enabled is True
     assert config.script.controller_open_gbay == "FrontendRdown"
 
@@ -168,9 +168,6 @@ def test_save_round_trip_preserves_all_fields(tmp_path):
     config.vehicles.disabled_vehicles = ["oppressor2"]
     config.script.enable_logging = True
     config.script.enable_dlc_police = True
-    # The legacy browser is opt-in, and an explicit opt-in must survive save.
-    config.script.gbay_menu_enabled = True
-    config.script.gbay_ui_backend = "reactor"
     config.script.gbay_key = "F8"
     config.script.night_vision_key = "V"
     config.script.seat_selector_enabled = False
@@ -200,30 +197,39 @@ def test_legacy_config_without_gbay_menu_setting_keeps_browser_dormant(tmp_path)
 
     config = Config.load(path)
 
-    assert config.script.gbay_menu_enabled is False
-    assert config.script.gbay_ui_backend == "auto"
+    assert not hasattr(config.script, "gbay_menu_enabled")
+    assert not hasattr(config.script, "gbay_ui_backend")
 
 
-def test_legacy_enabled_gbay_config_selects_legacy_backend(tmp_path):
+@pytest.mark.parametrize("backend", ["auto", "legacy", "reactor"])
+def test_legacy_gbay_config_migrates_to_reactor_only(tmp_path, backend):
     path = tmp_path / "legacy-enabled.toml"
     path.write_text(
         "[general]\nfree_mode = false\n\n"
         "[traffic]\n\n[vehicles]\n\n"
-        "[script]\ngbay_menu_enabled = true\n",
+        f"[script]\ngbay_menu_enabled = true\ngbay_ui_backend = '{backend}'\ngbay_key = 'F8'\n",
         encoding="utf-8",
     )
 
     config = Config.load(path)
 
-    assert config.script.gbay_ui_backend == "legacy"
+    assert not hasattr(config.script, "gbay_ui_backend")
+    assert config.script.gbay_key == "F8"
+    config.save(path)
+    assert "gbay_ui_backend" not in path.read_text()
+    assert "gbay_menu_enabled" not in path.read_text()
 
 
-def test_unknown_gbay_ui_backend_is_rejected():
-    config = Config.default()
-    config.script.gbay_ui_backend = "browser"
-
-    with pytest.raises(ValueError, match="gbay_ui_backend"):
-        config.validate()
+def test_api_migrates_retired_fields_without_mutating_request():
+    from dataclasses import asdict
+    from allin1.desktop_service import configuration
+    request = asdict(Config.default())
+    request['general']['enable_rpf_previews'] = True
+    request['script'].update(gbay_menu_enabled=True, gbay_ui_backend='legacy')
+    migrated = configuration(request)
+    assert not hasattr(migrated.script, 'gbay_ui_backend')
+    assert not hasattr(migrated.general, 'enable_rpf_previews')
+    assert request['script']['gbay_ui_backend'] == 'legacy'
 
 
 def test_target_edition_validation_rejects_unknown_value():

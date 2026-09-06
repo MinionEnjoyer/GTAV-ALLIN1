@@ -30,14 +30,6 @@
           "config_key": "script.gbay_free_mode"
         },
         {
-          "key": "preview_artwork",
-          "label": "Archive-backed preview artwork",
-          "type": "boolean",
-          "default": true,
-          "description": "Show installed product and property artwork when the compatible preview loader is available.",
-          "config_key": "general.enable_rpf_previews"
-        },
-        {
           "key": "reduced_motion",
           "label": "Reduce menu transition motion",
           "type": "boolean",

@@ -76,6 +76,7 @@ namespace RpfPatcher
                     "  RpfPatcher.exe inspect      <gta_path> <rpf_path>\n" +
                     "  RpfPatcher.exe index-json   <gta_path> <rpf_path> <output_json>\n" +
                     "  RpfPatcher.exe extract-virtual-entry <gta_path> <rpf_path> <archive_path> <entry_path> <output>\n" +
+                    "  RpfPatcher.exe extract-virtual-entries <gta_path> <rpf_path> <manifest_tsv> <new_output_folder>\n" +
                     "  RpfPatcher.exe asset-xml    <input_asset> <output_xml> <asset_folder> [legacy|gen9]\n" +
                     "  RpfPatcher.exe audit-seats  <gta_path> <output_json> [output_cs]\n" +
                     "  RpfPatcher.exe build-ytd    <dds_folder> <output_ytd> [legacy|gen9]\n" +
@@ -134,6 +135,8 @@ namespace RpfPatcher
                 return IndexRpfJson(args);
             if (command == "extract-virtual-entry")
                 return ExtractVirtualEntry(args);
+            if (command == "extract-virtual-entries")
+                return ExtractVirtualEntries(args);
             if (command == "asset-xml")
                 return ExportAssetXml(args);
             if (command == "audit-seats")
@@ -1426,6 +1429,70 @@ namespace RpfPatcher
             return ExtractVirtualEntry(new[] {
                 "extract-virtual-entry", args[1], args[2], string.Empty, args[3], args[4]
             });
+        }
+
+        // Read many exact nested members with one archive/key scan. Used by
+        // pre-launch catalog discovery; never edits the source archive.
+        static int ExtractVirtualEntries(string[] args)
+        {
+            if (args.Length != 5) return 1;
+            try
+            {
+                string game = Path.GetFullPath(args[1]);
+                string source = Path.GetFullPath(args[2]);
+                string output = Path.GetFullPath(args[4]);
+                if (Directory.Exists(output) || File.Exists(output))
+                    throw new InvalidDataException("Batch output must be a new directory.");
+                if (new FileInfo(args[3]).Length > 1024 * 1024)
+                    throw new InvalidDataException("Batch manifest is too large.");
+                string[][] rows = File.ReadAllLines(args[3]).Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x.Split('\t')).ToArray();
+                if (rows.Length == 0 || rows.Length > 512 || rows.Any(x => x.Length != 3))
+                    throw new InvalidDataException("Invalid batch manifest.");
+                var outputs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (string[] row in rows)
+                {
+                    // Flat filenames keep extraction independent of filesystem
+                    // junctions, drive names and archive-authored directory trees.
+                    if (string.IsNullOrWhiteSpace(row[2]) || row[2] != Path.GetFileName(row[2]) ||
+                        row[2].IndexOfAny(new[] {'/', '\\', ':'}) >= 0 || row[2] == "." || row[2] == ".." ||
+                        !outputs.Add(row[2])) throw new InvalidDataException("Unsafe or duplicate output filename.");
+                }
+                bool gen9 = File.Exists(Path.Combine(game, "GTA5_Enhanced.exe"));
+                GTA5Keys.LoadFromPath(game, gen9, null);
+                var root = new RpfFile(source, Path.GetFileName(source));
+                root.ScanStructure(null, message => Console.Error.WriteLine(message));
+                var selected = new List<RpfFileEntry>();
+                foreach (string[] row in rows)
+                {
+                    RpfFile archive = FindVirtualArchive(root, row[0]);
+                    RpfFileEntry entry = archive == null ? null : FindExactFileEntry(archive, row[1]);
+                    if (entry == null) throw new InvalidDataException("Batch entry not found: " + row[0] + "::" + row[1]);
+                    selected.Add(entry);
+                }
+                Directory.CreateDirectory(output);
+                long total = 0;
+                for (int n = 0; n < selected.Count; n++)
+                {
+                    var entry = selected[n];
+                    byte[] data = entry.File.ExtractFile(entry);
+                    if (data == null || data.Length == 0 || data.Length > 128 * 1024 * 1024)
+                        throw new InvalidDataException("Invalid batch asset size.");
+                    total += data.Length;
+                    if (total > 512L * 1024 * 1024) throw new InvalidDataException("Batch byte limit exceeded.");
+                    if (entry is RpfResourceFileEntry resource)
+                        data = ResourceBuilder.AddResourceHeader(resource, ResourceBuilder.Compress(data));
+                    using (var stream = new FileStream(Path.Combine(output, rows[n][2]), FileMode.CreateNew, FileAccess.Write))
+                        stream.Write(data, 0, data.Length);
+                }
+                Console.WriteLine("Extracted " + selected.Count + " exact archive members.");
+                return 0;
+            }
+            catch (Exception error)
+            {
+                Console.Error.WriteLine("ERROR: Batch extraction failed: " + error.Message);
+                return 99;
+            }
         }
 
         static int ExtractVirtualEntry(string[] args)

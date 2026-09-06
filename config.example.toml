@@ -15,10 +15,7 @@ free_mode = false
 # Create backups of original game files before modifying.
 backup = true
 
-# Install GBAY thumbnails through a compatible RPF loader. Install / Repair can
-# offer the pinned official RageOpenV release after asking for permission.
-# Disable this only when troubleshooting a conflict; placeholders remain available.
-enable_rpf_previews = true
+# GBAY thumbnails are served by Reactor V; no preview RPF is installed.
 
 [traffic]
 # Add GTA Online vehicles to ambient traffic so they appear naturally.
@@ -61,15 +58,8 @@ enable_logging = false
 # Replace vanilla police cars with DLC police vehicles.
 enable_dlc_police = false
 
-# Deprecated compatibility alias for older configs. When gbay_ui_backend is
-# absent, true selects the Legacy browser. New configs should choose the backend
-# below; this value does not disable Auto or Reactor.
-gbay_menu_enabled = false
-
-# Choose the GBAY interface: auto prefers Reactor V and uses the compatibility
-# browser only if Reactor is unavailable; reactor requires Reactor; legacy uses
-# the original in-game browser. This does not change purchase or save rules.
-gbay_ui_backend = "auto"
+# GBAY requires Reactor V on both GTA editions. Install/Repair verifies this
+# shared dependency. Old backend settings are retired on configuration import.
 
 # Key to open the GBAY vehicle shop menu (default: F9).
 # Uses .NET Keys enum names: F1-F12, NumPad0-9, etc.

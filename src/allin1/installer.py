@@ -412,31 +412,24 @@ def install(
     from allin1.reactor_dependency import (
         ReactorInstallError, dependency_recorded, install_dependency,
     )
-    backend = config.script.gbay_ui_backend.strip().lower()
-    if backend != "legacy":
-        approved = reactor_consent is not None and reactor_consent(gta_path, enhanced)
-        if approved or dependency_recorded(gta_path, enhanced):
-            try:
-                validate_reactor_bridge_pair(_SCRIPT_DIST_DIR, expected_version=__version__)
-            except (OSError, ValueError) as exc:
-                raise ReactorInstallError(f"ALLIN1's Reactor bridge is incomplete: {exc}") from exc
-            result.reactor_provider = install_dependency(
-                gta_path, enhanced, allow_download=approved,
-                progress=lambda detail: _report_progress(progress, 8, detail),
-            )
-            result.reactor_ready = True
-        elif backend == "reactor":
-            raise ReactorInstallError(
-                "Reactor-only GBAY needs the shared Reactor V dependency. "
-                "Allow its verified download in Install/Repair (CLI: --reactor install). "
-                "No game files were changed."
-            )
-        else:
-            result.warnings.append(
-                "Reactor V installation was skipped. Existing Reactor files were left untouched; "
-                "the auto backend can use the compatibility menu. Allow the Reactor download "
-                "in Install/Repair to enable the shared dependency and GBAY presentation."
-            )
+    # Reactor is mandatory regardless of retired settings in an older config.
+    approved = reactor_consent is not None and reactor_consent(gta_path, enhanced)
+    if approved or dependency_recorded(gta_path, enhanced):
+        try:
+            validate_reactor_bridge_pair(_SCRIPT_DIST_DIR, expected_version=__version__)
+        except (OSError, ValueError) as exc:
+            raise ReactorInstallError(f"ALLIN1's Reactor bridge is incomplete: {exc}") from exc
+        result.reactor_provider = install_dependency(
+            gta_path, enhanced, allow_download=approved,
+            progress=lambda detail: _report_progress(progress, 8, detail),
+        )
+        result.reactor_ready = True
+    else:
+        raise ReactorInstallError(
+            "GBAY requires the shared Reactor V dependency. "
+            "Allow its verified download in Install/Repair (CLI: --reactor install). "
+            "No game files were changed."
+        )
 
     # --- Clean up files from previous ALLIN1 versions ---
     _clean_legacy_files(gta_path, result)
@@ -466,33 +459,21 @@ def install(
                 "Script Hook V and complete ScriptHookVDotNet v3 runtime. These are not bundled."
             )
 
-    # --- Detect optional RPF loader and offer a verified official download ---
-    reactor_catalog_artwork = (
-        config.script.gbay_ui_backend.strip().lower() == "reactor" or result.reactor_ready
-    )
-    legacy_rpf_previews = (
-        config.general.enable_rpf_previews and not reactor_catalog_artwork
-    )
+    # Reactor serves PNG artwork; no streamed preview DLC/loader is needed.
+    # Still detect the RPF loader for map and optional smoke diagnostics.
     result.openrpf_found = _check_openrpf(gta_path, enhanced)
-    if (
-        legacy_rpf_previews
-        and not result.openrpf_found
-        and rpf_loader_consent is not None
-        and rpf_loader_consent(gta_path, enhanced)
-    ):
-        _report_progress(progress, 34, "Installing optional RPF loader")
+    if (not result.openrpf_found and rpf_loader_consent is not None
+            and rpf_loader_consent(gta_path, enhanced)):
+        # Explicitly approved loader support remains available for map/add-on
+        # content, independently of Reactor's PNG-based menu artwork.
+        _report_progress(progress, 34, "Installing optional content RPF loader")
         try:
             dependency = install_recommended_rpf_loader(gta_path, enhanced)
             result.openrpf_found = _check_openrpf(gta_path, enhanced)
             result.rpf_loader_installed = bool(dependency.installed)
-            result.rpf_loader_provider = (
-                f"{dependency.provider} {dependency.version}"
-            )
+            result.rpf_loader_provider = f"{dependency.provider} {dependency.version}"
         except (RpfLoaderInstallError, OSError) as exc:
-            log.warning("Optional RPF loader installation failed: %s", exc)
-            result.warnings.append(
-                f"Optional RPF loader was not installed: {exc}"
-            )
+            result.warnings.append(f"Optional RPF loader was not installed: {exc}")
     _report_progress(progress, 38, "Dependencies verified")
 
     # Remove every historical copied-asset map layout before evaluating the
@@ -571,34 +552,11 @@ def install(
                 f"{bridge.label} map support was not installed: {exc}"
             )
 
-    if reactor_catalog_artwork:
-        # Reactor serves the curated PNG catalogs from its allowlisted asset
-        # root. Keeping the old streamed-texture DLC in parallel adds an RPF
-        # loader dependency and needless boot-time archive indexing without
-        # providing any artwork to the active presentation layer.
-        log.info(
-            "Reactor GBAY artwork is authoritative; removing legacy preview DLC"
-        )
-        _remove_preview_pack(gta_path)
-        _unpatch_dlclist_rpf(gta_path, "allin1_previews")
-    elif config.general.enable_rpf_previews:
-        if not result.openrpf_found:
-            result.warnings.append(
-                "RPF previews requested but no edition-compatible RPF loader was detected; "
-                "safe GBAY placeholders will be used."
-            )
-        else:
-            try:
-                result.rpf_previews_deployed = _deploy_preview_dlc(
-                    gta_path, result, progress=progress,
-                )
-            except Exception as exc:
-                log.error("Preview texture injection failed: %s", exc, exc_info=True)
-                result.warnings.append(f"Preview texture injection failed: {exc}")
-    else:
-        log.info("RPF previews disabled; using crash-safe GBAY placeholders")
-        _remove_preview_pack(gta_path)
-        _unpatch_dlclist_rpf(gta_path, "allin1_previews")
+    # Retire the old streamed artwork even when importing an older config
+    # that enabled it. Keep cleanup support, not a second presentation path.
+    log.info("Reactor GBAY artwork is authoritative; removing legacy preview DLC")
+    _remove_preview_pack(gta_path)
+    _unpatch_dlclist_rpf(gta_path, "allin1_previews")
 
     if config.script.enhanced_smoke_effects:
         stock_update = gta_path / "update" / "update.rpf"
@@ -865,17 +823,13 @@ def _deploy_script(gta_path: Path, config: Config | None = None) -> bool:
     reactor_contract_src = (
         _SCRIPT_DIST_DIR / REACTOR_BRIDGE_CONTRACT_FILENAME
     )
-    backend = (config.script.gbay_ui_backend if config is not None else "auto")
     if not reactor_bridge_src.is_file():
         message = (
             f"{REACTOR_BRIDGE_FILENAME} is missing from {_SCRIPT_DIST_DIR}; "
             "the Reactor V GBAY surface cannot be installed."
         )
-        if backend == "reactor":
-            log.error("%s The configured Reactor-only backend requires it.", message)
-            return False
-        if backend == "auto":
-            log.warning("%s GBAY will use the compatibility menu.", message)
+        log.error("%s Reactor V is required for GBAY.", message)
+        return False
     else:
         try:
             validate_reactor_bridge_pair(

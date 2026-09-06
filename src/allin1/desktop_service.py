@@ -23,12 +23,13 @@ from allin1.config import Config, GeneralConfig, TrafficConfig, VehiclesConfig, 
 from allin1.manager import ModManager
 from allin1.profiles import ProfileStore
 from allin1.release_paths import contained, no_links, strict_json, tree_files
+from allin1.launch_cancellation import LaunchCancellation, LaunchCancelled, checkpoint, commit_dispatch
 
 NAVIGATION = [("setup", "Setup"), ("gameplay", "Gameplay"), ("content", "Content"),
               ("input", "Input"), ("mods", "Packages"), ("characters", "Characters"),
               ("sdk", "SDK Manager"), ("activity", "Activity"), ("help", "Help Center")]
 GAME_ACTIONS = {"sync_config", "install", "uninstall", "package_install", "package_enable", "package_disable", "package_uninstall",
-                "content_settings", "content_enable", "content_disable", "characters_save", "garages_save", "garages_repair", "launch"}
+                "content_settings", "content_enable", "content_disable", "characters_save", "garages_save", "garages_repair", "launch", "prepare_previews"}
 LOCAL_ACTIONS = {"save_config", "save_profile", "delete_profile", "export_profile", "import_preferences", "save_content_preferences", "diagnostics", "sdk_install", "sdk_install_release", "sdk_uninstall", "sdk_open", "garages_export"}
 LOCAL_ACTIONS |= {"assistant_save", "assistant_install_archive", "assistant_install_qwen", "assistant_uninstall"}
 GEAR = {"ARMOR_SUPER_LIGHT", "ARMOR_LIGHT", "ARMOR_STANDARD", "ARMOR_HEAVY", "ARMOR_SUPER_HEAVY", "ARMOR_JUGGERNAUT",
@@ -54,7 +55,9 @@ def fingerprint(path):
     if not path.is_file(): raise ValueError(f"Expected a file: {path}")
     sha = hashlib.sha256()
     with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""): sha.update(chunk)
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            checkpoint()
+            sha.update(chunk)
     return sha.hexdigest()
 
 
@@ -64,6 +67,13 @@ def configuration(document):
     sections = {}
     for section, cls in types.items():
         values = document[section]
+        if section == "general" and isinstance(values, dict):
+            values = {k: v for k, v in values.items() if k != "enable_rpf_previews"}
+        if section == "script" and isinstance(values, dict):
+            # Accept saved v0.6.4 API documents while retiring UI selection.
+            # Copy rather than mutate the caller's request/review evidence.
+            values = {k: v for k, v in values.items()
+                      if k not in {"gbay_menu_enabled", "gbay_ui_backend"}}
         defaults = asdict(cls())
         if not isinstance(values, dict) or set(values) != set(defaults): raise ValueError(f"Invalid {section} configuration fields")
         for key, value in values.items():
@@ -113,6 +123,7 @@ class LauncherService:
         self.startup_monitor = None
         self.launch_target = None
         self.diagnostic_session = None
+        self.launch_cancellation = LaunchCancellation()
 
     def config(self):
         if self.manager.config_path.is_file(): return Config.load(no_links(self.manager.config_path))
@@ -203,6 +214,11 @@ class LauncherService:
         game = self.game(config, required=False)
         if module in {"setup", "gameplay", "input"}:
             result.update(status=serializable(self.manager.status(config)), profiles=self.profiles.list())
+            if module == "setup":
+                from allin1.reactor_bootstrap import inspect_reactor_installation
+                result['reactor'] = serializable(inspect_reactor_installation(game)) if game else {
+                    'available': False, 'reason': 'Select a GTA installation to check Reactor V.',
+                }
         elif module == "content":
             from allin1.desktop_content import catalog
             result["content"] = catalog(self.manager, game, config)
@@ -331,6 +347,8 @@ class LauncherService:
         game = self.game(config) if action in GAME_ACTIONS or action == "garages_export" else None
         if action in GAME_ACTIONS and not self.allow_game_writes: raise ValueError("This service does not have game-write authority")
         if action == "launch" and not self.allow_launch: raise ValueError("This service does not have launch authority")
+        if action in {"launch", "prepare_previews"} and type(request.get("skip_previews", False)) is not bool:
+            raise ValueError("skip_previews must be a boolean")
         evidence = {"action": action, "target": str(game or self.state), "game_write": action in GAME_ACTIONS,
                     "state_sha256": self.snapshot(request), "request": copy.deepcopy(request)}
         if action.startswith("sdk_"): evidence["target"] = str(self.sdk_root)
@@ -404,6 +422,28 @@ class LauncherService:
         return {"kind": "launcher_review", **evidence}
 
     def apply(self, payload):
+        stored = self.reviews.get(payload.get("review_id"))
+        if stored is None or stored[1]["request"]["action"] != "launch":
+            return self._apply(payload)
+        with self.launch_cancellation.preparing(payload["review_id"]):
+            try:
+                return self._apply(payload)
+            except LaunchCancelled:
+                event = {"schema_version": 1, "event": "launcher.action.cancelled", "action": "launch",
+                         "time": time.time(), "review_id": payload["review_id"]}
+                self.activity.append(event)
+                from allin1.desktop_activity import append
+                try: append(self.state, event)
+                except (OSError, ValueError): pass
+                self.progress(None, "Launch cancelled. GTA was not started; completed previews remain cached.")
+                return {"schema_version": 1, "kind": "launcher_cancelled", "action": "launch",
+                        "review_id": payload["review_id"], "result": {"status": "cancelled", "game_started": False},
+                        "saved_config": serializable(self.config())}
+
+    def cancel_launch(self, payload):
+        return self.launch_cancellation.request(payload)
+
+    def _apply(self, payload):
         if payload.get("confirmed") is not True: raise ValueError("Explicit confirmation is required")
         stored = self.reviews.pop(payload.get("review_id"), None)
         if stored is None: raise ValueError("Review expired or already used; review again")
@@ -411,13 +451,15 @@ class LauncherService:
         if time.monotonic() - created >= 300 or payload.get("review_sha256") != review["review_sha256"]:
             raise ValueError("Review expired or does not match")
         request = review["request"]
+        if request["action"] == "launch": self.progress(None, "Checking reviewed launch")
+        checkpoint()
         if self.snapshot(request) != review["state_sha256"]: raise ValueError("Files changed after review; review again")
         config = configuration(request["config"]) if "config" in request else self.config()
         action = request["action"]
         if action in GAME_ACTIONS:
             if not self.allow_game_writes: raise ValueError("Game-write authority is required")
             self.require_closed()
-        self.progress(0, f"Starting {action.replace('_', ' ')}")
+        self.progress(None if action in {"launch", "prepare_previews"} else 0, f"Starting {action.replace('_', ' ')}")
         result = self.perform(request, config)
         receipt = {"schema_version": 1, "kind": "launcher_applied", "action": action,
                    "review_id": review["review_id"], "review_sha256": review["review_sha256"], "result": serializable(result)}
@@ -432,7 +474,7 @@ class LauncherService:
             # The requested mutation already succeeded. A journal failure must
             # not imply that retrying the mutation is safe or necessary.
             receipt["warning"] = "Action completed, but activity could not be saved: " + str(error)
-        self.progress(100, f"Completed {action.replace('_', ' ')}")
+        self.progress(None if action in {"launch", "prepare_previews"} else 100, f"Completed {action.replace('_', ' ')}")
         return receipt
 
     @staticmethod
@@ -568,10 +610,19 @@ class LauncherService:
             command = [str(status.executable)]
             if status.executable.name == SHELL: command.extend(["--workspace", request.get("workspace", "linker")])
             return {"pid": subprocess.Popen(command, cwd=status.root, **hidden_process_options()).pid}
-        if action == "launch": return self.launch(config)
+        if action == "prepare_previews": return self.prepare_previews(config, skip=request.get("skip_previews", False))
+        if action == "launch": return self.launch(config, skip_previews=request.get("skip_previews", False))
         raise ValueError("Unsupported Launcher action")
 
-    def launch(self, config):
+    def prepare_previews(self, config, *, skip=False):
+        from allin1.prelaunch_previews import prepare
+        try:
+            return prepare(self.project, self.game(config), self.state/"weapon-previews", skip=skip, progress=self.progress)
+        except (OSError, ValueError, RuntimeError) as error:
+            self.progress(None, f"Optional weapon previews unavailable: {error}")
+            return {"status":"unavailable", "errors":[{"reason":str(error)}]}
+
+    def launch(self, config, *, skip_previews=False):
         if not self.allow_launch: raise ValueError("Launch authority is required")
         from allin1.health import scan_launch_hazards, consume_rpf_canary
         from allin1.game_launcher import launch_gta, observe_gta_launch
@@ -579,11 +630,20 @@ class LauncherService:
         from allin1.garage_map_detection import refresh_garage_map_detection
         from allin1.reactor_bootstrap import inspect_reactor_installation, start_reactor_preloader, ReactorStartupMonitor
         game = self.game(config)
+        checkpoint()
+        self.progress(None, "Checking launch safety and enabled packages")
         hazards = [i.message for i in scan_launch_hazards(game) if i.severity == "error"]
         if hazards: raise ValueError("Launch blocked: " + "; ".join(hazards))
+        checkpoint()
         self.manager.save_config(config)
+        checkpoint()
+        previews = self.prepare_previews(config, skip=skip_previews)
+        checkpoint()
+        self.progress(None, "Checking garage map data")
         try: refresh_garage_map_detection(game)
-        except (OSError, RuntimeError, ValueError) as error: self.progress(15, f"Garage map refresh: {error}")
+        except (OSError, RuntimeError, ValueError) as error: self.progress(None, f"Garage map refresh: {error}")
+        checkpoint()
+        self.progress(None, "Preparing Reactor startup monitoring")
         installation = inspect_reactor_installation(game)
         self.startup_monitor = ReactorStartupMonitor(game) if installation.available else None
         preloader = None
@@ -593,7 +653,7 @@ class LauncherService:
                 try: trace.event(kind, data)
                 except (OSError, ValueError) as error: self.progress(None, f"Runtime diagnostic recording unavailable: {error}")
         def pending(item):
-            self.progress(30, item.message)
+            self.progress(None, item.message)
             record("launch_observation", serializable(item))
             # Bind the first observable game process, not only a stable launch.
             # The observer can then correlate crashes during the startup window.
@@ -604,16 +664,19 @@ class LauncherService:
                     record("observer_error",{"reason":str(error)[:300]})
         try:
             preloader = start_reactor_preloader(game, installation=installation)
+            checkpoint()
             try:
                 trace = RuntimeSession(game, self.state)
                 self.diagnostic_session = trace
             except (OSError, ValueError) as error:
                 self.progress(None, f"Runtime diagnostic capture unavailable: {error}")
+            commit_dispatch()
+            self.progress(None, "Requesting GTA launch — launch preparation is complete")
             target = launch_gta(game)
             self.launch_target = target
             if self.startup_monitor: self.startup_monitor.mark_launch_requested()
             consume_rpf_canary(game, "allin1_smoke")
-            self.progress(30, f"Waiting for {target.description}")
+            self.progress(None, f"Waiting for {target.description}")
             observation = observe_gta_launch(target, on_pending=pending)
             record("launch_observation", serializable(observation))
             if observation.status != "success": raise RuntimeError(observation.message)
@@ -622,12 +685,12 @@ class LauncherService:
                     if trace.observe(observation.process_id): trace.watch(observation.process_id)
                 except (OSError, ValueError, KeyError, TypeError) as error:
                     record("observer_error", {"reason":str(error)[:300]})
-            return {**serializable(observation), "startup_monitoring": self.startup_monitor is not None,
+            return {**serializable(observation), "startup_monitoring": self.startup_monitor is not None, "weapon_previews": previews,
                 "diagnostic_session_id":trace.value["session_id"] if trace else None,
                 "diagnostic_session_path":str(trace.path) if trace else None}
         except Exception as error:
             if trace is not None:
-                trace.value["status"] = "launch_failed"
+                trace.value["status"] = "launch_cancelled" if isinstance(error, LaunchCancelled) else "launch_failed"
                 record("session_end", {"reason":str(error)[:500],"crash_cause":"not_established"})
                 trace.stop.set()
             self.startup_monitor = None

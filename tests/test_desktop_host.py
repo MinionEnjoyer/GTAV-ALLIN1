@@ -137,6 +137,56 @@ def test_dispatch_progress_and_incidental_stdout_remain_separate(capsys):
     assert "human diagnostic" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("agent", [False, True])
+def test_live_stdio_can_cancel_busy_apply_and_next_request_is_clean(agent):
+    from queue import Queue
+    from threading import Thread, Event
+    from allin1.launch_cancellation import LaunchCancellation, LaunchCancelled, checkpoint
+    from allin1.launcher_api import LauncherAPI
+    rows = Queue()
+    class Output:
+        def write(self, line): rows.put(json.loads(line))
+        def flush(self): pass
+    class Service:
+        launch_cancellation = LaunchCancellation()
+        def cancel_launch(self, payload): return self.launch_cancellation.request(payload)
+        def apply(self, payload):
+            with self.launch_cancellation.preparing(payload["review_id"]):
+                self.progress(None, "Preparing test launch")
+                try:
+                    for _ in range(500):
+                        checkpoint()
+                        Event().wait(.01)
+                    raise AssertionError("Cancel was blocked behind the apply")
+                except LaunchCancelled:
+                    return {"result": {"status": "cancelled", "game_started": False}}
+        def read(self, operation, payload): return {"next_request": "clean"}
+    service = Service()
+    reader_fd, writer_fd = os.pipe()
+    with os.fdopen(reader_fd, "r", encoding="utf-8") as incoming, os.fdopen(writer_fd, "w", encoding="utf-8") as writer:
+        host = Thread(target=serve, args=(LauncherAPI(service, allow_writes=True) if agent else service, incoming, Output()))
+        host.start()
+        def send(operation, payload=None):
+            writer.write(json.dumps(envelope(operation, payload))+"\n"); writer.flush()
+        try:
+            send("apply", {"review_id": "launch-one", "review_sha256": "test", "confirmed": True})
+            ready = rows.get(timeout=5)
+            assert ready["kind"] == "progress" and ready["payload"]["cancellable"]
+            send("cancel_launch", {"review_id": "launch-one"})
+            results = {row["request_id"]: row for row in (rows.get(timeout=5), rows.get(timeout=5))}
+            assert results["cancel_launch"]["payload"]["accepted"] is True
+            assert results["apply"]["payload"]["result"]["status"] == "cancelled"
+            send("health")
+            assert rows.get(timeout=5)["payload"] == {"next_request": "clean"}
+            send("cancel_launch", {"review_id": "launch-one"})
+            assert rows.get(timeout=5)["payload"]["status"] == "not_active"
+        finally:
+            service.cancel_launch({"review_id": "launch-one"})
+            send("shutdown")
+            host.join(timeout=7)
+        assert not host.is_alive()
+
+
 @pytest.mark.parametrize("payload", [{"huge": "x" * (4 * 1024**2)}, {"invalid": float("nan")}], ids=["response-bound", "nonfinite-response"])
 def test_invalid_service_output_returns_a_protocol_error(payload):
     class Service:

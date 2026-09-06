@@ -82,6 +82,7 @@ def _release_tree(tmp_path: Path) -> Path:
         "mods/README.md": b"mods",
         "mods/examples/script/mod.toml.example": b"example",
         "tools/RpfPatcher/RpfPatcher.exe": b"patcher",
+        "tools/WeaponPreview/WeaponPreview.exe": b"preview-worker",
         "tools/RpfPatcher/CodeWalker.Core.dll": b"codewalker",
         "tools/RpfPatcher/RpfPatcher.pdb": b"symbols",
         "tools/RpfPatcher/Program.cs": b"source",
@@ -122,6 +123,7 @@ def test_public_file_collection_is_explicit_and_excludes_sources(tmp_path):
     assert "data/story_vehicles.json" in names
     assert "data/vehicle_grounding.json" in names
     assert "tools/RpfPatcher/RpfPatcher.exe" in names
+    assert "tools/WeaponPreview/WeaponPreview.exe" in names
     assert "tools/RpfPatcher/strings.txt" not in names
     assert "mods/README.md" in names
     assert not any(name.startswith("mods/realistic-suppressors/") for name in names)

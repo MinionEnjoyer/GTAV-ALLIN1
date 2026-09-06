@@ -159,6 +159,11 @@ def collect_public_files(root: Path, *, require_toolchain: bool = True) -> list[
             )
         )
 
+    preview_worker = root / "tools" / "WeaponPreview" / "WeaponPreview.exe"
+    if require_toolchain and (not preview_worker.is_file() or preview_worker.stat().st_size == 0):
+        raise FileNotFoundError("WeaponPreview.exe is missing; run tools/build_weapon_preview_worker.py before packaging")
+    if preview_worker.is_file():
+        files.append(preview_worker)
     unique = {path.resolve(): path for path in files}
     ordered = sorted(unique.values(), key=lambda path: path.relative_to(root).as_posix())
     for path in ordered:

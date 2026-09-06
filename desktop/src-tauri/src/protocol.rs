@@ -28,7 +28,8 @@ pub fn decode(line: &str, request_id: &str) -> Result<Response, String> {
         "progress" => {
             if row.payload["schema_version"].as_u64() != Some(1)
                 || row.payload["event"] != "launcher.progress"
-                || !row.payload["percentage"].as_u64().is_some_and(|value| value <= 100)
+                || !row.payload.get("percentage").is_some_and(|value|
+                    value.is_null() || value.as_u64().is_some_and(|number| number <= 100))
                 || !row.payload["message"].is_string() {
                 return Err("Invalid Launcher progress schema".into());
             }
@@ -73,6 +74,14 @@ pub fn next_frame(receive: &Receiver<Result<String, String>>, timeout: Duration)
     receive.recv_timeout(timeout).map_err(|e| format!("Launcher service connection interrupted: {e}"))?
 }
 
+pub fn poll_frame(receive: &Receiver<Result<String, String>>, timeout: Duration) -> Result<Option<String>, String> {
+    match receive.recv_timeout(timeout) {
+        Ok(frame) => frame.map(Some),
+        Err(mpsc::RecvTimeoutError::Timeout) => Ok(None),
+        Err(error) => Err(format!("Launcher service connection interrupted: {error}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,6 +96,7 @@ mod tests {
         assert!(matches!(decode(&frame("result", json!({"saved":true})), "one"), Ok(Response::Result(_))));
         assert!(matches!(decode(&frame("error", json!({"message":"denied"})), "one"), Ok(Response::Error(_))));
         assert!(matches!(decode(&frame("progress", json!({"schema_version":1,"event":"launcher.progress","percentage":50,"message":"staged"})), "one"), Ok(Response::Progress(_))));
+        assert!(matches!(decode(&frame("progress", json!({"schema_version":1,"event":"launcher.progress","percentage":null,"message":"Checking sources"})), "one"), Ok(Response::Progress(_))));
     }
     #[test]
     fn rejects_unrelated_ambiguous_or_malformed_envelopes() {
@@ -109,6 +119,7 @@ mod tests {
             json!({"schema_version":1,"event":"launcher.progress","percentage":101,"message":"bad"}),
             json!({"schema_version":1,"event":"launcher.progress","percentage":-1,"message":"bad"}),
             json!({"schema_version":1,"event":"launcher.progress","percentage":0.5,"message":"bad"}),
+            json!({"schema_version":1,"event":"launcher.progress","message":"missing percentage"}),
         ] { assert!(decode(&frame("progress", payload), "one").is_err()); }
     }
     #[test]

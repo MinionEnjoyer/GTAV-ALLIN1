@@ -25,7 +25,7 @@ def _write_pe(path, *, size=4096, machine=0x8664):
     path.write_bytes(payload)
 
 
-def _game(tmp_path, enhanced=False):
+def _game(tmp_path, enhanced=False, reactor=True):
     (tmp_path / ("GTA5_Enhanced.exe" if enhanced else "GTA5.exe")).touch()
     _write_pe(tmp_path / "ScriptHookV.dll")
     for name in health.SHVDN_REQUIRED_BINARIES:
@@ -35,6 +35,15 @@ def _game(tmp_path, enhanced=False):
     scripts = tmp_path / "scripts"; scripts.mkdir()
     _write_pe(scripts / "ALLIN1.dll")
     (scripts / "ALLIN1.version").write_text("0.2.0\n")
+    if reactor:
+        root = scripts / 'ReactorV'
+        root.mkdir()
+        for name in ('ALLIN1.ReactorBridge.plugin', 'RageWebUI.Script.dll', 'RageWebUI.Core.dll'):
+            _write_pe(root / name)
+        (root / 'ReactorV.contract.json').write_text(json.dumps({
+            'schema_version': 1, 'product': 'reactor-v', 'extension_api_version': 1,
+            'capabilities': ['story.menu-presentation', 'story.menu-bound-parameters'],
+        }))
     return scripts
 
 
@@ -47,8 +56,8 @@ def test_healthy_install_and_checksum(tmp_path):
     assert sha256_file(scripts / "ALLIN1.dll") == expected
 
 
-def test_health_blocks_missing_reactor_only_backend_and_warns_for_auto(tmp_path):
-    scripts = _game(tmp_path)
+def test_health_blocks_missing_reactor_even_with_old_auto_backend(tmp_path):
+    scripts = _game(tmp_path, reactor=False)
     config = (
         "[general]\n"
         "gta_path = 'auto'\n"
@@ -72,18 +81,18 @@ def test_health_blocks_missing_reactor_only_backend_and_warns_for_auto(tmp_path)
     report = scan_installation(tmp_path)
     issue = next(item for item in report.issues
                  if item.code == "gbay_reactor_unavailable")
-    assert issue.severity == "warning"
-    assert report.launch_safe is True
+    assert issue.severity == "error"
+    assert report.launch_safe is False
 
 
 @pytest.mark.parametrize(
     ("backend", "severity", "launch_safe"),
-    (("reactor", "error", False), ("auto", "warning", True)),
+    (("reactor", "error", False), ("auto", "error", False)),
 )
 def test_health_checks_selected_reactor_backend_when_legacy_alias_is_disabled(
     tmp_path, backend, severity, launch_safe,
 ):
-    scripts = _game(tmp_path)
+    scripts = _game(tmp_path, reactor=False)
     (scripts / "ALLIN1.toml").write_text(
         "[general]\n[traffic]\n[vehicles]\n[script]\n"
         "gbay_menu_enabled = false\n"
@@ -99,8 +108,8 @@ def test_health_checks_selected_reactor_backend_when_legacy_alias_is_disabled(
     assert report.launch_safe is launch_safe
 
 
-def test_health_does_not_require_reactor_for_legacy_backend(tmp_path):
-    scripts = _game(tmp_path)
+def test_health_requires_reactor_for_retired_legacy_backend(tmp_path):
+    scripts = _game(tmp_path, reactor=False)
     (scripts / "ALLIN1.toml").write_text(
         "[general]\n[traffic]\n[vehicles]\n[script]\n"
         "gbay_menu_enabled = false\n"
@@ -110,14 +119,25 @@ def test_health_does_not_require_reactor_for_legacy_backend(tmp_path):
 
     report = scan_installation(tmp_path)
 
-    assert not any(
+    assert any(
         issue.code == "gbay_reactor_unavailable" for issue in report.issues
     )
-    assert report.launch_safe is True
+    assert report.launch_safe is False
+
+
+@pytest.mark.parametrize('content', [None, '[script]\ngbay_menu_enabled = true\n', '[invalid'])
+def test_missing_or_invalid_config_cannot_bypass_reactor(tmp_path, content):
+    scripts = _game(tmp_path, reactor=False)
+    if content is not None:
+        (scripts / 'ALLIN1.toml').write_text(content)
+    report = scan_installation(tmp_path)
+    assert not report.launch_safe
+    assert any(issue.code == 'gbay_reactor_unavailable' and issue.severity == 'error'
+               for issue in report.issues)
 
 
 def test_health_accepts_anycpu_reactor_core_with_x64_script_and_bridge(tmp_path):
-    scripts = _game(tmp_path)
+    scripts = _game(tmp_path, reactor=False)
     reactor = scripts / "ReactorV"
     reactor.mkdir()
     _write_pe(reactor / "ALLIN1.ReactorBridge.plugin")
@@ -148,7 +168,7 @@ def test_health_accepts_anycpu_reactor_core_with_x64_script_and_bridge(tmp_path)
 
 
 def test_health_blocks_older_reactor_contract_without_menu_presentation(tmp_path):
-    scripts = _game(tmp_path)
+    scripts = _game(tmp_path, reactor=False)
     reactor = scripts / "ReactorV"
     reactor.mkdir()
     _write_pe(reactor / "ALLIN1.ReactorBridge.plugin")

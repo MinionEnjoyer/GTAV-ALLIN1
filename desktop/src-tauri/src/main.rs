@@ -2,6 +2,7 @@
 use serde_json::{json, Value};
 mod protocol;
 mod package_probe;
+mod launch_cancel;
 use std::io::{BufReader, Read, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::Receiver;
@@ -30,9 +31,9 @@ impl Sidecar {
         self.output.take();
     }
 }
-struct Broker { process: Mutex<Option<Sidecar>>, busy: AtomicBool, uncertain: AtomicBool, write_pending: AtomicBool, closing: AtomicBool, ready: AtomicBool, sequence: AtomicU64 }
+struct Broker { process: Mutex<Option<Sidecar>>, busy: AtomicBool, uncertain: AtomicBool, write_pending: AtomicBool, closing: AtomicBool, ready: AtomicBool, sequence: AtomicU64, launch_cancel: launch_cancel::LaunchCancel }
 impl Broker {
-    fn new() -> Self { Self { process: Mutex::new(None), busy: AtomicBool::new(false), uncertain: AtomicBool::new(false), write_pending: AtomicBool::new(false), closing: AtomicBool::new(false), ready: AtomicBool::new(false), sequence: AtomicU64::new(1) } }
+    fn new() -> Self { Self { process: Mutex::new(None), busy: AtomicBool::new(false), uncertain: AtomicBool::new(false), write_pending: AtomicBool::new(false), closing: AtomicBool::new(false), ready: AtomicBool::new(false), sequence: AtomicU64::new(1), launch_cancel: Default::default() } }
     fn start(&self, app: &tauri::AppHandle) -> Result<Sidecar, String> {
         let (mut command, project) = if cfg!(debug_assertions) {
             let project = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap().to_path_buf();
@@ -92,18 +93,56 @@ impl Broker {
         let result = (|| {
         let input = service.input.as_mut().ok_or("Launcher service is finishing an interrupted request")?;
         input.write_all(&encoded).and_then(|_| input.flush()).map_err(|e| e.to_string())?;
+        let cancel_id = format!("{id}-cancel");
+        let mut cancel_pending = false;
+        let mut terminal = None;
+        let mut last_frame = std::time::Instant::now();
         loop {
-            let line = protocol::next_frame(service.output.as_ref().ok_or("Launcher response channel detached")?, protocol::RESPONSE_TIMEOUT).map_err(|error| {
+            if let Some(review) = self.launch_cancel.take() {
+                let control = json!({"schema_version":1,"request_id":cancel_id,"operation":"cancel_launch","payload":{"review_id":review}});
+                writeln!(input, "{control}").and_then(|_| input.flush()).map_err(|e| e.to_string())?;
+                cancel_pending = true;
+            }
+            let frame = protocol::poll_frame(service.output.as_ref().ok_or("Launcher response channel detached")?, std::time::Duration::from_millis(100)).map_err(|error| {
                 let detail = service.diagnostics.lock().map(|bytes| String::from_utf8_lossy(&bytes).trim().to_string()).unwrap_or_default();
                 if detail.is_empty() { error } else { format!("{error}\nService diagnostic: {detail}") }
             })?;
-            match protocol::decode(&line, &id)? {
-                protocol::Response::Progress(payload) => { let _ = app.emit("launcher-progress", payload); }
-                protocol::Response::Result(payload) => { self.uncertain.store(false, Ordering::Release); self.write_pending.store(false, Ordering::Release); return Ok(payload); }
-                protocol::Response::Error(message) => { self.uncertain.store(false, Ordering::Release); self.write_pending.store(false, Ordering::Release); return Err(message); }
+            let Some(line) = frame else {
+                if last_frame.elapsed() >= protocol::RESPONSE_TIMEOUT { return Err("Launcher service response timed out".into()); }
+                continue;
+            };
+            last_frame = std::time::Instant::now();
+            let identity: Value = serde_json::from_str(&line).map_err(|e| e.to_string())?;
+            if cancel_pending && identity["request_id"] == cancel_id {
+                match protocol::decode(&line, &cancel_id)? {
+                    protocol::Response::Result(_) | protocol::Response::Error(_) => cancel_pending = false,
+                    _ => return Err("Unexpected cancellation response".into()),
+                }
+            } else {
+                match protocol::decode(&line, &id)? {
+                    protocol::Response::Progress(payload) => {
+                        if operation == "apply" { self.launch_cancel.update(&payload); }
+                        let _ = app.emit("launcher-progress", payload);
+                    }
+                    response => { self.launch_cancel.clear(); terminal = Some(response); }
+                }
+            }
+            // Drain the control acknowledgement even if the cancelled apply
+            // finishes first, so it cannot contaminate the next request.
+            if !cancel_pending {
+                if let Some(response) = terminal.take() {
+                    self.uncertain.store(false, Ordering::Release);
+                    self.write_pending.store(false, Ordering::Release);
+                    return match response {
+                        protocol::Response::Result(payload) => Ok(payload),
+                        protocol::Response::Error(message) => Err(message),
+                        _ => unreachable!(),
+                    };
+                }
             }
         }
         })();
+        self.launch_cancel.clear();
         if result.is_err() && self.uncertain.load(Ordering::Acquire) {
             service.finish_without_more_requests();
         }
@@ -142,6 +181,7 @@ impl Broker {
 
 #[tauri::command]
 async fn launcher_request(app: tauri::AppHandle, broker: State<'_, Arc<Broker>>, operation: String, payload: Value) -> Result<Value, String> {
+    if operation == "cancel_launch" { return broker.launch_cancel.request(&payload); }
     if operation != "reconnect_service" && !OPERATIONS.contains(&operation.as_str()) { return Err("Unknown Launcher operation".into()); }
     if broker.busy.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_err() { return Err("Another Launcher operation is running".into()); }
     let broker = broker.inner().clone();

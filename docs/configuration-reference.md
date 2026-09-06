@@ -5,8 +5,8 @@ Generated from `Config.default()` by `documentation_audit.py`; these are source 
 The UI and `Config.validate()` enforce accepted ranges and combinations. Unknown or invalid values are not a migration shortcut.
 Use reviewed profile/configuration actions; edit live game configuration only with the game closed and a recoverable backup.
 
-The deprecated `gbay_menu_enabled` field exists for old configurations. New configurations use `gbay_ui_backend` (`auto`, `reactor`, `legacy`).
-`auto` prefers Reactor with a compatibility fallback; `reactor` does not silently select the legacy renderer.
+GBAY requires Reactor V on both GTA editions. Imported `gbay_menu_enabled` and `gbay_ui_backend` keys are retired; saving removes them without changing gameplay settings. Install/Repair requires a verified Reactor installation or explicit download approval.
+There is no legacy menu fallback. Native character/camera previews remain available inside the Reactor customizer.
 
 ## [general]
 
@@ -18,7 +18,6 @@ The deprecated `gbay_menu_enabled` field exists for old configurations. New conf
 | `target_edition` | `str` | `"auto"` |
 | `free_mode` | `bool` | `false` |
 | `backup` | `bool` | `true` |
-| `enable_rpf_previews` | `bool` | `true` |
 
 ## [traffic]
 
@@ -52,8 +51,6 @@ The deprecated `gbay_menu_enabled` field exists for old configurations. New conf
 | --- | --- | --- |
 | `enable_logging` | `bool` | `false` |
 | `enable_dlc_police` | `bool` | `false` |
-| `gbay_menu_enabled` | `bool` | `false` |
-| `gbay_ui_backend` | `str` | `"auto"` |
 | `gbay_key` | `str` | `"F9"` |
 | `night_vision_key` | `str` | `"N"` |
 | `seat_selector_enabled` | `bool` | `true` |

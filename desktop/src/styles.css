@@ -541,6 +541,13 @@ pre { font-family: "Cascadia Code", Consolas, monospace; font-size: 12px; backgr
 .activity-dot.ready { background: #3bab77; }
 .activity-dot.busy { background: #dcaf5b; }
 .activity-dot.error { background: #db8967; }
+.launcher > footer { flex-wrap: wrap; gap: 10px 16px; }
+.operation-progress { width: 100%; border: 1px solid var(--line); border-left: 4px solid #39aa76; background: var(--raised); padding: 12px 16px; border-radius: 6px; }
+.operation-progress-title { display: flex; justify-content: space-between; gap: 12px; font-size: 16px; }
+.operation-progress p { margin: 6px 0 10px; line-height: 1.4; font-size: 14px; overflow-wrap: anywhere; }
+.operation-progress-track { height: 14px; border: 1px solid var(--muted); background: var(--surface); border-radius: 7px; overflow: hidden; }
+.operation-progress-track > div { height: 100%; background: #39aa76; }
+.review .operation-progress { position: sticky; top: 0; margin: 12px 0 20px; z-index: 1; }
 footer .toolbar { align-items: center; justify-content: flex-end; gap: 8px; }
 @media (max-width: 1000px) {
   .launcher { grid-template-columns: 185px minmax(0,1fr); }
@@ -557,3 +564,12 @@ footer .toolbar { align-items: center; justify-content: flex-end; gap: 8px; }
   .page-heading { flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
+.launch-cancel-control {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 1rem 0;
+}
+.launch-cancel-control button { border: 2px solid currentColor; font-weight: 700; }
+.launch-cancel-control p { margin: 0; flex: 1 1 16rem; }

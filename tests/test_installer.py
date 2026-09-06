@@ -13,6 +13,14 @@ from allin1.config import Config
 from allin1 import asi_loader, installer
 
 
+@pytest.fixture
+def ready_reactor(monkeypatch):
+    """Installation orchestration fixture; dependency failure has its own suite."""
+    monkeypatch.setattr('allin1.reactor_dependency.dependency_recorded', lambda *_: True)
+    monkeypatch.setattr('allin1.reactor_dependency.install_dependency', Mock(return_value='Reactor V'))
+    monkeypatch.setattr(installer, 'validate_reactor_bridge_pair', Mock())
+
+
 def _write_pe(path, *, size=4096):
     payload = bytearray(size)
     payload[:2] = b"MZ"
@@ -342,7 +350,7 @@ def test_deploy_script_removes_retired_developer_artifacts(tmp_path, monkeypatch
     project = tmp_path / "project"
     dist = project / "script" / "dist"
     dist.mkdir(parents=True)
-    (dist / "ALLIN1.dll").write_bytes(b"mod")
+    _write_reactor_pair(dist)
     data = project / "data"
     data.mkdir()
     (data / "vehicle_grounding.json").write_text(
@@ -711,7 +719,7 @@ def test_uninstall_removes_legacy_preview_locations(tmp_path, monkeypatch):
     assert not dlc.exists()
 
 
-def test_install_orchestrates_steps_and_collects_preview_warning(tmp_path, monkeypatch):
+def test_install_orchestrates_steps_and_retires_legacy_previews(tmp_path, monkeypatch, ready_reactor):
     game = _game(tmp_path, enhanced=True)
     config = Config.default()
     config.general.gta_path = str(game)
@@ -747,14 +755,15 @@ def test_install_orchestrates_steps_and_collects_preview_warning(tmp_path, monke
     assert result.shvdn_found is False
     assert result.standalone_maps_deployed is True
     assert result.battleye_status == "set"
-    assert result.warnings == ["Preview texture injection failed: preview failed"]
+    assert not any('Preview texture injection failed' in warning for warning in result.warnings)
+    installer._deploy_preview_dlc.assert_not_called()
     map_deploy.assert_called_once_with(game, result, progress=None)
     remove_map.assert_not_called()
-    unpatch.assert_not_called()
+    unpatch.assert_called_once_with(game, 'allin1_previews')
     patch.assert_not_called()
 
 
-def test_install_uses_approved_optional_rpf_dependency(tmp_path, monkeypatch):
+def test_install_uses_approved_optional_rpf_dependency(tmp_path, monkeypatch, ready_reactor):
     game = _game(tmp_path, enhanced=True)
     config = Config.default()
     config.general.gta_path = str(game)
@@ -815,7 +824,7 @@ def test_reactor_install_uses_png_artwork_and_retires_preview_dlc(
     monkeypatch.setattr(
         installer, "_check_openrpf", Mock(return_value=loader_present),
     )
-    consent = Mock(return_value=True)
+    consent = Mock(return_value=False)
     dependency = Mock()
     deploy = Mock(return_value=True)
     remove_preview = Mock(return_value=[])
@@ -834,7 +843,10 @@ def test_reactor_install_uses_png_artwork_and_retires_preview_dlc(
         config, Mock(), rpf_loader_consent=consent,
     )
 
-    consent.assert_not_called()
+    if loader_present:
+        consent.assert_not_called()
+    else:
+        consent.assert_called_once_with(game, False)
     dependency.assert_not_called()
     deploy.assert_not_called()
     remove_preview.assert_called_once_with(game)
@@ -847,7 +859,7 @@ def test_reactor_install_uses_png_artwork_and_retires_preview_dlc(
 
 
 def test_optional_rpf_dependency_io_failure_does_not_block_repair(
-    tmp_path, monkeypatch,
+    tmp_path, monkeypatch, ready_reactor,
 ):
     game = _game(tmp_path, enhanced=False)
     config = Config.default()
@@ -878,7 +890,7 @@ def test_optional_rpf_dependency_io_failure_does_not_block_repair(
 
 
 def test_install_replaces_legacy_map_pack_with_metadata_bridge(
-    tmp_path, monkeypatch,
+    tmp_path, monkeypatch, ready_reactor,
 ):
     game = _game(tmp_path, enhanced=True)
     legacy_pack = game / "mods/update/x64/dlcpacks/allin1_maps/dlc.rpf"
@@ -916,13 +928,13 @@ def test_install_replaces_legacy_map_pack_with_metadata_bridge(
     result = installer.install(config, Mock())
 
     build.assert_called_once_with(game, result, progress=None)
-    unpatch.assert_not_called()
+    unpatch.assert_called_once_with(game, 'allin1_previews')
     assert not legacy_pack.exists()
     assert result.standalone_maps_deployed is True
     assert not any("temporarily unavailable" in item for item in result.warnings)
 
 
-def test_install_deploys_default_enabled_rpf_previews(tmp_path, monkeypatch):
+def test_install_retires_previews_even_when_old_config_enables_them(tmp_path, monkeypatch, ready_reactor):
     game = _game(tmp_path, enhanced=True)
     config = Config.default()
     config.general.gta_path = str(game)
@@ -938,8 +950,8 @@ def test_install_deploys_default_enabled_rpf_previews(tmp_path, monkeypatch):
     monkeypatch.setattr(installer.asi_loader, "ensure_nobattleye", Mock(return_value="set"))
     progress = Mock()
     result = installer.install(config, Mock(), progress=progress)
-    assert result.rpf_previews_deployed is True
-    deploy.assert_called_once_with(game, result, progress=progress)
+    assert result.rpf_previews_deployed is False
+    deploy.assert_not_called()
     percentages = [call.args[0] for call in progress.call_args_list]
     assert percentages == sorted(percentages)
     assert percentages[0] == 0 and percentages[-1] == 100

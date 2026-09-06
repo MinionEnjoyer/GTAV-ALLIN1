@@ -6,18 +6,9 @@ from tests.test_desktop_launch import launch_boundary
 from tests.test_desktop_service import apply, service
 
 
-@pytest.fixture(autouse=True)
-def diagnostic_probe(monkeypatch):
-    session_type = runtime_diagnostic_session.RuntimeSession
-    monkeypatch.setattr(session_type, "watch", lambda *args: None)
-    def create(game, state):
-        return session_type(game, state, process_probe=lambda pid: {
-            "status":"observed", "pid":pid, "started_at":"2026-01-01T00:00:00+00:00",
-            "executable_path":str(next(game.glob("GTA5*.exe"))), "modules":[],
-            "modules_status":"observed", "modules_truncated":False})
-    monkeypatch.setattr(runtime_diagnostic_session, "RuntimeSession", create)
-
-
+# launch_boundary supplies the isolated diagnostic process probe as well as
+# the launch stubs. Do not wrap RuntimeSession a second time here: that makes
+# fixture ordering replace the class with a factory before watch is patched.
 def test_launch_retains_the_exact_session_identity(service, launch_boundary):
     result = apply(service, "launch")["result"]
     assert result["status"] == "success"

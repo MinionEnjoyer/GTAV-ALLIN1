@@ -49,6 +49,7 @@ output/
 
 # Locally built external preview tools
 tools/YTDToolio.exe
+tools/WeaponPreview/
 tools/FuckDX.dll
 tools/_build_temp/
 tools/gtautil/

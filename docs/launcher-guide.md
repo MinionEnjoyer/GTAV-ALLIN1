@@ -11,6 +11,41 @@ directory. Close the game before installing, repairing, updating, disabling or
 removing packages. Keep save files, authored content and recovery receipts.
 Do not use the modded launch configuration in GTA Online.
 
+### Cancelling a launch
+
+While the reviewed launch is preparing, **Cancel launch** stops the remaining
+preparation before GTA is started. During preview generation it stops the owned
+renderer and retains completed cached previews. The panel stays locked until
+cleanup finishes; cancellation does not undo already-completed settings saves.
+Once launch is handed to Steam/Rockstar, cancellation is disabled. It never
+terminates a running game. Starting again requires a fresh review.
+
+In the same CLI `agent-api` session, `cancel_launch` accepts the active
+`review_id` while its launch `apply` is running. Wait for that apply's terminal
+`result.status: cancelled`; the cancellation acknowledgement alone only means
+the signal was accepted. Stale review IDs cannot cancel another launch.
+
+### Cached GBAY weapon previews
+
+Before launching Story Mode, the launcher validates enabled managed packages
+and checks the mounted DLC list. It then prepares missing GBAY add-on weapon
+images using an isolated CPU renderer. Unchanged artwork is reused; changed
+archives, catalogs, editions or renderer builds invalidate the relevant cache.
+Generation has a two-minute budget (up to 40 seconds per weapon). Failures keep
+the existing artwork and do not block launch. **Skip new weapon previews** skips
+rendering while retaining valid cached images. No thumbnail rendering runs in GTA.
+
+These are textured base-model catalog previews, not exact GTA shader renders or
+live previews of the player's selected attachments. Unsupported, ambiguous or
+unowned assets fall back to existing artwork. Stock weapons retain their images.
+
+CLI/API/agents can use the reviewed `prepare_previews` action without launching
+GTA, or pass `skip_previews: true` with `launch`. Both use the same approval and
+game-closed checks as the desktop. Results include rendered/cached/pending counts,
+selected weapon IDs, cache keys and failures. The latest receipt is stored in the
+launcher's per-game `weapon-previews` cache. Generated PNGs and a portable index
+are published under `plugins/ReactorV/ui/assets/allin1/generated-weapons`.
+
 Install trusted, compatible ScriptHookV and the complete ScriptHookVDotNet
 Enhanced runtime for the selected edition. The readiness check identifies
 missing components; “prerequisites present” does not mean the ALLIN1 client is
@@ -149,7 +184,7 @@ unsaved draft for another document; external changes must be reviewed explicitly
 
 The [generated configuration reference](configuration-reference.md) lists every
 source default; saved preferences and content-bound values may differ. Common
-controls include `script.gbay_ui_backend`, `script.gbay_key`,
+controls include `script.gbay_key`,
 `script.seat_selector_key`, `traffic.enabled`, safe mode and accessibility values.
 The seat selector default is L, not the old hold-F prototype.
 
