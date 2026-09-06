@@ -5,8 +5,13 @@ import pytest
 import numpy as np
 from lxml import etree as E
 from allin1.stock_weapon_previews import default_components
-sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'ALLIN1-SDK/src'))
 from allin1.weapon_preview_assembly import bone_matrix,attach_geometry,unique_component
+
+@pytest.fixture
+def sdk_geometry():
+    # The compiled preview worker owns this optional dependency. Ordinary
+    # launcher installations and unit-test jobs do not require the SDK.
+    pytest.importorskip('allin1_sdk.native_assets', reason='SDK geometry integration requires the preview build dependency')
 
 def root(name,position):
     return E.fromstring(f'''<Drawable><Skeleton><Bones><Item><Name>{name}</Name><ParentIndex value="-1"/>
@@ -17,16 +22,16 @@ def root(name,position):
 class Geometry:
     vertices:tuple
 
-def test_attachment_matches_parent_and_child_pivots():
+def test_attachment_matches_parent_and_child_pivots(sdk_geometry):
     gs=[Geometry(((2.,0.,0.),(3.,1.,0.)))]
     placed=attach_geometry(root('WAPClip',10),root('AAPClip',2),gs,'WAPClip','AAPClip')
     assert np.allclose(placed[0].vertices,[(10,0,0),(11,1,0)])
     assert gs[0].vertices[0]==(2.,0.,0.)
 
-def test_missing_anchor_blocks_partial_preview():
+def test_missing_anchor_blocks_partial_preview(sdk_geometry):
     with pytest.raises(ValueError,match='attachment bone'):bone_matrix(root('gun_root',0),'missing')
 
-def test_cycle_blocks_assembly():
+def test_cycle_blocks_assembly(sdk_geometry):
     r=root('WAPClip',0);r.find('Skeleton/Bones/Item/ParentIndex').set('value','0')
     with pytest.raises(ValueError,match='hierarchy'):bone_matrix(r,'WAPClip')
 

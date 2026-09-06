@@ -96,6 +96,18 @@ jobs:
         with:
           dotnet-version: "8.0.x"
       - run: python -m pip install -e ".[test]"
+      - name: Checkout pinned SDK preview build dependency
+        uses: actions/checkout@v4
+        with:
+          repository: MinionEnjoyer/ALLIN1-SDK
+          ref: 118188ace769d85750fc7be5839770bdafe949ad
+          path: build/preview-sdk
+          persist-credentials: false
+      - name: Freeze the offline preview worker
+        run: |
+          python -m pip install ./build/preview-sdk pyinstaller
+          python tools/build_weapon_preview_worker.py --sdk build/preview-sdk
+          python -m pytest tests/test_weapon_preview_assembly.py -v
       - name: Restore real toolchain cache
         uses: actions/cache@v4
         with:
@@ -113,7 +125,7 @@ jobs:
         timeout-minutes: 8
         env:
           ALLIN1_RUN_TOOL_INTEGRATION: "1"
-        run: python -m pytest tests/test_windows_toolchain_integration.py -m windows_integration -v
+        run: python -m pytest tests/test_windows_toolchain_integration.py tests/test_stock_weapon_previews.py -m windows_integration -v
       - name: Rebuild packaged client binaries
         shell: powershell
         run: |

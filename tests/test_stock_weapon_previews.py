@@ -88,7 +88,8 @@ def test_inventory_uses_supported_exact_extraction_and_reuses_cache(tmp_path,mon
     assert calls==['index-json','extract-virtual-entries']
 
 
-@pytest.mark.skipif(os.name!='nt',reason='Bundled Windows archive helper')
+@pytest.mark.windows_integration
+@pytest.mark.skipif(os.name!='nt' or os.environ.get('ALLIN1_RUN_TOOL_INTEGRATION')!='1',reason='Opt-in compiled Windows archive helper')
 @pytest.mark.parametrize('filename',['../escape.meta','C:/escape.meta','nested/escape.meta'])
 def test_batch_helper_rejects_unsafe_outputs_before_reading_game(tmp_path,filename):
     helper=Path(__file__).resolve().parents[1]/'tools/RpfPatcher/RpfPatcher.exe'
@@ -99,7 +100,8 @@ def test_batch_helper_rejects_unsafe_outputs_before_reading_game(tmp_path,filena
     assert not output.exists()
 
 
-@pytest.mark.skipif(os.name!='nt',reason='Bundled Windows archive helper')
+@pytest.mark.windows_integration
+@pytest.mark.skipif(os.name!='nt' or os.environ.get('ALLIN1_RUN_TOOL_INTEGRATION')!='1',reason='Opt-in compiled Windows archive helper')
 def test_batch_helper_never_overwrites_existing_output(tmp_path):
     helper=Path(__file__).resolve().parents[1]/'tools/RpfPatcher/RpfPatcher.exe'
     output=tmp_path/'existing';output.mkdir();(output/'user.meta').write_text('keep')

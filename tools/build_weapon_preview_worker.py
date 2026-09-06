@@ -18,4 +18,8 @@ def build(root: Path, sdk: Path | None = None):
 
 
 if __name__ == '__main__':
-    build(Path(__file__).resolve().parents[1])
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--sdk', type=Path, help='SDK source checkout used to freeze the renderer')
+    args = parser.parse_args()
+    build(Path(__file__).resolve().parents[1], args.sdk)
