@@ -123,3 +123,63 @@ def test_real_cli_plan_apply_and_agent_catalog(service, tmp_path):
 def test_source_cli_registers_launcher_group():
     from allin1.cli import main
     assert main.commands["launcher"] is launcher
+
+
+def test_cli_in_process_review_apply_inspect_and_stdio(service, tmp_path):
+    runner = CliRunner()
+    base = ["--project-root", str(service.project), "--state-root", str(service.state)]
+
+    def invoke(args, input=None):
+        result = runner.invoke(launcher, [*base, *args], input=input)
+        assert result.exit_code == 0, result.output
+        return json.loads(result.output)
+
+    catalog = invoke(["catalog"])
+    assert catalog["agent_authority"] == {"writes": False, "game_writes": False, "launch": False}
+    config = tmp_path / "config.json"
+    from allin1.desktop_service import serializable
+    config.write_text(json.dumps(serializable(service.config())))
+    assert invoke(["inspect", "--module", "setup", "--config-json", str(config)])["module"] == "setup"
+    assert invoke(["request", "catalog"])["api"]["default_authority"] == "read_only"
+    payload = tmp_path / "payload.json"
+    payload.write_text('{"module":"input"}')
+    assert invoke(["request", "inspect", "--payload", str(payload)])["module"] == "input"
+    request = tmp_path / "request.json"
+    request.write_text('{"action":"save_profile","name":"In process"}')
+    plan_path = tmp_path / "reviewed.json"
+    plan = invoke(["review", "--request", str(request), "--output", str(plan_path)])
+    assert plan == json.loads(plan_path.read_text())
+    assert not service.state.exists()
+    assert invoke(["review", "--request", str(request)])["executed"] is False
+    assert invoke(["--allow-writes", "apply", "--plan", str(plan_path),
+                   "--approval-sha256", plan["approval_sha256"], "--confirm"])["executed"] is True
+    assert "In process" in service.read("inspect", {"module": "setup"})["profiles"]
+    response = invoke(["agent-api"], input=json.dumps({"schema_version": 1, "request_id": "agent",
+                      "operation": "catalog", "payload": {}}) + "\n")
+    assert response["kind"] == "result"
+    assert response["payload"]["agent_authority"]["writes"] is False
+
+
+@pytest.mark.parametrize("content", ["[]", '{"x":1,"x":2}', "x" * (1024 * 1024 + 1)],
+                         ids=["non-object", "duplicate-key", "oversized"])
+def test_cli_document_rejects_non_objects_duplicates_and_oversized_requests(tmp_path, content):
+    from allin1.launcher_cli import document
+    path = tmp_path / "untrusted.json"
+    path.write_text(content)
+    with pytest.raises(ValueError):
+        document(path)
+
+
+def test_cli_main_emits_structured_errors_and_success(service, tmp_path, capsys):
+    from allin1.launcher_cli import main
+    base = ["--project-root", str(service.project), "--state-root", str(service.state)]
+    assert main([*base, "catalog"]) == 0
+    assert json.loads(capsys.readouterr().out)["api"]["default_authority"] == "read_only"
+    assert main([*base, "not-a-command"]) == 1
+    assert json.loads(capsys.readouterr().out)["kind"] == "error"
+    invalid = tmp_path / "invalid.json"
+    invalid.write_text("[]")
+    assert main([*base, "review", "--request", str(invalid)]) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["kind"] == "error" and "object" in result["message"]
+    assert not service.state.exists()
