@@ -21,7 +21,7 @@ fn parse_handoff(args: &[String]) -> Option<Value> {
     if traffic.is_some() && package.is_none() { return None; }
     Some(json!({"schema_version":1,"workspace":"mods","package_id":package,"traffic":traffic}))
 }
-struct Sidecar { child: Child, input: Option<ChildStdin>, output: Option<Receiver<Result<String, String>>> }
+struct Sidecar { child: Child, input: Option<ChildStdin>, output: Option<Receiver<Result<String, String>>>, diagnostics: Arc<Mutex<Vec<u8>>> }
 impl Sidecar {
     fn finish_without_more_requests(&mut self) {
         // EOF asks the single-request service to exit after its current work.
@@ -62,8 +62,20 @@ impl Broker {
         let output = protocol::frames(BufReader::new(child.stdout.take().ok_or("Service stdout unavailable")?));
         let errors = child.stderr.take().ok_or("Service stderr unavailable")?;
         // Drain diagnostics so a verbose native tool cannot deadlock the pipe.
-        std::thread::spawn(move || { let mut reader = BufReader::new(errors); let mut block = [0; 4096]; while reader.read(&mut block).unwrap_or(0) != 0 {} });
-        Ok(Sidecar { child, input: Some(input), output: Some(output) })
+        let diagnostics = Arc::new(Mutex::new(Vec::new()));
+        let captured = diagnostics.clone();
+        std::thread::spawn(move || {
+            let mut reader = BufReader::new(errors); let mut block = [0; 4096];
+            while let Ok(count) = reader.read(&mut block) {
+                if count == 0 { break; }
+                if let Ok(mut tail) = captured.lock() {
+                    tail.extend_from_slice(&block[..count]);
+                    let excess = tail.len().saturating_sub(8192);
+                    tail.drain(..excess);
+                }
+            }
+        });
+        Ok(Sidecar { child, input: Some(input), output: Some(output), diagnostics })
     }
     fn request(&self, app: &tauri::AppHandle, operation: &str, payload: Value) -> Result<Value, String> {
         if self.closing.load(Ordering::Acquire) || self.uncertain.load(Ordering::Acquire) { return Err("Launcher service stopped or its last operation has an unknown outcome. Reconnect explicitly; do not repeat a write until its outcome is verified.".into()); }
@@ -81,7 +93,10 @@ impl Broker {
         let input = service.input.as_mut().ok_or("Launcher service is finishing an interrupted request")?;
         input.write_all(&encoded).and_then(|_| input.flush()).map_err(|e| e.to_string())?;
         loop {
-            let line = protocol::next_frame(service.output.as_ref().ok_or("Launcher response channel detached")?, protocol::RESPONSE_TIMEOUT)?;
+            let line = protocol::next_frame(service.output.as_ref().ok_or("Launcher response channel detached")?, protocol::RESPONSE_TIMEOUT).map_err(|error| {
+                let detail = service.diagnostics.lock().map(|bytes| String::from_utf8_lossy(&bytes).trim().to_string()).unwrap_or_default();
+                if detail.is_empty() { error } else { format!("{error}\nService diagnostic: {detail}") }
+            })?;
             match protocol::decode(&line, &id)? {
                 protocol::Response::Progress(payload) => { let _ = app.emit("launcher-progress", payload); }
                 protocol::Response::Result(payload) => { self.uncertain.store(false, Ordering::Release); self.write_pending.store(false, Ordering::Release); return Ok(payload); }
@@ -217,7 +232,7 @@ mod tests {
             .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap();
         let input = child.stdin.take().unwrap();
         let output = protocol::frames(BufReader::new(child.stdout.take().unwrap()));
-        Sidecar { child, input: Some(input), output: Some(output) }
+        Sidecar { child, input: Some(input), output: Some(output), diagnostics: Arc::new(Mutex::new(Vec::new())) }
     }
     #[cfg(windows)]
     #[test]

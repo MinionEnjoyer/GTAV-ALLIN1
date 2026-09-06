@@ -14,4 +14,11 @@ sys.meta_path.insert(0, NoTk())
 from allin1.desktop_host import main
 
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:2] == ["--cli"]:
+        from allin1.launcher_cli import main as cli_main
+        raise SystemExit(cli_main(sys.argv[2:]))
+    elif sys.argv[1:2] == ["--agent-api"]:
+        from allin1.launcher_cli import main as cli_main
+        raise SystemExit(cli_main([*sys.argv[2:], "agent-api"]))
+    else:
+        main()

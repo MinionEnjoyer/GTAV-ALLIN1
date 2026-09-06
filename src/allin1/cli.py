@@ -57,6 +57,10 @@ def main(ctx: click.Context, config: str | None, verbose: bool) -> None:
     ctx.obj["config_path"] = config_path
 
 
+from allin1.launcher_cli import launcher
+main.add_command(launcher)
+
+
 @main.command("open-launcher")
 @click.option(
     "--workspace",

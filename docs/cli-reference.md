@@ -39,6 +39,13 @@ Listing a command here does not authorize execution, imply React UI parity, or q
 | `allin1 health-check` | Run the pre-launch dependency, duplicate, and integrity scanner. | gta_path, --json-output |
 | `allin1 import-previews` | Validate and import curated catalog preview PNGs. | source, --kind |
 | `allin1 install` | Install MP vehicles into your GTA V single player. | --reactor, --rpf-loader |
+| `allin1 launcher` | Inspect, review and apply Launcher workflows. | --project-root, --state-root, --allow-writes, --allow-game-writes, --allow-launch |
+| `allin1 launcher agent-api` | Serve schema-v1 JSON lines over stdio; keep this process alive for reviews. |  |
+| `allin1 launcher apply` | Apply a current plan with explicit process authority and approval. | --plan, --approval-sha256, --confirm |
+| `allin1 launcher catalog` | List versioned operations, action parameters, risks and SDK handoff flow. |  |
+| `allin1 launcher inspect` | Read a workspace or an SDK-exported ZIP/manifest; never install it. | --module, --source, --config-json |
+| `allin1 launcher request` | Execute a cataloged read operation. | operation, --payload |
+| `allin1 launcher review` | Validate a proposed action and print a plan without executing it. | --request, --output |
 | `allin1 list` | List all available MP vehicles. | --class / -c |
 | `allin1 map-canary` | Run fixed-scope developer map-registration canaries. |  |
 | `allin1 map-canary grapeseed-stock-black-promote` | Promote an observed Grapeseed Phase A to its black transition. | --gta-path, --session, --yes, --confirm-canary |

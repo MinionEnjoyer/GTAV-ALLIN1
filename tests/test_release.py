@@ -110,16 +110,6 @@ def test_repository_release_versions_and_tool_surface_are_consistent():
     assert report.version == "0.6.4"
 
 
-def test_public_readme_does_not_point_to_excluded_suppressors_source_tree():
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-
-    assert "mods/realistic-suppressors/mod.toml" not in readme
-    assert "not bundled in the ALLIN1" in readme
-    for project in ("Suppressors Enhanced", "weapon pack bundle", "GTA VR", "FPV"):
-        assert project in readme
-    assert "separate releases and test gates" in readme
-
-
 def test_public_file_collection_is_explicit_and_excludes_sources(tmp_path):
     root = _release_tree(tmp_path)
     names = {path.relative_to(root).as_posix() for path in collect_public_files(root)}

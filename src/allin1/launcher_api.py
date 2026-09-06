@@ -1,0 +1,156 @@
+"""Public, transport-independent Launcher API. No HTTP listener or shell eval.
+
+The SDK can inspect its build outputs here and continue through the same
+review/apply boundary used by the desktop. New actions fail closed.
+"""
+from __future__ import annotations
+
+import copy
+import time
+
+from allin1.desktop_service import GAME_ACTIONS, LOCAL_ACTIONS, LauncherService, digest
+
+READS = {
+    "catalog": [], "inspect": ["module", "config", "source", "profile"],
+    "health": [], "load_profile": ["name"], "read_garages": ["source"],
+    "startup_status": [], "check_update": [], "check_sdk_update": [],
+}
+EXTERNAL = {"open_activity_folder", "open_launcher_release"}
+# Explicit action parameters: adding a backend action requires a contract entry.
+ACTION_FIELDS = {
+    "save_config": [], "sync_config": [], "install": ["reactor_consent", "rpf_loader_consent"],
+    "uninstall": [], "launch": [], "save_profile": ["name"], "delete_profile": ["name"],
+    "export_profile": ["name", "destination"], "import_preferences": ["source"],
+    "package_install": ["source", "settings", "expected_state_sha256"],
+    "package_enable": ["id"], "package_disable": ["id"], "package_uninstall": ["id"],
+    "content_enable": ["id"], "content_disable": ["id"], "content_settings": ["id", "settings"],
+    "save_content_preferences": ["id", "settings"],
+    "characters_save": ["document", "expected_document_sha256", "expected_state_sha256"],
+    "garages_save": ["document", "expected_document_sha256", "expected_state_sha256"],
+    "garages_repair": [], "garages_export": ["destination"], "diagnostics": ["destination"],
+    "sdk_install": ["source"], "sdk_install_release": [], "sdk_uninstall": [], "sdk_open": ["workspace"],
+    "assistant_save": ["assistant_config"], "assistant_install_archive": ["source", "profile"],
+    "assistant_install_qwen": ["profile"], "assistant_uninstall": [],
+}
+
+
+def schema(fields, required=()):
+    types = {"config": "object", "settings": "object", "document": "object", "assistant_config": "object",
+             "confirmed": "boolean", "reactor_consent": "boolean", "rpf_loader_consent": "boolean"}
+    return {"type": "object", "additionalProperties": False,
+            "properties": {field: {"type": types.get(field, "string")} for field in fields}, "required": list(required)}
+
+
+def contract():
+    if set(ACTION_FIELDS) != GAME_ACTIONS | LOCAL_ACTIONS:
+        raise ValueError("Launcher action catalog is incomplete; update its explicit contract")
+    return {
+        "schema_version": 1, "kind": "launcher_api_catalog", "transport": "stdio-json-lines",
+        "review_lifetime_seconds": 300, "default_authority": "read_only",
+        "operations": [{"name": name, "risk": "network_read" if name.startswith("check_") else "read_only",
+                        "input_schema": schema(fields)} for name, fields in READS.items()] + [
+            {"name": name, "risk": "external_open", "input_schema": schema([])} for name in sorted(EXTERNAL)] + [
+            {"name": "review", "risk": "plan_only", "input_schema": {"oneOf": [
+                {**schema(["action", "config", *fields], ["action"]),
+                 "properties": {**schema(["config", *fields])["properties"], "action": {"const": action}}}
+                for action, fields in sorted(ACTION_FIELDS.items())]}},
+            {"name": "apply", "risk": "reviewed_mutation", "input_schema": schema(
+                ["review_id", "review_sha256", "confirmed"], ["review_id", "review_sha256", "confirmed"])},
+        ],
+        "actions": [{"name": name, "risk": "launch" if name == "launch" else "game_write" if name in GAME_ACTIONS else "external_open" if name == "sdk_open" else "local_write",
+                     "requires_review": True, "parameters": ["config", *fields]}
+                    for name, fields in sorted(ACTION_FIELDS.items())],
+        "sdk_happy_path": ["SDK validates and exports a package", "inspect: module=package, source=<export>",
+                           "review: action=package_install, source=<export>, settings=<reviewed settings>, expected_state_sha256=<inspection>",
+                           "apply: review_id, review_sha256, confirmed=true", "inspect: module=mods"],
+        "notes": ["Keep one agent-api process alive for review/apply; review IDs are session-local and single-use.",
+                  "CLI review emits a 5-minute plan; CLI apply requires its approval hash and explicit write authority.",
+                  "No automatic action replay. Reinspect files/receipts after an interrupted write.",
+                  "Field schemas describe the transport; the shared service validates package, path, configuration and domain constraints."],
+    }
+
+
+class LauncherAPI:
+    def __init__(self, service: LauncherService, *, allow_writes=False):
+        self.service = service
+        self.allow_writes = allow_writes
+
+    @property
+    def progress(self): return self.service.progress
+
+    @progress.setter
+    def progress(self, value): self.service.progress = value
+
+    @staticmethod
+    def validate(payload, fields):
+        if not isinstance(payload, dict) or set(payload) - set(fields):
+            raise ValueError("Unknown or invalid Launcher API parameters")
+        for key, value in payload.items():
+            expected = schema([key])["properties"][key]["type"]
+            cls = {"string": str, "object": dict, "boolean": bool}[expected]
+            if type(value) is not cls:
+                raise ValueError(f"Invalid type for {key}; expected {expected}")
+
+    def read(self, operation, payload):
+        if operation not in READS and operation not in EXTERNAL:
+            raise ValueError("Unknown Launcher API operation")
+        self.validate(payload, READS.get(operation, []))
+        if operation in EXTERNAL and not self.allow_writes:
+            raise ValueError("External application opening requires --allow-writes")
+        result = self.service.read(operation, payload)
+        if operation == "catalog":
+            return {**result, "api": contract(), "agent_authority": {"writes": self.allow_writes,
+                    "game_writes": self.service.allow_game_writes, "launch": self.service.allow_launch}}
+        return result
+
+    def review(self, payload):
+        action = payload.get("action")
+        if not isinstance(action, str) or action not in ACTION_FIELDS:
+            raise ValueError("Unknown Launcher API action")
+        self.validate(payload, ["action", "config", *ACTION_FIELDS[action]])
+        return {**self.service.review(payload), "executed": False}
+
+    def apply(self, payload):
+        self.validate(payload, ["review_id", "review_sha256", "confirmed"])
+        if not self.allow_writes: raise ValueError("Mutations require --allow-writes")
+        return {**self.service.apply(payload), "executed": True}
+
+    def plan(self, payload):
+        if payload.get("action") == "sdk_install_release" and self.service.sdk_release is None:
+            self.read("check_sdk_update", {})
+        review = self.review(payload)
+        # Capture defaults now; never substitute new preferences during approval.
+        request = copy.deepcopy(payload)
+        if "config" not in request:
+            from allin1.desktop_service import serializable
+            request["config"] = serializable(self.service.config())
+        plan = {"schema_version": 1, "kind": "launcher_approval_plan", "executed": False,
+                "project": str(self.service.project), "state": str(self.service.state),
+                "expires_at": time.time() + 300, "request": request,
+                "state_sha256": self.service.snapshot(request), "review": review}
+        return {**plan, "approval_sha256": digest(plan)}
+
+    def apply_plan(self, plan, approval_sha256, *, confirmed=False):
+        if not self.allow_writes or confirmed is not True:
+            raise ValueError("Applying a plan requires --allow-writes and --confirm")
+        if not isinstance(plan, dict): raise ValueError("Invalid Launcher approval plan")
+        evidence = {key: value for key, value in plan.items() if key != "approval_sha256"}
+        if not approval_sha256 or digest(evidence) != approval_sha256 or plan.get("approval_sha256") != approval_sha256:
+            raise ValueError("Approval hash does not match the reviewed plan")
+        if (plan.get("schema_version") != 1 or plan.get("kind") != "launcher_approval_plan"
+                or plan.get("project") != str(self.service.project) or plan.get("state") != str(self.service.state)
+                or not isinstance(plan.get("expires_at"), (int, float)) or not time.time() < plan["expires_at"] <= time.time() + 301):
+            raise ValueError("Plan expired or belongs to another Launcher context")
+        if plan["request"].get("action") == "sdk_install_release" and self.service.sdk_release is None:
+            self.read("check_sdk_update", {})
+        if self.service.snapshot(plan["request"]) != plan["state_sha256"]:
+            raise ValueError("Files changed after review; create a fresh plan")
+        review = self.review(plan["request"])
+        from allin1.release_paths import contained, no_links
+        claimed = contained(self.service.state, "approvals/" + approval_sha256 + ".claimed")
+        no_links(claimed.parent).mkdir(parents=True, exist_ok=True)
+        # Claim before execution. Even a crashed or uncertain writer cannot be
+        # automatically replayed by a second CLI process.
+        with no_links(claimed).open("xb") as stream:
+            stream.write(b"Single-use approval claimed; inspect receipts before retrying.\n")
+        return self.apply({"review_id": review["review_id"], "review_sha256": review["review_sha256"], "confirmed": True})

@@ -1,21 +1,21 @@
 # ALLIN1 0.6.4 release guide
 
-**Status: unsigned prerelease / not release-qualified.** This describes SDK and
-Launcher 0.6.4 scope, not a declaration that an old installer is a release
-candidate. Suppressors Enhanced 1.2.1, the weapon pack bundle, GTA VR and FPV
-are independently owned and released, not ALLIN1 release components.
+**Status: owner-approved unsigned Launcher portable release.** Native packaged
+startup and preference persistence have passed. Full installer lifecycle and
+fresh in-game acceptance remain untested. The SDK is independently released.
 
-The owner explicitly approved publishing `v0.6.4-rc.1` as a prerelease with the
-remaining native/live gaps disclosed. This does not waive or mark complete the
-full-release milestone below. The prerelease is manual-download only and does
-not replace the stable Latest channel. Its attached validation matrix and build
-identities are authoritative for those exact candidate bytes.
+The owner approved publishing `v0.6.4` after the packaged startup E2E pass.
+It supersedes `v0.6.4-rc.1` on the Latest channel as a manual-download portable
+release. It does not bypass updater trust checks or certify the broader
+qualification milestone below. Exact build identities and disclosed test scope
+remain authoritative; untested checks are not passes.
 
 ## Mandatory 0.6.4 full-release milestone
 
 **Both Launcher and SDK must be complete React/Tauri v2 replacements before the
 full 0.6.4 release.** A mixed Tkinter/React distribution does not meet this milestone.
-It is an unmet release gate, not a statement that migration is already complete.
+This remains the broader qualification target, not a claim that the portable
+publication completed every acceptance check.
 
 - Verify complete workflow and secondary-action parity, with happy-path,
   failure/recovery and draft-preservation tests; page coverage alone is insufficient.
@@ -60,10 +60,10 @@ The SDK is in **late functional migration, not final release qualification**.
 Its main strength is shared Python authoring/validation behind real React
 workflows. Its weak points are remaining secondary/native interactions, large
 root components, limited packaged lifecycle evidence and incomplete updater trust setup.
-The Launcher is less mature: a frozen standalone service/resource candidate now
-exists, with preference import, Content/Package settings and local assistant
-provisioning. Native lifecycle qualification and several secondary workflows
-remain unfinished.
+The Launcher has a frozen standalone distribution with preference import,
+Content/Package settings, local assistant provisioning, CLI and agent access.
+Native startup, all workspaces, local save review, sidebar persistence and
+close/reopen have passed. Full native lifecycle qualification remains unfinished.
 
 Avoid a misleading single “percent migrated.” A module opening, a reviewed
 authoring happy path, a no-skip test run, a verified archive and a live acceptance

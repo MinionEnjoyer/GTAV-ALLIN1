@@ -124,11 +124,37 @@ def test_frozen_identity_requires_own_root_and_embedded_manifest(tmp_path, monke
     assert runtime.frozen_identity(tmp_path) is None
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "sidecar" / runtime.SIDECAR_NAME))
+    (tmp_path / "resources").mkdir()
     with pytest.raises(ValueError, match="own resource"):
         runtime.frozen_identity(tmp_path / "another")
     # No fallback to checkout resources when packaged identity is absent.
     with pytest.raises(FileNotFoundError):
         runtime.frozen_identity(tmp_path / "resources")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows canonical Tauri paths")
+@pytest.mark.parametrize("extended", [False, True])
+def test_frozen_identity_accepts_same_windows_root_but_checks_all_payloads(tmp_path, monkeypatch, extended):
+    resources = tmp_path / "packaged application with spaces/resources"
+    resources.mkdir(parents=True)
+    payload = resources / "resource.bin"
+    payload.write_bytes(b"payload")
+    document = identity({"resource.bin": runtime.sha256(payload)})
+    document.update(build_id="test-build", commit="test-commit", source_sha256="test-source",
+                    source_dirty=False, created_at="test-date", resources_sha256="test-resources")
+    (tmp_path / "_desktop_build.json").write_text(json.dumps(document))
+    monkeypatch.setattr(runtime, "__file__", str(tmp_path / "runtime_resources.py"))
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(resources.parent / "sidecar" / runtime.SIDECAR_NAME))
+    selected = Path("\\\\?\\" + str(resources)) if extended else resources
+    assert runtime.frozen_identity(selected)["build_id"] == "test-build"
+    other = tmp_path / "other-resources"; other.mkdir()
+    (other / payload.name).write_bytes(payload.read_bytes())
+    with pytest.raises(ValueError, match="own resource"):
+        runtime.frozen_identity(other)
+    payload.write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="checksum"):
+        runtime.frozen_identity(selected)
 
 
 @pytest.mark.parametrize("name", ["tkinter", "tkinter.ttk", "_tkinter.pyd", "_internal/tcl86t.dll", "_internal/tk86t.dll", "_internal/_tcl_data/init.tcl", "_internal/_tk_data/tk.tcl", "tkinter/__init__.pyc", "PIL.ImageTk", "allin1.gui", "allin1.customization_ui"])

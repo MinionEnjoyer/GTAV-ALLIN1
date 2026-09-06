@@ -6,6 +6,7 @@ import ContentSettings from "./ContentSettings";
 import PackageDraft from "./PackageDraft";
 import AssistantSettings from "./AssistantSettings";
 import logo from "../../src/allin1/assets/ALLIN1.png";
+import { descriptions, EmptyState, ReviewDialog, WorkspaceIcon } from "./WorkspaceChrome";
 
 const NAV = [
   ["setup", "Setup"],
@@ -59,6 +60,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
     [startup, setStartup] = useState<RecordData | null>(null);
   const [launcherRelease, setLauncherRelease] = useState<RecordData | null>(null);
   const [handoff, setHandoff] = useState<RecordData | null>(null);
+  const [settingsSearch, setSettingsSearch] = useState("");
   const dirty =
     (!!config && JSON.stringify(config) !== baseline) ||
     Object.keys(draft).length > 0;
@@ -96,6 +98,8 @@ export default function App({ client = nativeClient }: { client?: Client }) {
       { module: target, ...(values ? { config: values } : {}) },
       (loaded) => {
         setSession(loaded);
+        if (target === "content") setSelected((current) =>
+          loaded.content?.some((item: RecordData) => item.id === current) ? current : loaded.content?.[0]?.id ?? "");
         if (!config) {
           setConfig(loaded.config);
           setBaseline(JSON.stringify(loaded.config));
@@ -206,10 +210,12 @@ export default function App({ client = nativeClient }: { client?: Client }) {
     setModule(target);
     setSelected("");
     setQuery("");
+    setSettingsSearch("");
     void inspect(target);
   };
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
+      if (review) return;
       const key = event.key.toLowerCase();
       if (event.ctrlKey && key === "b") {
         event.preventDefault(); setCollapsed((value) => !value); return;
@@ -338,7 +344,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
       <Fields
         values={config?.[name] ?? {}}
         disabled={locked}
-        filter={filter}
+        filter={(key) => (!filter || filter(key)) && title(key).toLowerCase().includes(settingsSearch.toLowerCase())}
         change={(key, value) => edit(name, key, value)}
       />
     </fieldset>
@@ -368,26 +374,36 @@ export default function App({ client = nativeClient }: { client?: Client }) {
           </select>
         </label>
       </header>
-      <aside>
+      <aside aria-label="Workspace navigation">
         <button
-          onClick={() => setCollapsed(!collapsed)}
+          type="button"
+          className="sidebar-toggle"
+          onClick={() => setCollapsed((value) => !value)}
           aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+          aria-expanded={!collapsed}
+          aria-controls="launcher-navigation"
+          title={`${collapsed ? "Show" : "Hide"} workspace sidebar (Ctrl+B)`}
         >
-          {collapsed ? "›" : "‹"}
+          <span aria-hidden="true">{collapsed ? "›" : "‹"}</span>
         </button>
-        <nav aria-label="Primary">
+        <nav id="launcher-navigation" aria-label="Primary">
           {NAV.map(([key, label], index) => (
+            <div key={key}>
+            {[0, 4, 6].includes(index) && !collapsed && <p className="nav-label">{index === 0 ? "Configuration" : index === 4 ? "Your content" : "Tools"}</p>}
             <button
-              key={key}
               onClick={() => navigate(key)}
+              aria-label={label}
+              disabled={locked || Object.keys(draft).length > 0}
               aria-current={module === key ? "page" : undefined}
               title={`${label} (Ctrl+${index + 1})`}
             >
-              <span>{index + 1}</span>
-              {!collapsed && label}
+              <WorkspaceIcon name={key} />
+              {!collapsed && <><span className="nav-copy">{label}</span><kbd>{index + 1}</kbd></>}
             </button>
+            </div>
           ))}
         </nav>
+        {!collapsed && <div className="sidebar-note">Story Mode only<small>Ctrl+B · collapse navigation</small></div>}
       </aside>
       <main className={`workspace-${module}`}>
         <div className="page-heading">
@@ -399,6 +415,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
                 "Setup"}
             </p>
             <h1>{NAV.find(([key]) => key === module)?.[1]}</h1>
+            <p className="page-description">{descriptions[module]}</p>
           </div>
           <div className="toolbar">
             <button disabled={locked || Object.keys(draft).length > 0} onClick={() => void inspect()}>
@@ -413,11 +430,17 @@ export default function App({ client = nativeClient }: { client?: Client }) {
         </div>
         {error && (
           <div className="notice error" role="alert">
-            {error}
+            <div><strong>Could not complete this operation</strong><p>{error}</p></div>
+            <div className="notice-actions">
             <button disabled={busy} onClick={() => void reconnect()}>Reconnect service</button>
             <button onClick={() => setError("")}>Dismiss</button>
+            </div>
           </div>
         )}
+        {!config && !error && <EmptyState title="Connecting to the Launcher service">Reading your settings and installation status…</EmptyState>}
+        {config && ["gameplay", "input"].includes(module) && <label className="settings-search">Find a setting
+          <input type="search" value={settingsSearch} placeholder="Search by name…" onChange={(event) => setSettingsSearch(event.target.value)} />
+        </label>}
         {notice && (
           <p className="notice" role="status">
             {notice}
@@ -467,6 +490,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
           </section>
         )}
         {review && (
+          <ReviewDialog busy={busy} cancel={() => { setReview(null); setConfirmed(false); }}>
           <section className="review" aria-label="Review changes">
             <h2>Review {title(review.action)}</h2>
             <p>Target: {review.target}</p>
@@ -519,6 +543,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
               </button>
             </div>
           </section>
+          </ReviewDialog>
         )}
         {module === "setup" && config && (
           <>
@@ -528,6 +553,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
                   ? `GTA V ${session.status.edition}`
                   : "Select your game installation"}
               </h2>
+              <p>{session.status?.valid_game ? "Dependency availability for the selected installation. This is not an in-game runtime check." : "Choose a Legacy or Enhanced folder below, then refresh to inspect it. Nothing will be installed without your review."}</p>
               <div className="status-grid">
                 {[
                   ["mod_installed", "ALLIN1 client"],
@@ -537,8 +563,8 @@ export default function App({ client = nativeClient }: { client?: Client }) {
                 ].map(([key, label]) => (
                   <div key={key}>
                     <span>{label}</span>
-                    <strong>
-                      {session.status?.[key] ? "Installed" : "Missing"}
+                    <strong className={`status-pill ${session.status?.[key] ? "success" : "warning"}`}>
+                      {!session.status?.valid_game ? "Not checked" : session.status?.[key] ? "Installed" : "Missing"}
                     </strong>
                   </div>
                 ))}
@@ -696,6 +722,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
               ))}
             </div>
             <section>
+              {!selected && <EmptyState title="No content selected">Select an integration from the list to see its settings.</EmptyState>}
               {content
                 .filter((item) => item.id === selected)
                 .map((item) => (
@@ -768,6 +795,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
             <div className="split">
               <section>
                 <h2>Package library</h2>
+                {!packages.length && <EmptyState title="Your package library is empty">Use Review package import to inspect a ZIP or mod.toml built with the SDK.</EmptyState>}
                 {packages.map((item) => (
                   <div className="inventory-row" key={item.mod_id}>
                     <span>{item.name}</span>
@@ -785,6 +813,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
               </section>
               <section>
                 <h2>Installed packages</h2>
+                {!session.installed?.length && <EmptyState title="No installed packages">Packages for the selected GTA installation will appear here after installation.</EmptyState>}
                 {(session.installed ?? []).map((item: RecordData) => (
                   <div className="package" key={item.mod_id}>
                     <strong>{item.name}</strong>
@@ -875,6 +904,11 @@ export default function App({ client = nativeClient }: { client?: Client }) {
         )}
         {module === "sdk" && (
           <section>
+            <details className="automation-panel"><summary>CLI, API &amp; agent workflows</summary>
+              <p>The Launcher exposes the same reviewed operations as this UI. Start with the catalog; inspect an SDK-built package before requesting any installation.</p>
+              <pre>allin1 launcher catalog{"\n"}allin1 launcher inspect --module package --source "path/to/package.zip"{"\n"}allin1 launcher agent-api</pre>
+              <p>Portable build: run <code>sidecar/ALLIN1-Launcher-Sidecar.exe --cli catalog</code> or <code>--agent-api</code>. Agents default to read-only; writes require process authority, a current review, and explicit confirmation.</p>
+            </details>
             <h2>ALLIN1 SDK</h2>
             <p>
               {session.sdk?.detail ?? "Refresh to inspect the SDK installation"}
@@ -1022,7 +1056,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
         )}
       </main>
       <footer>
-        <span>{busy ? "Working…" : dirty ? "Unsaved changes" : "Ready"}</span>
+        <span className="footer-status"><i className={`activity-dot ${error ? "error" : busy ? "busy" : config ? "ready" : ""}`} />{busy ? "Working…" : dirty ? "Unsaved changes" : error ? "Needs attention" : !config ? "Connecting…" : "Ready"}</span>
         <div className="toolbar">
           <button
             disabled={locked || !config || !dirty || Object.keys(draft).length > 0}

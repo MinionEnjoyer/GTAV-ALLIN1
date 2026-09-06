@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 from allin1 import __version__
-from allin1.release_paths import no_links, strict_json, tree_files, unique_paths
+from allin1.release_paths import filesystem_path, no_links, strict_json, tree_files, unique_paths
 
 SIDECAR_NAME = "ALLIN1-Launcher-Sidecar.exe"
 
@@ -51,10 +51,19 @@ def verify_resources(root: Path, identity: dict) -> None:
 def frozen_identity(project: Path) -> dict | None:
     if not getattr(sys, "frozen", False):
         return None
-    if no_links(project) != resource_root():
+    supplied = no_links(project)
+    owned = resource_root()
+    # Tauri canonicalizes its executable path to the Windows extended form
+    # (\\?\C:\...). PyInstaller reports the ordinary form. Compare filesystem
+    # identity only AFTER rejecting links on both paths, not their spelling.
+    try:
+        same_root = filesystem_path(supplied).samefile(filesystem_path(owned))
+    except OSError:
+        same_root = False
+    if not same_root:
         raise ValueError("Packaged Launcher must use its own resource directory")
     identity = strict_json(Path(__file__).with_name("_desktop_build.json").read_bytes())
-    verify_resources(project, identity)
+    verify_resources(owned, identity)
     return {key: identity[key] for key in (
         "schema_version", "kind", "version", "build_id", "commit", "source_sha256",
         "source_dirty", "created_at", "resources_sha256",

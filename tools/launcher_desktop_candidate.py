@@ -260,6 +260,17 @@ def smoke(sidecar: Path, resources: Path, expected: dict) -> dict:
         state = base / "preferences with spaces"
         canary = base / "outside.canary"
         canary.write_bytes(b"user data preserved")
+        if os.name == "nt":
+            # Reproduce the canonical path actually supplied by the Tauri
+            # shell, not only Python's ordinary-path subprocess spelling.
+            from allin1.release_paths import filesystem_path
+            canonical_host = Host(sidecar, filesystem_path(resources), state, base, env, expected["build_id"])
+            try:
+                canonical_host.request("catalog")
+                checks.append("tauri_extended_resource_path")
+                canonical_host.close()
+            finally:
+                canonical_host.abort()
         host = Host(sidecar, resources, state, base, env, expected["build_id"])
         try:
             catalog = host.request("catalog")

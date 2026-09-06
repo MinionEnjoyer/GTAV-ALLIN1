@@ -1,4 +1,31 @@
+import { useEffect, useId, useState } from "react";
 import type { RecordData } from "./client";
+const bounded: Record<string, [number, number, number]> = {
+  max_driven: [0, 100, 1], replacement_chance: [0, 1, 0.01], minimum_fps: [20, 120, 1],
+  ui_scale: [0.75, 1.5, 0.05], hold_duration_ms: [100, 2000, 50],
+};
+const hints: Record<string, string> = {
+  max_driven: "Maximum replacement vehicles active at once.", replacement_chance: "0 disables replacement; 1 replaces every eligible vehicle.",
+  ui_scale: "In-game menu scale. Launcher text follows Windows display scaling.", minimum_fps: "Adaptive traffic pauses replacements below this frame rate.",
+  hold_duration_ms: "How long a shortcut must be held, in milliseconds.",
+  gta_path: "Optional shared path. Use edition-specific folders when both editions are installed.",
+  gta_legacy_path: "Folder containing GTA5.exe.", gta_enhanced_path: "Folder containing GTA5_Enhanced.exe.",
+};
+
+function NumberField({ label, value, change, disabled, descriptor, name }: { label: string; value: number; change: (value: number) => void; disabled: boolean; descriptor?: RecordData; name: string }) {
+  const [text, setText] = useState(String(value));
+  const id = useId();
+  useEffect(() => setText(String(value)), [value]);
+  const limits = bounded[name];
+  return <div className="number-field"><label htmlFor={id}>{label}</label>
+    <div className={limits ? "range-input" : ""}>
+      {limits && <input type="range" aria-label={`${label} slider`} min={limits[0]} max={limits[1]} step={limits[2]} value={value} disabled={disabled} onChange={(e) => change(Number(e.target.value))} />}
+      <input id={id} type="number" value={text} disabled={disabled} min={descriptor?.minimum ?? limits?.[0]} max={descriptor?.maximum ?? limits?.[1]} step={descriptor?.step ?? limits?.[2] ?? "any"}
+        onChange={(e) => { setText(e.target.value); if (e.target.value.trim() && Number.isFinite(Number(e.target.value))) change(Number(e.target.value)); }}
+        onBlur={() => { if (!text.trim() || !Number.isFinite(Number(text))) setText(String(value)); }} />
+    </div>{hints[name] && <small>{hints[name]}</small>}
+  </div>;
+}
 export const title = (key: string) =>
   key
     .replaceAll("_", " ")
@@ -20,7 +47,9 @@ export function Field({
   disabled?: boolean;
   descriptor?: RecordData;
 }) {
+  const hintId = useId();
   const label = descriptor?.label ?? title(name);
+  if (typeof value === "number") return <NumberField {...{label, value, change, disabled, descriptor, name}} />;
   if (typeof value === "boolean")
     return (
       <label className="check">
@@ -62,6 +91,8 @@ export function Field({
       {label}
       {choices ? (
         <select
+          aria-label={label}
+          aria-describedby={hints[name] ? hintId : undefined}
           value={value}
           onChange={(e) => change(e.target.value)}
           disabled={disabled}
@@ -72,6 +103,8 @@ export function Field({
         </select>
       ) : (
         <input
+          aria-label={label}
+          aria-describedby={hints[name] ? hintId : undefined}
           type={typeof value === "number" ? "number" : "text"}
           step={descriptor?.step ?? (descriptor?.type === "integer" ? 1 : "any")}
           min={descriptor?.minimum}
@@ -87,6 +120,7 @@ export function Field({
           }
         />
       )}
+      {hints[name] && <small id={hintId}>{hints[name]}</small>}
     </label>
   );
 }
