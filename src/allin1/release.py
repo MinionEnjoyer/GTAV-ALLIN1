@@ -134,7 +134,7 @@ def _files_under(root: Path, relative: str, suffixes: frozenset[str] | None) -> 
     return files
 
 
-def collect_public_files(root: Path, *, require_toolchain: bool = True) -> list[Path]:
+def collect_public_files(root: Path, *, require_toolchain: bool = True, require_preview_worker: bool = True) -> list[Path]:
     """Return the explicit public payload; no git-status or glob accidents."""
     root = root.resolve()
     files: list[Path] = []
@@ -167,7 +167,7 @@ def collect_public_files(root: Path, *, require_toolchain: bool = True) -> list[
         )
 
     preview_worker = root / "tools" / "WeaponPreview" / "WeaponPreview.exe"
-    if require_toolchain and (not preview_worker.is_file() or preview_worker.stat().st_size == 0):
+    if require_toolchain and require_preview_worker and (not preview_worker.is_file() or preview_worker.stat().st_size == 0):
         raise FileNotFoundError("WeaponPreview.exe is missing; run tools/build_weapon_preview_worker.py before packaging")
     if preview_worker.is_file():
         files.append(preview_worker)

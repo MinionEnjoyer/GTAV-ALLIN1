@@ -1,6 +1,6 @@
-# ALLIN1 Launcher guide — 0.6.5 development
+# ALLIN1 Launcher guide — 0.6.5
 
-0.6.5 is unreleased. The desktop is React/Tauri v2; Python provides its services
+0.6.5 is an unsigned portable release. The desktop is React/Tauri v2; bundled Python provides its services
 and command-line tools, with no Tkinter fallback. Do not assume an
 older downloaded build has every action described here.
 
@@ -171,8 +171,9 @@ does not prevent SDK package authoring.
 ## React development application
 
 Follow [development setup](development.md). Debug builds use the repository's
-Python service; the [candidate builder](../desktop/README.md) produces a frozen
-service, native shell and hash-bound resources. Neither is release-qualified.
+Python service; the [candidate builder](../desktop/README.md) produces a bundled
+shared Python runtime, native shell and hash-bound resources. End users need no
+Python installation. Broader installer/live-game qualification remains incomplete.
 Do not distribute the development executable by itself.
 
 The React service uses `%LOCALAPPDATA%\ALLIN1\Launcher` for its state by default.

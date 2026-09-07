@@ -11,9 +11,17 @@ from allin1.release_paths import filesystem_path, no_links, strict_json, tree_fi
 SIDECAR_NAME = "ALLIN1-Launcher-Sidecar.exe"
 
 
+def shared_runtime_root() -> Path | None:
+    """Set only by the isolated, integrity-checking packaged bootstrap."""
+    value = getattr(sys, "_allin1_packaged_root", None)
+    return no_links(Path(value)) if value is not None else None
+
+
 def resource_root() -> Path:
     # Do not accept environment overrides in shipped processes. Keep the legacy
     # source/CLI location unchanged while its GUI remains a parity reference.
+    if shared_runtime_root() is not None:
+        return shared_runtime_root() / "resources"
     if getattr(sys, "frozen", False) and Path(sys.executable).name == SIDECAR_NAME:
         return no_links(Path(sys.executable).parent.parent / "resources")
     return Path(__file__).resolve().parents[2]
@@ -49,7 +57,7 @@ def verify_resources(root: Path, identity: dict) -> None:
 
 
 def frozen_identity(project: Path) -> dict | None:
-    if not getattr(sys, "frozen", False):
+    if not getattr(sys, "frozen", False) and shared_runtime_root() is None:
         return None
     supplied = no_links(project)
     owned = resource_root()

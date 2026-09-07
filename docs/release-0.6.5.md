@@ -7,6 +7,8 @@ does not turn untested lifecycle or live-game checks into passes.
 
 ## Release scope
 
+- Shared bundled CPython runtime for services, CLI and preview workers; no
+  user-installed Python, frozen service executable or frozen preview executable.
 - Reactor passive speedometer: large, adjacent speed and gear text, transparent
   background, MPH/KMH and optional sequential shifting.
 - Downloadable GBAY default previews: 935 vehicles, 111 weapons and 10 gear items.
@@ -45,6 +47,9 @@ No test threshold or containment/ownership check is waived by publication.
 ## Upgrade and recovery
 
 Use the complete portable directory, not an executable copied without resources.
+The rebuilt 0.6.5 package uses sibling `runtime/` and `resources/` directories.
+Extract into a fresh directory; do not overlay an older `sidecar/` installation.
+New Blender previews still require Blender; downloaded/cached previews do not.
 Retain recovery backups until the new installation is verified. Repair and
 rollback must reject changed or unowned targets rather than overwrite them.
 SDK management consumes the versioned portable contract and exact inventories.

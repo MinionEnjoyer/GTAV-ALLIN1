@@ -14,8 +14,9 @@ See [development setup](../docs/development.md) for prerequisites and commands.
 The native broker owns the persistent Python service, explicit native dialogs,
 single-instance handoff and close guards. The WebView cannot choose arbitrary
 processes or acquire raw shell/file-system authority. The current debug host
-uses `.venv/Scripts/python.exe`. The candidate builder freezes the service
-without Tkinter/Tcl/Tk, stages hash-bound resources, and builds the native shell:
+uses `.venv/Scripts/python.exe`. The candidate builder bundles pinned official
+CPython and the shared service/preview modules without Tkinter/Tcl/Tk, stages
+hash-bound resources, and builds the native shell:
 
 ```powershell
 .venv/Scripts/python.exe tools/launcher_desktop_candidate.py
@@ -23,10 +24,11 @@ without Tkinter/Tcl/Tk, stages hash-bound resources, and builds the native shell
 
 Use `--pnpm <path>` / `--cargo <path>` if those tools are not on PATH. Node must
 be on PATH and frontend dependencies must already be installed. `--service-only`
-builds/tests only the frozen service. PyInstaller is a build-time dependency;
-end users do not need Python. Outputs go into a new
+builds/tests only the shared runtime. `--sdk <path>` selects the renderer source
+checkout (defaults to the sibling ALLIN1-SDK). PyInstaller is not used by this
+build path; end users do not need Python. Outputs go into a new
 `build/launcher-candidates/<build-id>/app/` directory on each run. Never distribute
-the shell alone: it requires the sibling `sidecar/` and `resources/` directories.
+the shell alone: it requires the sibling `runtime/` and `resources/` directories.
 Full builds also produce a complete, checksum-verified candidate portable ZIP.
 The shell must compile with `tauri/custom-protocol`; its read-only
 `--verify-embedded-frontend` probe checks embedded HTML/JavaScript/CSS and the
@@ -41,7 +43,7 @@ preinstall content and independent assistant preferences, inspects package/examp
 catalogs, reads structured action history, verifies restart preservation and rejects
 invalid requests. It does **not** launch the GUI or GTA. The embedded resource
 inventory rejects missing/extra/changed payloads before service startup (also
-tested against the real frozen service); the shell
+tested against the real packaged service and runtime modules); the shell
 also supplies its build ID so a service from another build is rejected.
 
 These unsigned local candidates are **not release-qualified**. Reports keep

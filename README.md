@@ -42,6 +42,8 @@ React exposes nine Launcher workspaces: Setup, Gameplay, Content, Input, Package
 - Retain backups and receipts. Do not rename payload files to bypass package validation.
 - SDK package-only authoring does not require the Launcher or ALLIN1 gameplay client.
 
+The portable Launcher includes its own isolated Python runtime for services and preview generation; users do not install Python. Keep `runtime/` and `resources/` beside the executable, and extract upgrades into a fresh folder. Blender remains required for generating new Blender previews, not for using downloaded or cached previews.
+
 For Python source users, the [compatibility entrypoints](docs/launcher-guide.md#legacy-python-distribution) now launch an installed Tauri desktop; Python installation alone supplies no GUI. Downloaded builds must be checked against their own published version and artifact identity.
 
 ## Development

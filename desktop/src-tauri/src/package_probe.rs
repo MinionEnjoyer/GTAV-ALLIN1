@@ -26,6 +26,7 @@ pub fn inspect(context: &tauri::Context<tauri::Wry>, build_id: &str, version: &s
         }
     }
     Ok(json!({"schema_version": 1, "kind": "embedded_frontend_probe", "status": "PASS",
+        "service_runtime": option_env!("ALLIN1_LAUNCHER_RUNTIME").unwrap_or("pyinstaller"),
         "production": true, "build_id": build_id, "version": version, "assets": assets,
         "native_ui": "NOT TESTED", "release_ready": false}))
 }

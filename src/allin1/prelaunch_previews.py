@@ -143,6 +143,11 @@ def worker_command(project):
     helper_folder = Path(project)/'tools/RpfPatcher'
     helper_identity = hashlib.sha256(''.join(path.name+sha(path) for path in sorted(helper_folder.iterdir())
         if path.is_file() and path.suffix.lower() in {'.exe','.dll','.xml','.json'}).encode()).hexdigest()
+    from allin1.runtime_resources import shared_runtime_root
+    runtime_root = shared_runtime_root()
+    if runtime_root is not None:
+        runtime = no_links(runtime_root/'runtime')
+        return [str(runtime/'python.exe'), '-I', '-B', str(runtime/'bootstrap.py'), 'preview'], sha(runtime/'runtime-manifest.json')+helper_identity+backdrop_identity
     if bundled.is_file(): return [str(bundled)], sha(bundled)+helper_identity+backdrop_identity
     # Development only. Published builds contain the isolated worker, not an SDK checkout dependency.
     sdk = Path(project).parent/'ALLIN1-SDK/src'

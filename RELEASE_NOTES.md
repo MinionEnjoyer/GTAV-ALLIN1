@@ -2,6 +2,9 @@
 
 ## What's new
 
+- Shared bundled Python runtime for launcher services and preview generation,
+  replacing the separate frozen service and preview executables. No Python
+  installation is required; Blender is still required for new Blender renders.
 - Minimal Reactor speedometer with large speed/gear readouts, MPH/KMH, a compact
   transparent layout and optional sequential shifting controls.
 - Downloadable default GBAY previews: all 935 vanilla vehicles, 111 weapons and
@@ -30,8 +33,10 @@ unsigned manual distribution does not enable automatic-update installation.
 
 **Release `v0.6.5`.** This owner-approved portable release supersedes
 `v0.6.4`. Extract the entire ZIP into a new folder and run
-`allin1-launcher-desktop.exe`; keep its `sidecar` and `resources` folders together.
+`allin1-launcher-desktop.exe`; keep its `runtime` and `resources` folders together.
 Python is bundled; the Windows WebView2 runtime must be available.
+This 0.6.5 rebuild replaces the earlier portable archive. Use a fresh extraction
+folder rather than overlaying an earlier build and leaving obsolete helpers behind.
 
 Enhanced passive-HUD operation was confirmed by the tester before the final
 size/layout adjustment. Automated and packaged checks are recorded separately

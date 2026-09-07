@@ -1,0 +1,15 @@
+{
+  "python": {
+    "version": "3.13.15",
+    "filename": "python-3.13.15-embeddable-amd64.zip",
+    "url": "https://www.python.org/ftp/python/3.13.15/python-3.13.15-embeddable-amd64.zip",
+    "sha256": "791ada5e20aba24524f8d939cdeb069976d632a699fe5cb65274b23f4545e68a"
+  },
+  "wheels": [
+    {"name":"lxml","version":"6.1.1","filename":"lxml-6.1.1-cp313-cp313-win_amd64.whl","url":"https://files.pythonhosted.org/packages/e6/99/f4ffb024f238eec2131aaa09f3278fb6129cf892741bf68e1fc1afb8c100/lxml-6.1.1-cp313-cp313-win_amd64.whl","sha256":"a10bd2fd62e8ce916ececb342f348f190724a098c1faa056fdfb2a22ad5e8660"},
+    {"name":"numpy","version":"2.5.2","filename":"numpy-2.5.2-cp313-cp313-win_amd64.whl","url":"https://files.pythonhosted.org/packages/15/20/f3489f86d81ea460b2bcdceaed094142ca6579f6be0ec527b781d39afe68/numpy-2.5.2-cp313-cp313-win_amd64.whl","sha256":"85aaccb24182c25df891ad0ec333585967e115269d5f1b17f2c9ae005bc96657"},
+    {"name":"click","version":"8.4.2","filename":"click-8.4.2-py3-none-any.whl","url":"https://files.pythonhosted.org/packages/fb/e2/79c688af8b210d232694e31e59da9f6ec747bae31c3f5946e4e9b98860d5/click-8.4.2-py3-none-any.whl","sha256":"e6f9f66136c816745b9d65817da91d61d957fb16e02e4dcd0552553c5a197b76"},
+    {"name":"colorama","version":"0.4.6","filename":"colorama-0.4.6-py2.py3-none-any.whl","url":"https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl","sha256":"4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"},
+    {"name":"pillow","version":"12.3.0","filename":"pillow-12.3.0-cp313-cp313-win_amd64.whl","url":"https://files.pythonhosted.org/packages/a6/9b/7a58e61d62be561da3a356fe2384d4059a6345fc130e23ef1c36a5b81d24/pillow-12.3.0-cp313-cp313-win_amd64.whl","sha256":"1cca606cd25738df4ed873d5ad46bbdb3d83b5cbca291f6b4ff13a4df6b0bbe8"}
+  ]
+}

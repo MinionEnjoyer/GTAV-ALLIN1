@@ -40,14 +40,16 @@ LEGACY_MODULES = (
 EXCLUDED_MODULES = ("tkinter", "_tkinter", "PIL.ImageTk", "PIL._imagingtk", *LEGACY_MODULES)
 
 
-def resource_inputs(root: Path) -> dict[str, Path]:
+def resource_inputs(root: Path, *, shared_runtime: bool = False) -> dict[str, Path]:
     from allin1.release import PUBLIC_DOCUMENTATION_FILES, collect_public_files
     allowed = {"LICENSE", "README.md", "RELEASE_NOTES.md", "config.example.toml",
                "prices_gear.toml", "prices_vehicles.toml", "prices_weapons.toml",
                *PUBLIC_DOCUMENTATION_FILES}
     result = {}
-    for path in collect_public_files(root):
+    for path in collect_public_files(root, require_preview_worker=not shared_runtime):
         name = path.relative_to(root).as_posix()
+        if shared_runtime and name.startswith("tools/WeaponPreview/"):
+            continue
         if name in allowed or name.startswith(("data/", "content/", "sdk/examples/", "script/dist/", "tools/RpfPatcher/", "tools/WeaponPreview/")):
             if path.suffix.lower() not in {".cs", ".csproj", ".pdb"}:
                 result[name] = contained(root, name)
@@ -142,6 +144,11 @@ def write_portable(app: Path, destination: Path, identity: dict) -> dict:
         raise ValueError("Portable output must be outside its input application")
     files = tree_files(app)
     required = {"allin1-launcher-desktop.exe", "sidecar/" + SIDECAR_NAME}
+    if identity.get("runtime", {}).get("kind") == "shared-python":
+        required = {"allin1-launcher-desktop.exe", "runtime/python.exe", "runtime/bootstrap.py", "runtime/runtime-manifest.json"}
+        if any(name.lower().startswith(("sidecar/", "resources/tools/weaponpreview/"))
+               or Path(name).name.lower() in {"weaponpreview.exe", SIDECAR_NAME.lower()} for name in files):
+            raise ValueError("Shared runtime package contains an obsolete frozen helper")
     if not required.issubset(files) or not any(name.startswith("resources/") for name in files):
         raise ValueError("Portable Launcher requires the shell, service and resources")
     generated = {
@@ -171,9 +178,15 @@ def write_portable(app: Path, destination: Path, identity: dict) -> dict:
         "members": len(hashes) + 1, "package_integrity": "PASS", "release_ready": False}
 
 
+def service_command(executable: Path) -> list[str]:
+    if executable.name == "python.exe" and executable.parent.name == "runtime":
+        return [str(executable), "-I", "-B", str(executable.parent / "bootstrap.py"), "service"]
+    return [str(executable)]
+
+
 class Host:
     def __init__(self, executable: Path, resources: Path, state: Path, work: Path, env: dict, build_id: str):
-        self.process = subprocess.Popen([str(executable), "--project-root", str(resources),
+        self.process = subprocess.Popen([*service_command(executable), "--project-root", str(resources),
             "--state-root", str(state), "--expected-build-id", build_id], cwd=work, env=env, stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -247,7 +260,7 @@ def smoke(sidecar: Path, resources: Path, expected: dict) -> dict:
         copied = base / "relocated application with spaces"
         shutil.copytree(sidecar.parent.parent, copied)
         original_sidecar, original_resources = sidecar, resources
-        sidecar, resources = copied / "sidecar" / sidecar.name, copied / "resources"
+        sidecar, resources = copied / sidecar.parent.name / sidecar.name, copied / "resources"
         verify_resources(resources, expected)
         # All state/cache/detection paths belong to this disposable directory.
         env = {key: value for key, value in os.environ.items()
@@ -360,7 +373,7 @@ def smoke(sidecar: Path, resources: Path, expected: dict) -> dict:
         checks.append("relocated_application_path_with_spaces")
         failed_state = base / "failed-startup-state"
         def rejected(build_id, message):
-            result = subprocess.run([str(sidecar), "--project-root", str(resources),
+            result = subprocess.run([*service_command(sidecar), "--project-root", str(resources),
                 "--state-root", str(failed_state), "--expected-build-id", build_id],
                 input="", capture_output=True, text=True, encoding="utf-8", env=env, cwd=base,
                 timeout=45, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -385,6 +398,33 @@ def smoke(sidecar: Path, resources: Path, expected: dict) -> dict:
         finally:
             extra.unlink()
         checks.append("extra_resource_rejected")
+        if sidecar.parent.name == "runtime":
+            module = sidecar.parent / "lib/allin1/weapon_preview_worker.py"
+            original_module = module.read_bytes()
+            try:
+                module.write_bytes(b"corrupt runtime module")
+                rejected(expected["build_id"], "Shared runtime checksum mismatch")
+                module.unlink()
+                rejected(expected["build_id"], "Shared runtime files do not exactly match")
+            finally:
+                module.write_bytes(original_module)
+            extra_module = sidecar.parent / "stale.py"
+            try:
+                extra_module.write_bytes(b"stale runtime module")
+                rejected(expected["build_id"], "Shared runtime files do not exactly match")
+            finally:
+                extra_module.unlink()
+            checks.extend(("tampered_runtime_rejected", "missing_runtime_rejected", "extra_runtime_rejected"))
+            poisoned = base / "untrusted Python path"; poisoned.mkdir()
+            (poisoned / "allin1.py").write_text("raise RuntimeError('Untrusted import executed')", encoding="utf-8")
+            isolated_env = dict(env, PYTHONPATH=str(poisoned), PYTHONHOME=str(poisoned))
+            host = Host(sidecar, resources, state, poisoned, isolated_env, expected["build_id"])
+            try:
+                host.request("catalog")
+                host.close()
+            finally:
+                host.abort()
+            checks.append("environment_and_working_directory_imports_ignored")
         verify_resources(resources, expected)
         sidecar, resources = original_sidecar, original_resources
     verify_resources(resources, expected)
@@ -399,7 +439,15 @@ def smoke(sidecar: Path, resources: Path, expected: dict) -> dict:
         "live_acceptance": "NOT TESTED", "release_ready": False}
 
 
-def build(root: Path, *, service_only: bool = False, pnpm: str = "pnpm", cargo: str = "cargo") -> Path:
+def build(root: Path, *, service_only: bool = False, pnpm: str = "pnpm", cargo: str = "cargo", sdk: Path | None = None) -> Path:
+    """Canonical portable build: one bundled Python runtime, no frozen helpers."""
+    from tools.launcher_shared_runtime_candidate import build as build_shared
+    return build_shared(root, sdk or root.parent / "ALLIN1-SDK",
+                        service_only=service_only, pnpm=pnpm, cargo=cargo)
+
+
+def build_legacy_diagnostic(root: Path, *, service_only: bool = False, pnpm: str = "pnpm", cargo: str = "cargo") -> Path:
+    """Historical PyInstaller comparison only; never called by the release CLI."""
     from allin1.release import validate_version_consistency
     from allin1.reactor_bridge_contract import validate_reactor_bridge_pair
     validate_version_consistency(root)
@@ -457,7 +505,7 @@ def build(root: Path, *, service_only: bool = False, pnpm: str = "pnpm", cargo: 
         if os.name == "nt" and Path(manager).suffix.lower() in {".cmd", ".bat"}:
             package_command = [os.environ["COMSPEC"], "/d", "/c", manager]
         run_logged([*package_command, "build"], root / "desktop", folder / "frontend.log")
-        build_env = dict(os.environ, ALLIN1_LAUNCHER_BUILD_ID=identity["build_id"])
+        build_env = dict(os.environ, ALLIN1_LAUNCHER_BUILD_ID=identity["build_id"], ALLIN1_LAUNCHER_RUNTIME="pyinstaller")
         run_logged([compiler, "build", "--release", "--locked", "--features", "tauri/custom-protocol", "--manifest-path", str(root / "desktop/src-tauri/Cargo.toml")],
                    root, folder / "native.log", env=build_env)
         shell = root / "desktop/src-tauri/target/release/allin1-launcher-desktop.exe"
@@ -488,8 +536,9 @@ def build(root: Path, *, service_only: bool = False, pnpm: str = "pnpm", cargo: 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--service-only", action="store_true",
-                        help="Build a non-distributable frozen service; not a full Launcher or release gate")
+                        help="Build/test only the shared runtime; not a complete Launcher")
+    parser.add_argument("--sdk", type=Path, default=ROOT.parent / "ALLIN1-SDK")
     parser.add_argument("--pnpm", default="pnpm")
     parser.add_argument("--cargo", default="cargo")
     args = parser.parse_args()
-    print(build(ROOT, service_only=args.service_only, pnpm=args.pnpm, cargo=args.cargo))
+    print(build(ROOT, service_only=args.service_only, pnpm=args.pnpm, cargo=args.cargo, sdk=args.sdk))

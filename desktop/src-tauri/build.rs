@@ -1,5 +1,6 @@
 fn main() {
     println!("cargo:rerun-if-env-changed=ALLIN1_LAUNCHER_BUILD_ID");
+    println!("cargo:rerun-if-env-changed=ALLIN1_LAUNCHER_RUNTIME");
     if std::env::var("PROFILE").as_deref() == Ok("release") {
         assert!(!tauri_build::is_dev(), "Release builds must enable tauri/custom-protocol to embed the frontend");
         let build_id = std::env::var("ALLIN1_LAUNCHER_BUILD_ID")

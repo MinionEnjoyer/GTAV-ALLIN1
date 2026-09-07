@@ -45,9 +45,16 @@ impl Broker {
             (command, project)
         } else {
             let root = app.path().resource_dir().map_err(|e| e.to_string())?;
-            let executable = root.join("sidecar/ALLIN1-Launcher-Sidecar.exe");
+            let shared_runtime = option_env!("ALLIN1_LAUNCHER_RUNTIME") == Some("shared-python");
+            let executable = if shared_runtime { root.join("runtime/python.exe") }
+                else { root.join("sidecar/ALLIN1-Launcher-Sidecar.exe") };
             if !executable.is_file() { return Err("Packaged Launcher service is missing; use the qualified installer".into()); }
             let mut command = Command::new(executable);
+            if shared_runtime {
+                let bootstrap = root.join("runtime/bootstrap.py");
+                if !bootstrap.is_file() { return Err("Packaged Launcher bootstrap is missing".into()); }
+                command.args(["-I", "-B"]).arg(bootstrap).arg("service");
+            }
             command.arg("--expected-build-id").arg(option_env!("ALLIN1_LAUNCHER_BUILD_ID").ok_or("Launcher shell has no build identity")?);
             (command, root.join("resources"))
         };

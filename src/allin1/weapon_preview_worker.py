@@ -31,7 +31,11 @@ def main(request):
     job_path = Path(request).resolve()
     job = document(job_path, 4*1024*1024)
     project, game = Path(job['project']), Path(job['game'])
-    if not getattr(sys, 'frozen', False):
+    from allin1.runtime_resources import shared_runtime_root
+    if shared_runtime_root() is not None:
+        from allin1.runtime_resources import frozen_identity
+        frozen_identity(project)
+    if not getattr(sys, 'frozen', False) and shared_runtime_root() is None:
         sys.path.insert(0, str(project.parent/'ALLIN1-SDK/src'))
     from allin1_sdk.rpf_tools import RpfExplorerService
     from allin1_sdk.native_assets import NativeAssetInspector, _model_scene_from_xml, _model_diffuse_texture_name
