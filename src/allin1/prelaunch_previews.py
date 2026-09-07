@@ -415,6 +415,9 @@ def _prepare(project, game, cache_root, *, skip=False, progress=lambda *_:None, 
         published = {}
         published_hashes = {}
         from allin1.preview_render_pool import ordered_results, render_workers
+        from allin1.preview_render_control import current_control
+        from contextlib import nullcontext
+        control = current_control()
         workers = render_workers()
         report['missing_only'] = missing_only
         report['render_workers'] = workers if not skip and any(not retained.get(item['weapon']) for item in items) else 0
@@ -433,17 +436,34 @@ def _prepare(project, game, cache_root, *, skip=False, progress=lambda *_:None, 
             if skip: return key, None, 'pending', None
             if budget is not None and time.monotonic()-started >= budget:
                 return key, None, 'pending', 'Explicit preview time budget reached'
+            stamp = control.started() if control else None
+            render_started, failed = time.monotonic(), True
             try:
                 with tempfile.TemporaryDirectory(prefix='render-',dir=cache) as temp:
                     job = {**item,**blender_job,'game':str(game),'project':str(project),'edition':edition,
-                           'render_threads':max(1,min(8,((os.cpu_count() or 2)-2)//workers))}
+                           'render_threads':max(1,min(8,((os.cpu_count() or 2)-2)//(control.limit() if control else workers)))}
                     timeout = 180 if budget is None else min(180,max(1,budget-(time.monotonic()-started)))
                     data = render(command,job,Path(temp),timeout)
+                failed = False
                 return key, data, 'rendered', None
             except (OSError,ValueError,RuntimeError,subprocess.SubprocessError) as error:
                 return key, None, 'pending', str(error)
-        with ordered_results(items, prepare_item, workers) as results:
+            finally:
+                if control:
+                    control.finished(time.monotonic()-render_started, failed, stamp)
+        completed, last_heartbeat = 0, 0.0
+        def heartbeat():
+            nonlocal last_heartbeat
+            now = time.monotonic()
+            if now-last_heartbeat >= 1:
+                last_heartbeat = now
+                progress(int(100*completed/max(1,len(items))),
+                         f'{category.title()} previews: {completed}/{len(items)} processed; rendering')
+        with (control.rendering() if control and report['render_workers'] else nullcontext()), \
+                ordered_results(items, prepare_item, control or workers, heartbeat=heartbeat) as results:
+            if report['render_workers']: heartbeat()
             for index, (item, (key, data, state, error)) in enumerate(results):
+                completed = index+1
                 progress(int(100*index/len(items)), f'{category.title()} previews: {index}/{len(items)} processed · {item["weapon"]}')
                 if error: report['errors'].append({'weapon':item['weapon'],'reason':error})
                 if data is None:
@@ -470,6 +490,8 @@ def _prepare(project, game, cache_root, *, skip=False, progress=lambda *_:None, 
                 published[name] = filename
                 published_hashes[filename] = hashlib.sha256(data).hexdigest()
                 report['weapons'].append({'weapon':item['weapon'],'cache_key':key})
+        if control:
+            report['render_control'] = control.status()
         if items: progress(100, f'{category.title()} previews: {len(items)}/{len(items)} processed')
         # Fresh index omits disabled/unmounted/tampered sources and stale results.
         checkpoint()

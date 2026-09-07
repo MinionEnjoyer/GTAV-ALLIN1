@@ -36,11 +36,12 @@ ACTION_FIELDS = {
 
 def schema(fields, required=()):
     types = {"config": "object", "settings": "object", "document": "object", "assistant_config": "object",
-             "confirmed": "boolean", "reactor_consent": "boolean", "rpf_loader_consent": "boolean", "skip_previews": "boolean", "quick_launch": "boolean", "missing_previews_only": "boolean"}
+             "confirmed": "boolean", "reactor_consent": "boolean", "rpf_loader_consent": "boolean", "skip_previews": "boolean", "quick_launch": "boolean", "missing_previews_only": "boolean", "workers": "integer"}
     from allin1.preview_policy import PREVIEW_CATEGORIES
     return {"type": "object", "additionalProperties": False,
             "properties": {field: ({"type": "array", "items": {"type": "string", "enum": list(PREVIEW_CATEGORIES)}, "uniqueItems": True, "maxItems": 3}
-                                   if field == "skip_preview_categories" else {"type": types.get(field, "string")}) for field in fields}, "required": list(required)}
+                                   if field == "skip_preview_categories" else {"type": "integer", "minimum": 1, "maximum": 4}
+                                   if field == "workers" else {"type": types.get(field, "string")}) for field in fields}, "required": list(required)}
 
 
 def contract():
@@ -59,6 +60,7 @@ def contract():
             {"name": "apply", "risk": "reviewed_mutation", "input_schema": schema(
                 ["review_id", "review_sha256", "confirmed"], ["review_id", "review_sha256", "confirmed"])},
             {"name": "cancel_launch", "risk": "launch_control", "input_schema": schema(["review_id"], ["review_id"])},
+            {"name": "set_preview_workers", "risk": "render_control", "input_schema": schema(["review_id", "workers"], ["review_id", "workers"])},
         ],
         "actions": [{"name": name, "risk": "launch" if name == "launch" else "game_write" if name in GAME_ACTIONS else "external_open" if name == "sdk_open" else "local_write",
                      "requires_review": True, "parameters": ["config", *fields]}
@@ -69,6 +71,7 @@ def contract():
         "notes": ["Keep one agent-api process alive for review/apply; review IDs are session-local and single-use.",
                   "launch and prepare_previews accept skip_preview_categories (weapons, vehicles, gear) to skip new renders while validating caches, and missing_previews_only=true to keep intact indexed images even after model/renderer updates and fill missing entries only. launch also accepts quick_launch=true to skip all preview discovery and rendering, leaving existing artwork unchanged. Neither bypasses launch safety or approval.",
                   "During a launch apply, send cancel_launch with its review_id in the same agent-api session. A requested acknowledgement is not completion; wait for the apply result. Cancellation never terminates GTA after dispatch.",
+                  "Preview runs start with one worker. While progress.preview_render.enabled is true, set_preview_workers(review_id, workers) adjusts the active review's scheduling limit (1–8, hardware constrained). Lowering drains active jobs without killing them. Timings, RAM and advisory warnings are in progress.preview_render; GPU memory is not measured.",
                   "CLI review emits a 5-minute plan; CLI apply requires its approval hash and explicit write authority.",
                   "No automatic action replay. Reinspect files/receipts after an interrupted write.",
                   "Field schemas describe the transport; the shared service validates package, path, configuration and domain constraints."],
@@ -93,13 +96,20 @@ class LauncherAPI:
         self.validate(payload, ["review_id"])
         return self.service.cancel_launch(payload)
 
+    @property
+    def preview_render_control(self): return self.service.preview_render_control
+
+    def set_preview_workers(self, payload):
+        self.validate(payload, ['review_id', 'workers'])
+        return self.service.set_preview_workers(payload)
+
     @staticmethod
     def validate(payload, fields):
         if not isinstance(payload, dict) or set(payload) - set(fields):
             raise ValueError("Unknown or invalid Launcher API parameters")
         for key, value in payload.items():
             expected = schema([key])["properties"][key]["type"]
-            cls = {"string": str, "object": dict, "boolean": bool, "array": list}[expected]
+            cls = {"string": str, "object": dict, "boolean": bool, "array": list, "integer": int}[expected]
             if type(value) is not cls:
                 raise ValueError(f"Invalid type for {key}; expected {expected}")
             if key == "skip_preview_categories":

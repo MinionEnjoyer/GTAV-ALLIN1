@@ -124,6 +124,8 @@ class LauncherService:
         self.launch_target = None
         self.diagnostic_session = None
         self.launch_cancellation = LaunchCancellation()
+        from allin1.preview_render_control import PreviewRenderControl
+        self.preview_render_control = PreviewRenderControl()
 
     def config(self):
         if self.manager.config_path.is_file(): return Config.load(no_links(self.manager.config_path))
@@ -453,6 +455,11 @@ class LauncherService:
     def cancel_launch(self, payload):
         return self.launch_cancellation.request(payload)
 
+    def set_preview_workers(self, payload):
+        if self.launch_cancellation.status().get('cancel_requested'):
+            raise ValueError('Launch cancellation is already requested')
+        return self.preview_render_control.request(payload)
+
     def _apply(self, payload):
         if payload.get("confirmed") is not True: raise ValueError("Explicit confirmation is required")
         stored = self.reviews.pop(payload.get("review_id"), None)
@@ -470,7 +477,11 @@ class LauncherService:
             if not self.allow_game_writes: raise ValueError("Game-write authority is required")
             self.require_closed()
         self.progress(None if action in {"launch", "prepare_previews"} else 0, f"Starting {action.replace('_', ' ')}")
-        result = self.perform(request, config)
+        if action in {'launch', 'prepare_previews'}:
+            with self.preview_render_control.session(review['review_id']):
+                result = self.perform(request, config)
+        else:
+            result = self.perform(request, config)
         receipt = {"schema_version": 1, "kind": "launcher_applied", "action": action,
                    "review_id": review["review_id"], "review_sha256": review["review_sha256"], "result": serializable(result)}
         if action in {"save_config", "sync_config", "install", "launch", "content_settings", "save_content_preferences", "import_preferences"}:

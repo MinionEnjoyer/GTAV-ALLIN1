@@ -143,6 +143,24 @@ it("cancels the active launch without unlocking early or claiming GTA started", 
   expect(task.request.mock.calls.some(([op]) => op === "startup_status")).toBe(false);
 });
 
+it('changes render concurrency during busy apply without resetting launch progress', async () => {
+  const task = await launch();
+  task.progress({percentage:30,message:'Rendering previews',cancellable:true,launch_review_id:'test',
+    preview_render:{review_id:'test',enabled:true,workers:1,active:1,max_workers:4,samples:0,warnings:[]}});
+  fireEvent.change(screen.getByLabelText('Render workers'),{target:{value:'2'}});
+  await waitFor(()=>expect(task.request).toHaveBeenCalledWith('set_preview_workers',{review_id:'test',workers:2}));
+  expect(screen.getByRole('button',{name:'Back to draft'})).toBeDisabled();
+  task.progress({event:'launcher.preview-workers',preview_render:{review_id:'test',enabled:true,workers:2,active:1,max_workers:4,samples:0,warnings:[]}});
+  expect(screen.getByLabelText('Render workers')).toHaveValue('2');
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow','30');
+  task.progress({event:'launcher.preview-workers',control_error:'Memory budget changed'});
+  expect(screen.getByRole('alert')).toHaveTextContent('Memory budget changed');
+  task.progress({percentage:null,message:'Dispatching',cancellable:false,launch_review_id:'test',
+    preview_render:{review_id:'test',enabled:false,workers:2}});
+  expect(screen.queryByLabelText('Render workers')).not.toBeInTheDocument();
+  await dispatched(task.apply);
+});
+
 it("does not cancel stale progress or a dispatched game", async () => {
   const task = await launch();
   task.progress({ percentage: null, message: "Old progress", cancellable: true, launch_review_id: "old" });

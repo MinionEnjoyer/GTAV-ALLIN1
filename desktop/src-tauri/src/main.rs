@@ -3,6 +3,7 @@ use serde_json::{json, Value};
 mod protocol;
 mod package_probe;
 mod launch_cancel;
+mod preview_workers;
 use std::io::{BufReader, Read, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::Receiver;
@@ -31,9 +32,9 @@ impl Sidecar {
         self.output.take();
     }
 }
-struct Broker { process: Mutex<Option<Sidecar>>, busy: AtomicBool, uncertain: AtomicBool, write_pending: AtomicBool, closing: AtomicBool, ready: AtomicBool, sequence: AtomicU64, launch_cancel: launch_cancel::LaunchCancel }
+struct Broker { process: Mutex<Option<Sidecar>>, busy: AtomicBool, uncertain: AtomicBool, write_pending: AtomicBool, closing: AtomicBool, ready: AtomicBool, sequence: AtomicU64, launch_cancel: launch_cancel::LaunchCancel, preview_workers: preview_workers::PreviewWorkers }
 impl Broker {
-    fn new() -> Self { Self { process: Mutex::new(None), busy: AtomicBool::new(false), uncertain: AtomicBool::new(false), write_pending: AtomicBool::new(false), closing: AtomicBool::new(false), ready: AtomicBool::new(false), sequence: AtomicU64::new(1), launch_cancel: Default::default() } }
+    fn new() -> Self { Self { process: Mutex::new(None), busy: AtomicBool::new(false), uncertain: AtomicBool::new(false), write_pending: AtomicBool::new(false), closing: AtomicBool::new(false), ready: AtomicBool::new(false), sequence: AtomicU64::new(1), launch_cancel: Default::default(), preview_workers: Default::default() } }
     fn start(&self, app: &tauri::AppHandle) -> Result<Sidecar, String> {
         let (mut command, project) = if cfg!(debug_assertions) {
             let project = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap().to_path_buf();
@@ -95,6 +96,8 @@ impl Broker {
         input.write_all(&encoded).and_then(|_| input.flush()).map_err(|e| e.to_string())?;
         let cancel_id = format!("{id}-cancel");
         let mut cancel_pending = false;
+        let preview_id = format!("{id}-preview-workers");
+        let mut preview_pending = false;
         let mut terminal = None;
         let mut last_frame = std::time::Instant::now();
         loop {
@@ -102,6 +105,13 @@ impl Broker {
                 let control = json!({"schema_version":1,"request_id":cancel_id,"operation":"cancel_launch","payload":{"review_id":review}});
                 writeln!(input, "{control}").and_then(|_| input.flush()).map_err(|e| e.to_string())?;
                 cancel_pending = true;
+            }
+            if !preview_pending && terminal.is_none() {
+                if let Some(payload) = self.preview_workers.take() {
+                    let control = json!({"schema_version":1,"request_id":preview_id,"operation":"set_preview_workers","payload":payload});
+                    writeln!(input, "{control}").and_then(|_| input.flush()).map_err(|e| e.to_string())?;
+                    preview_pending = true;
+                }
             }
             let frame = protocol::poll_frame(service.output.as_ref().ok_or("Launcher response channel detached")?, std::time::Duration::from_millis(100)).map_err(|error| {
                 let detail = service.diagnostics.lock().map(|bytes| String::from_utf8_lossy(&bytes).trim().to_string()).unwrap_or_default();
@@ -118,18 +128,31 @@ impl Broker {
                     protocol::Response::Result(_) | protocol::Response::Error(_) => cancel_pending = false,
                     _ => return Err("Unexpected cancellation response".into()),
                 }
+            } else if preview_pending && identity["request_id"] == preview_id {
+                match protocol::decode(&line, &preview_id)? {
+                    protocol::Response::Result(payload) => {
+                        self.preview_workers.update(&payload);
+                        let _ = app.emit("launcher-progress", json!({"event":"launcher.preview-workers", "preview_render":payload["preview_render"]}));
+                    }
+                    protocol::Response::Error(message) => {
+                        let _ = app.emit("launcher-progress", json!({"event":"launcher.preview-workers", "control_error":message}));
+                    }
+                    _ => return Err("Unexpected preview control response".into()),
+                }
+                preview_pending = false;
             } else {
                 match protocol::decode(&line, &id)? {
                     protocol::Response::Progress(payload) => {
                         if operation == "apply" { self.launch_cancel.update(&payload); }
+                        if operation == "apply" { self.preview_workers.update(&payload); }
                         let _ = app.emit("launcher-progress", payload);
                     }
-                    response => { self.launch_cancel.clear(); terminal = Some(response); }
+                    response => { self.launch_cancel.clear(); self.preview_workers.clear(); terminal = Some(response); }
                 }
             }
             // Drain the control acknowledgement even if the cancelled apply
             // finishes first, so it cannot contaminate the next request.
-            if !cancel_pending {
+            if !cancel_pending && !preview_pending {
                 if let Some(response) = terminal.take() {
                     self.uncertain.store(false, Ordering::Release);
                     self.write_pending.store(false, Ordering::Release);
@@ -143,6 +166,7 @@ impl Broker {
         }
         })();
         self.launch_cancel.clear();
+        self.preview_workers.clear();
         if result.is_err() && self.uncertain.load(Ordering::Acquire) {
             service.finish_without_more_requests();
         }
@@ -182,6 +206,7 @@ impl Broker {
 #[tauri::command]
 async fn launcher_request(app: tauri::AppHandle, broker: State<'_, Arc<Broker>>, operation: String, payload: Value) -> Result<Value, String> {
     if operation == "cancel_launch" { return broker.launch_cancel.request(&payload); }
+    if operation == "set_preview_workers" { return broker.preview_workers.request(&payload); }
     if operation != "reconnect_service" && !OPERATIONS.contains(&operation.as_str()) { return Err("Unknown Launcher operation".into()); }
     if broker.busy.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_err() { return Err("Another Launcher operation is running".into()); }
     let broker = broker.inner().clone();

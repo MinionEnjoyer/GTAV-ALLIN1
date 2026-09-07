@@ -47,9 +47,10 @@ and checks the mounted DLC list. It then prepares missing stock/add-on weapon,
 vehicle, and equipment images using isolated Blender/Cycles rendering. Unchanged artwork is reused; changed
 archives, catalogs, editions or renderer builds invalidate the relevant cache.
 Rendering completes the selected queue without a whole-catalog time cap (up to
-180 seconds per item); discovery is separately bounded. Rendering uses up to two
-isolated Blender workers, with a single-worker fallback on constrained machines,
-preferring supported GPU acceleration with a bounded CPU fallback. Worker
+180 seconds per item); discovery is separately bounded. Rendering starts with one
+isolated Blender worker; the live Render performance control allows up to eight
+within the CPU limit, with RAM/performance warnings and a critical-memory guard.
+It prefers supported GPU acceleration with a bounded CPU fallback. Worker
 numerical libraries use one thread each to avoid nested oversubscription.
 Discovery and cache/index publication remain
 serialized. Cancel Launch propagates to every worker; none survives into launch.
@@ -364,12 +365,43 @@ layered vehicle paint keeps its solid base beneath authored decals.
 Renderer/Blender changes invalidate cached renders in every category; catalog
 cards remain 512×320, downsampled from 1280×800 renders.
 
+Each preview run starts with **one worker**. During rendering, expand **Render
+performance** in the review dialog to choose a live limit of 1–4 (bounded by the
+run's CPU budget). RAM-based recommendations warn before selecting a higher
+count; increases are blocked if free RAM is unknown or below 2 GiB. Increases schedule additional work without waiting for
+the current render; decreases let active renders finish before filling more
+slots. Cancellation still waits for owned workers; tuning never launches or
+terminates GTA and cannot target a different or completed review.
+
+The panel separates the requested limit from active renders, shows free RAM and
+the median of up to 12 successful render times at the selected count, and warns
+about low RAM, failures, or per-item slowdown versus at least three one-worker
+samples. Cache hits and jobs spanning a count change do not enter timing samples;
+comparisons reset between categories. Model complexity varies, so these are
+advisories, not proof of contention or a throughput benchmark. GPU memory is not
+measured; workers share the GPU and increasing the count can slow things down.
+Worker settings reset to one for the next run rather than persisting a risky
+choice. The UI's scheduling request bypasses the busy action queue but retains
+the active review ID and backend validation; it does not broaden write authority.
+
 Civilian vehicle preview paint is selected deterministically by model from white,
 black, gray, red, blue, orange and yellow. The same model keeps the same color
 across editions and regenerations. Military listings use olive green (preserving
 camouflage patterns); police use black/white paint and authored markings. Other
 emergency vehicles retain their liveries. These are disposable render-scene
 changes only: vehicle files, in-game paint and weapon/gear pegboards are untouched.
+Authored `matDiffuseColor` values now survive decoding, wheel placement and
+material interchange. Fixed RGB tints are preserved; paint-layer references
+resolve independently of shader names. The catalog uses its selected primary
+colour, a dark secondary (white for police), graphite wheels and dark interiors;
+the unpainted default channel is white. These are showroom swatches, not a claim
+to reproduce a particular in-game carcols configuration. Texture colour is
+multiplied by its resolved tint without changing rubber into metallic paint or
+tinting normal/specular maps. This fixes untinted white tyres/rims on Bruiser3
+and Deathbike3 while retaining intentionally white textures and body paint.
+Source changes require rebuilding a bundled preview worker before that worker
+uses the fix. Previously saved artwork must be regenerated; missing-only runs
+deliberately retain existing images.
 The concrete backdrop has exposed metallic I-beams, horizontal crossbeams and
 diagonal bracing. A masked background blur softens the wall and structural steel
 without blurring the vehicle or nearby asphalt; normalized filtering prevents

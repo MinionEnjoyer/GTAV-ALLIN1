@@ -15,7 +15,7 @@ from allin1.runtime_resources import frozen_identity
 MAX_REQUEST = 1024 * 1024
 OPERATIONS = frozenset({
     "catalog", "inspect", "review", "apply", "load_profile", "health",
-    "check_update", "read_garages", "check_sdk_update", "startup_status", "shutdown", "open_activity_folder", "open_launcher_release", "cancel_launch",
+    "check_update", "read_garages", "check_sdk_update", "startup_status", "shutdown", "open_activity_folder", "open_launcher_release", "cancel_launch", "set_preview_workers",
 })
 
 
@@ -28,7 +28,7 @@ def serve(service, incoming, outgoing):
             outgoing.write(message + "\n"); outgoing.flush()
 
     # Keep ordinary requests strictly serialized. The input thread may only
-    # signal the review-scoped launch token; it cannot run a second mutation.
+    # signal review-scoped cancellation/scheduling; it cannot run a second mutation.
     pending = Queue(maxsize=1)
     def execute():
         while (request := pending.get()) is not None:
@@ -39,8 +39,10 @@ def serve(service, incoming, outgoing):
                     continue
                 def progress(percentage, message):
                     control = getattr(service, "launch_cancellation", None)
+                    previews = getattr(service, "preview_render_control", None)
                     send(request_id, "progress", {"schema_version": 1, "event": "launcher.progress",
-                         "percentage": percentage, "message": message, **(control.status() if control else {})})
+                         "percentage": percentage, "message": message, **(control.status() if control else {}),
+                         **({'preview_render': previews.status()} if previews else {})})
                 service.progress = progress
                 with contextlib.redirect_stdout(sys.stderr):
                     if operation == "shutdown": result = {"closed": True}
@@ -79,12 +81,14 @@ def serve(service, incoming, outgoing):
                     raise ValueError("Invalid Launcher operation")
                 if operation == "cancel_launch":
                     send(request_id, "result", service.cancel_launch(payload))
+                elif operation == "set_preview_workers":
+                    send(request_id, "result", service.set_preview_workers(payload))
                 else:
                     enqueue((request_id, operation, payload))
                     if operation == "shutdown": break
             except Exception as error:
                 payload = {"message": str(error), "error_type": type(error).__name__}
-                if operation == "cancel_launch": send(request_id, "error", payload)
+                if operation in ("cancel_launch", "set_preview_workers"): send(request_id, "error", payload)
                 else: enqueue((request_id, "protocol_error", payload))
     finally:
         if worker.is_alive(): enqueue(None)

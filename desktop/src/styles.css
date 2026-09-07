@@ -593,3 +593,7 @@ footer .toolbar { align-items: center; justify-content: flex-end; gap: 8px; }
 .preview-mode:has(input:focus-visible), .preview-category:has(input:focus-visible) { outline: 2px solid #8bdcac; outline-offset: 3px; }
 .preview-controls:disabled .preview-mode, .preview-controls:disabled .preview-category { cursor: default; opacity: .65; }
 @media (max-width: 520px) { .preview-modes { grid-template-columns: 1fr; } }
+.render-worker-controls { border: 1px solid var(--border); padding: .75rem; margin: .75rem 0; max-height: 17rem; overflow-y: auto; }
+.render-worker-controls summary { cursor: pointer; font-weight: 600; }
+.render-worker-controls label { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin-top: .75rem; }
+.render-worker-controls p, .render-worker-controls ul { font-size: .85rem; margin: .5rem 0; }

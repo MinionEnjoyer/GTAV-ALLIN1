@@ -5,16 +5,16 @@ from allin1.preview_render_pool import ordered_results, worker_limit
 from allin1.launch_cancellation import LaunchCancellation, LaunchCancelled, checkpoint
 
 
-@pytest.mark.parametrize('cpus,gib,expected', [(32,24,4),(32,12,4),(32,10,3),(8,8,2),(2,32,1),(32,2,1),(None,20,1),(32,None,1)])
+@pytest.mark.parametrize('cpus,gib,expected', [(32,24,8),(32,20,8),(64,64,8),(16,24,7),(32,12,4),(32,10,3),(8,8,2),(2,32,1),(32,2,1),(None,20,1),(32,None,1)])
 def test_budget_keeps_cpu_and_memory_headroom(cpus,gib,expected):
     assert worker_limit(cpus,None if gib is None else gib*2**30)==expected
 
 
-def test_blender_concurrency_overlaps_two_workers_with_memory_reserve(monkeypatch):
+def test_every_run_starts_with_one_worker_even_with_spare_memory(monkeypatch):
     from allin1 import preview_render_pool as pool
     monkeypatch.setattr(pool.os,'cpu_count',lambda:32)
     monkeypatch.setattr(pool,'available_memory',lambda:16*2**30)
-    assert pool.render_workers()==2
+    assert pool.render_workers()==1
     monkeypatch.setattr(pool,'available_memory',lambda:2*2**30)
     assert pool.render_workers()==1
 

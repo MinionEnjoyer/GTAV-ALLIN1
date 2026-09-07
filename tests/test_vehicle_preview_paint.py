@@ -173,3 +173,54 @@ def test_apc_wear_mask_is_not_white_body_albedo():
     apply_paint({'materials':[material]},select_paint('apc','military'))
     assert material['texture_bindings']==[dict(role='specular',name='halftrack_worn',path='mask.png')]
     assert material['preview_color']==linear_rgb((83,91,53))
+
+
+def tinted_material(rgb, semantic='tyre', source='hash_1D5F09CE'):
+    return dict(source_name=source, semantic=semantic, texture_bindings=[
+        dict(slot='DiffuseSampler', role='diffuse', name='tyrewallwhite', path='tyre.png'),
+        dict(slot='BumpSampler', role='normal', name='normal', path='normal.png')],
+        shader_parameters=[dict(name='matDiffuseColor',type='Vector',values=[[*rgb,0]])])
+
+
+@pytest.mark.parametrize('model', ['bruiser3', 'deathbike3'])
+def test_nightmare_tyres_and_rims_use_authored_paint_channels(model):
+    tyre = tinted_material((2,2,2))
+    rim = tinted_material((2,4,4))
+    bindings = copy.deepcopy(tyre['texture_bindings'])
+    apply_paint({'materials':[tyre,rim]},select_paint(model))
+    assert tyre['preview_paint_layer']==2 and rim['preview_paint_layer']==4
+    assert tyre['preview_diffuse_tint']==linear_rgb((25,27,29))
+    assert rim['preview_diffuse_tint']==linear_rgb((65,68,72))
+    assert tyre['semantic']=='tyre' and tyre['texture_bindings']==bindings
+    assert 'preview_color' not in tyre
+
+
+@pytest.mark.parametrize('rgb', [(1,1,1), (0,0,0), (.05,.1,.25), (1.3,.5,.6)])
+def test_fixed_authored_tints_are_not_repainted_or_gamma_converted(rgb):
+    mat = tinted_material(rgb)
+    apply_paint({'materials':[mat]},select_paint('deathbike3'))
+    assert mat['preview_diffuse_tint']==rgb
+    assert 'preview_paint_layer' not in mat
+
+
+def test_authored_layer_overrides_shader_number_and_keeps_livery():
+    mat = tinted_material((2,2,2),'paint','vehicle_paint1')
+    mat['texture_bindings'].append(dict(slot='DiffuseSampler2',role='diffuse',name='logo',path='logo.png'))
+    apply_paint({'materials':[mat]},select_paint('police'))
+    assert mat['preview_color']==linear_rgb((225,227,224))
+    assert any(b['name']=='logo' and b['role']=='overlay' for b in mat['texture_bindings'])
+
+
+@pytest.mark.parametrize('rgb', [(2,0,0),(2,8,8),(2,2,4),(float('nan'),0,0)])
+def test_invalid_paint_selector_is_not_rendered_as_white_rgb(rgb):
+    with pytest.raises(ValueError,match='matDiffuseColor'):
+        apply_paint({'materials':[tinted_material(rgb)]},select_paint('deathbike3'))
+
+
+def test_unpainted_default_and_missing_tint_do_not_force_black_tyres():
+    default = tinted_material((2,5,5))
+    absent = tinted_material((2,2,2)); absent.pop('shader_parameters')
+    original = copy.deepcopy(absent)
+    apply_paint({'materials':[default,absent]},select_paint('deathbike3'))
+    assert default['preview_diffuse_tint']==(1,1,1)
+    assert absent==original

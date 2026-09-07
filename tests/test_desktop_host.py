@@ -187,6 +187,53 @@ def test_live_stdio_can_cancel_busy_apply_and_next_request_is_clean(agent):
         assert not host.is_alive()
 
 
+@pytest.mark.parametrize('agent', [False, True])
+def test_live_worker_control_bypasses_busy_apply_without_running_another_action(agent, monkeypatch):
+    from queue import Queue
+    from threading import Thread, Event
+    from allin1.preview_render_control import PreviewRenderControl
+    from allin1.launcher_api import LauncherAPI
+    monkeypatch.setattr('allin1.preview_render_control.os.cpu_count', lambda:16)
+    monkeypatch.setattr('allin1.preview_render_control.available_memory', lambda:24*2**30)
+    rows, release = Queue(), Event()
+    class Output:
+        def write(self, line): rows.put(json.loads(line))
+        def flush(self): pass
+    class Service:
+        preview_render_control = PreviewRenderControl()
+        def set_preview_workers(self, payload): return self.preview_render_control.request(payload)
+        def apply(self, payload):
+            with self.preview_render_control.session(payload['review_id']), self.preview_render_control.rendering():
+                self.progress(10, 'Rendering')
+                assert release.wait(5), 'Control was serialized behind apply'
+                return {'workers': self.preview_render_control.limit()}
+        def read(self, operation, payload): return {'clean':True}
+    service = Service()
+    reader_fd, writer_fd = os.pipe()
+    with os.fdopen(reader_fd, 'r', encoding='utf-8') as incoming, os.fdopen(writer_fd, 'w', encoding='utf-8') as writer:
+        host = Thread(target=serve, args=(LauncherAPI(service, allow_writes=True) if agent else service, incoming, Output()))
+        host.start()
+        def send(operation, payload):
+            writer.write(json.dumps(envelope(operation,payload))+'\n'); writer.flush()
+        try:
+            send('apply', {'review_id':'active','review_sha256':'hash','confirmed':True})
+            assert rows.get(timeout=3)['payload']['preview_render']['workers'] == 1
+            send('set_preview_workers', {'review_id':'active','workers':2})
+            response = rows.get(timeout=3)
+            assert response['request_id'] == 'set_preview_workers'
+            assert response['payload']['preview_render']['workers'] == 2
+            assert not release.is_set()
+            release.set()
+            assert rows.get(timeout=3)['payload']['workers'] == 2
+            send('set_preview_workers', {'review_id':'active','workers':3})
+            assert rows.get(timeout=3)['kind'] == 'error'
+            send('health', {})
+            assert rows.get(timeout=3)['payload'] == {'clean':True}
+        finally:
+            release.set(); send('shutdown', {}); host.join(6)
+        assert not host.is_alive()
+
+
 @pytest.mark.parametrize("payload", [{"huge": "x" * (4 * 1024**2)}, {"invalid": float("nan")}], ids=["response-bound", "nonfinite-response"])
 def test_invalid_service_output_returns_a_protocol_error(payload):
     class Service:

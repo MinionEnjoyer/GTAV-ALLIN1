@@ -1,5 +1,6 @@
 """Preview-only paint choices, independent of edition, machine and catalog order."""
 import hashlib
+import math
 import re
 
 from allin1.config import tomllib
@@ -77,6 +78,47 @@ def paint_for_job(job):
     return select_paint(job['model'])
 
 
+def material_diffuse_tint(material, paint):
+    """Resolve authored RGB or (2, layer, layer); these are not literal RGB=2.
+
+    Catalog swatches are presentation choices, not live carcols state. Use a
+    dark secondary/wheel/interior alongside the existing primary body palette.
+    Layer numbering: Sollumz yft/properties.py VehiclePaintLayer.
+    """
+    from allin1.vehicle_catalog import vehicle_model_hash
+    names = {'matdiffusecolor', str(vehicle_model_hash('matDiffuseColor')),
+             f'hash_{vehicle_model_hash("matDiffuseColor"):08x}'}
+    parameters = [p for p in material.get('shader_parameters', [])
+                  if p['name'].casefold() in names]
+    if not parameters:
+        return None
+    if len(parameters) != 1:
+        raise ValueError('Ambiguous matDiffuseColor')
+    parameter = parameters[0]
+    values = parameter['values']
+    if parameter['type'].casefold() != 'vector' or len(values) != 1 or len(values[0]) != 4:
+        raise ValueError('Invalid matDiffuseColor vector')
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v)
+           for v in values[0]):
+        raise ValueError('Invalid matDiffuseColor component')
+    r, g, b, _ = values[0]
+    if abs(r - 2) < .0001:
+        layer = round(g)
+        if layer not in range(1, 8) or abs(g-layer) >= .0001 or abs(b-layer) >= .0001:
+            raise ValueError('Unsupported matDiffuseColor paint layer')
+        dark = linear_rgb((25, 27, 29))
+        layers = {
+            1: paint['color'],
+            2: linear_rgb((225, 227, 224)) if paint['style']=='police' else dark,
+            3: paint['color'], 4: linear_rgb((65, 68, 72)),
+            5: (1.0, 1.0, 1.0), 6: dark, 7: dark,
+        }
+        material['preview_paint_layer'] = layer
+        return layers[layer]
+    # Authored shader constants are already linear; do not sRGB-convert again.
+    return (r, g, b)
+
+
 def apply_paint(manifest, paint):
     """Change only disposable paint/glass records; keep authored trim and decals."""
     from allin1.vehicle_catalog import vehicle_model_hash
@@ -149,3 +191,8 @@ def apply_paint(manifest, paint):
         if semantic == 'paint':
             material['preview_color'] = (linear_rgb((225,227,224))
                 if paint['style']=='police' and source in secondary else paint['color'])
+        tint = material_diffuse_tint(material, paint)
+        if tint is not None and not material.get('preview_camo'):
+            material['preview_diffuse_tint'] = tint
+            if semantic == 'paint':
+                material['preview_color'] = tint

@@ -7,6 +7,7 @@ import PackageDraft from "./PackageDraft";
 import AssistantSettings from "./AssistantSettings";
 import OperationProgress from "./OperationProgress";
 import PreviewControls from "./PreviewControls";
+import { RenderWorkerControls } from "./RenderWorkerControls";
 import StartupStatus from "./StartupStatus";
 import logo from "../../src/allin1/assets/ALLIN1.png";
 import { descriptions, EmptyState, ReviewDialog, WorkspaceIcon } from "./WorkspaceChrome";
@@ -176,10 +177,21 @@ export default function App({ client = nativeClient }: { client?: Client }) {
     void client
       .onProgress((progress) => {
         if (!mounted.current) return;
+        if (progress.event === 'launcher.preview-workers') {
+          if (activeAction.current) setOperationProgress(previous => previous ? {
+            ...previous,
+            ...(progress.preview_render?.review_id === previous.preview_render?.review_id
+              ? { preview_render: progress.preview_render } : {}),
+            preview_control_error: progress.control_error,
+          } : previous);
+          return;
+        }
         if (activeAction.current) setOperationProgress((previous) => ({
           action: activeAction.current, message: progress.message,
           cancellable: progress.cancellable === true,
           launch_review_id: progress.launch_review_id,
+          preview_render: progress.preview_render,
+          preview_control_error: previous?.preview_control_error,
           percentage: typeof progress.percentage === "number" && Number.isFinite(progress.percentage)
             ? Math.max(previous?.percentage ?? 0, Math.min(100, Math.max(0, progress.percentage)))
             : undefined,
@@ -578,6 +590,11 @@ export default function App({ client = nativeClient }: { client?: Client }) {
                 : "Cancel preparation before GTA starts. This does not close a running game."}</p>
             </div>}
             <p>Target: {review.target}</p>
+            {busy && operationProgress?.preview_render?.enabled &&
+              operationProgress.preview_render.review_id === review.review_id &&
+              <RenderWorkerControls status={operationProgress.preview_render}
+                disabled={cancellingLaunch} controlError={operationProgress.preview_control_error}
+                request={payload => client.request('set_preview_workers', payload)} />}
         {review.action === "launch" && <PreviewControls busy={busy} counts={review.preview_counts}
                 skipped={review.request?.skip_preview_categories ?? []}
                 quick={!!review.request?.quick_launch}

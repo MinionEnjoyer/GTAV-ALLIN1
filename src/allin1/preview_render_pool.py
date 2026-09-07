@@ -1,10 +1,11 @@
 """Bounded Blender concurrency; publication remains on the owning thread."""
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from contextlib import contextmanager
 from contextvars import copy_context
 import os
 
+MAX_PREVIEW_WORKERS = 8
 
 def available_memory():
     try:
@@ -23,17 +24,16 @@ def available_memory():
 
 
 def worker_limit(cpu_count, free_bytes):
-    # At most four processes, two logical cores each, 2 GiB per worker and
+    # At most eight processes, two logical cores each, 2 GiB per worker and
     # 4 GiB free reserve. Unknown/constrained machines stay serial.
     if not cpu_count or free_bytes is None:
         return 1
-    return max(1, min(4, (cpu_count - 2) // 2, int((free_bytes / 2**30 - 4) // 2)))
+    return max(1, min(MAX_PREVIEW_WORKERS, (cpu_count - 2) // 2, int((free_bytes / 2**30 - 4) // 2)))
 
 
 def render_workers():
-    # Each Cycles process also occupies GPU memory. Two overlap extraction,
-    # decoding and rendering without launching four full scenes into one GPU.
-    return min(2, worker_limit(os.cpu_count(), available_memory()))
+    # Every run starts conservatively. A review-scoped control may raise this.
+    return 1
 
 
 def blender_threads(job):
@@ -44,33 +44,47 @@ def blender_threads(job):
 
 
 @contextmanager
-def ordered_results(items, operation, workers):
+def ordered_results(items, operation, workers, *, heartbeat=lambda: None):
     """Only a small rolling window exists; propagate review cancellation to each.
 
     Workers never write shared cache/index files. Joining on exit ensures the
     launch cannot continue while an owned renderer is still alive.
     """
     from allin1.launch_cancellation import checkpoint
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='preview') as pool:
+    dynamic = hasattr(workers, 'limit')
+    limit = workers.limit if dynamic else lambda: workers
+    with ThreadPoolExecutor(max_workers=workers.maximum if dynamic else workers, thread_name_prefix='preview') as pool:
         pending = deque()
         source = iter(items)
+        exhausted = False
         def submit():
+            nonlocal exhausted
             checkpoint()
             try:
                 item = next(source)
             except StopIteration:
+                exhausted = True
                 return
             pending.append((item, pool.submit(copy_context().run, operation, item)))
         def results():
-            for _ in range(workers):
-                submit()
-            while pending:
+            while pending or not exhausted:
                 checkpoint()
-                item, future = pending.popleft()
-                value = future.result()
+                while not exhausted and len(pending) < limit():
+                    submit()
+                if not pending:
+                    break
+                item, future = pending[0]
+                try:
+                    value = future.result(timeout=.25)
+                except TimeoutError:
+                    if future.done():
+                        value = future.result()  # Propagate an operation's own timeout.
+                    else:
+                        heartbeat()
+                        continue
+                pending.popleft()
                 checkpoint()
                 yield item, value
-                submit()
         try:
             yield results()
         finally:

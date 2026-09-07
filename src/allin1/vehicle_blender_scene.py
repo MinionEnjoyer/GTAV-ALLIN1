@@ -127,6 +127,21 @@ for record in manifest['materials']:
         links.new(overlay_texture.outputs['Color'],overlay.inputs[2])
         links.new(overlay.outputs[0],p.inputs['Base Color'])
 
+    # Keep tyre/trim material properties: a paint selector does not make rubber
+    # into metallic body paint. Multiply the albedo, never normal/spec/alpha.
+    tint_color = record.get('preview_diffuse_tint')
+    if tint_color is not None and not record.get('preview_camo'):
+        if semantic != 'paint' or (base_texture and not overlay_texture):
+            base = p.inputs['Base Color']
+            tint = nodes.new('ShaderNodeMixRGB'); tint.name='AuthoredDiffuseTint'
+            tint.blend_type='MULTIPLY'; tint.inputs[0].default_value=1
+            tint.inputs[2].default_value=(*tint_color,1)
+            if base.is_linked:
+                links.new(base.links[0].from_socket,tint.inputs[1])
+            else:
+                tint.inputs[1].default_value=(1,1,1,1)
+            links.new(tint.outputs[0],base)
+
 corners=[obj.matrix_world@Vector(c) for obj in objects for c in obj.bound_box]
 lo=Vector(tuple(min(v[i] for v in corners) for i in range(3)))
 hi=Vector(tuple(max(v[i] for v in corners) for i in range(3)))
