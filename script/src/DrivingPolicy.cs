@@ -39,6 +39,9 @@ namespace ALLIN1
     }
     internal static class DrivingPolicy
     {
+        // Mission scripts own transmission input, not the read-only driving display.
+        internal static (bool Hud, bool Controls) Availability(bool sceneAvailable, bool missionActive)
+            => (sceneAvailable, sceneAvailable && !missionActive);
         internal static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
         internal static object Number(float value) => Finite(value) ? (object)value : null;
         internal static float DisplaySpeed(float metresPerSecond, string units) => Finite(metresPerSecond)

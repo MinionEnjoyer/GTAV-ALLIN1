@@ -33,6 +33,7 @@ namespace ALLIN1
         private static IAllin1DrivingHudBridge _hudBridge;
         private static bool _hudVisible, _hudWarning;
         private static int _nextHud;
+        private static string _hudReason;
 
         internal static void Initialize(string configPath, bool safeMode)
         {
@@ -97,7 +98,7 @@ namespace ALLIN1
             catch (Exception ex)
             {
                 _manual = false; _faulted = true;
-                PublishHud(false);
+                PublishHud(false, reason: "runtime_fault");
                 Event("runtime_disabled", new Dictionary<string, object> { ["error"] = ex.GetType().Name });
                 ClientLog.Error("Driving", "runtime_disabled", ex);
             }
@@ -113,16 +114,19 @@ namespace ALLIN1
                 edges[n] = down && !Held[n]; Held[n] = down;
             }
             GetWindowThreadProcessId(GetForegroundWindow(), out uint foreground);
-            bool available = foreground == ProcessId && !Game.IsLoading && !Game.IsPaused
-                && !Game.IsCutsceneActive && !menuActive && !GarageManager.IsTransitionInProgress
-                && !Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT)
-                && !Function.Call<bool>(Hash.NETWORK_IS_SESSION_ACTIVE)
-                && !Function.Call<bool>(Hash.GET_MISSION_FLAG);
-            if (!available) { Auto("controls suspended"); PublishHud(false); EndObservation("suspended"); return; }
+            string suspension = foreground != ProcessId ? "not_foreground"
+                : Game.IsLoading ? "loading" : Game.IsPaused ? "paused"
+                : Game.IsCutsceneActive ? "cutscene" : menuActive ? "menu"
+                : GarageManager.IsTransitionInProgress ? "garage_transition"
+                : Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT) ? "screen_faded"
+                : Function.Call<bool>(Hash.NETWORK_IS_SESSION_ACTIVE) ? "online" : null;
+            var available = DrivingPolicy.Availability(suspension == null, Function.Call<bool>(Hash.GET_MISSION_FLAG));
+            if (!available.Hud) { Auto("controls suspended"); PublishHud(false, reason: suspension); EndObservation("suspended"); return; }
+            if (!available.Controls) Auto("mission controls suspended");
             var ped = Game.Player.Character;
             var vehicle = ped != null && ped.Exists() && ped.IsAlive ? ped.CurrentVehicle : null;
             if (vehicle == null || !vehicle.Exists() || vehicle.IsDead || vehicle.Driver != ped)
-            { Auto("left driver seat"); PublishHud(false); EndObservation("driver_unavailable"); _vehicle = 0; return; }
+            { Auto("left driver seat"); PublishHud(false, reason: "driver_unavailable"); EndObservation("driver_unavailable"); _vehicle = 0; return; }
             if (_vehicle != vehicle.Handle || _address != vehicle.MemoryAddress || _model != vehicle.Model.Hash)
             {
                 Auto("vehicle changed"); EndObservation("vehicle_changed");
@@ -134,12 +138,12 @@ namespace ALLIN1
             bool external = _externalTransmission || Loaded("Gears.asi") || Loaded("ManualTransmission.asi") || Loaded("CustomGearRatios.asi");
             int actual = vehicle.CurrentGear, gears = vehicle.HighGear;
             float rpm = vehicle.CurrentRPM, speed = vehicle.Speed;
-            bool canHold = DrivingPolicy.CanHold(!_safeMode && !ClientWatchdog.SafeMode, true, vehicle.Model.IsCar || vehicle.Model.IsBike,
+            bool canHold = DrivingPolicy.CanHold(available.Controls && !_safeMode && !ClientWatchdog.SafeMode, true, vehicle.Model.IsCar || vehicle.Model.IsBike,
                 external, vehicle.IsEngineRunning, actual, gears, rpm);
             if (_manual && !canHold) Auto(external ? "external transmission owns gears" : "gear control unavailable");
             if (_manual && (_selected < 1 || _selected > gears)) Auto("gear limit changed");
             bool modifier = HeldKey(Keys.ControlKey) || HeldKey(Keys.Menu) || HeldKey(Keys.ShiftKey);
-            if (!modifier)
+            if (available.Controls && !modifier)
             {
                 if (edges[3]) { _options.Units = _options.Units == "kmh" ? "mph" : "kmh"; Notice("ALLIN1 units: " + _options.Units.ToUpperInvariant()); }
                 if (edges[0])
@@ -164,7 +168,7 @@ namespace ALLIN1
                 if (vehicle.CurrentGear != _selected || vehicle.NextGear != _selected)
                     Auto("gear write could not be verified");
             }
-            PublishHud(_provider == "builtin", speed, vehicle.CurrentGear, gears);
+            PublishHud(_provider == "builtin", speed, vehicle.CurrentGear, gears, _provider == "builtin" ? "driving" : "provider_" + _provider);
             if (_log != null && (now >= _nextSample || now < _nextSample - 200))
             {
                 _nextSample = now + 200;
@@ -177,8 +181,15 @@ namespace ALLIN1
             }
         }
         private static bool HeldKey(Keys key) => (GetAsyncKeyState((int)key) & 0x8000) != 0;
-        private static void PublishHud(bool visible, float speed = 0, int gear = 0, int gears = 0)
+        private static void PublishHud(bool visible, float speed = 0, int gear = 0, int gears = 0, string reason = "shutdown")
         {
+            if (_hudReason != reason)
+            {
+                _hudReason = reason;
+                ClientLog.Info("Driving", "hud_visibility", new Dictionary<string, object> {
+                    ["visible"] = visible, ["reason"] = reason, ["vehicle_handle"] = _vehicle,
+                });
+            }
             int now = Game.GameTime;
             if (visible == _hudVisible && (!visible || (now < _nextHud && now >= _nextHud - 100))) return;
             _nextHud = now + 100; _hudVisible = visible;

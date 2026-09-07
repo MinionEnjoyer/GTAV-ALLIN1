@@ -77,6 +77,41 @@ namespace ALLIN1
             { VehicleClass.Vans,           VehicleList.Vans },
         };
 
+        // Explicit review of the expanded built-in catalog, not a blanket opt-in
+        // by class: drift/race, armed, arena and specialist variants stay out.
+        // Keep these outside VehicleList so GBAY prices/preview ordering and
+        // third-party receipt/capability authorization remain unchanged.
+        private static readonly string[] REVIEWED_CIVILIAN_SUPPLEMENT =
+        {
+            "alpha", "blade", "blista2", "brigham", "broadway", "btype", "btype3",
+            "calico", "cheburek", "coquette2", "dubsta3", "dukes", "dynasty",
+            "eudora", "fagaloa", "furoregt", "glendale", "greenwood", "huntley",
+            "jester", "massacro", "panto", "peyote3", "pigalle", "ratloader2",
+            "retinue2", "rhapsody", "slamvan", "slamvan3", "stalion", "tornado5",
+            "turismor", "virgo", "voodoo", "warrener", "xls", "zentorno",
+        };
+
+        internal static int AddReviewedCivilianSupplement(
+            IDictionary<VehicleClass, List<string>> pools)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pool in pools.Values)
+                foreach (string model in pool) seen.Add(model);
+            int added = 0;
+            foreach (string model in REVIEWED_CIVILIAN_SUPPLEMENT)
+            {
+                if (!CatalogOnlyVehicles.Records.TryGetValue(model, out var record)
+                    || record.Storage != "garage" || record.Price <= 0
+                    || !TryMapPackageRoadCategory(record.Category, out var category)
+                    || !seen.Add(model)) continue;
+                if (!pools.TryGetValue(category, out var pool))
+                    pools[category] = pool = new List<string>();
+                pool.Add(model);
+                added++;
+            }
+            return added;
+        }
+
         // Package catalog categories are deliberately mapped through a strict
         // allow-list. Add-on aircraft, boats, emergency vehicles, and other
         // non-road content must never enter either traffic path by accident.
@@ -616,6 +651,11 @@ namespace ALLIN1
                 }
             }
 
+            // Both driven spawns and class-matched replacements consume these
+            // same reviewed pools. Native model availability is still checked
+            // lazily on selection, with unavailable models quarantined.
+            int supplementalAccepted = AddReviewedCivilianSupplement(_classPools);
+
             // Build the flat list for driven spawner (union of all class pools).
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var pool in _classPools.Values)
@@ -767,6 +807,7 @@ namespace ALLIN1
             int total = 0;
             foreach (var arr in ROAD_CLASSES)
                 total += arr.Length;
+            total += supplementalAccepted;
 
             initialization.Stop();
             ClientLog.Info("Traffic", "catalog_initialized",
@@ -775,6 +816,7 @@ namespace ALLIN1
                     { "models", seen.Count },
                     { "declared_models", total + packageDeclared },
                     { "curated_models", total },
+                    { "supplemental_civilian_models", supplementalAccepted },
                     { "package_models", packageAccepted },
                     { "package_declared", packageDeclared },
                     { "runtime_probes", 0 },

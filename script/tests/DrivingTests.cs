@@ -10,6 +10,17 @@ namespace ALLIN1.Tests
     public class DrivingTests
     {
         [Theory]
+        [InlineData(true, false, true, true)]
+        [InlineData(true, true, true, false)]
+        [InlineData(false, false, false, false)]
+        [InlineData(false, true, false, false)]
+        public void MissionRestrictsControlsNotReadOnlyHud(bool scene, bool mission, bool hud, bool controls)
+        {
+            var actual = DrivingPolicy.Availability(scene, mission);
+            Assert.Equal(hud, actual.Hud);
+            Assert.Equal(controls, actual.Controls);
+        }
+        [Theory]
         [InlineData(10, "kmh", 36)]
         [InlineData(10, "mph", 22.369363)]
         [InlineData(-1, "kmh", 0)]

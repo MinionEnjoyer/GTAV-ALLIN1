@@ -1,12 +1,52 @@
 using ALLIN1;
 using GTA;
 using GTA.Math;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace ALLIN1.Tests
 {
     public sealed class TrafficSpawnerPolicyTests
     {
+        [Fact]
+        public void ReviewedSupplementFeedsRoadPoolsOnceWithoutChangingCatalogAuthority()
+        {
+            var pools = new Dictionary<VehicleClass, List<string>>();
+            Assert.Equal(37, TrafficSpawner.AddReviewedCivilianSupplement(pools));
+            Assert.Equal(0, TrafficSpawner.AddReviewedCivilianSupplement(pools));
+            var models = pools.Values.SelectMany(pool => pool).ToArray();
+            Assert.Equal(37, models.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+            foreach (string model in models)
+            {
+                var record = CatalogOnlyVehicles.Records[model];
+                Assert.Equal("garage", record.Storage);
+                Assert.True(record.Price > 0);
+                Assert.False(record.TrafficEnabled); // not third-party/package authorization
+                Assert.True(TrafficSpawner.TryMapPackageRoadCategory(record.Category, out var category));
+                Assert.Contains(model, pools[category]);
+            }
+            Assert.Contains("panto", pools[VehicleClass.Compacts]);
+            Assert.Contains("broadway", pools[VehicleClass.Muscle]);
+            Assert.Contains("calico", pools[VehicleClass.Sports]);
+            Assert.Contains("xls", pools[VehicleClass.SUVs]);
+            foreach (string excluded in new[] { "ignus2", "boxville5", "dukes2", "insurgent2",
+                "driftchavosv6", "driftcoquette", "jester2", "massacro2", "dominator4",
+                "zr380", "veto", "rcbandito", "police5", "raiju", "dinghy3" })
+                Assert.DoesNotContain(excluded, models);
+        }
+
+        [Fact]
+        public void ReviewedSupplementDoesNotDuplicateAnExistingPoolEntry()
+        {
+            var pools = new Dictionary<VehicleClass, List<string>> {
+                [VehicleClass.Sports] = new List<string> { "ALPHA" },
+            };
+            Assert.Equal(36, TrafficSpawner.AddReviewedCivilianSupplement(pools));
+            Assert.Single(pools.Values.SelectMany(pool => pool), model =>
+                string.Equals(model, "alpha", StringComparison.OrdinalIgnoreCase));
+        }
         [Theory]
         [InlineData(0f, 20f)]
         [InlineData(0.5f, 20f)]

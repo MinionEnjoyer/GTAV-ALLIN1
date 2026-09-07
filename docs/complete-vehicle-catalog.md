@@ -1,5 +1,33 @@
 # Complete vehicle listings
 
+## Civilian traffic review — September 7, 2026
+
+The initial browse-only expansion described below has since received a purchase
+review (149 priced entries) and a separate, explicit traffic allow-list. The
+traffic spawner now includes these 37 supplemental civilian models in both its
+driven-spawn pool and class-matched ambient replacement pools:
+
+`alpha`, `blade`, `blista2`, `brigham`, `broadway`, `btype`, `btype3`, `calico`,
+`cheburek`, `coquette2`, `dubsta3`, `dukes`, `dynasty`, `eudora`, `fagaloa`,
+`furoregt`, `glendale`, `greenwood`, `huntley`, `jester`, `massacro`, `panto`,
+`peyote3`, `pigalle`, `ratloader2`, `retinue2`, `rhapsody`, `slamvan`, `slamvan3`,
+`stalion`, `tornado5`, `turismor`, `virgo`, `voodoo`, `warrener`, `xls`, `zentorno`.
+
+This reviews newly added **catalog entries**, including older DLC cars, not just
+the most recent DLC release. Drift/race derivatives, weaponized/arena variants,
+specialist vehicles, aircraft and boats were not enabled by this review. New
+catalog entries remain excluded unless explicitly reviewed. Existing static
+traffic pools are otherwise unchanged.
+
+The allow-list lives in `TrafficSpawner.REVIEWED_CIVILIAN_SUPPLEMENT`; it does
+not change GBAY prices, preview ordering, catalog ownership or third-party
+traffic authorization. Duplicates are suppressed across pools. Selection-time
+native availability checks and quarantine still apply on each game edition;
+this is not a claim of in-game acceptance for all 37 models. Spawn rates,
+population caps, cooldowns and adaptive performance limits are unchanged.
+
+## Initial complete-roster expansion
+
 The built-in GBAY roster covers all 935 distinct Rockstar vehicle models in the
 September 6, 2026 local archive audit: 463 existing static entries, 256 Story
 entries (two overlapping), and 218 additional catalog-only entries.
