@@ -21,7 +21,7 @@ namespace ALLIN1.ReactorBridge
     /// </summary>
     public sealed class Allin1ReactorBridge :
         IAllin1MenuBridge, IAllin1MenuLifecycleBridge,
-        IAllin1StoryCharacterBridge, IAllin1GameStateBridge,
+        IAllin1StoryCharacterBridge, IAllin1GameStateBridge, IAllin1DrivingHudBridge,
         IReactorExtensionLifecycle
     {
         private const string ExtensionId = "allin1.gbay";
@@ -115,6 +115,21 @@ namespace ALLIN1.ReactorBridge
         }
 
         public string Status { get; private set; } = "Not initialized.";
+
+        public bool TryPublishDrivingHud(Allin1DrivingHudFrame frame)
+        {
+            lock (_sync)
+            {
+                if (_disposed || _handle == null || frame == null ||
+                    typeof(ReactorApi).Assembly.GetType("RageWebUI.Core.PassiveHudContract") == null)
+                    return false;
+                return _handle.TryPublishEvent("hud.frame", new JObject {
+                    ["schema"] = 1, ["visible"] = frame.Visible, ["kind"] = "speedometer",
+                    ["speed"] = frame.Speed, ["units"] = frame.Units, ["gear"] = frame.Gear,
+                    ["manual"] = frame.Manual, ["notice"] = frame.Notice,
+                });
+            }
+        }
 
         public bool TryRefreshStoryCharacter(string characterId)
         {
@@ -241,11 +256,13 @@ namespace ALLIN1.ReactorBridge
                                 "storefront.gear",
                                 "storefront.garage",
                                 "storefront.sections",
+                                "presentation.passive-hud.v1",
                                 ReactorExtensionCapabilities.DefaultF9MenuOwner,
                             }),
                         builder =>
                         {
                             RegisterActions(builder);
+                            builder.AddEvent(new ReactorEventDescriptor("hud.frame", "Passive driving readout; no menu or input ownership.", 4096));
                             builder.AddEvent(new ReactorEventDescriptor(
                                 "state.changed",
                                 "Published after ALLIN1 atomically updates one or more live GBAY menu projections.",

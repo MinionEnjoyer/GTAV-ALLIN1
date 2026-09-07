@@ -663,6 +663,20 @@ namespace ALLIN1
         bool TrySynchronizeGameState(string characterId);
     }
 
+    public sealed class Allin1DrivingHudFrame
+    {
+        public bool Visible { get; internal set; }
+        public float Speed { get; internal set; }
+        public string Units { get; internal set; } = "KMH";
+        public string Gear { get; internal set; } = "?";
+        public bool Manual { get; internal set; }
+        public string Notice { get; internal set; } = "";
+    }
+    public interface IAllin1DrivingHudBridge
+    {
+        bool TryPublishDrivingHud(Allin1DrivingHudFrame frame);
+    }
+
     internal sealed class GbayVehicleStorefront :
         IAllin1VehicleStorefront, IAllin1WeaponPreviewStorefront, IAllin1HitchStorefront
     {

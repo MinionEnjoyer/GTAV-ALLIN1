@@ -226,8 +226,8 @@ namespace ALLIN1
         private static Dictionary<string, object> EventFields(Offer o) => new Dictionary<string, object> {
             ["tow_handle"] = o.Tow.Handle, ["trailer_handle"] = o.Trailer.Handle,
             ["tow_model_hash"] = o.TowModel, ["trailer_model_hash"] = o.TrailerModel,
-            ["hitch_id"] = o.Point.Id, ["mode"] = o.Point.Mode,
-            ["configured_break_force"] = o.Point.BreakForce,
+            ["hitch_id"] = o.Point?.Id, ["mode"] = o.Point?.Mode ?? "native",
+            ["configured_break_force"] = o.Point?.Experimental == true ? (object)o.Point.BreakForce : null,
         };
         // Main-thread sampling only. Covers both front and rear joints without any world scan.
         internal static Dictionary<string, object> Telemetry(Vehicle tow, out string pair)
@@ -256,7 +256,7 @@ namespace ALLIN1
             return new Dictionary<string, object> {
                 ["trailer_handle"] = trailer.Handle, ["trailer_model_hash"] = trailer.Model.Hash,
                 ["hitch_id"] = point?.Id, ["mode"] = point?.Mode ?? "native",
-                ["configured_break_force"] = point?.BreakForce, ["coupler_gap_m"] = gap,
+                ["configured_break_force"] = point?.Experimental == true ? (object)point.BreakForce : null, ["coupler_gap_m"] = gap,
                 ["yaw_difference_deg"] = DrivingPolicy.Number(DrivingPolicy.Angle(trailer.Heading - tow.Heading)),
                 ["trailer_speed_mps"] = DrivingPolicy.Number(trailer.Speed),
                 ["trailer_roll_deg"] = DrivingPolicy.Number(trailer.Rotation.Y),

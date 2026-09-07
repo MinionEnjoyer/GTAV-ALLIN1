@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -28,8 +27,12 @@ namespace ALLIN1
         private static string _provider, _notice = "", _pair;
         private static int _noticeUntil;
         private static float _lastSpeed;
+        private static float _peakFrameTime;
         private static int _lastSample;
         private static bool _sampleValid;
+        private static IAllin1DrivingHudBridge _hudBridge;
+        private static bool _hudVisible, _hudWarning;
+        private static int _nextHud;
 
         internal static void Initialize(string configPath, bool safeMode)
         {
@@ -86,13 +89,15 @@ namespace ALLIN1
             if (_manual) { _manual = false; Notice("Automatic: " + reason); }
             // Only CurrentGear/NextGear are changed. No persistent ratios, high-gear limits or handling to restore.
         }
-        internal static void Tick(bool menuActive)
+        internal static void Tick(bool menuActive, IAllin1DrivingHudBridge hudBridge)
         {
             if (_options == null || _faulted) return;
+            _hudBridge = hudBridge;
             try { TickCore(menuActive); }
             catch (Exception ex)
             {
                 _manual = false; _faulted = true;
+                PublishHud(false);
                 Event("runtime_disabled", new Dictionary<string, object> { ["error"] = ex.GetType().Name });
                 ClientLog.Error("Driving", "runtime_disabled", ex);
             }
@@ -113,17 +118,18 @@ namespace ALLIN1
                 && !Function.Call<bool>(Hash.IS_SCREEN_FADED_OUT)
                 && !Function.Call<bool>(Hash.NETWORK_IS_SESSION_ACTIVE)
                 && !Function.Call<bool>(Hash.GET_MISSION_FLAG);
-            if (!available) { Auto("controls suspended"); EndObservation("suspended"); return; }
+            if (!available) { Auto("controls suspended"); PublishHud(false); EndObservation("suspended"); return; }
             var ped = Game.Player.Character;
             var vehicle = ped != null && ped.Exists() && ped.IsAlive ? ped.CurrentVehicle : null;
             if (vehicle == null || !vehicle.Exists() || vehicle.IsDead || vehicle.Driver != ped)
-            { Auto("left driver seat"); EndObservation("driver_unavailable"); _vehicle = 0; return; }
+            { Auto("left driver seat"); PublishHud(false); EndObservation("driver_unavailable"); _vehicle = 0; return; }
             if (_vehicle != vehicle.Handle || _address != vehicle.MemoryAddress || _model != vehicle.Model.Hash)
             {
                 Auto("vehicle changed"); EndObservation("vehicle_changed");
                 _vehicle = vehicle.Handle; _address = vehicle.MemoryAddress; _model = vehicle.Model.Hash;
             }
             if (now >= _nextDetection || now < _nextDetection - 2000) DetectProviders();
+            if (DrivingPolicy.Finite(Game.LastFrameTime)) _peakFrameTime = Math.Max(_peakFrameTime, Game.LastFrameTime);
             // Check loaded transmission modules before every gear write, not just on the display polling interval.
             bool external = _externalTransmission || Loaded("Gears.asi") || Loaded("ManualTransmission.asi") || Loaded("CustomGearRatios.asi");
             int actual = vehicle.CurrentGear, gears = vehicle.HighGear;
@@ -158,8 +164,7 @@ namespace ALLIN1
                 if (vehicle.CurrentGear != _selected || vehicle.NextGear != _selected)
                     Auto("gear write could not be verified");
             }
-            if (_provider == "builtin") Draw(speed, vehicle.CurrentGear, gears);
-            if (now < _noticeUntil) GbayRenderer.DrawText(_notice, .5f, .86f, .32f, Color.White, centered: true, shadow: true);
+            PublishHud(_provider == "builtin", speed, vehicle.CurrentGear, gears);
             if (_log != null && (now >= _nextSample || now < _nextSample - 200))
             {
                 _nextSample = now + 200;
@@ -172,15 +177,30 @@ namespace ALLIN1
             }
         }
         private static bool HeldKey(Keys key) => (GetAsyncKeyState((int)key) & 0x8000) != 0;
-        private static void Draw(float speed, int gear, int gears)
+        private static void PublishHud(bool visible, float speed = 0, int gear = 0, int gears = 0)
         {
-            // Honour safe-zone margins and aspect ratio; independent of the interactive Reactor surface.
-            float margin = (1f - Function.Call<float>(Hash.GET_SAFE_ZONE_SIZE)) * .5f;
-            float right = .965f - margin, bottom = .94f - margin;
-            float width = .23f / Math.Max(1f, Function.Call<float>(Hash.GET_ASPECT_RATIO, false));
-            GbayRenderer.DrawRect(right - width / 2, bottom - .047f, width, .105f, Color.FromArgb(190, 12, 23, 19));
-            GbayRenderer.DrawText(Math.Round(DrivingPolicy.DisplaySpeed(speed, _options.Units)).ToString(), right - .01f, bottom - .105f, .70f, Color.White, rightAlign: true);
-            GbayRenderer.DrawText(_options.Units.ToUpperInvariant() + "   " + (_manual ? "M" : "A") + " " + DrivingPolicy.Gear(gear, gears), right - .01f, bottom - .041f, .34f, Color.White, rightAlign: true);
+            int now = Game.GameTime;
+            if (visible == _hudVisible && (!visible || (now < _nextHud && now >= _nextHud - 100))) return;
+            _nextHud = now + 100; _hudVisible = visible;
+            bool sent = false;
+            try { sent = _hudBridge?.TryPublishDrivingHud(new Allin1DrivingHudFrame {
+                Visible = visible, Speed = Math.Min(9999, DrivingPolicy.DisplaySpeed(speed, _options.Units)),
+                Units = _options.Units.ToUpperInvariant(), Gear = DrivingPolicy.Gear(gear, gears), Manual = _manual,
+                Notice = now < _noticeUntil ? _notice : "",
+            }) == true; }
+            catch (Exception ex)
+            {
+                // An optional UI failure must not interrupt gear release, telemetry or shutdown.
+                // The host's short lease clears a readout if even the hide frame cannot be sent.
+                if (!_hudWarning) ClientLog.Error("Driving", "passive_hud_publish_failed", ex);
+                _hudWarning = true;
+            }
+            if (visible && !sent && !_hudWarning)
+            {
+                _hudWarning = true;
+                ClientLog.Warn("Driving", "passive_hud_unavailable_update_reactor_v");
+            }
+            // No native drawing fallback. Telemetry and shifting do not depend on UI availability.
         }
         private static void Sample(Vehicle v, int now)
         {
@@ -191,7 +211,7 @@ namespace ALLIN1
                 if (pair != null) Event("coupling_observed", new Dictionary<string, object>(row) { ["pair"] = pair });
                 _pair = pair; _sampleValid = false;
             }
-            if (pair == null && _options.Telemetry != "all") { _sampleValid = false; return; }
+            if (pair == null && _options.Telemetry != "all") { _sampleValid = false; _peakFrameTime = 0; return; }
             float speed = v.Speed, dt = (now - _lastSample) / 1000f;
             var velocity = v.Velocity; var forward = v.ForwardVector;
             float signedSpeed = velocity.X * forward.X + velocity.Y * forward.Y + velocity.Z * forward.Z;
@@ -200,6 +220,7 @@ namespace ALLIN1
             row["acceleration_mps2"] = _sampleValid && dt > 0 && dt <= 1 ? DrivingPolicy.Number((speed - _lastSpeed) / dt) : null;
             row["sample_dt_s"] = _sampleValid ? DrivingPolicy.Number(dt) : null;
             row["frame_time_s"] = DrivingPolicy.Number(Game.LastFrameTime);
+            row["peak_frame_time_s"] = DrivingPolicy.Number(_peakFrameTime); _peakFrameTime = 0;
             row["gear"] = v.CurrentGear; row["next_gear"] = v.NextGear; row["high_gear"] = v.HighGear;
             row["held_gear"] = _manual ? (object)_selected : null; row["rpm_normalized"] = DrivingPolicy.Number(v.CurrentRPM);
             row["steering_angle_deg"] = DrivingPolicy.Number(v.SteeringAngle);
@@ -212,11 +233,11 @@ namespace ALLIN1
         private static void EndObservation(string reason)
         {
             if (_pair != null) Event("observation_ended", new Dictionary<string, object> { ["pair"] = _pair, ["reason"] = reason });
-            _pair = null; _sampleValid = false;
+            _pair = null; _sampleValid = false; _peakFrameTime = 0;
         }
         internal static void Shutdown()
         {
-            _manual = false; EndObservation("shutdown"); Event("session_ended"); _log?.Dispose(); _log = null;
+            _manual = false; PublishHud(false); EndObservation("shutdown"); Event("session_ended"); _log?.Dispose(); _log = null;
         }
     }
 }

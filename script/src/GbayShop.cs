@@ -2572,7 +2572,7 @@ namespace ALLIN1
                 if (!_initialized && !Game.IsLoading)
                     Initialize();
 
-                DrivingRuntime.Tick(_menuBridge?.IsMenuActive == true);
+                DrivingRuntime.Tick(_menuBridge?.IsMenuActive == true, _menuBridge as IAllin1DrivingHudBridge);
 
                 Ped activePlayer = Game.Player.Character;
                 bool playerExists = activePlayer != null &&
