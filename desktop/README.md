@@ -1,6 +1,6 @@
 # ALLIN1 Launcher React/Tauri development shell
 
-Target **0.6.4**, Tauri **v2**. Standalone development candidates are available;
+Target **0.6.5**, Tauri **v2**. Standalone development candidates are available;
 native installer/lifecycle acceptance is not complete.
 `manager.bat` / `allin1-gui` now forward to the native desktop. For source use,
 set `ALLIN1_LAUNCHER_EXECUTABLE` to a complete candidate's shell, or place
@@ -48,12 +48,12 @@ These unsigned local candidates are **not release-qualified**. Reports keep
 service smoke/resource integrity separate from untested native dialogs,
 installer lifecycle and live acceptance. They may be built from a dirty checkout
 for development; final release still requires reviewed, clean source and the
-full [milestone gates](../docs/release-0.6.4.md#mandatory-064-full-release-milestone).
+full [milestone gates](../docs/release-0.6.5.md#mandatory-065-full-release-milestone).
 
 Use the [migration harness](../docs/react-release-harness.md) for disposable
 real-service tests. An interactive development session is not a sandbox and can
 apply reviewed operations to selected real paths. Do not use real GTA files in
 automated write tests.
 
-See [release scope](../docs/release-0.6.4.md) and
+See [release scope](../docs/release-0.6.5.md) and
 [Launcher manual](../docs/launcher-guide.md) for current workspace limits.

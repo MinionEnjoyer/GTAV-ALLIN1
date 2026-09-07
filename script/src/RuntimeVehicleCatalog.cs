@@ -547,7 +547,8 @@ namespace ALLIN1
         }
 
         internal static bool IsCatalogOnly(string model) =>
-            CatalogOnlyVehicles.Records.ContainsKey(model ?? "");
+            CatalogOnlyVehicles.Records.TryGetValue(model ?? "", out var record) &&
+            string.Equals(record.Storage, CatalogOnlyVehicles.Storage, StringComparison.OrdinalIgnoreCase);
 
         internal static string SearchAliases(string model)
         {
@@ -561,9 +562,14 @@ namespace ALLIN1
             }
         }
 
+        private static readonly IReadOnlyDictionary<int, GbayVehicleRecord> SupplementalByHash =
+            CatalogOnlyVehicles.Records.Values.ToDictionary(
+                value => GetawayVehicleCompatibility.ModelHash(value.Model));
+
         internal static bool TryGetByHash(
             int modelHash, out GbayVehicleRecord record)
         {
+            if (SupplementalByHash.TryGetValue(modelHash, out record)) return true;
             EnsureInitialized();
             lock (Sync) return _recordsByHash.TryGetValue(modelHash, out record);
         }
@@ -732,6 +738,8 @@ namespace ALLIN1
             // price/delivery route, including in free-purchase mode.
             if (IsCatalogOnly(model)) return false;
             if (!IsListed(model)) return false;
+            if (CatalogOnlyVehicles.Records.TryGetValue(model ?? "", out var supplemental))
+                return RuntimeModelMatchesRecord(supplemental);
             try
             {
                 var runtimeModel = new Model(model);

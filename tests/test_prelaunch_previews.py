@@ -12,6 +12,23 @@ from PIL import Image
 from allin1 import prelaunch_previews as p
 
 
+def test_mounted_packs_accepts_stock_tag_case_preserving_order(tmp_path, monkeypatch):
+    game = tmp_path / 'game'
+    archive = game / 'mods/update/update.rpf'
+    archive.parent.mkdir(parents=True)
+    archive.touch()
+    def extract(command, **kwargs):
+        Path(command[-1]).write_text('''<SMandatoryPacksData><Paths>
+          <Item>dlcpacks:/first/</Item>
+          <item>dlcpacks:/mpxmas_604490/</item>
+          <Item>dlcpacks:/FIRST/</Item>
+          <item>dlcpacks:/../</item>
+          <Other>dlcpacks:/not_mounted/</Other>
+        </Paths></SMandatoryPacksData>''', encoding='utf-8')
+    monkeypatch.setattr(p.subprocess, 'run', extract)
+    assert p.mounted_packs(tmp_path, game) == ['first', 'mpxmas_604490']
+
+
 @pytest.fixture
 def fixture(tmp_path, monkeypatch):
     from allin1 import preview_blender
@@ -68,6 +85,21 @@ def test_missing_only_keeps_old_renderer_images_without_blender(fixture, monkeyp
     assert result['cached'] == 1 and result['rendered'] == 0
     assert index(f) == original and len(f.calls) == 1
     assert result['pruned_images'] == 0
+
+
+def test_missing_only_reuses_defaults_without_copying_or_rendering(fixture, monkeypatch):
+    from allin1 import preview_blender
+    f = fixture
+    folder = f.game / p.PUBLIC.replace('generated-weapons', 'default-weapons')
+    filename = 'weapon_test.' + 'a' * 64 + '.png'
+    p.atomic(folder / filename, f.data)
+    p.atomic(folder / 'index.json', json.dumps(dict(schema_version=1, owner='allin1.default-previews',
+        images={'weapon_test': filename}, image_sha256={filename: hashlib.sha256(f.data).hexdigest()})).encode())
+    monkeypatch.setattr(preview_blender, 'select_blender', lambda *_: pytest.fail('Defaults need no Blender'))
+    result = f.run(missing_only=True)
+    assert result['defaults_reused'] == 1 and result['rendered'] == 0
+    assert not f.calls and index(f) == {}
+    assert (folder / filename).read_bytes() == f.data
 
 
 def test_missing_only_fills_missing_entry_and_default_still_refreshes(fixture, monkeypatch):
@@ -362,3 +394,63 @@ def test_release_requires_bundled_renderer(tmp_path):
     root=_release_tree(tmp_path)
     (root/'tools/WeaponPreview/WeaponPreview.exe').unlink()
     with pytest.raises(FileNotFoundError,match='WeaponPreview'):collect_public_files(root)
+
+
+@pytest.mark.parametrize('mode', ['skip', 'budget', 'failure'])
+def test_refresh_without_replacement_keeps_finished_artwork(fixture, monkeypatch, mode):
+    f = fixture
+    f.run()
+    original = index(f)
+    image = f.game/p.PUBLIC/original['weapon_test']
+    monkeypatch.setattr(p, 'worker_command', lambda *_: (['worker'], 'new-renderer'))
+    if mode == 'failure':
+        def fail(*_): raise RuntimeError('render failed')
+        monkeypatch.setattr(p, 'render', fail)
+    result = f.run(**({'skip': True} if mode == 'skip' else {'budget': 0} if mode == 'budget' else {}))
+    assert index(f) == original and image.read_bytes() == f.data
+    assert result['rendered'] == 0 and result['cached'] == 1 and result['pruned_images'] == 0
+    if mode != 'skip': assert result['pending'] == result['retained_pending'] == 1
+
+
+def test_skip_keeps_existing_without_blender(fixture, monkeypatch):
+    from allin1 import preview_blender
+    f = fixture
+    f.run()
+    monkeypatch.setattr(preview_blender, 'select_blender', lambda *_: pytest.fail('Skipped previews need no Blender'))
+    assert f.run(skip=True)['cached'] == 1
+
+
+@pytest.mark.parametrize('phase', ['mounts', 'renderer', 'blender', 'publication'])
+def test_preparation_exception_does_not_erase_previous_index(fixture, monkeypatch, phase):
+    from allin1 import preview_blender
+    f = fixture
+    f.run()
+    path = f.game/p.PUBLIC/'index.json'
+    previous = path.read_bytes()
+    def fail(*_): raise OSError('unavailable')
+    if phase == 'mounts': monkeypatch.setattr(p, 'mounted_packs', fail)
+    elif phase == 'renderer': monkeypatch.setattr(p, 'worker_command', fail)
+    elif phase == 'blender': monkeypatch.setattr(preview_blender, 'select_blender', fail)
+    else:
+        original_atomic = p.atomic
+        def fail_commit(target, data):
+            if target == path: raise OSError('disk full')
+            return original_atomic(target, data)
+        monkeypatch.setattr(p, 'atomic', fail_commit)
+    assert f.run()['status'] != 'complete'
+    assert path.read_bytes() == previous
+    assert (path.parent/next(iter(index(f).values()))).exists()
+
+
+def test_refresh_records_recoverable_identity_and_previous_index(fixture, monkeypatch):
+    f = fixture
+    first = f.run()
+    original = (f.game/p.PUBLIC/'index.json').read_bytes()
+    key = first['weapons'][0]['cache_key']
+    metadata = next(f.cache.rglob(key+'.json'))
+    assert p.document(metadata)['model'] == 'WEAPON_TEST'
+    assert p.document(metadata)['category'] == 'weapons'
+    monkeypatch.setattr(p, 'worker_command', lambda *_: (['worker'], 'next-renderer'))
+    assert f.run()['rendered'] == 1
+    assert next(f.cache.rglob('previous-publication.json')).read_bytes() == original
+    assert metadata.with_suffix('.png').exists()

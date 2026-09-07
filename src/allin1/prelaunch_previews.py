@@ -129,8 +129,11 @@ def mounted_packs(project, game):
         subprocess.run([str(helper),'extract-entry',str(game),str(archive),'dlclist.xml',str(output)],
                        check=True, capture_output=True, timeout=20, **hidden_process_options())
         if output.stat().st_size > 2*1024*1024: raise ValueError('DLC list exceeds limit')
-        return list(dict.fromkeys(match.group(1).lower() for node in ET.parse(output).findall('.//Item')
-                if (match := re.fullmatch(r'dlcpacks:[/\\]([a-zA-Z0-9_-]+)[/\\]',(node.text or '').strip()))))
+        # Rockstar lists include both <Item> and <item> (notably Tampa's DLC).
+        # Keep mount order and path validation; never infer mounts from folders.
+        return list(dict.fromkeys(match.group(1).lower() for node in ET.parse(output).iter()
+                if node.tag in {'Item', 'item'}
+                and (match := re.fullmatch(r'dlcpacks:[/\\]([a-zA-Z0-9_-]+)[/\\]',(node.text or '').strip()))))
 
 def worker_command(project):
     from allin1.preview_policy import STUDIO_BACKDROP, VEHICLE_TEXTURES, THROWABLE_TEXTURES
@@ -261,6 +264,9 @@ def stock_items(command,project,game,cache,mounted,progress, *, category='weapon
 
 
 def source_unchanged(game,item):
+    from allin1.stock_weapon_previews import file_state
+    for pair in item.get('stock_component_assets',{}).values():
+        if any(file_state(contained(game,a['archive']))!=a['state'] for a in pair):return False
     if item.get('kind')=='stock':
         from allin1.stock_weapon_previews import file_state
         authority=item.get('authority')
@@ -384,24 +390,48 @@ def _prepare(project, game, cache_root, *, skip=False, progress=lambda *_:None, 
             requested_stock=model_names(project,category)
         command, renderer = worker_command(project) if items or requested_stock else ([], '')
         cache.mkdir(parents=True,exist_ok=True)
+        discovery_incomplete = False
         if requested_stock or (category!='weapons' and items):
             try:
                 if category=='weapons':
                     stock=stock_items(command,project,game,cache,mounted,progress)
-                    items=stock['items']+items
+                    items=stock['items']+[{**item,'stock_component_assets':stock.get('component_assets',{})} for item in items]
                 else:
                     stock=stock_items(command,project,game,cache,mounted,progress,category=category,managed=items)
                     items=stock['items']
                 report['errors'].extend(stock['errors'])
+                discovery_incomplete = bool(stock['errors']) or (bool(requested_stock) and not stock['items'])
+                if discovery_incomplete and not stock['errors']:
+                    report['errors'].append({'reason':'Preview discovery returned no models; existing artwork retained'})
                 report['fallbacks']=stock.get('fallbacks',[])
                 report['stock_requested']=len(requested_stock)
             except (OSError,ValueError,RuntimeError,subprocess.SubprocessError) as error:
                 report['errors'].append({'reason':str(error)})
+                discovery_incomplete = True
                 if category!='weapons':items=[]
         if len(items)>limit:raise ValueError('Full catalog exceeds preview queue limit')
+        # Defaults stay in their own store. Never copy them into generated or
+        # let fallback installation hide a user's generated/custom render.
+        if missing_only or skip:
+            default_public = contained(game, PUBLIC.replace('generated-weapons', 'default-' + category))
+            default_index = default_public / 'index.json'
+            if default_index.exists():
+                defaults = document(default_index)
+                if defaults.get('schema_version') == SCHEMA and defaults.get('owner') == 'allin1.default-previews':
+                    default_images, default_hashes = defaults.get('images', {}), defaults.get('image_sha256', {})
+                    if not isinstance(default_images, dict) or not isinstance(default_hashes, dict):
+                        raise ValueError('Invalid default preview inventory')
+                    needed = []
+                    for item in items:
+                        name = item['weapon'].lower()
+                        if not existing_preview(public, old_images, old_hashes, name) and existing_preview(default_public, default_images, default_hashes, name):
+                            report['defaults_reused'] = report.get('defaults_reused', 0) + 1
+                        else:
+                            needed.append(item)
+                    items = needed
         # Store identities, not an entire vehicle catalog's PNG bytes in RAM.
         retained = {item['weapon']: result[0] for item in items
-                    if (result := existing_preview(public, old_images, old_hashes, item['weapon'].lower()))} if missing_only else {}
+                    if (result := existing_preview(public, old_images, old_hashes, item['weapon'].lower()))} if missing_only or skip else {}
         blender_job = {}
         if any(not retained.get(item['weapon']) for item in items):
             from allin1.preview_blender import select_blender, identity
@@ -412,8 +442,21 @@ def _prepare(project, game, cache_root, *, skip=False, progress=lambda *_:None, 
         report['selected_weapons'] = [item['weapon'] for item in items]
         protected = {key_for(item,edition,renderer) for item in items}
         protected.update(retained.values())
+        # Keep recovery copies even when this pass uses a new renderer revision.
+        protected.update(filename.rsplit('.', 2)[1] for filename in old_images.values()
+                         if isinstance(filename, str) and re.fullmatch(pattern.pattern+r'\.[a-f0-9]{64}\.png', filename))
         published = {}
         published_hashes = {}
+        if discovery_incomplete:
+            # An incomplete discovery is not evidence that a model was removed.
+            # Artwork is presentation only; it grants no install/spawn authority.
+            for name in old_images:
+                if not pattern.fullmatch(name): continue
+                previous = existing_preview(public, old_images, old_hashes, name)
+                if previous:
+                    filename = old_images[name]
+                    published[name] = filename
+                    published_hashes[filename] = old_hashes[filename]
         from allin1.preview_render_pool import ordered_results, render_workers
         from allin1.preview_render_control import current_control
         from contextlib import nullcontext
@@ -468,7 +511,10 @@ def _prepare(project, game, cache_root, *, skip=False, progress=lambda *_:None, 
                 if error: report['errors'].append({'weapon':item['weapon'],'reason':error})
                 if data is None:
                     report['pending']+=1
-                    continue
+                    previous = existing_preview(public, old_images, old_hashes, item['weapon'].lower())
+                    if previous is None: continue
+                    key, data, state, _ = previous
+                    report['retained_pending'] = report.get('retained_pending', 0)+1
                 if not source_unchanged(game,item):
                     report['errors'].append({'weapon':item['weapon'],'reason':'Weapon archive changed before publication'})
                     report['pending']+=1
@@ -477,7 +523,8 @@ def _prepare(project, game, cache_root, *, skip=False, progress=lambda *_:None, 
                     # Single publication owner: parallel workers return pixels only.
                     if not (cache/(key+'.png')).exists(): reserve_cache_slot(cache,protected)
                     atomic(cache/(key+'.png'),data)
-                    atomic(cache/(key+'.json'),json.dumps({'sha256':hashlib.sha256(data).hexdigest(),'key':key}).encode())
+                    atomic(cache/(key+'.json'),json.dumps({'sha256':hashlib.sha256(data).hexdigest(),'key':key,
+                        'model':item['weapon'],'category':category,'edition':edition}).encode())
                 report[state]+=1
                 name = item['weapon'].lower()
                 if not pattern.fullmatch(name): raise ValueError('Invalid artwork identity')
@@ -493,19 +540,21 @@ def _prepare(project, game, cache_root, *, skip=False, progress=lambda *_:None, 
         if control:
             report['render_control'] = control.status()
         if items: progress(100, f'{category.title()} previews: {len(items)}/{len(items)} processed')
-        # Fresh index omits disabled/unmounted/tampered sources and stale results.
+        # Commit replacements first. Never interpret skipped/failed work as
+        # obsolete artwork, and keep the previous identity map for recovery.
         checkpoint()
+        if old_images:
+            atomic(cache/'previous-publication.json', index_path.read_bytes())
         atomic(index_path,json.dumps({'schema_version':SCHEMA,'owner':'allin1.prelaunch-previews',
             'images':published,'image_sha256':published_hashes}).encode())
-        report['pruned_images'] = prune_published(public, cache, published, pattern, old_hashes)
+        report['pruned_images'] = 0
+        if not skip and not report['pending'] and not report['errors']:
+            report['pruned_images'] = prune_published(public, cache, published, pattern, old_hashes)
     except (OSError,ValueError,KeyError,TypeError,AttributeError,subprocess.SubprocessError) as error:
         report['status']='unavailable'
         report['errors'].append({'reason':str(error)})
-        # Suppress stale generated overrides if validation could not complete.
-        try:
-            if index_path.exists() and document(index_path).get('owner')=='allin1.prelaunch-previews':
-                atomic(index_path,json.dumps({'schema_version':SCHEMA,'owner':'allin1.prelaunch-previews','images':{}}).encode())
-        except (OSError,ValueError,AttributeError): pass
+        # A failed preparation must not replace the last committed publication.
+        # In particular, missing Blender/renderer resources are not deletions.
     report['elapsed_seconds']=round(time.monotonic()-started,3)
     if report['pending'] or report['errors']: report['status']='partial' if report['weapons'] else 'unavailable'
     progress(None,f'{"Weapon" if category=="weapons" else category.title()} previews: {report["rendered"]} generated, {report["cached"]} cached, {report["pending"]} pending')

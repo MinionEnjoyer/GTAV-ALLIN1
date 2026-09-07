@@ -70,6 +70,18 @@ def test_recheck_reads_newly_published_images(roots):
     assert preview_counts(project, game)['vehicles'] == dict(existing=2, total=2, status='available')
 
 
+def test_downloaded_defaults_count_without_double_counting_generated(roots):
+    project, game = roots
+    public, images = publish(game, 'vehicles', ['adder', 'sultan'])
+    defaults = public.with_name('default-vehicles')
+    public.rename(defaults)
+    data = json.loads((defaults / 'index.json').read_text())
+    data['owner'] = 'allin1.default-previews'
+    (defaults / 'index.json').write_text(json.dumps(data))
+    publish(game, 'vehicles', ['adder'])
+    assert preview_counts(project, game)['vehicles']['existing'] == 2
+
+
 @pytest.mark.parametrize('damage', ['missing', 'empty', 'wrong_size', 'traversal'])
 def test_bad_or_missing_images_not_counted(roots, damage):
     project, game = roots

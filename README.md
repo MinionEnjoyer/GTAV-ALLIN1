@@ -6,14 +6,14 @@
 
 A Windows launcher and guarded package manager for **GTA V Story Mode**, supporting Legacy and Enhanced.
 
-**0.6.4** — **unsigned portable release.** The Launcher uses **React in Tauri v2**, backed by a shared Python service, CLI and agent API. Native packaged startup, all nine workspaces, reviewed settings saves and close/reopen persistence have been tested. Full installer lifecycle and fresh Legacy/Enhanced in-game acceptance remain untested for this release.
+**0.6.5** — **unsigned portable release.** The Launcher uses **React in Tauri v2**, backed by a shared Python service, CLI and agent API. Exact final-build automated and package checks are recorded with the release. Full installer lifecycle and fresh final-build Legacy/Enhanced in-game acceptance remain untested.
 
-Start with the [0.6.4 release guide](docs/release-0.6.4.md), [Launcher manual](docs/launcher-guide.md), or [documentation index](docs/README.md).
+Start with the [0.6.5 release guide](docs/release-0.6.5.md), [Launcher manual](docs/launcher-guide.md), or [documentation index](docs/README.md).
 
-0.6.4 builds are **unsigned manual downloads**, without a
+0.6.5 builds are **unsigned manual downloads**, without a
 promised SignPath certificate. Verify official release checksums and build
 identity after publication; checksums are not publisher authentication. Existing
-automatic-update trust checks remain enforced. See the [0.6.4 notes](RELEASE_NOTES.md).
+automatic-update trust checks remain enforced. See the [0.6.5 notes](RELEASE_NOTES.md).
 
 ## Product boundaries
 
@@ -31,7 +31,7 @@ Package support does not imply bundled content. Consult each release's included 
 
 The existing services support explicit Legacy/Enhanced selection, install/repair, receipt-owned package import/enable/disable/uninstall, profiles, readiness checks, diagnostics, SDK management and character/garage configuration. Official content supplies GBAY purchasing, category catalogs, owned loadouts and persistent per-character garages.
 
-React exposes nine Launcher workspaces: Setup, Gameplay, Content, Input, Packages, Characters, SDK Manager, Activity and Help Center. Core workflows, local Qwen provisioning and catalog settings have real-Python synthetic tests. A slim green sidebar arrow frees workspace space, with Ctrl+B support and a remembered collapsed state. See the [release guide](docs/release-0.6.4.md#remaining-work) for the remaining validation boundaries.
+React exposes nine Launcher workspaces: Setup, Gameplay, Content, Input, Packages, Characters, SDK Manager, Activity and Help Center. Core workflows, local Qwen provisioning and catalog settings have real-Python synthetic tests. A slim green sidebar arrow frees workspace space, with Ctrl+B support and a remembered collapsed state. See the [release guide](docs/release-0.6.5.md#remaining-work) for the remaining validation boundaries.
 
 ## Using ALLIN1 safely
 

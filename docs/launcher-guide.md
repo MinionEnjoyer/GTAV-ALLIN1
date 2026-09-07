@@ -1,6 +1,6 @@
-# ALLIN1 Launcher guide — 0.6.4 development
+# ALLIN1 Launcher guide — 0.6.5 development
 
-0.6.4 is unreleased. The desktop is React/Tauri v2; Python provides its services
+0.6.5 is unreleased. The desktop is React/Tauri v2; Python provides its services
 and command-line tools, with no Tkinter fallback. Do not assume an
 older downloaded build has every action described here.
 
@@ -229,7 +229,7 @@ SDK removal retains a recoverable installation directory and user files; this is
 not equivalent to deleting every SDK-related project or cache on the machine.
 
 The optional [Suppressors Enhanced](realistic-suppressors.md) mod is independently
-installed and released. Its 1.2.1 work is not bundled into Launcher/SDK 0.6.4.
+installed and released. Its 1.2.1 work is not bundled into Launcher/SDK 0.6.5.
 Other independent mods, including GTA-V-FPV, keep their own contracts.
 
 ## SDK and assistant
@@ -248,7 +248,7 @@ downloading or starting it. See [assistant boundaries](optional-assistant.md).
 ## Updates, repair and recovery
 
 Activity shows the current/latest Launcher versions and opens the fixed official
-release page. This matches the previous Tk manual-download workflow. The 0.6.4
+release page. This matches the previous Tk manual-download workflow. The 0.6.5
 channel is explicitly unsigned manual download; lookup never installs an update.
 Automatic-update signature requirements remain enforced.
 
@@ -422,5 +422,5 @@ before sharing it; do not share API keys or full private projects. Include the
 exact app version/build identity, edition, operation and failure time. “The same
 version number” is insufficient when development binaries differ.
 
-See [CLI reference](cli-reference.md), [release gates](release-0.6.4.md) and
+See [CLI reference](cli-reference.md), [release gates](release-0.6.5.md) and
 [documentation index](README.md).

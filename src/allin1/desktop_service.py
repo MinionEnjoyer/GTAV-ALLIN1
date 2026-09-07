@@ -29,7 +29,7 @@ NAVIGATION = [("setup", "Setup"), ("gameplay", "Gameplay"), ("content", "Content
               ("input", "Input"), ("mods", "Packages"), ("characters", "Characters"),
               ("sdk", "SDK Manager"), ("activity", "Activity"), ("help", "Help Center")]
 GAME_ACTIONS = {"sync_config", "install", "uninstall", "package_install", "package_enable", "package_disable", "package_uninstall",
-                "content_settings", "content_enable", "content_disable", "characters_save", "garages_save", "garages_repair", "launch", "prepare_previews"}
+                "content_settings", "content_enable", "content_disable", "characters_save", "garages_save", "garages_repair", "launch", "prepare_previews", "download_previews"}
 LOCAL_ACTIONS = {"save_config", "save_profile", "delete_profile", "export_profile", "import_preferences", "save_content_preferences", "diagnostics", "sdk_install", "sdk_install_release", "sdk_uninstall", "sdk_open", "garages_export"}
 LOCAL_ACTIONS |= {"assistant_save", "assistant_install_archive", "assistant_install_qwen", "assistant_uninstall"}
 GEAR = {"ARMOR_SUPER_LIGHT", "ARMOR_LIGHT", "ARMOR_STANDARD", "ARMOR_HEAVY", "ARMOR_SUPER_HEAVY", "ARMOR_JUGGERNAUT",
@@ -203,7 +203,7 @@ class LauncherService:
 
     def catalog(self):
         from allin1.help_topics import HELP_TOPICS
-        return {"schema_version": 1, "version": __version__, "desktop_version": "0.6.4",
+        return {"schema_version": 1, "version": __version__, "desktop_version": __version__,
                 "build_identity": getattr(self, "build_identity", None),
                 "navigation": [{"id": key, "label": label, "shortcut": f"Ctrl+{i + 1}"} for i, (key, label) in enumerate(NAVIGATION)],
                 "help_topics": serializable(HELP_TOPICS), "defaults": serializable(Config.default()),
@@ -364,6 +364,11 @@ class LauncherService:
             from allin1.preview_inventory import preview_counts
             evidence["preview_counts"] = preview_counts(self.project, game)
         if action.startswith("sdk_"): evidence["target"] = str(self.sdk_root)
+        if action == "download_previews":
+            from allin1.default_previews import plan
+            evidence["preview_download"] = plan(self.project, request.get("categories"))
+            evidence["request"]["preview_plan_sha256"] = hashlib.sha256(json.dumps(evidence["preview_download"], sort_keys=True).encode()).hexdigest()
+            evidence["preservation"] = "Installs vanilla default images only. Generated/custom previews, game models and saves are preserved. Both editions can reuse the verified download cache."
         if action in {"install", "uninstall"}:
             from allin1.installer import _preflight_installation_roots
             _preflight_installation_roots(game)
@@ -631,6 +636,12 @@ class LauncherService:
             command = [str(status.executable)]
             if status.executable.name == SHELL: command.extend(["--workspace", request.get("workspace", "linker")])
             return {"pid": subprocess.Popen(command, cwd=status.root, **hidden_process_options()).pid}
+        if action == "download_previews":
+            from allin1.default_previews import install, plan
+            current = hashlib.sha256(json.dumps(plan(self.project, request.get("categories")), sort_keys=True).encode()).hexdigest()
+            if current != request.get("preview_plan_sha256"):
+                raise ValueError("Preview download changed after review; review again")
+            return install(self.project, self.game(config), self.state / "default-previews", categories=request.get("categories"), progress=self.progress)
         if action == "prepare_previews": return self.prepare_previews(config, skip=request.get("skip_previews", False), skip_categories=request.get("skip_preview_categories", []), missing_only=request.get("missing_previews_only", False))
         if action == "launch": return self.launch(config, skip_previews=request.get("skip_previews", False), skip_preview_categories=request.get("skip_preview_categories", []), quick_launch=request.get("quick_launch", False), missing_previews_only=request.get("missing_previews_only", False))
         raise ValueError("Unsupported Launcher action")

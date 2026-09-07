@@ -18,6 +18,7 @@ READS = {
 EXTERNAL = {"open_activity_folder", "open_launcher_release"}
 # Explicit action parameters: adding a backend action requires a contract entry.
 ACTION_FIELDS = {
+    "download_previews": ["categories"],
     "save_config": [], "sync_config": [], "install": ["reactor_consent", "rpf_loader_consent"],
     "uninstall": [], "launch": ["skip_previews", "skip_preview_categories", "quick_launch", "missing_previews_only"], "prepare_previews": ["skip_previews", "skip_preview_categories", "missing_previews_only"], "save_profile": ["name"], "delete_profile": ["name"],
     "export_profile": ["name", "destination"], "import_preferences": ["source"],
@@ -40,7 +41,7 @@ def schema(fields, required=()):
     from allin1.preview_policy import PREVIEW_CATEGORIES
     return {"type": "object", "additionalProperties": False,
             "properties": {field: ({"type": "array", "items": {"type": "string", "enum": list(PREVIEW_CATEGORIES)}, "uniqueItems": True, "maxItems": 3}
-                                   if field == "skip_preview_categories" else {"type": "integer", "minimum": 1, "maximum": 4}
+                                   if field in {"skip_preview_categories", "categories"} else {"type": "integer", "minimum": 1, "maximum": 4}
                                    if field == "workers" else {"type": types.get(field, "string")}) for field in fields}, "required": list(required)}
 
 
@@ -69,7 +70,8 @@ def contract():
                            "review: action=package_install, source=<export>, settings=<reviewed settings>, expected_state_sha256=<inspection>",
                            "apply: review_id, review_sha256, confirmed=true", "inspect: module=mods"],
         "notes": ["Keep one agent-api process alive for review/apply; review IDs are session-local and single-use.",
-                  "launch and prepare_previews accept skip_preview_categories (weapons, vehicles, gear) to skip new renders while validating caches, and missing_previews_only=true to keep intact indexed images even after model/renderer updates and fill missing entries only. launch also accepts quick_launch=true to skip all preview discovery and rendering, leaving existing artwork unchanged. Neither bypasses launch safety or approval.",
+                  "launch and prepare_previews accept skip_preview_categories (weapons, vehicles, gear) to skip new renders while validating caches, and missing_previews_only=true to keep intact indexed generated/default images even after model/renderer updates and fill missing entries only. launch also accepts quick_launch=true to skip all preview discovery and rendering, leaving existing artwork unchanged. Neither bypasses launch safety or approval.",
+                  "download_previews installs pinned vanilla image packs without rendering. Optional categories selects weapons, vehicles and/or gear; omission selects all. Requires reviewed game-write authority and a closed game. Generated/custom artwork is preserved.",
                   "During a launch apply, send cancel_launch with its review_id in the same agent-api session. A requested acknowledgement is not completion; wait for the apply result. Cancellation never terminates GTA after dispatch.",
                   "Preview runs start with one worker. While progress.preview_render.enabled is true, set_preview_workers(review_id, workers) adjusts the active review's scheduling limit (1–8, hardware constrained). Lowering drains active jobs without killing them. Timings, RAM and advisory warnings are in progress.preview_render; GPU memory is not measured.",
                   "CLI review emits a 5-minute plan; CLI apply requires its approval hash and explicit write authority.",

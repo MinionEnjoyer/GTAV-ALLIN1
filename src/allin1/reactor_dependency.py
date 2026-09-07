@@ -1,6 +1,6 @@
 """Pinned, shared Reactor V installation; ALLIN1 owns only its presentation.
 
-Preview 2 has one host UI, not a dynamic skin loader. The ALLIN1 composition
+Preview 3 has one host UI, not a dynamic skin loader. The ALLIN1 composition
 also renders other extensions' typed menus. Its receipt and neutral-UI backup
 are separate from the shared runtime, which ALLIN1 uninstall never removes.
 """
@@ -20,7 +20,7 @@ import urllib.request
 import zipfile
 
 
-TAG = "v0.2.0-preview.2"
+TAG = "v0.2.0-preview.3"
 RELEASE_PAGE = f"https://github.com/MinionEnjoyer/GTAV-REACTOR-V/releases/tag/{TAG}"
 UI_ROOT = "plugins/ReactorV/ui/"
 RECEIPT = "scripts/.reactorv/dependencies/reactor-v.json"
@@ -58,11 +58,11 @@ class ReactorRelease:
 
 
 RELEASES = {
-    False: ReactorRelease("legacy", 175143415,
-        "56b841c4fc8b60fa844d5781f2536336ae99d3da0a7b58dfaf0acc87cb0cb1e9",
+    False: ReactorRelease("legacy", 179868791,
+        "d7d23fb665087a000dbde780cccf1c7e6b7cb12c2613a13cfa63082a1b35206b",
         "GTA5.exe", "1.0.3889.0", "677e4e355cfbdb13273b1d992407e3c261b3a108dc4dd5c8a0c4c1da651802e5"),
-    True: ReactorRelease("enhanced", 175143088,
-        "261325f08b6e63f73b51c14c34d0403f71996c1f78e5e1203a2606771da2a295",
+    True: ReactorRelease("enhanced", 179868466,
+        "f792ef8f4e097bed550c9e43e754740d6ff9bc93c79a08eb740e1f84c2164d50",
         "GTA5_Enhanced.exe", "1.0.1158.13", "0c52864d4521d9c9d441348aa1156958792dde8825d0297c851753f167336401"),
 }
 
@@ -442,7 +442,7 @@ def install_dependency(root: Path, enhanced: bool, *, progress: Callable[[str], 
         progress("Installing verified shared Reactor V and ALLIN1 presentation")
         _transaction(root, writes, deletes, expected_targets=observed,
                      expected_sources={**hashes, **ui_hashes})
-    return f"Reactor V 0.2.0 Preview 2 ({release.edition.title()})"
+    return f"Reactor V 0.2.0 Preview 3 ({release.edition.title()})"
 
 
 def remove_consumer(root: Path) -> list[Path]:

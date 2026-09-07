@@ -308,7 +308,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
   });
   const beginReview = (action: string, values: RecordData = {}) => {
     if (locked) return;
-    void run("review", { action, config, ...(action === "launch" ? { skip_previews: false, skip_preview_categories: skipPreviewCategories } : {}), ...values }, (loaded) => {
+    void run("review", { action, config, ...(action === "launch" ? { skip_previews: false, skip_preview_categories: skipPreviewCategories, missing_previews_only: true } : {}), ...values }, (loaded) => {
       setReview(loaded);
       setConfirmed(false);
     });
@@ -455,7 +455,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
           <div>
             <strong>ALLIN1</strong>
             <small>
-              Story Mode Launcher · {catalog.desktop_version ?? "0.6.4"}
+              Story Mode Launcher · {catalog.desktop_version ?? "0.6.5"}
             </small>
           </div>
         </div>
@@ -607,6 +607,13 @@ export default function App({ client = nativeClient }: { client?: Client }) {
                     (loaded) => { setReview(loaded); setConfirmed(false); });
                 }} />}
             {review.preservation && <p>{review.preservation}</p>}
+            {review.preview_download && <div aria-label="Default preview download plan">
+              <p>{review.preview_download.count} vanilla images · {(review.preview_download.bytes / 1024 ** 2).toFixed(1)} MiB · {review.preview_download.version}</p>
+              <ul>{review.preview_download.assets.map((asset: RecordData) => <li key={asset.category}>
+                {asset.category}: {asset.count} previews
+              </li>)}</ul>
+              <p>Downloads are SHA-256 verified. Generated artwork takes priority. Missing-only generation will reuse these defaults.</p>
+            </div>}
             {review.migration && (
               <div aria-label="Preference import plan">
                 <p>Copy {review.migration.copy_count} missing preference files. Preserve {review.migration.preserve_count} existing files. The previous Launcher folder and game files will not change.</p>
@@ -814,6 +821,20 @@ export default function App({ client = nativeClient }: { client?: Client }) {
                 Review uninstall
               </button>
             </div>
+            <fieldset>
+              <legend>GBAY default previews</legend>
+              <p>Download ready-made vanilla artwork from the SDK GitHub. No Blender rendering required for covered models. Your generated and custom previews take priority.</p>
+              <div className="toolbar">
+                <button disabled={locked || !session.status?.valid_game} onClick={() => beginReview("download_previews")}>
+                  Download all default previews
+                </button>
+                {(["weapons", "vehicles", "gear"] as const).map(category => <button key={category}
+                  disabled={locked || !session.status?.valid_game}
+                  onClick={() => beginReview("download_previews", { categories: [category] })}>
+                  Download {category}
+                </button>)}
+              </div>
+            </fieldset>
           </>
         )}
         {module === "gameplay" && config && (
@@ -1134,7 +1155,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
               <h2>{launcherRelease.update_available ? "Update available" : "No newer Launcher release"}</h2>
               <p>Current {catalog.desktop_version} · Latest {launcherRelease.version}</p>
               <p>{launcherRelease.name}</p>
-              <p>0.6.4 uses unsigned manual downloads. Review the release notes, build identity and checksums before installing. This action opens the official release page; it does not install or roll back anything.</p>
+              <p>0.6.5 uses unsigned manual downloads. Review the release notes, build identity and checksums before installing. This action opens the official release page; it does not install or roll back anything.</p>
               <button disabled={locked} onClick={() => void run("open_launcher_release", {}, () => setNotice("Official Launcher release page opened"))}>Open official release page</button>
             </section>}
             <pre className="activity" aria-label="Activity log">

@@ -29,6 +29,48 @@ def test_aircraft_use_runway_without_changing_road_vehicle_studio(category,bones
     assert preview_scene_for({'category':category},[SimpleNamespace(name=n) for n in bones])==expected
 
 
+@pytest.mark.parametrize('model', ['raiju', ' RAIJU ', 'conada2', 'streamer216', 'thruster'])
+def test_military_aircraft_without_rotor_bones_use_runway(model):
+    from allin1.vehicle_blender_renderer import preview_scene_for
+    paint = select_paint(model, 'military')
+    assert paint['style'] == 'military'
+    assert preview_scene_for(paint, [], model=model) == 'runway'
+
+
+@pytest.mark.parametrize('model', ['rhino', 'khanjali', 'apc', 'halftrack'])
+def test_military_ground_vehicles_keep_studio(model):
+    from allin1.vehicle_blender_renderer import preview_scene_for
+    assert preview_scene_for(select_paint(model, 'military'), [], model=model) == 'studio'
+
+
+@pytest.mark.parametrize('bone', ['rudder', 'RUDDER_2', 'aileron_l', 'elevator_r'])
+def test_custom_military_jet_uses_flight_control_bones(bone):
+    from types import SimpleNamespace
+    from allin1.vehicle_blender_renderer import preview_scene_for
+    bones = [SimpleNamespace(name=bone), SimpleNamespace(name='wing_l')]
+    assert preview_scene_for({'category':'military'}, bones, model='customjet') == 'runway'
+
+
+def test_rudder_alone_does_not_identify_aircraft():
+    from types import SimpleNamespace
+    from allin1.vehicle_blender_renderer import preview_scene_for
+    assert preview_scene_for({'category':''}, [SimpleNamespace(name='rudder')], model='custom') == 'studio'
+
+
+def test_explicit_boat_category_wins_over_aircraft_fallbacks():
+    from types import SimpleNamespace
+    from allin1.vehicle_blender_renderer import preview_scene_for
+    assert preview_scene_for({'category':'boats'}, [SimpleNamespace(name='rudder')], model='raiju') == 'ocean'
+
+
+def test_actual_raiju_catalog_routes_to_runway_without_reclassifying_paint():
+    from allin1.vehicle_blender_renderer import preview_scene_for
+    job = {'model':'raiju', 'project':Path(__file__).resolve().parents[1]}
+    paint = paint_for_job(job)
+    assert paint['category'] == 'military' and paint['style'] == 'military'
+    assert preview_scene_for(paint, [], model=job['model']) == 'runway'
+
+
 def test_trusted_vehicle_scene_program_compiles():
     from allin1.vehicle_blender_scene import SCENE_SCRIPT
     compile(SCENE_SCRIPT,'vehicle-preview-scene','exec')

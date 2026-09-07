@@ -1,28 +1,26 @@
 {
   "schema_version": 1,
   "profile": "allin1-composition",
-  "reactor_release": "v0.2.0-preview.2",
+  "reactor_release": "v0.2.0-preview.3",
   "source_repository": "https://github.com/MinionEnjoyer/GTAV-REACTOR-V",
-  "source_commit": "ac3e0f5341c7b9202d24b034758969cf6f3e7868",
+  "source_commit": "d324faf299119f4d7d3570e64fb63f0a284a7a92",
   "files": {
     "allin1-logo.png": "a2830232dd6baf9051bf59f146d42c06ac95a101d3b1504a1f11d29523d733cc",
-    "assets/app-BujyX-HM.js": "b3ad9343e9fdee4ace85e6922d83030243bc312bc088ee6acb8300cfdac29acf",
-    "assets/app-DJflWU1p.css": "78542e06f2f99c214e2102dec20a4b324cb01856e101703d4e3f50514ffb6f6f",
+    "assets/app-BTPc1nqq.css": "6432993f445cc59fcd2a729a2a7c5e64d48a57972c0ff6616af6098f363ef1de",
+    "assets/app-CYygyFN7.js": "b3ad9343e9fdee4ace85e6922d83030243bc312bc088ee6acb8300cfdac29acf",
     "assets/controller-6q878oqz.js": "9aa7c556e1df39ae88b92ec4f4c84b4ebcc6d6c4a87286f7ed36e270c4a856a4",
     "fonts/BebasNeue-Regular.ttf": "08e4623805102d819f58601e46e345648846075e363b2ceb23313c2d1c83ec73",
     "fonts/OFL-Bebas-Neue.txt": "72082f6cb4d04be2ecf7cc7d9e1e7d73787f0af8a5a278a47cade70c16b78341",
     "fonts/OFL-Oswald.txt": "0fd731a904b729a4e02eaf5e8ebd06783edd9abe400e8882760160230675b652",
     "fonts/Oswald-Variable.ttf": "5b38c246e255a12f5712d640d56bcced0472466fc68983d2d0410ec0457c2817",
-    "index.html": "65e2a95e554090f5ccf99cd0efd271e51f7c984af1ccc64d38521ce49aab0b50",
+    "index.html": "6472891f364f8fcf5e7332f2d070d1f078ea37144808e2e430d4795fd28d3bd6",
     "LICENSE": "6c314f9a5920e72ef4ae5bc52a9e72f1cb1c6d26007576091aac9e469673b3ba",
     "ragewebui-logo.png": "955e8f6900664605358aaf74c0f5e7967493c6a63ef7a4bc705b27314bc8d5c7",
     "ragewebui.js": "081d74e98e9bdcc7495604bd01750c47783d08b88f4ec919aeb1476b31d45151",
     "react-dom-LICENSE.txt": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
     "react-LICENSE.txt": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
-    "reactor-ui.json": "1b7310da5a7346813197b9ee9d85cef7693a2355175317f73c241cd7258ebe0c",
+    "reactor-ui.json": "5905259502c2108de9eae2726cfb14ba08e233afd97f3c3619be3f3fe4148481",
     "scheduler-LICENSE.txt": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
-    "THIRD_PARTY_NOTICES.txt": "8eb0ee3fbca2e303bdf4e0260b9073307f8047046e4344207b3ea7a128cfc2ac"
-  },
-  "development_build": true,
-  "source_sha256": "46e3376c2c2862f9ecde385179f14826bacf0e3356f97b737d1b0efef9429dec"
+    "THIRD_PARTY_NOTICES.txt": "022db82f1f9941175b07e08128a78595fb21d0c3adac5bf7bfefa62b900b2feb"
+  }
 }

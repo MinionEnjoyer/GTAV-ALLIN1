@@ -17,6 +17,16 @@ from allin1.prelaunch_previews import contained, document, sha, NAME
 from allin1.processes import hidden_process_options
 
 
+def stock_component_pair(job, model):
+    """Accept only the exact independently textured pair from stock discovery."""
+    pair=job.get('stock_component_assets',{}).get(model)
+    if not isinstance(pair,list) or len(pair)!=2:
+        raise ValueError('Missing stock component assets: '+model)
+    if Path(pair[0]['path']).name.casefold()!=model+'.ydr' or not pair[1]['path'].casefold().endswith('.ytd'):
+        raise ValueError('Stock component asset identity mismatch')
+    return pair
+
+
 def main(request):
     job_path = Path(request).resolve()
     job = document(job_path, 4*1024*1024)
@@ -116,6 +126,13 @@ def main(request):
         for choice in selected:
             row=unique_component(components,choice['name']);info=component_preview(row);cm=info['model']
             if not cm or not info['create_object']:continue
+            if not any(e.name.casefold()==cm+'.ydr' for e in entries):
+                from allin1.stock_weapon_previews import extract
+                pair=stock_component_pair(job,cm)
+                parts.append({**choice,'model':cm,'child_bone':info['child_bone'],'asset_index':len(extracted)})
+                for ref,suffix in zip(pair,('.ydr','.ytd')):
+                    extracted.append(extract(project,game,ref,job_path.parent/('asset'+str(len(extracted))+suffix)))
+                continue
             cd=select(cm+'.ydr')
             if cd==model_entry:continue
             txds=[n.findtext('txdName') for n in archetypes.findall('.//Item') if n.findtext('modelName')==cm]
@@ -127,6 +144,8 @@ def main(request):
                 extracted.append(service.extract(index,entry,job_path.parent/('asset'+str(len(extracted))+entry.suffix)))
     image=render_assets(project,game,model,extracted,job['edition'],job_path.parent,parts=parts,job=job)
     if sha(source) != job['archive_sha256']: raise ValueError('Source changed during rendering')
+    from allin1.prelaunch_previews import source_unchanged
+    if not source_unchanged(game,job):raise ValueError('Component source changed during rendering')
     image.save(job_path.parent/'preview.png', format='PNG')
     print('Rendered', job['weapon'], model, flush=True)
 

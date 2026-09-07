@@ -46,7 +46,7 @@ def test_release_notes_are_current_only_and_disclose_unsigned_distribution():
     from allin1 import __version__
     text = (ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
     assert [line for line in text.splitlines() if line.startswith("# ")] == [f"# GTA V ALLIN1 {__version__} — unsigned portable release"]
-    assert "v0.6.4-rc.1" in text and f"**Release `v{__version__}`.**" in text
+    assert "v0.6.4" in text and f"**Release `v{__version__}`.**" in text
     assert "release_qualified" in text and "incomplete" in text
     assert [line for line in text.splitlines() if line.startswith("## ")] == ["## What's new", "## Download and trust", "## Release status"]
     assert "**Unsigned manual download.**" in text

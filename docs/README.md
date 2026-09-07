@@ -1,6 +1,6 @@
 # ALLIN1 Launcher documentation
 
-**0.6.4 — unsigned prerelease, not release-qualified.** Start with the [release guide](release-0.6.4.md) and [Launcher manual](launcher-guide.md).
+**0.6.5 — unsigned portable release; broader qualification remains incomplete.** Start with the [release guide](release-0.6.5.md) and [Launcher manual](launcher-guide.md).
 
 Current manuals describe implemented behavior and explicit limits. Reference contracts and architecture proposals do not prove native/live acceptance. Historical evidence applies only to its named source/session. Independent mods retain separate release ownership.
 
@@ -11,7 +11,7 @@ Current manuals describe implemented behavior and explicit limits. Reference con
 - [React/Tauri desktop setup](../desktop/README.md)
 - [Development and validation](development.md)
 - [Launcher manual](launcher-guide.md)
-- [0.6.4 release guide and known limits](release-0.6.4.md)
+- [0.6.5 release guide and known limits](release-0.6.5.md)
 
 ## Contracts and references
 

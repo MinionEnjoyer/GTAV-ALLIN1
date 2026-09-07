@@ -1,7 +1,7 @@
 """Read-only preview coverage; never discovers models or starts render workers.
 
-Counts published generated images for the selected game's catalog, not bundled
-fallback artwork. This is a presence check, not source/cache validation.
+Counts published generated and downloaded default images for the selected
+game's catalog. This is a presence check, not source/cache validation.
 """
 from pathlib import Path
 import re
@@ -54,16 +54,16 @@ def _managed_names(game):
     return names
 
 
-def _existing(game, category, names):
-    public = contained(game, PUBLIC.replace('generated-weapons', 'generated-' + category))
+def _store_names(game, category, names, prefix, owner):
+    public = contained(game, PUBLIC.replace('generated-weapons', prefix + category))
     index = public / 'index.json'
     if not index.exists():
-        return 0
+        return set()
     data = document(index)
     images = data.get('images')
-    if data.get('schema_version') != 1 or data.get('owner') != 'allin1.prelaunch-previews' or not isinstance(images, dict) or len(images) > 4096:
+    if data.get('schema_version') != 1 or data.get('owner') != owner or not isinstance(images, dict) or len(images) > 4096:
         raise ValueError('Generated preview index is invalid')
-    count = 0
+    found = set()
     for name in names:
         filename = images.get(name)
         if not isinstance(filename, str) or not re.fullmatch(re.escape(name) + r'\.[0-9a-f]{64}\.png', filename):
@@ -75,10 +75,16 @@ def _existing(game, category, names):
             with path.open('rb') as stream:
                 header = stream.read(24)
             if header[:16] == b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR' and header[16:24] == struct.pack('>II', 512, 320):
-                count += 1
+                found.add(name)
         except (OSError, ValueError):
             continue
-    return count
+    return found
+
+
+def _existing(game, category, names):
+    generated = _store_names(game, category, names, 'generated-', 'allin1.prelaunch-previews')
+    defaults = _store_names(game, category, names, 'default-', 'allin1.default-previews')
+    return len(generated | defaults)
 
 
 def preview_counts(project, game):

@@ -1,6 +1,6 @@
 # Launcher development and validation
 
-Target: 0.6.4, React in Tauri v2, Python domain services and a separate C# Story
+Target: 0.6.5, React in Tauri v2, Python domain services and a separate C# Story
 Mode runtime. The source CLI remains; GUI aliases route to Tauri only.
 
 ## Setup
@@ -99,4 +99,4 @@ New asynchronous UI code needs loading/error states, stale-result and dirty-stat
 tests, and no automatic whole-app reload during unresolved work. New archive or
 rollback writers need disposable containment and outside-root canary tests.
 
-The [release guide](release-0.6.4.md) is the current qualification checklist.
+The [release guide](release-0.6.5.md) is the current qualification checklist.

@@ -25,24 +25,30 @@ namespace ALLIN1.Tests
         }
 
         [Fact]
-        public void FullSupplementIsVisibleButNeverPurchasableOrTrafficEnabled()
+        public void ReviewedSupplementHasPricesAndStorageButNeverEnablesTraffic()
         {
             RuntimeVehicleCatalog.MergeForTests(Array.Empty<RuntimeVehicleCatalogDocument>(), _ => true);
             Assert.Equal(218, CatalogOnlyVehicles.Records.Count);
             foreach (var record in CatalogOnlyVehicles.Records.Values)
             {
                 Assert.True(RuntimeVehicleCatalog.IsListed(record.Model));
-                Assert.False(RuntimeVehicleCatalog.IsModelAvailable(record.Model));
-                Assert.Equal("catalog_only", RuntimeVehicleCatalog.GetStorage(record.Model));
-                Assert.False(GarageVehicleTypePolicy.IsRegularGarageEligible(record.Model));
+                bool blocked = record.Storage == "catalog_only";
+                Assert.Equal(blocked, RuntimeVehicleCatalog.IsCatalogOnly(record.Model));
+                if (blocked) Assert.False(RuntimeVehicleCatalog.IsModelAvailable(record.Model));
+                Assert.Equal(record.Storage, RuntimeVehicleCatalog.GetStorage(record.Model));
+                Assert.Equal(record.Storage == "garage", GarageVehicleTypePolicy.IsRegularGarageEligible(record.Model));
+                Assert.Equal(record.Price, RuntimeVehicleCatalog.GetPrice(record.Model));
+                Assert.True(blocked ? record.Price == 0 : record.Price > 0);
                 Assert.False(record.TrafficEnabled);
                 Assert.DoesNotContain(record.Model, VehicleList.All);
                 Assert.Contains(record.Model, RuntimeVehicleCatalog.GetCategoryModels(record.Category));
                 Assert.Contains(record.Model, RuntimeVehicleCatalog.GetCategoryModels("all"));
-                Assert.False(RuntimeVehicleCatalog.TryGetByHash(
-                    GetawayVehicleCompatibility.ModelHash(record.Model), out _));
+                Assert.True(RuntimeVehicleCatalog.TryGetByHash(
+                    GetawayVehicleCompatibility.ModelHash(record.Model), out var byHash));
+                Assert.Same(record, byHash);
             }
             Assert.Empty(RuntimeVehicleCatalog.TrafficEntries);
+            Assert.Equal(149, CatalogOnlyVehicles.Records.Values.Count(row => row.Price > 0));
         }
 
         [Theory]

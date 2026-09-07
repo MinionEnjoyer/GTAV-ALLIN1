@@ -26,7 +26,7 @@ export default function PreviewControls({ busy, skipped, quick, missingOnly = fa
       <input type="checkbox" checked={missingOnly} onChange={event => onChange(skipped, false, event.target.checked)} />
       Missing previews only
     </label>}
-    {!quick && missingOnly && <p className="preview-hint">Keep intact generated images, even after renderer or model updates. Generate only missing images in the selected categories. Package validation still runs.</p>}
+    {!quick && missingOnly && <p className="preview-hint">Keep intact generated and downloaded default images, even after renderer or model updates. Generate only missing images in the selected categories. Package validation still runs.</p>}
     <div className="preview-categories" role="group" aria-label="Preview categories">
         {previewCategories.map(category => <label key={category} className="preview-category">
           {!quick && <input type="checkbox" aria-label={category[0].toUpperCase() + category.slice(1)} checked={!skipped.includes(category)}
@@ -36,12 +36,12 @@ export default function PreviewControls({ busy, skipped, quick, missingOnly = fa
               onChange(event.target.checked ? skipped.filter(c => c !== category)
                 : [...skipped, category], false, missingOnly);
             }} />} {category[0].toUpperCase() + category.slice(1)}
-          <span className="preview-count" title={counts?.[category]?.reason || "Existing generated previews / catalog items. Source validation runs during Update Previews."}>
+          <span className="preview-count" title={counts?.[category]?.reason || "Existing generated or downloaded default previews / catalog items. Source validation runs during Update Previews."}>
             {counts?.[category]?.status === "available" ? `${counts[category]!.existing}/${counts[category]!.total}` : "Unavailable"}
           </span>
         </label>)}
     </div>
-    <p className="preview-hint">Counts show existing / total previews, excluding throwables and unsupported gear. Launch safety checks always run.</p>
+    <p className="preview-hint">Counts show existing / total previews, including throwables and supported gear. Launch safety checks always run.</p>
     <p className="preview-hint">Missing images use an installed default preview pack or a placeholder. Default images are not bundled.</p>
   </fieldset>;
 }

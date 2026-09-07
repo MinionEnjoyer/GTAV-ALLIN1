@@ -47,6 +47,37 @@ public sealed class CatalogPreviewArtworkTests : IDisposable
     }
 
     [Theory]
+    [InlineData("WHITE")]
+    [InlineData("RED")]
+    [InlineData("ORANGE")]
+    [InlineData("YELLOW")]
+    [InlineData("GREEN")]
+    [InlineData("BLUE")]
+    [InlineData("PURPLE")]
+    public void SmokeProductsReuseTheNativeSmokePreview(string color)
+    {
+        string id = "ALLIN1_SMOKE_" + color;
+        string identity = CatalogPreviewArtwork.WeaponIdentity(id, smokeProduct: true);
+        Assert.Equal("WEAPON_SMOKEGRENADE", identity);
+        Store("default-", "weapons", "weapon_smokegrenade");
+        Assert.StartsWith("assets/allin1/default-", CatalogPreviewArtwork.Read(root, "weapons", 128)[identity]);
+        Store("generated-", "weapons", "weapon_smokegrenade");
+        var images = CatalogPreviewArtwork.Read(root, "weapons", 128);
+        Assert.Single(images);
+        Assert.StartsWith("assets/allin1/generated-", images[identity]);
+        Assert.False(images.ContainsKey(id));
+    }
+
+    [Theory]
+    [InlineData("WEAPON_A1_EQ_P90")]
+    [InlineData("WEAPON_SMOKEGRENADE")]
+    [InlineData("ALLIN1_SMOKE_UNKNOWN")]
+    public void NonSmokeProductsKeepTheirOwnArtworkIdentity(string id)
+    {
+        Assert.Equal(id, CatalogPreviewArtwork.WeaponIdentity(id, smokeProduct: false));
+    }
+
+    [Theory]
     [InlineData("{broken")]
     [InlineData("{\"schema_version\":2,\"owner\":\"allin1.prelaunch-previews\",\"images\":{}}")]
     [InlineData("{\"schema_version\":1,\"owner\":\"other-mod\",\"images\":{}}")]

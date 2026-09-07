@@ -1,6 +1,6 @@
 # React release and Tkinter-retirement harness
 
-The release targets are Launcher/SDK **0.6.4**. Suppressors Enhanced **1.2.1**,
+The release targets are Launcher/SDK **0.6.5**. Suppressors Enhanced **1.2.1**,
 the weapon pack bundle, GTA VR and FPV are separate products. This harness
 neither installs anything into a real game directory nor launches GTA.
 
@@ -45,9 +45,9 @@ generic package and weapon integration tests stay in the product suites. The def
 
 ## Tkinter removal sequence
 
-This is mandatory for the full 0.6.4 release of **both** products, not a later
+This is mandatory for the full 0.6.5 release of **both** products, not a later
 cleanup phase. Until source/entrypoint removal and packaged replacement are
-verified, the [full-release milestone](release-0.6.4.md#mandatory-064-full-release-milestone)
+verified, the [full-release milestone](release-0.6.5.md#mandatory-065-full-release-milestone)
 is unmet even if the targeted harness passes.
 
 1. Extract shared nonvisual behavior from Tk adapters. SDK Help topics/search

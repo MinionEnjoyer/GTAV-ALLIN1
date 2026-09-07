@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "product": "launcher",
-  "release": "0.6.4",
+  "release": "0.6.5",
   "documents": {
     "README.md": "current",
     "RELEASE_NOTES.md": "current",
@@ -22,6 +22,8 @@
     "docs/react-release-harness.md": "reference",
     "docs/realistic-suppressors.md": "separate-product",
     "docs/release-0.6.4.md": "current",
+    "docs/release-0.6.5.md": "current",
+    "docs/gbay-default-previews.md": "current",
     "docs/rpf-authoring-safety.md": "reference",
     "docs/suppressor-json-profiles.md": "separate-product",
     "docs/suppressor-sleeve-tracking.md": "separate-product",
@@ -30,6 +32,11 @@
     "docs/ymt-limit-expansion-research-and-architecture.md": "architecture",
     "mods/README.md": "reference",
     "native/map-host/README.md": "architecture",
-    "tests/IN_GAME_CHECKLIST.md": "reference"
+    "tests/IN_GAME_CHECKLIST.md": "reference",
+    "docs/audits/vehicle-support-20260906.md": "reference",
+    "docs/audits/vehicle-support-matrix-20260906.md": "reference",
+    "docs/complete-vehicle-catalog.md": "reference",
+    "docs/driving-telemetry.md": "reference",
+    "docs/trailer-hitches.md": "reference"
   }
 }

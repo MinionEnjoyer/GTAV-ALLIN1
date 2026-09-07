@@ -2293,7 +2293,8 @@ namespace ALLIN1.ReactorBridge
                     value.DisplayName,
                     "weapons",
                     value.PreviewDictionary,
-                    value.PreviewTexture, value.Id))
+                    value.PreviewTexture,
+                    CatalogPreviewArtwork.WeaponIdentity(value.Id, value.SmokeProduct)))
                 .Where(node => node != null)
                 .Cast<ReactorMenuNode>()
                 .ToArray();

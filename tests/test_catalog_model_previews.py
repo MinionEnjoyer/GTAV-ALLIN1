@@ -112,6 +112,25 @@ def test_vehicle_and_gear_failures_are_independent(setup,monkeypatch):
     assert r['categories']['gear']['rendered']==1
 
 
+@pytest.mark.parametrize('failure', ['skip', 'render', 'discovery', 'empty', 'partial'])
+def test_vehicle_and_gear_keep_finished_previews_on_incomplete_pass(setup, monkeypatch, failure):
+    f = setup
+    f.run()
+    paths = [f.game/f'plugins/ReactorV/ui/assets/allin1/generated-{c}/index.json' for c in ('vehicles','gear')]
+    originals = [p.document(path)['images'] for path in paths]
+    monkeypatch.setattr(p, 'worker_command', lambda *_: (['worker'], 'changed-renderer'))
+    def fail(*_, **kw): raise RuntimeError('worker failed')
+    if failure == 'render': monkeypatch.setattr(p, 'render', fail)
+    if failure == 'discovery': monkeypatch.setattr(p, 'stock_items', fail)
+    if failure in ('empty', 'partial'):
+        monkeypatch.setattr(p, 'stock_items', lambda *a, **kw: dict(items=[], errors=[] if failure == 'empty' else [{'reason':'partial discovery'}]))
+    report = f.run(skip=failure == 'skip')
+    for path, original, category in zip(paths, originals, ('vehicles', 'gear')):
+        assert p.document(path)['images'] == original
+        assert all((path.parent/name).exists() for name in original.values())
+        assert report['categories'][category]['pruned_images'] == 0
+
+
 def test_unknown_category_is_rejected(setup):
     with pytest.raises(ValueError):p.prepare(setup.project,setup.game,setup.cache,category='../escape')
 

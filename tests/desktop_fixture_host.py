@@ -67,7 +67,7 @@ def main():
     assistant_manager.assess_assistant_hardware = lambda *a, **k: assistant_manager.AssistantHardwareReport(
         "low", True, "low", 8, 12, 1, (), (), _hardware())
     from allin1 import versioning
-    versioning.fetch_latest_release = lambda: versioning.ReleaseInfo("0.6.5", "https://github.com/MinionEnjoyer/GTAV-ALLIN1/releases/latest", True, "Synthetic next release")
+    versioning.fetch_latest_release = lambda: versioning.ReleaseInfo("0.6.6", "https://github.com/MinionEnjoyer/GTAV-ALLIN1/releases/latest", True, "Synthetic next release")
     service = LauncherService(project, root / "state", allow_game_writes=True)
     service.require_closed = lambda: None  # No executable or process exists in this isolated fixture.
     serve(service, sys.stdin, sys.stdout)

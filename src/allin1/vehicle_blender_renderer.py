@@ -37,14 +37,24 @@ def open_texture(path):
         return scalar.convert('RGBA')
 
 
-def preview_scene_for(paint, bones):
+# Their stock vehicle layouts are PLANE/HELI, but GBAY groups them as military.
+# Scene identity is independent of paint style and marketplace grouping.
+AIRCRAFT_SCENE_MODELS = frozenset(('conada2', 'raiju', 'streamer216', 'thruster'))
+
+
+def preview_scene_for(paint, bones, *, model=''):
     category=str(paint.get('category','')).strip().casefold()
+    names = tuple(b.name.casefold() for b in bones)
     # Boat propellers must not select the aircraft backdrop. Explicit catalog
     # class wins over bone-name fallback (also keeps amphibious planes airborne).
     if category in ('boats','boat','watercraft','water vessels','submarine','submarines'):
         return 'ocean'
-    if (category in ('helicopters','planes','helicopter','plane','aircraft')
-            or any(b.name.casefold().startswith(('rotor_', 'propeller')) for b in bones)):
+    if (str(model).strip().casefold() in AIRCRAFT_SCENE_MODELS
+            or category in ('helicopters','planes','helicopter','plane','aircraft')
+            or any(name.startswith(('rotor_', 'propeller', 'aileron', 'elevator')) for name in names)
+            # A rudder alone also occurs on boats; require aircraft wings.
+            or (any(name.startswith('rudder') for name in names)
+                and any(name.startswith('wing_') for name in names))):
         return 'runway'
     return 'studio'
 
@@ -138,7 +148,7 @@ def render_vehicle(scene, geometries, folders, job, work):
             if line.startswith('usemtl ')]
     manifest['meshes'] = export_vehicle_meshes(geometries, keys)
     validate_material_uvs(manifest)
-    manifest['preview_scene'] = preview_scene_for(manifest['preview_paint'], scene.bones)
+    manifest['preview_scene'] = preview_scene_for(manifest['preview_paint'], scene.bones, model=job['model'])
     exported.manifest_path.write_text(json.dumps(manifest),encoding='utf-8')
     (target/'render.py').write_text(SCENE_SCRIPT,encoding='utf-8')
     with (work/'blender.log').open('wb') as log:

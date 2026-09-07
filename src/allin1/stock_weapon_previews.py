@@ -193,4 +193,15 @@ def discover(project,game,cache,mounted,progress=lambda *_:None):
             items.append({'weapon':name,'kind':'stock','model':model,'assets':resources,'components':parts,
                           'catalog_sha256':sha(contained(project,'data/weapons.toml'))})
         except (ValueError,KeyError) as error:errors.append({'weapon':name,'reason':str(error)})
-    return {'items':items,'errors':errors,'requested':wanted,'archives':len(candidates)}
+    # Add-on weapons may reference stock attachments without bundling their
+    # drawables. Export only unambiguous mounted, independently textured pairs.
+    component_assets={}
+    for cm in sorted({c['model'] for c in components.values() if c.get('model') and c.get('create_object',True)}):
+        try:
+            cd=choose(cm+'.ydr','')
+            ct=choose(archetypes.get(cm,cm)+'.ytd',cd['archive'])
+            component_assets[cm]=[cd,ct]
+        except ValueError:
+            continue  # Required unresolved pairs fail explicitly in the worker.
+    return {'items':items,'errors':errors,'requested':wanted,'archives':len(candidates),
+            'component_assets':component_assets}

@@ -33,6 +33,11 @@ PUBLIC_SMOKE_EXAMPLE_SOURCES = (
 )
 
 PUBLIC_DOCUMENTATION_FILES = (
+    "docs/audits/vehicle-support-20260906.md",
+    "docs/audits/vehicle-support-matrix-20260906.md",
+    "docs/complete-vehicle-catalog.md",
+    "docs/driving-telemetry.md",
+    "docs/trailer-hitches.md",
     "desktop/README.md",
     "docs/README.md",
     "docs/architecture-review-react-0.6.4.md",
@@ -50,6 +55,8 @@ PUBLIC_DOCUMENTATION_FILES = (
     "docs/react-release-harness.md",
     "docs/realistic-suppressors.md",
     "docs/release-0.6.4.md",
+    "docs/release-0.6.5.md",
+    "docs/gbay-default-previews.md",
     "docs/rpf-authoring-safety.md",
     "docs/suppressor-json-profiles.md",
     "docs/suppressor-sleeve-tracking.md",

@@ -245,7 +245,7 @@ describe("Launcher React workspaces use the real Python boundary", () => {
     await navigate("Activity");
     await user().click(screen.getByRole("button", { name: "Check for updates" }));
     const release = await screen.findByRole("region", { name: "Launcher release information" });
-    expect(release).toHaveTextContent("Current 0.6.4 · Latest 0.6.5");
+    expect(release).toHaveTextContent("Current 0.6.5 · Latest 0.6.6");
     expect(release).toHaveTextContent("unsigned manual downloads");
     expect(within(release).getByRole("button", { name: "Open official release page" })).toBeEnabled();
     await expect(access(path.join(root, "state"))).rejects.toThrow();

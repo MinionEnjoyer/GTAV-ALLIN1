@@ -1,4 +1,4 @@
-# Launcher configuration reference — 0.6.4
+# Launcher configuration reference — 0.6.5
 
 Generated from `Config.default()` by `documentation_audit.py`; these are source defaults, not your saved settings.
 
@@ -56,6 +56,10 @@ There is no legacy menu fallback. Native character/camera previews remain availa
 | `seat_selector_enabled` | `bool` | `true` |
 | `seat_selector_key` | `str` | `"L"` |
 | `safe_mode` | `bool` | `false` |
+| `speedometer_provider` | `str` | `"auto"` |
+| `speedometer_units` | `str` | `"kmh"` |
+| `driving_telemetry` | `str` | `"towing"` |
+| `shift_controls_enabled` | `bool` | `true` |
 | `ui_scale` | `float` | `1.0` |
 | `reduced_motion` | `bool` | `false` |
 | `colorblind_mode` | `bool` | `false` |

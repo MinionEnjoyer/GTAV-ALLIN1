@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Browse-only completion of the 935-model Rockstar inventory. No prices, traffic activation or delivery authority.",
+  "description": "Reviewed 218-model supplement to the 935-model vanilla roster. Authored ALLIN1 prices; existing delivery and native size checks apply. No ambient traffic activation.",
   "vehicles": [
     {
       "name": "Alpha",
@@ -8,7 +8,11 @@
       "manufacturer": "ALBANY",
       "model": "alpha",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Army Trailer",
@@ -16,7 +20,11 @@
       "manufacturer": "",
       "model": "armytanker",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Army Trailer",
@@ -24,7 +32,11 @@
       "manufacturer": "",
       "model": "armytrailer",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Army Trailer",
@@ -32,7 +44,11 @@
       "manufacturer": "",
       "model": "armytrailer2",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Avenger",
@@ -40,7 +56,11 @@
       "manufacturer": "MAMMOTH",
       "model": "avenger2",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Avenger",
@@ -48,7 +68,11 @@
       "manufacturer": "MAMMOTH",
       "model": "avenger3",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Avenger",
@@ -56,7 +80,11 @@
       "manufacturer": "MAMMOTH",
       "model": "avenger4",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Baletrailer",
@@ -64,7 +92,11 @@
       "manufacturer": "",
       "model": "baletrailer",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Barracks",
@@ -72,7 +104,11 @@
       "manufacturer": "",
       "model": "barracks3",
       "native_class": "MILITARY",
-      "category": "military"
+      "category": "military",
+      "price": 650000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Besra",
@@ -80,7 +116,11 @@
       "manufacturer": "WESTERN",
       "model": "besra",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Bifta",
@@ -88,7 +128,11 @@
       "manufacturer": "BF",
       "model": "bifta",
       "native_class": "OFF_ROAD",
-      "category": "offroad"
+      "category": "offroad",
+      "price": 120000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Blade",
@@ -96,7 +140,11 @@
       "manufacturer": "VAPID",
       "model": "blade",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 123500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Atomic Blimp",
@@ -104,7 +152,11 @@
       "manufacturer": "",
       "model": "blimp",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Xero Blimp",
@@ -112,7 +164,11 @@
       "manufacturer": "",
       "model": "blimp2",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Blimp",
@@ -120,7 +176,11 @@
       "manufacturer": "",
       "model": "blimp3",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Blista Compact",
@@ -128,7 +188,11 @@
       "manufacturer": "DINKA",
       "model": "blista2",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 18000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Go Go Monkey Blista",
@@ -136,7 +200,11 @@
       "manufacturer": "DINKA",
       "model": "blista3",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 18000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Boat Trailer",
@@ -144,7 +212,11 @@
       "manufacturer": "",
       "model": "boattrailer",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Boat Trailer",
@@ -152,7 +224,11 @@
       "manufacturer": "",
       "model": "boattrailer2",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Boat Trailer",
@@ -160,7 +236,11 @@
       "manufacturer": "",
       "model": "boattrailer3",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Armored Boxville",
@@ -168,7 +248,11 @@
       "manufacturer": "",
       "model": "boxville5",
       "native_class": "VAN",
-      "category": "vans"
+      "category": "vans",
+      "price": 300000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Brickade",
@@ -176,7 +260,11 @@
       "manufacturer": "MTL",
       "model": "brickade",
       "native_class": "SERVICE",
-      "category": "service"
+      "category": "service",
+      "price": 55000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Brickade 6x6",
@@ -184,7 +272,11 @@
       "manufacturer": "MTL",
       "model": "brickade2",
       "native_class": "SERVICE",
-      "category": "service"
+      "category": "service",
+      "price": 650000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Brigham",
@@ -192,7 +284,11 @@
       "manufacturer": "ALBANY",
       "model": "brigham",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 123500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Broadway",
@@ -200,7 +296,11 @@
       "manufacturer": "CLASSIQUE",
       "model": "broadway",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 123500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Future Shock Bruiser",
@@ -208,7 +308,11 @@
       "manufacturer": "BENEFAC",
       "model": "bruiser2",
       "native_class": "OFF_ROAD",
-      "category": "offroad"
+      "category": "offroad",
+      "price": 650000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Nightmare Bruiser",
@@ -216,7 +320,11 @@
       "manufacturer": "BENEFAC",
       "model": "bruiser3",
       "native_class": "OFF_ROAD",
-      "category": "offroad"
+      "category": "offroad",
+      "price": 650000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Future Shock Brutus",
@@ -224,7 +332,11 @@
       "manufacturer": "DECLASSE",
       "model": "brutus2",
       "native_class": "OFF_ROAD",
-      "category": "offroad"
+      "category": "offroad",
+      "price": 550000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Nightmare Brutus",
@@ -232,7 +344,11 @@
       "manufacturer": "DECLASSE",
       "model": "brutus3",
       "native_class": "OFF_ROAD",
-      "category": "offroad"
+      "category": "offroad",
+      "price": 550000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Roosevelt",
@@ -240,15 +356,23 @@
       "manufacturer": "ALBANY",
       "model": "btype",
       "native_class": "SPORT_CLASSIC",
-      "category": "sportsclassics"
+      "category": "sportsclassics",
+      "price": 165000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
-      "name": "Fränken Stange",
+      "name": "Fr\u00c3\u00a4nken Stange",
       "source_pack": "mphalloween",
       "manufacturer": "ALBANY",
       "model": "btype2",
       "native_class": "SPORT_CLASSIC",
-      "category": "sportsclassics"
+      "category": "sportsclassics",
+      "price": 250000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Roosevelt Valor",
@@ -256,7 +380,11 @@
       "manufacturer": "ALBANY",
       "model": "btype3",
       "native_class": "SPORT_CLASSIC",
-      "category": "sportsclassics"
+      "category": "sportsclassics",
+      "price": 180000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Sprunk Buffalo",
@@ -264,7 +392,11 @@
       "manufacturer": "BRAVADO",
       "model": "buffalo3",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 125000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Cable Car",
@@ -272,7 +404,11 @@
       "manufacturer": "",
       "model": "cablecar",
       "native_class": "RAIL",
-      "category": "special"
+      "category": "special",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Rail/cable vehicle requires unsupported storage"
     },
     {
       "name": "Caddy",
@@ -280,7 +416,11 @@
       "manufacturer": "",
       "model": "caddy3",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Calico GTF",
@@ -288,7 +428,11 @@
       "manufacturer": "KARIN",
       "model": "calico",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 195000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Cargobob",
@@ -296,7 +440,11 @@
       "manufacturer": "",
       "model": "cargobob4",
       "native_class": "HELICOPTER",
-      "category": "helicopters"
+      "category": "helicopters",
+      "price": 450000,
+      "storage": "helipad",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Cargo Plane",
@@ -304,7 +452,11 @@
       "manufacturer": "",
       "model": "cargoplane",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Cargo Plane",
@@ -312,7 +464,11 @@
       "manufacturer": "",
       "model": "cargoplane2",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Apocalypse Cerberus",
@@ -320,7 +476,11 @@
       "manufacturer": "MTL",
       "model": "cerberus",
       "native_class": "COMMERCIAL",
-      "category": "industrial"
+      "category": "industrial",
+      "price": 900000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Future Shock Cerberus",
@@ -328,7 +488,11 @@
       "manufacturer": "MTL",
       "model": "cerberus2",
       "native_class": "COMMERCIAL",
-      "category": "industrial"
+      "category": "industrial",
+      "price": 900000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Nightmare Cerberus",
@@ -336,7 +500,11 @@
       "manufacturer": "MTL",
       "model": "cerberus3",
       "native_class": "COMMERCIAL",
-      "category": "industrial"
+      "category": "industrial",
+      "price": 900000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Cheburek",
@@ -344,7 +512,11 @@
       "manufacturer": "RUNE",
       "model": "cheburek",
       "native_class": "SPORT_CLASSIC",
-      "category": "sportsclassics"
+      "category": "sportsclassics",
+      "price": 256000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Coquette Classic",
@@ -352,7 +524,11 @@
       "manufacturer": "INVERTO",
       "model": "coquette2",
       "native_class": "SPORT_CLASSIC",
-      "category": "sportsclassics"
+      "category": "sportsclassics",
+      "price": 125000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Cuban 800",
@@ -360,7 +536,11 @@
       "manufacturer": "",
       "model": "cuban800",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Apocalypse Deathbike",
@@ -368,7 +548,11 @@
       "manufacturer": "WESTERN",
       "model": "deathbike",
       "native_class": "MOTORCYCLE",
-      "category": "motorcycles"
+      "category": "motorcycles",
+      "price": 200000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Future Shock Deathbike",
@@ -376,7 +560,11 @@
       "manufacturer": "WESTERN",
       "model": "deathbike2",
       "native_class": "MOTORCYCLE",
-      "category": "motorcycles"
+      "category": "motorcycles",
+      "price": 200000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Nightmare Deathbike",
@@ -384,7 +572,11 @@
       "manufacturer": "WESTERN",
       "model": "deathbike3",
       "native_class": "MOTORCYCLE",
-      "category": "motorcycles"
+      "category": "motorcycles",
+      "price": 200000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Dinghy",
@@ -392,7 +584,11 @@
       "manufacturer": "NAGASAKI",
       "model": "dinghy3",
       "native_class": "BOAT",
-      "category": "boats"
+      "category": "boats",
+      "price": 85000,
+      "storage": "harbour",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Dinghy",
@@ -400,7 +596,11 @@
       "manufacturer": "NAGASAKI",
       "model": "dinghy4",
       "native_class": "BOAT",
-      "category": "boats"
+      "category": "boats",
+      "price": 85000,
+      "storage": "harbour",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "DOCKTRAILER",
@@ -408,7 +608,11 @@
       "manufacturer": "",
       "model": "docktrailer",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Dodo",
@@ -416,7 +620,11 @@
       "manufacturer": "MAMMOTH",
       "model": "dodo",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Pisswasser Dominator",
@@ -424,7 +632,11 @@
       "manufacturer": "VAPID",
       "model": "dominator2",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 55000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Apocalypse Dominator",
@@ -432,7 +644,11 @@
       "manufacturer": "VAPID",
       "model": "dominator4",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 350000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Future Shock Dominator",
@@ -440,7 +656,11 @@
       "manufacturer": "VAPID",
       "model": "dominator5",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 350000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Nightmare Dominator",
@@ -448,7 +668,11 @@
       "manufacturer": "VAPID",
       "model": "dominator6",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 350000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Chavos V6",
@@ -456,7 +680,11 @@
       "manufacturer": "DINKA",
       "model": "driftchavosv6",
       "native_class": "SEDAN",
-      "category": "sedans"
+      "category": "sedans",
+      "price": 56000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Cheburek",
@@ -464,7 +692,11 @@
       "manufacturer": "RUNE",
       "model": "driftcheburek",
       "native_class": "SPORT_CLASSIC",
-      "category": "sportsclassics"
+      "category": "sportsclassics",
+      "price": 281000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance; drift conversion +25000"
     },
     {
       "name": "DRIFTCOQUE",
@@ -472,7 +704,11 @@
       "manufacturer": "INVERTO",
       "model": "driftcoquette",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 150000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Cypher",
@@ -480,7 +716,11 @@
       "manufacturer": "UBERMACHT",
       "model": "driftcypher",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 152500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Dominator FX",
@@ -488,7 +728,11 @@
       "manufacturer": "VAPID",
       "model": "driftdominator10",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 95500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "DRIFTDOM8",
@@ -496,7 +740,11 @@
       "manufacturer": "VAPID",
       "model": "driftdominator8",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 103500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Dominator GT",
@@ -504,7 +752,11 @@
       "manufacturer": "VAPID",
       "model": "driftdominator9",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 101000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "DRIFTELEGY",
@@ -512,7 +764,11 @@
       "manufacturer": "ANNIS",
       "model": "driftelegy",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 170000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Euros",
@@ -520,7 +776,11 @@
       "manufacturer": "ANNIS",
       "model": "drifteuros",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 167500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "FR36",
@@ -528,7 +788,11 @@
       "manufacturer": "FATHOM",
       "model": "driftfr36",
       "native_class": "COUPE",
-      "category": "coupes"
+      "category": "coupes",
+      "price": 90000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Futo GTX",
@@ -536,7 +800,11 @@
       "manufacturer": "KARIN",
       "model": "driftfuto",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 150000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Futo",
@@ -544,7 +812,11 @@
       "manufacturer": "KARIN",
       "model": "driftfuto2",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 204500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Gauntlet Hellfire",
@@ -552,7 +824,11 @@
       "manufacturer": "BRAVADO",
       "model": "driftgauntlet4",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 134500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Hardy",
@@ -560,7 +836,11 @@
       "manufacturer": "ANNIS",
       "model": "drifthardy",
       "native_class": "SEDAN",
-      "category": "sedans"
+      "category": "sedans",
+      "price": 101500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Jester RR",
@@ -568,7 +848,11 @@
       "manufacturer": "DINKA",
       "model": "driftjester",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 80000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance; drift conversion +25000"
     },
     {
       "name": "Jester Classic",
@@ -576,7 +860,11 @@
       "manufacturer": "DINKA",
       "model": "driftjester3",
       "native_class": "SPORT_CLASSIC",
-      "category": "sportsclassics"
+      "category": "sportsclassics",
+      "price": 259000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Keitora",
@@ -584,7 +872,11 @@
       "manufacturer": "SHITZU",
       "model": "driftkeitora",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 79000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Drift Walton L35",
@@ -592,7 +884,11 @@
       "manufacturer": "DECLASSE",
       "model": "driftl352",
       "native_class": "OFF_ROAD",
-      "category": "offroad"
+      "category": "offroad",
+      "price": 145500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Nebula Turbo",
@@ -600,7 +896,11 @@
       "manufacturer": "VULCAR",
       "model": "driftnebula",
       "native_class": "SPORT_CLASSIC",
-      "category": "sportsclassics"
+      "category": "sportsclassics",
+      "price": 281000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Remus",
@@ -608,7 +908,11 @@
       "manufacturer": "ANNIS",
       "model": "driftremus",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 360500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "RT3000",
@@ -616,7 +920,11 @@
       "manufacturer": "DINKA",
       "model": "driftrt3000",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 362500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Sentinel Classic Widebody",
@@ -624,7 +932,11 @@
       "manufacturer": "UBERMACH",
       "model": "driftsentinel",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 67000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Sentinel XS",
@@ -632,7 +944,11 @@
       "manufacturer": "UBERMACH",
       "model": "driftsentinel2",
       "native_class": "COUPE",
-      "category": "coupes"
+      "category": "coupes",
+      "price": 67000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Drift Tampa",
@@ -640,7 +956,11 @@
       "manufacturer": "DECLASSE",
       "model": "drifttampa",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 205500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Vorschlaghammer",
@@ -648,7 +968,11 @@
       "manufacturer": "BENEFACTOR",
       "model": "driftvorschlag",
       "native_class": "SEDAN",
-      "category": "sedans"
+      "category": "sedans",
+      "price": 117000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance; drift conversion +25000"
     },
     {
       "name": "Drift Yosemite",
@@ -656,7 +980,11 @@
       "manufacturer": "DECLASSE",
       "model": "driftyosemite",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 248500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "ZR350",
@@ -664,7 +992,11 @@
       "manufacturer": "ANNIS",
       "model": "driftzr350",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 475000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price; drift conversion +25000"
     },
     {
       "name": "Dubsta 6x6",
@@ -672,7 +1004,11 @@
       "manufacturer": "BENEFAC",
       "model": "dubsta3",
       "native_class": "OFF_ROAD",
-      "category": "offroad"
+      "category": "offroad",
+      "price": 250000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Dukes",
@@ -680,7 +1016,11 @@
       "manufacturer": "IMPONTE",
       "model": "dukes",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 123500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Duke O'Death",
@@ -688,7 +1028,11 @@
       "manufacturer": "IMPONTE",
       "model": "dukes2",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 150000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Ramp Buggy",
@@ -696,7 +1040,11 @@
       "manufacturer": "",
       "model": "dune4",
       "native_class": "OFF_ROAD",
-      "category": "offroad"
+      "category": "offroad",
+      "price": 450000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Duster",
@@ -704,7 +1052,11 @@
       "manufacturer": "",
       "model": "duster",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Dynasty",
@@ -712,7 +1064,11 @@
       "manufacturer": "WEENY",
       "model": "dynasty",
       "native_class": "SPORT_CLASSIC",
-      "category": "sportsclassics"
+      "category": "sportsclassics",
+      "price": 256000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Eudora",
@@ -720,7 +1076,11 @@
       "manufacturer": "WILLARD",
       "model": "eudora",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 123500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Fagaloa",
@@ -728,7 +1088,11 @@
       "manufacturer": "VULCAR",
       "model": "fagaloa",
       "native_class": "SPORT_CLASSIC",
-      "category": "sportsclassics"
+      "category": "sportsclassics",
+      "price": 256000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Freight Train",
@@ -736,7 +1100,11 @@
       "manufacturer": "",
       "model": "freight",
       "native_class": "RAIL",
-      "category": "special"
+      "category": "special",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Rail/cable vehicle requires unsupported storage"
     },
     {
       "name": "Freight Train",
@@ -744,7 +1112,11 @@
       "manufacturer": "",
       "model": "freight2",
       "native_class": "RAIL",
-      "category": "special"
+      "category": "special",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Rail/cable vehicle requires unsupported storage"
     },
     {
       "name": "Freight Train",
@@ -752,7 +1124,11 @@
       "manufacturer": "",
       "model": "freightcar",
       "native_class": "RAIL",
-      "category": "special"
+      "category": "special",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Rail/cable vehicle requires unsupported storage"
     },
     {
       "name": "Freight Train",
@@ -760,7 +1136,11 @@
       "manufacturer": "",
       "model": "freightcar2",
       "native_class": "RAIL",
-      "category": "special"
+      "category": "special",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Rail/cable vehicle requires unsupported storage"
     },
     {
       "name": "Freight Train",
@@ -768,7 +1148,11 @@
       "manufacturer": "",
       "model": "freightcar3",
       "native_class": "RAIL",
-      "category": "special"
+      "category": "special",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Rail/cable vehicle requires unsupported storage"
     },
     {
       "name": "Freight Train",
@@ -776,7 +1160,11 @@
       "manufacturer": "",
       "model": "freightcont1",
       "native_class": "RAIL",
-      "category": "special"
+      "category": "special",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Rail/cable vehicle requires unsupported storage"
     },
     {
       "name": "Freight Train",
@@ -784,7 +1172,11 @@
       "manufacturer": "",
       "model": "freightcont2",
       "native_class": "RAIL",
-      "category": "special"
+      "category": "special",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Rail/cable vehicle requires unsupported storage"
     },
     {
       "name": "Freight Train",
@@ -792,7 +1184,11 @@
       "manufacturer": "",
       "model": "freightgrain",
       "native_class": "RAIL",
-      "category": "special"
+      "category": "special",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Rail/cable vehicle requires unsupported storage"
     },
     {
       "name": "FREIGHTTRAILER",
@@ -800,7 +1196,11 @@
       "manufacturer": "",
       "model": "freighttrailer",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Furore GT",
@@ -808,7 +1208,11 @@
       "manufacturer": "LAMPADA",
       "model": "furoregt",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 55000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Redwood Gauntlet",
@@ -816,7 +1220,11 @@
       "manufacturer": "BRAVADO",
       "model": "gauntlet2",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 55000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Gang Burrito",
@@ -824,7 +1232,11 @@
       "manufacturer": "DECLASSE",
       "model": "gburrito2",
       "native_class": "VAN",
-      "category": "vans"
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Glendale",
@@ -832,7 +1244,11 @@
       "manufacturer": "BENEFAC",
       "model": "glendale",
       "native_class": "SEDAN",
-      "category": "sedans"
+      "category": "sedans",
+      "price": 92000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Graintrailer",
@@ -840,7 +1256,11 @@
       "manufacturer": "",
       "model": "graintrailer",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Greenwood",
@@ -848,7 +1268,11 @@
       "manufacturer": "BRAVADO",
       "model": "greenwood",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 123500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Hakuchou",
@@ -856,7 +1280,11 @@
       "manufacturer": "SHITZU",
       "model": "hakuchou",
       "native_class": "MOTORCYCLE",
-      "category": "motorcycles"
+      "category": "motorcycles",
+      "price": 82000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Huntley S",
@@ -864,7 +1292,11 @@
       "manufacturer": "ENUS",
       "model": "huntley",
       "native_class": "SUV",
-      "category": "suvs"
+      "category": "suvs",
+      "price": 151500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Weaponized Ignus",
@@ -872,7 +1304,11 @@
       "manufacturer": "PEGASSI",
       "model": "ignus2",
       "native_class": "SUPER",
-      "category": "super"
+      "category": "super",
+      "price": 950000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Apocalypse Impaler",
@@ -880,7 +1316,11 @@
       "manufacturer": "DECLASSE",
       "model": "impaler2",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 350000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Future Shock Impaler",
@@ -888,7 +1328,11 @@
       "manufacturer": "DECLASSE",
       "model": "impaler3",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 350000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Nightmare Impaler",
@@ -896,7 +1340,11 @@
       "manufacturer": "DECLASSE",
       "model": "impaler4",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 350000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Future Shock Imperator",
@@ -904,7 +1352,11 @@
       "manufacturer": "VAPID",
       "model": "imperator2",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 350000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Nightmare Imperator",
@@ -912,7 +1364,11 @@
       "manufacturer": "VAPID",
       "model": "imperator3",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 350000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Innovation",
@@ -920,7 +1376,11 @@
       "manufacturer": "LCC",
       "model": "innovation",
       "native_class": "MOTORCYCLE",
-      "category": "motorcycles"
+      "category": "motorcycles",
+      "price": 75000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Insurgent",
@@ -928,7 +1388,11 @@
       "manufacturer": "HVY",
       "model": "insurgent2",
       "native_class": "OFF_ROAD",
-      "category": "offroad"
+      "category": "offroad",
+      "price": 450000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Apocalypse Issi",
@@ -936,7 +1400,11 @@
       "manufacturer": "WEENY",
       "model": "issi4",
       "native_class": "COMPACT",
-      "category": "compacts"
+      "category": "compacts",
+      "price": 180000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Future Shock Issi",
@@ -944,7 +1412,11 @@
       "manufacturer": "WEENY",
       "model": "issi5",
       "native_class": "COMPACT",
-      "category": "compacts"
+      "category": "compacts",
+      "price": 180000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Nightmare Issi",
@@ -952,7 +1424,11 @@
       "manufacturer": "WEENY",
       "model": "issi6",
       "native_class": "COMPACT",
-      "category": "compacts"
+      "category": "compacts",
+      "price": 180000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Jester",
@@ -960,7 +1436,11 @@
       "manufacturer": "DINKA",
       "model": "jester",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 240000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Jester (Racecar)",
@@ -968,7 +1448,11 @@
       "manufacturer": "DINKA",
       "model": "jester2",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 270000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Jet",
@@ -976,7 +1460,11 @@
       "manufacturer": "",
       "model": "jet",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Kalahari",
@@ -984,7 +1472,11 @@
       "manufacturer": "CANIS",
       "model": "kalahari",
       "native_class": "OFF_ROAD",
-      "category": "offroad"
+      "category": "offroad",
+      "price": 120000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Kosatka",
@@ -992,7 +1484,11 @@
       "manufacturer": "RUNE",
       "model": "kosatka",
       "native_class": "BOAT",
-      "category": "boats"
+      "category": "boats",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Submarine ownership is not implemented"
     },
     {
       "name": "P-996 LAZER",
@@ -1000,7 +1496,11 @@
       "manufacturer": "",
       "model": "lazer",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Lurcher",
@@ -1008,7 +1508,11 @@
       "manufacturer": "ALBANY",
       "model": "lurcher",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 123500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Luxor",
@@ -1016,7 +1520,11 @@
       "manufacturer": "BUCKING",
       "model": "luxor",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Mammatus",
@@ -1024,7 +1532,11 @@
       "manufacturer": "",
       "model": "mammatus",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Marshall",
@@ -1032,7 +1544,11 @@
       "manufacturer": "CHEVAL",
       "model": "marshall",
       "native_class": "OFF_ROAD",
-      "category": "offroad"
+      "category": "offroad",
+      "price": 250000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Massacro",
@@ -1040,7 +1556,11 @@
       "manufacturer": "DEWBAUCH",
       "model": "massacro",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 275000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Massacro (Racecar)",
@@ -1048,7 +1568,11 @@
       "manufacturer": "DEWBAUCH",
       "model": "massacro2",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 305000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Freight Train",
@@ -1056,7 +1580,11 @@
       "manufacturer": "",
       "model": "metrotrain",
       "native_class": "RAIL",
-      "category": "special"
+      "category": "special",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Rail/cable vehicle requires unsupported storage"
     },
     {
       "name": "Miljet",
@@ -1064,7 +1592,11 @@
       "manufacturer": "BUCKING",
       "model": "miljet",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Invade and Persuade Tank",
@@ -1072,7 +1604,11 @@
       "manufacturer": "",
       "model": "minitank",
       "native_class": "MILITARY",
-      "category": "military"
+      "category": "military",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Remote-control vehicle, not regular garage delivery"
     },
     {
       "name": "Monster",
@@ -1080,7 +1616,11 @@
       "manufacturer": "VAPID",
       "model": "monster",
       "native_class": "OFF_ROAD",
-      "category": "offroad"
+      "category": "offroad",
+      "price": 250000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Future Shock Sasquatch",
@@ -1088,7 +1628,11 @@
       "manufacturer": "BRAVADO",
       "model": "monster4",
       "native_class": "OFF_ROAD",
-      "category": "offroad"
+      "category": "offroad",
+      "price": 600000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Nightmare Sasquatch",
@@ -1096,7 +1640,11 @@
       "manufacturer": "BRAVADO",
       "model": "monster5",
       "native_class": "OFF_ROAD",
-      "category": "offroad"
+      "category": "offroad",
+      "price": 600000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Mule",
@@ -1104,7 +1652,11 @@
       "manufacturer": "MAIBATSU",
       "model": "mule5",
       "native_class": "COMMERCIAL",
-      "category": "industrial"
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Panto",
@@ -1112,7 +1664,11 @@
       "manufacturer": "BENEFAC",
       "model": "panto",
       "native_class": "COMPACT",
-      "category": "compacts"
+      "category": "compacts",
+      "price": 18000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Paradise",
@@ -1120,7 +1676,11 @@
       "manufacturer": "BRAVADO",
       "model": "paradise",
       "native_class": "VAN",
-      "category": "vans"
+      "category": "vans",
+      "price": 64500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Patriot Stretch",
@@ -1128,7 +1688,11 @@
       "manufacturer": "MAMMOTH",
       "model": "patriot2",
       "native_class": "SUV",
-      "category": "suvs"
+      "category": "suvs",
+      "price": 48000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Peyote Custom",
@@ -1136,7 +1700,11 @@
       "manufacturer": "VAPID",
       "model": "peyote3",
       "native_class": "SPORT_CLASSIC",
-      "category": "sportsclassics"
+      "category": "sportsclassics",
+      "price": 165000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Phantom",
@@ -1144,7 +1712,11 @@
       "manufacturer": "JOBUILT",
       "model": "phantom4",
       "native_class": "COMMERCIAL",
-      "category": "industrial"
+      "category": "industrial",
+      "price": 95000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Pigalle",
@@ -1152,7 +1724,11 @@
       "manufacturer": "LAMPADA",
       "model": "pigalle",
       "native_class": "SPORT_CLASSIC",
-      "category": "sportsclassics"
+      "category": "sportsclassics",
+      "price": 256000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "proptrailer",
@@ -1160,7 +1736,11 @@
       "manufacturer": "",
       "model": "proptrailer",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Trailer",
@@ -1168,7 +1748,11 @@
       "manufacturer": "",
       "model": "raketrailer",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Rat Bike",
@@ -1176,7 +1760,11 @@
       "manufacturer": "WESTERN",
       "model": "ratbike",
       "native_class": "MOTORCYCLE",
-      "category": "motorcycles"
+      "category": "motorcycles",
+      "price": 69000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Rat-Truck",
@@ -1184,7 +1772,11 @@
       "manufacturer": "BRAVADO",
       "model": "ratloader2",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 55000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "RC Bandito",
@@ -1192,7 +1784,11 @@
       "manufacturer": "",
       "model": "rcbandito",
       "native_class": "OFF_ROAD",
-      "category": "offroad"
+      "category": "offroad",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Remote-control vehicle, not regular garage delivery"
     },
     {
       "name": "Retinue Mk II",
@@ -1200,7 +1796,11 @@
       "manufacturer": "VAPID",
       "model": "retinue2",
       "native_class": "SPORT_CLASSIC",
-      "category": "sportsclassics"
+      "category": "sportsclassics",
+      "price": 317000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Rhapsody",
@@ -1208,7 +1808,11 @@
       "manufacturer": "DECLASSE",
       "model": "rhapsody",
       "native_class": "COMPACT",
-      "category": "compacts"
+      "category": "compacts",
+      "price": 18000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Ruiner",
@@ -1216,7 +1820,11 @@
       "manufacturer": "IMPONTE",
       "model": "ruiner3",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Wreck/mission model, not a complete road vehicle"
     },
     {
       "name": "Sanctus",
@@ -1224,7 +1832,11 @@
       "manufacturer": "LCC",
       "model": "sanctus",
       "native_class": "MOTORCYCLE",
-      "category": "motorcycles"
+      "category": "motorcycles",
+      "price": 150000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Future Shock Scarab",
@@ -1232,7 +1844,11 @@
       "manufacturer": "HVY",
       "model": "scarab2",
       "native_class": "MILITARY",
-      "category": "military"
+      "category": "military",
+      "price": 650000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Nightmare Scarab",
@@ -1240,7 +1856,11 @@
       "manufacturer": "HVY",
       "model": "scarab3",
       "native_class": "MILITARY",
-      "category": "military"
+      "category": "military",
+      "price": 650000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Seashark",
@@ -1248,7 +1868,11 @@
       "manufacturer": "SPEEDOPH",
       "model": "seashark3",
       "native_class": "BOAT",
-      "category": "boats"
+      "category": "boats",
+      "price": 85000,
+      "storage": "harbour",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Sea Sparrow",
@@ -1256,7 +1880,11 @@
       "manufacturer": "",
       "model": "seasparrow",
       "native_class": "HELICOPTER",
-      "category": "helicopters"
+      "category": "helicopters",
+      "price": 661500,
+      "storage": "helipad",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Sparrow",
@@ -1264,7 +1892,11 @@
       "manufacturer": "",
       "model": "seasparrow2",
       "native_class": "HELICOPTER",
-      "category": "helicopters"
+      "category": "helicopters",
+      "price": 661500,
+      "storage": "helipad",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Sparrow",
@@ -1272,7 +1904,11 @@
       "manufacturer": "",
       "model": "seasparrow3",
       "native_class": "HELICOPTER",
-      "category": "helicopters"
+      "category": "helicopters",
+      "price": 661500,
+      "storage": "helipad",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Shamal",
@@ -1280,7 +1916,11 @@
       "manufacturer": "BUCKING",
       "model": "shamal",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Slamvan",
@@ -1288,7 +1928,11 @@
       "manufacturer": "VAPID",
       "model": "slamvan",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 123500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Slamvan Custom",
@@ -1296,7 +1940,11 @@
       "manufacturer": "VAPID",
       "model": "slamvan3",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 123500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Apocalypse Slamvan",
@@ -1304,7 +1952,11 @@
       "manufacturer": "VAPID",
       "model": "slamvan4",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 300000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Future Shock Slamvan",
@@ -1312,7 +1964,11 @@
       "manufacturer": "VAPID",
       "model": "slamvan5",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 300000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Nightmare Slamvan",
@@ -1320,7 +1976,11 @@
       "manufacturer": "VAPID",
       "model": "slamvan6",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 300000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Sovereign",
@@ -1328,7 +1988,11 @@
       "manufacturer": "WESTERN",
       "model": "sovereign",
       "native_class": "MOTORCYCLE",
-      "category": "motorcycles"
+      "category": "motorcycles",
+      "price": 69000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Speeder",
@@ -1336,7 +2000,11 @@
       "manufacturer": "PEGASSI",
       "model": "speeder",
       "native_class": "BOAT",
-      "category": "boats"
+      "category": "boats",
+      "price": 209500,
+      "storage": "harbour",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Speeder",
@@ -1344,7 +2012,11 @@
       "manufacturer": "PEGASSI",
       "model": "speeder2",
       "native_class": "BOAT",
-      "category": "boats"
+      "category": "boats",
+      "price": 209500,
+      "storage": "harbour",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Speedo Custom",
@@ -1352,7 +2024,11 @@
       "manufacturer": "VAPID",
       "model": "speedo5",
       "native_class": "VAN",
-      "category": "vans"
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Stallion",
@@ -1360,7 +2036,11 @@
       "manufacturer": "DECLASSE",
       "model": "stalion",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 123500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Burger Shot Stallion",
@@ -1368,7 +2048,11 @@
       "manufacturer": "DECLASSE",
       "model": "stalion2",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 123500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Mallard",
@@ -1376,7 +2060,11 @@
       "manufacturer": "",
       "model": "stunt",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Submersible",
@@ -1384,7 +2072,11 @@
       "manufacturer": "",
       "model": "submersible",
       "native_class": "BOAT",
-      "category": "boats"
+      "category": "boats",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Submersible storage is not implemented"
     },
     {
       "name": "Kraken",
@@ -1392,7 +2084,11 @@
       "manufacturer": "",
       "model": "submersible2",
       "native_class": "BOAT",
-      "category": "boats"
+      "category": "boats",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Submersible storage is not implemented"
     },
     {
       "name": "Swift",
@@ -1400,7 +2096,11 @@
       "manufacturer": "BUCKING",
       "model": "swift",
       "native_class": "HELICOPTER",
-      "category": "helicopters"
+      "category": "helicopters",
+      "price": 661500,
+      "storage": "helipad",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Trailer",
@@ -1408,7 +2108,11 @@
       "manufacturer": "",
       "model": "tanker",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "TANKER",
@@ -1416,7 +2120,11 @@
       "manufacturer": "",
       "model": "tanker2",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Freight Train",
@@ -1424,7 +2132,11 @@
       "manufacturer": "",
       "model": "tankercar",
       "native_class": "RAIL",
-      "category": "special"
+      "category": "special",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Rail/cable vehicle requires unsupported storage"
     },
     {
       "name": "Technical Aqua",
@@ -1432,7 +2144,11 @@
       "manufacturer": "KARIN",
       "model": "technical2",
       "native_class": "OFF_ROAD",
-      "category": "offroad"
+      "category": "offroad",
+      "price": 400000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Thrust",
@@ -1440,7 +2156,11 @@
       "manufacturer": "DINKA",
       "model": "thrust",
       "native_class": "MOTORCYCLE",
-      "category": "motorcycles"
+      "category": "motorcycles",
+      "price": 69000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Titan",
@@ -1448,7 +2168,11 @@
       "manufacturer": "",
       "model": "titan",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Tornado Custom",
@@ -1456,7 +2180,11 @@
       "manufacturer": "DECLASSE",
       "model": "tornado5",
       "native_class": "SPORT_CLASSIC",
-      "category": "sportsclassics"
+      "category": "sportsclassics",
+      "price": 165000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Tornado Rat Rod",
@@ -1464,7 +2192,11 @@
       "manufacturer": "DECLASSE",
       "model": "tornado6",
       "native_class": "SPORT_CLASSIC",
-      "category": "sportsclassics"
+      "category": "sportsclassics",
+      "price": 165000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Toro",
@@ -1472,7 +2204,11 @@
       "manufacturer": "LAMPADA",
       "model": "toro2",
       "native_class": "BOAT",
-      "category": "boats"
+      "category": "boats",
+      "price": 293000,
+      "storage": "harbour",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Tow Truck",
@@ -1480,7 +2216,11 @@
       "manufacturer": "",
       "model": "towtruck3",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Trailer",
@@ -1488,7 +2228,11 @@
       "manufacturer": "",
       "model": "tr2",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Trailer",
@@ -1496,7 +2240,11 @@
       "manufacturer": "",
       "model": "tr3",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Trailer",
@@ -1504,7 +2252,11 @@
       "manufacturer": "",
       "model": "tr4",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Mobile Operations Center",
@@ -1512,7 +2264,11 @@
       "manufacturer": "",
       "model": "trailerlarge",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Trailer",
@@ -1520,7 +2276,11 @@
       "manufacturer": "",
       "model": "trailerlogs",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Trailer",
@@ -1528,7 +2288,11 @@
       "manufacturer": "",
       "model": "trailers",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Trailer",
@@ -1536,7 +2300,11 @@
       "manufacturer": "",
       "model": "trailers2",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Trailer",
@@ -1544,7 +2312,11 @@
       "manufacturer": "",
       "model": "trailers3",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Trailer",
@@ -1552,7 +2324,11 @@
       "manufacturer": "",
       "model": "trailers4",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Trailer",
@@ -1560,7 +2336,11 @@
       "manufacturer": "",
       "model": "trailers5",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Trailer",
@@ -1568,7 +2348,11 @@
       "manufacturer": "",
       "model": "trailersmall",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Anti-Aircraft Trailer",
@@ -1576,7 +2360,11 @@
       "manufacturer": "VOMFEUER",
       "model": "trailersmall2",
       "native_class": "MILITARY",
-      "category": "military"
+      "category": "military",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Trashmaster",
@@ -1584,7 +2372,11 @@
       "manufacturer": "",
       "model": "trash2",
       "native_class": "SERVICE",
-      "category": "service"
+      "category": "service",
+      "price": 45000,
+      "storage": "garage",
+      "size_tier": 2,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Trailer",
@@ -1592,7 +2384,11 @@
       "manufacturer": "",
       "model": "trflat",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "TRAILER",
@@ -1600,7 +2396,11 @@
       "manufacturer": "",
       "model": "trflat2",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Tropic",
@@ -1608,7 +2408,11 @@
       "manufacturer": "SHITZU",
       "model": "tropic2",
       "native_class": "BOAT",
-      "category": "boats"
+      "category": "boats",
+      "price": 85000,
+      "storage": "harbour",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Turismo R",
@@ -1616,7 +2420,11 @@
       "manufacturer": "GROTTI",
       "model": "turismor",
       "native_class": "SUPER",
-      "category": "super"
+      "category": "super",
+      "price": 500000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Trailer",
@@ -1624,7 +2432,11 @@
       "manufacturer": "",
       "model": "tvtrailer",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Trailer",
@@ -1632,7 +2444,11 @@
       "manufacturer": "",
       "model": "tvtrailer2",
       "native_class": "UTILITY",
-      "category": "service"
+      "category": "service",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Trailer storage/delivery is not implemented"
     },
     {
       "name": "Valkyrie MOD.0",
@@ -1640,7 +2456,11 @@
       "manufacturer": "",
       "model": "valkyrie2",
       "native_class": "HELICOPTER",
-      "category": "helicopters"
+      "category": "helicopters",
+      "price": 1152000,
+      "storage": "helipad",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Velum",
@@ -1648,7 +2468,11 @@
       "manufacturer": "",
       "model": "velum",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Vestra",
@@ -1656,7 +2480,11 @@
       "manufacturer": "BUCKING",
       "model": "vestra",
       "native_class": "PLANE",
-      "category": "planes"
+      "category": "planes",
+      "price": 0,
+      "storage": "catalog_only",
+      "size_tier": 0,
+      "purchase_audit": "Aircraft hangar storage is not implemented"
     },
     {
       "name": "Veto Classic",
@@ -1664,7 +2492,11 @@
       "manufacturer": "DINKA",
       "model": "veto",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 55000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Veto Modern",
@@ -1672,7 +2504,11 @@
       "manufacturer": "DINKA",
       "model": "veto2",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 55000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Virgo",
@@ -1680,7 +2516,11 @@
       "manufacturer": "ALBANY",
       "model": "virgo",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 123500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Voodoo Custom",
@@ -1688,7 +2528,11 @@
       "manufacturer": "DECLASSE",
       "model": "voodoo",
       "native_class": "MUSCLE",
-      "category": "muscle"
+      "category": "muscle",
+      "price": 123500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Warrener",
@@ -1696,7 +2540,11 @@
       "manufacturer": "VULCAR",
       "model": "warrener",
       "native_class": "SEDAN",
-      "category": "sedans"
+      "category": "sedans",
+      "price": 92000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "XLS",
@@ -1704,7 +2552,11 @@
       "manufacturer": "BENEFAC",
       "model": "xls",
       "native_class": "SUV",
-      "category": "suvs"
+      "category": "suvs",
+      "price": 151500,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing category median balance"
     },
     {
       "name": "Youga Custom",
@@ -1712,7 +2564,11 @@
       "manufacturer": "VAPID",
       "model": "youga4",
       "native_class": "VAN",
-      "category": "vans"
+      "category": "vans",
+      "price": 38000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Existing family price"
     },
     {
       "name": "Zentorno",
@@ -1720,7 +2576,11 @@
       "manufacturer": "PEGASSI",
       "model": "zentorno",
       "native_class": "SUPER",
-      "category": "super"
+      "category": "super",
+      "price": 725000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Apocalypse ZR380",
@@ -1728,7 +2588,11 @@
       "manufacturer": "ANNIS",
       "model": "zr380",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 350000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Future Shock ZR380",
@@ -1736,7 +2600,11 @@
       "manufacturer": "ANNIS",
       "model": "zr3802",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 350000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     },
     {
       "name": "Nightmare ZR380",
@@ -1744,7 +2612,11 @@
       "manufacturer": "ANNIS",
       "model": "zr3803",
       "native_class": "SPORT",
-      "category": "sports"
+      "category": "sports",
+      "price": 350000,
+      "storage": "garage",
+      "size_tier": 0,
+      "purchase_audit": "Authored variant balance"
     }
   ]
 }

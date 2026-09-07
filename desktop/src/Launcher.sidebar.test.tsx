@@ -4,13 +4,14 @@ import userEvent from "@testing-library/user-event";
 import App from "./App";
 import type { Client } from "./client";
 
-function fixture(): Client {
+function fixture(validGame = false): Client {
   return {
     request: vi.fn(async (operation, payload) => operation === "catalog"
       ? { desktop_version: "0.6.4" }
       : operation === "review" ? { action: payload?.action, request: payload, target: "test", game_write: true,
+        ...(payload?.action === "download_previews" ? { preview_download: { count: 111, bytes: 16288588, version: "gbay-previews-2026-09-07", assets: [{ category: "weapons", count: 111 }] } } : {}),
         preview_counts: { weapons: { existing: 97, total: 106, status: "available" } } }
-      : { module: payload?.module, config: { general: { target_edition: "auto" } } }),
+      : { module: payload?.module, status: { valid_game: validGame }, config: { general: { target_edition: "auto" } } }),
     selectPath: vi.fn(async () => null),
     onClose: vi.fn(async () => () => {}),
     onHandoff: vi.fn(async () => () => {}),
@@ -20,6 +21,18 @@ function fixture(): Client {
 }
 
 describe("SDK-style Launcher sidebar", () => {
+  it("reviews a category preview download with size/counts before applying", async () => {
+    const client = fixture(true);
+    render(<App client={client} />);
+    await screen.findByRole("heading", { name: "Setup", level: 1 });
+    await userEvent.setup().click(screen.getByRole("button", { name: "Download weapons" }));
+    const review = await screen.findByRole("region", { name: "Review changes" });
+    expect(client.request).toHaveBeenCalledWith("review", expect.objectContaining({ action: "download_previews", categories: ["weapons"] }));
+    expect(within(review).getByText(/111 vanilla images/)).toBeVisible();
+    expect(within(review).getByText(/Generated artwork takes priority/)).toBeVisible();
+    expect(within(review).getByRole("button", { name: "Apply reviewed changes" })).toBeDisabled();
+    expect(client.request).not.toHaveBeenCalledWith("apply", expect.anything());
+  });
   it("reviews Quick Launch without applying it or changing normal launch defaults", async () => {
     const client = fixture();
     const user = userEvent.setup();
@@ -48,6 +61,9 @@ describe("SDK-style Launcher sidebar", () => {
     await user.click(within(review).getByRole("checkbox", { name: "I reviewed these changes" }));
     expect(within(review).getByRole("radio", { name: "Update Previews" })).toBeChecked();
     for (const name of ["Weapons", "Vehicles", "Gear"]) expect(within(review).getByRole("checkbox", { name })).toBeChecked();
+    expect(within(review).getByRole("checkbox", { name: "Missing previews only" })).toBeChecked();
+    await user.click(within(review).getByRole("checkbox", { name: "Missing previews only" }));
+    expect(client.request).toHaveBeenCalledWith("review", expect.objectContaining({ missing_previews_only: false }));
     await user.click(within(review).getByRole("checkbox", { name: "Missing previews only" }));
     expect(client.request).toHaveBeenCalledWith("review", expect.objectContaining({ missing_previews_only: true }));
     expect(within(review).getByRole("checkbox", { name: "I reviewed these changes" })).not.toBeChecked();

@@ -10,6 +10,11 @@ namespace ALLIN1.ReactorBridge
     // Optional preview stores are independent of the consumer UI installer receipt.
     internal static class CatalogPreviewArtwork
     {
+        // Coloured smoke products have shop IDs, not separate render assets.
+        // Alias artwork only; purchase IDs and inventory stay colour-specific.
+        internal static string WeaponIdentity(string id, bool smokeProduct) =>
+            smokeProduct ? "WEAPON_SMOKEGRENADE" : id;
+
         internal static Dictionary<string, string> Read(string gameRoot, string category, int limit)
         {
             var images = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
