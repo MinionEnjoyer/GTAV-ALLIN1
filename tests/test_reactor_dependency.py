@@ -103,6 +103,24 @@ def test_enhanced_uses_its_pinned_archive(setup, tmp_path, monkeypatch):
     assert not (setup.root / "plugins/ReactorV/ReactorV.LegacyCpuFrames.enabled").exists()
 
 
+def test_repair_retires_receipted_art_but_preserves_separate_preview_stores(setup, tmp_path):
+    old_art = dep.UI_ROOT + "assets/allin1/vehicles/adder.png"
+    setup.ui[old_art] = put(tmp_path, "old-art.png", "old bundled art")
+    dep.install_dependency(setup.root, False)
+    del setup.ui[old_art]
+    stores = [dep.UI_ROOT + f"assets/allin1/{kind}-vehicles/adder.png" for kind in ("generated", "default")]
+    for name in stores:
+        put(setup.root, name, "keep preview")
+    dep.install_dependency(setup.root, False)
+    assert not (setup.root / old_art).exists()
+    assert old_art not in json.loads((setup.root / dep.CONSUMER_RECEIPT).read_text())["files"]
+    for name in stores:
+        assert (setup.root / name).read_text() == "keep preview"
+    dep.remove_consumer(setup.root)
+    for name in stores:
+        assert (setup.root / name).read_text() == "keep preview"
+
+
 @pytest.mark.parametrize("name", ["ReactorV.RenderHook.asi", dep.UI_ROOT + "index.html"])
 def test_unknown_or_edited_runtime_and_ui_are_never_overwritten(setup, name):
     put(setup.root, name, "somebody else's work")
@@ -259,8 +277,10 @@ def test_preflight_source_and_destination_races_abort_without_writes(tmp_path):
 
 
 def test_consumer_payload_and_real_pins_are_valid():
-    files = dep.consumer_files(artwork=False)
+    files = dep.consumer_files()
     assert dep.UI_ROOT + "index.html" in files
+    assert not any(name.startswith(dep.UI_ROOT + "assets/allin1/") for name in files)
+
     assert not any(p.suffix in {".dll", ".exe", ".asi"} for p in files.values())
     assert any(b"GBAY" in p.read_bytes() for p in files.values() if p.suffix == ".js")
     assert {r.edition for r in dep.RELEASES.values()} == {"legacy", "enhanced"}

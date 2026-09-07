@@ -20,7 +20,8 @@ namespace ALLIN1
             string packageId, string catalogId, string model, string name,
             string manufacturer, string category, int price, string storage,
             string sourcePack, int sizeTier, string previewDictionary,
-            string previewTexture, bool trafficEnabled, double trafficWeight)
+            string previewTexture, bool trafficEnabled, double trafficWeight,
+            TrailerHitchProfile hitches = null)
         {
             PackageId = packageId;
             CatalogId = catalogId;
@@ -36,6 +37,7 @@ namespace ALLIN1
             PreviewTexture = previewTexture;
             TrafficEnabled = trafficEnabled;
             TrafficWeight = trafficWeight;
+            Hitches = hitches;
         }
 
         internal string PackageId { get; }
@@ -52,6 +54,7 @@ namespace ALLIN1
         internal string PreviewTexture { get; }
         internal bool TrafficEnabled { get; }
         internal double TrafficWeight { get; }
+        internal TrailerHitchProfile Hitches { get; }
         internal bool HasValidatedRuntimeVehicleClass { get; private set; }
         internal VehicleClass ValidatedRuntimeVehicleClass { get; private set; }
 
@@ -308,7 +311,7 @@ namespace ALLIN1
                 }, optional: new[]
                 {
                     "manufacturer", "size_tier", "traffic",
-                    "preview_dictionary", "preview_texture",
+                    "preview_dictionary", "preview_texture", "hitches",
                 });
 
                 string model = Text(entry, "model").Trim().ToLowerInvariant();
@@ -414,7 +417,8 @@ namespace ALLIN1
                     model, name, manufacturer, category, price, storage,
                     sourcePack, sizeTier, previewDictionary, previewTexture,
                     itemTrafficEnabled && trafficSetting && trafficCapability,
-                    trafficWeight));
+                    trafficWeight, entry.TryGetValue("hitches", out object rawHitches)
+                        ? TrailerHitchProfile.Parse(rawHitches, model) : null));
             }
             return new RuntimeVehicleCatalogDocument(
                 packageId.ToLowerInvariant(), catalogId.ToLowerInvariant(),
@@ -427,8 +431,9 @@ namespace ALLIN1
         {
             var staticModels = new HashSet<string>(
                 VehicleList.All, StringComparer.OrdinalIgnoreCase);
+            staticModels.UnionWith(CatalogOnlyVehicles.Records.Keys);
             var staticHashes = new HashSet<int>(
-                VehicleList.All.Select(ModelHash));
+                staticModels.Select(ModelHash));
             var records = new Dictionary<string, GbayVehicleRecord>(
                 StringComparer.OrdinalIgnoreCase);
             var hashes = new HashSet<int>(staticHashes);
@@ -535,8 +540,25 @@ namespace ALLIN1
 
         internal static bool TryGet(string model, out GbayVehicleRecord record)
         {
+            if (CatalogOnlyVehicles.Records.TryGetValue(model ?? "", out record))
+                return true;
             EnsureInitialized();
             lock (Sync) return _records.TryGetValue(model ?? "", out record);
+        }
+
+        internal static bool IsCatalogOnly(string model) =>
+            CatalogOnlyVehicles.Records.ContainsKey(model ?? "");
+
+        internal static string SearchAliases(string model)
+        {
+            switch ((model ?? "").ToLowerInvariant())
+            {
+                case "tractor": return "Michael Epsilon tractor cult tractor Epsilon reward rusty tractor Kifflom";
+                case "dune2": return "Space Docker UFO alien car Omega spaceship parts reward";
+                case "cheetah": case "entityxf": case "ztype": case "jb700": case "monroe":
+                    return "Devin Weston Devon Weston target collection Story mission cars";
+                default: return "";
+            }
         }
 
         internal static bool TryGetByHash(
@@ -566,6 +588,10 @@ namespace ALLIN1
                 .OrderBy(value => value.Model, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             return staticValues.Concat(dynamicValues.Select(value => value.Model))
+                .Concat(CatalogOnlyVehicles.Records.Values
+                    .Where(value => category == "all" ||
+                        string.Equals(value.Category, category, StringComparison.OrdinalIgnoreCase))
+                    .Select(value => value.Model))
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         }
 
@@ -702,6 +728,9 @@ namespace ALLIN1
 
         internal static bool IsModelAvailable(string model)
         {
+            // Visible does not mean purchasable: these rows have no reviewed
+            // price/delivery route, including in free-purchase mode.
+            if (IsCatalogOnly(model)) return false;
             if (!IsListed(model)) return false;
             try
             {

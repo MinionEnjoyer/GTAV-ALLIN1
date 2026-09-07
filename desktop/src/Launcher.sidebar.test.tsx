@@ -8,7 +8,8 @@ function fixture(): Client {
   return {
     request: vi.fn(async (operation, payload) => operation === "catalog"
       ? { desktop_version: "0.6.4" }
-      : operation === "review" ? { action: payload?.action, request: payload, target: "test", game_write: true }
+      : operation === "review" ? { action: payload?.action, request: payload, target: "test", game_write: true,
+        preview_counts: { weapons: { existing: 97, total: 106, status: "available" } } }
       : { module: payload?.module, config: { general: { target_edition: "auto" } } }),
     selectPath: vi.fn(async () => null),
     onClose: vi.fn(async () => () => {}),
@@ -19,18 +20,63 @@ function fixture(): Client {
 }
 
 describe("SDK-style Launcher sidebar", () => {
-  it("binds the preview skip choice to the reviewed launch request", async () => {
+  it("reviews Quick Launch without applying it or changing normal launch defaults", async () => {
+    const client = fixture();
+    const user = userEvent.setup();
+    render(<App client={client} />);
+    await screen.findByRole("heading", { name: "Select your game installation" });
+    await user.click(screen.getByRole("button", { name: "Quick Launch" }));
+    const review = await screen.findByRole("region", { name: "Review changes" });
+    expect(client.request).toHaveBeenCalledWith("review", expect.objectContaining({ action: "launch", quick_launch: true }));
+    expect(within(review).getByRole("radio", { name: "Quick Launch" })).toBeChecked();
+    expect(within(review).getByRole("group", { name: "Preview categories" })).toBeVisible();
+    expect(within(review).getByText("97/106")).toBeVisible();
+    expect(within(review).queryByRole("checkbox", { name: "Weapons" })).not.toBeInTheDocument();
+    expect(within(review).getByRole("button", { name: "Apply reviewed changes" })).toBeDisabled();
+    expect(client.request).not.toHaveBeenCalledWith("apply", expect.anything());
+    await user.click(within(review).getByRole("button", { name: "Back to draft" }));
+    await user.click(screen.getByRole("button", { name: "Launch Story Mode" }));
+    expect(await screen.findByRole("radio", { name: "Quick Launch" })).not.toBeChecked();
+  });
+  it("re-reviews positive category choices and preserves them across modes", async () => {
+    const client = fixture();
+    const user = userEvent.setup();
+    render(<App client={client} />);
+    await screen.findByRole("heading", { name: "Select your game installation" });
+    await user.click(screen.getByRole("button", { name: "Launch Story Mode" }));
+    const review = await screen.findByRole("region", { name: "Review changes" });
+    await user.click(within(review).getByRole("checkbox", { name: "I reviewed these changes" }));
+    expect(within(review).getByRole("radio", { name: "Update Previews" })).toBeChecked();
+    for (const name of ["Weapons", "Vehicles", "Gear"]) expect(within(review).getByRole("checkbox", { name })).toBeChecked();
+    await user.click(within(review).getByRole("checkbox", { name: "Missing previews only" }));
+    expect(client.request).toHaveBeenCalledWith("review", expect.objectContaining({ missing_previews_only: true }));
+    expect(within(review).getByRole("checkbox", { name: "I reviewed these changes" })).not.toBeChecked();
+    await user.click(within(review).getByRole("checkbox", { name: "Vehicles" }));
+    expect(client.request).toHaveBeenCalledWith("review", expect.objectContaining({ skip_preview_categories: ["vehicles"], skip_previews: false }));
+    expect(within(review).getByRole("checkbox", { name: "I reviewed these changes" })).not.toBeChecked();
+    await user.click(within(review).getByRole("radio", { name: "Quick Launch" }));
+    expect(within(review).queryByRole("checkbox", { name: "Vehicles" })).not.toBeInTheDocument();
+    await user.click(within(review).getByRole("radio", { name: "Update Previews" }));
+    expect(within(review).getByRole("checkbox", { name: "Missing previews only" })).toBeChecked();
+    expect(within(review).getByRole("checkbox", { name: "Vehicles" })).not.toBeChecked();
+    await user.click(within(review).getByRole("checkbox", { name: "Gear" }));
+    expect(client.request).toHaveBeenCalledWith("review", expect.objectContaining({ skip_preview_categories: ["vehicles", "gear"], skip_previews: false }));
+    expect(within(review).getByRole("checkbox", { name: "Weapons" })).toBeChecked();
+    expect(within(review).getByRole("checkbox", { name: "Weapons" })).toBeDisabled();
+  });
+  it("changing launch mode invalidates confirmation and leaves no redundant skip controls", async () => {
     const client = fixture();
     render(<App client={client} />);
     await screen.findByRole("heading", { name: "Select your game installation" });
     expect(screen.queryByRole("checkbox", { name: /Skip new previews/ })).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: "Launch Story Mode" }));
     const review = await screen.findByRole("region", { name: "Review changes" });
-    const toggle = within(review).getByRole("checkbox", { name: /Skip new previews/ });
+    expect(within(review).queryByText(/Skip new previews/)).not.toBeInTheDocument();
+    const toggle = within(review).getByRole("radio", { name: "Quick Launch" });
     expect(toggle).not.toBeChecked();
     await userEvent.setup().click(within(review).getByRole("checkbox", { name: "I reviewed these changes" }));
     await userEvent.setup().click(toggle);
-    expect(client.request).toHaveBeenCalledWith("review", expect.objectContaining({ action: "launch", skip_previews: true }));
+    expect(client.request).toHaveBeenCalledWith("review", expect.objectContaining({ action: "launch", quick_launch: true, skip_previews: false }));
     expect(within(review).getByRole("checkbox", { name: "I reviewed these changes" })).not.toBeChecked();
     expect(within(review).getByRole("button", { name: "Apply reviewed changes" })).toBeDisabled();
   });

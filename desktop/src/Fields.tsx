@@ -8,6 +8,10 @@ const hints: Record<string, string> = {
   max_driven: "Maximum replacement vehicles active at once.", replacement_chance: "0 disables replacement; 1 replaces every eligible vehicle.",
   ui_scale: "In-game menu scale. Launcher text follows Windows display scaling.", minimum_fps: "Adaptive traffic pauses replacements below this frame rate.",
   hold_duration_ms: "How long a shortcut must be held, in milliseconds.",
+  speedometer_provider: "Auto uses a loaded Rex/LeFix display; otherwise ALLIN1. External mods are installed separately and keep their own settings.",
+  speedometer_units: "ALLIN1 HUD units. Numpad decimal toggles for the session; external displays use their own units settings.",
+  driving_telemetry: "Local 5 Hz test log: towing only, all driving, or off. Bounded to four 8 MiB files; no uploads.",
+  shift_controls_enabled: "Starts automatic. Numpad * toggles experimental forward-gear hold; +/− shift. Disabled in safe mode or with a detected transmission controller.",
   gta_path: "Optional shared path. Use edition-specific folders when both editions are installed.",
   gta_legacy_path: "Folder containing GTA5.exe.", gta_enhanced_path: "Folder containing GTA5_Enhanced.exe.",
 };
@@ -60,6 +64,7 @@ export function Field({
           disabled={disabled}
         />
         {label}
+        {hints[name] && <small>{hints[name]}</small>}
       </label>
     );
   if (Array.isArray(value))
@@ -83,6 +88,9 @@ export function Field({
     );
   const options: Record<string, string[]> = {
     target_edition: ["auto", "legacy", "enhanced"],
+    speedometer_provider: ["auto", "builtin", "rex", "lefix", "off"],
+    speedometer_units: ["kmh", "mph"],
+    driving_telemetry: ["off", "towing", "all"],
   };
   const choices = descriptor?.choices ?? options[name];
   return (

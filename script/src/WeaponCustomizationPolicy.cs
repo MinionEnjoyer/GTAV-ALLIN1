@@ -1,9 +1,29 @@
 using System;
+using System.Collections.Generic;
 
 namespace ALLIN1
 {
     internal static class WeaponCustomizationPolicy
     {
+        // Ammunition is sold on the main weapon screen. A mandatory/default
+        // magazine alone is not a customization choice.
+        internal static bool HasChoices(IEnumerable<WeaponComponentDefaults.Entry> components, int tintCount)
+        {
+            if (tintCount > 1) return true;
+            var slots = new Dictionary<int, HashSet<int>>();
+            foreach (var component in components)
+            {
+                if (component.Hash == 0 || component.Hash == -1 ||
+                    component.Point == unchecked((int)GTA.WeaponAttachmentPoint.Invalid)) continue;
+                if (!component.Default && CanUnequipComponent(component.Point)) return true;
+                if (!slots.TryGetValue(component.Point, out var hashes))
+                    slots[component.Point] = hashes = new HashSet<int>();
+                hashes.Add(component.Hash);
+                if (hashes.Count > 1) return true;
+            }
+            return false;
+        }
+
         // Removing a magazine, barrel, receiver or unknown slot may leave a
         // weapon incomplete. Only known optional accessory slots support None.
         internal static bool CanUnequipComponent(int point) =>

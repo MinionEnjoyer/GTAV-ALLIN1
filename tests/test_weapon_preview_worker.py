@@ -31,6 +31,9 @@ DRAWABLE = '''<Drawable><ShaderGroup><Shaders><Item><FileName>weapon.sps</FileNa
 
 @pytest.fixture
 def worker(tmp_path, monkeypatch):
+    from allin1 import pegboard_blender_renderer
+    monkeypatch.setattr(pegboard_blender_renderer,'render_pegboard',
+        lambda gs,ts,diffuse,**kw:w.render_card(gs,ts,diffuse,materials=kw.get('materials'),flat=kw.get('flat',False)))
     native, rpf = ModuleType('allin1_sdk.native_assets'), ModuleType('allin1_sdk.rpf_tools')
     package = ModuleType('allin1_sdk'); package.__path__ = []
     for name, module in [('allin1_sdk',package),('allin1_sdk.native_assets',native),('allin1_sdk.rpf_tools',rpf)]:
@@ -87,6 +90,21 @@ def test_addon_default_attachment_is_assembled(worker,monkeypatch):
     assert (worker.work/'preview.png').is_file()
 
 
+@pytest.mark.parametrize('model,create',[('reload_only','false'),('gun','true')])
+def test_addon_omits_reload_only_and_duplicate_base_drawables(worker,monkeypatch,model,create):
+    worker.blobs['weapons.meta'] = b'''<Root><Item type="CWeaponInfo"><Name>WEAPON_TEST</Name><Model>gun</Model>
+    <AttachPoints><Item><AttachBone>mount</AttachBone><Components><Item><Name>CLIP</Name><Default value="true"/>
+    </Item></Components></Item></AttachPoints></Item></Root>'''
+    worker.blobs['weaponcomponents.meta'] = f'<Root><Item><Name>CLIP</Name><Model>{model}</Model><CreateObject value="{create}"/></Item></Root>'.encode()
+    def batch(args,**kwargs):
+        output=Path(args[-1]);output.mkdir()
+        (output/'0.meta').write_bytes(worker.blobs['weaponcomponents.meta'])
+    monkeypatch.setattr(w.subprocess,'run',batch)
+    worker.run()
+    assert not (worker.work/'part0').exists()
+    assert (worker.work/'preview.png').is_file()
+
+
 @pytest.mark.parametrize('changes,match',[
     ({'edition':'wrong'},'edition'),({'weapon':'../escape'},'weapon'),
     ({'archive_sha256':'0'*64},'Source changed'),({'weapon':'WEAPON_MISSING'},'definition'),
@@ -131,6 +149,7 @@ def test_stock_discovery_writes_only_discovery_result(worker,monkeypatch):
 @pytest.fixture
 def stock(worker,monkeypatch):
     monkeypatch.setattr(s,'catalog_names',lambda _:['WEAPON_TEST'])
+    monkeypatch.setattr(s,'throwable_names',lambda _:set())
     monkeypatch.setattr(s,'extract',lambda project,game,ref,dest:dest)
     monkeypatch.setattr(s,'file_state',lambda _: 'stable')
     worker.job.update(kind='stock',model='gun',assets=[{'path':'gun.ydr','archive':'pack.rpf','state':'stable'},
@@ -140,6 +159,22 @@ def stock(worker,monkeypatch):
 
 def test_stock_render_uses_verified_asset_identity(stock):
     stock.run();assert (stock.work/'preview.png').exists()
+
+
+def test_stock_throwable_routes_to_crate_from_catalog_not_request(stock,monkeypatch):
+    monkeypatch.setattr(s,'throwable_names',lambda _:{'WEAPON_TEST'})
+    seen=[]
+    monkeypatch.setattr(w,'render_assets',lambda *a,**kw:seen.append(kw['job']['preview_backdrop']) or Image.new('RGB',(512,320)))
+    stock.run(preview_backdrop='pegboard')
+    assert seen==['ammo-crate']
+
+
+def test_addon_throwable_routes_from_verified_metadata(worker,monkeypatch):
+    worker.blobs['weapons.meta']=b'<Root><Item type="CWeaponInfo"><Name>WEAPON_TEST</Name><Model>gun</Model><Group>GROUP_THROWN</Group></Item></Root>'
+    seen=[]
+    monkeypatch.setattr(w,'render_assets',lambda *a,**kw:seen.append(kw['job']['preview_backdrop']) or Image.new('RGB',(512,320)))
+    worker.run(preview_backdrop='pegboard')
+    assert seen==['ammo-crate']
 
 
 @pytest.mark.parametrize('failure',['weapon','count','model','component','changed'])
@@ -184,3 +219,15 @@ def test_decode_rejects_incomplete_or_ambiguous_art(worker,failure):
     path.write_bytes(E.tostring(root))
     if failure!='textures':Image.new('RGBA',(8,8),'green').save(worker.work/'diffuse.dds')
     with pytest.raises(ValueError):w.decode_card(path,worker.work,'gun')
+
+
+@pytest.mark.parametrize('bucket,opaque', [('0',True),('1',False),('2',False),('3',False)])
+def test_weapon_alpha_policy_uses_render_bucket(worker,bucket,opaque):
+    path=worker.work/'drawable.xml';root=E.fromstring(DRAWABLE)
+    shader=root.find('ShaderGroup/Shaders/Item')
+    node=shader.find('RenderBucket')
+    if node is None:node=E.SubElement(shader,'RenderBucket')
+    node.set('value',bucket);path.write_bytes(E.tostring(root))
+    Image.new('RGBA',(8,8),(50,60,70,0)).save(worker.work/'diffuse.dds')
+    gs,_,ms,_=w.decode_card(path,worker.work,'gun')
+    assert ms[id(gs[0])]['opaque'] is opaque

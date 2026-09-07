@@ -135,6 +135,22 @@ def test_public_file_collection_is_explicit_and_excludes_sources(tmp_path):
     assert set(PUBLIC_SMOKE_EXAMPLE_SOURCES).issubset(names)
     assert "mods/examples/script/mod.toml.example" not in names
     assert "tools/RpfPatcher/RpfPatcher.pdb" not in names
+    assert "script/dist/previews/test.png" not in names
+
+
+@pytest.mark.parametrize("folder", ["previews", "weapon_previews", "equipment_previews", "world_asset_previews"])
+def test_preview_library_is_not_bundled_but_source_is_preserved(tmp_path, folder):
+    from tools.launcher_desktop_candidate import resource_inputs
+    root = _release_tree(tmp_path)
+    relative = f"script/dist/{folder}/fixture.png"
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"source artwork")
+    assert relative not in {p.relative_to(root).as_posix() for p in collect_public_files(root)}
+    assert relative not in resource_inputs(root)
+    assert path.read_bytes() == b"source artwork"
+    with pytest.raises(ValueError, match="separate preview download pack"):
+        _validate_public_path(relative)
 
 
 @pytest.mark.parametrize("project", ["realistic-suppressors", "weapon-pack-bundle", "gta-vr", "gta-v-fpv"])

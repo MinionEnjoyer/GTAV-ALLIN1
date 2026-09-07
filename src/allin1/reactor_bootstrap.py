@@ -603,7 +603,7 @@ class ReactorStartupMonitor:
         ):
             failure = "GTA V closed before Story Mode became ready."
             terminal = True
-        elif self.now() - self.started_at >= self.hard_timeout_seconds:
+        elif "story" not in self.ready and self.now() - self.started_at >= self.hard_timeout_seconds:
             failure = "Reactor V startup verification timed out."
             terminal = True
 

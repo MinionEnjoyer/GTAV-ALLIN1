@@ -198,7 +198,7 @@ namespace ALLIN1.Tests
         }
 
         [Fact]
-        public void Invalid_managed_weapons_are_removed_with_dependent_state()
+        public void Unavailable_managed_weapons_keep_dependent_state()
         {
             var inventory = new CharacterInventory.Inventory();
             inventory.weapons.AddRange(new[]
@@ -210,15 +210,17 @@ namespace ALLIN1.Tests
             inventory.weapon_customizations["WEAPON_BROKEN_ADDON"] =
                 new CharacterInventory.WeaponCustomization();
 
-            var removed = CharacterInventory.RemoveInvalidWeaponsInMemory(
-                inventory, weapon => weapon == "WEAPON_PISTOL");
+            inventory.managed = true;
+            var result = WeaponLoadoutRestore.Restore(inventory, inventory.weapons,
+                inventory.weapons, weapon => weapon == "WEAPON_PISTOL",
+                (_, __) => true, _ => { });
 
-            Assert.Equal(new[] { "WEAPON_BROKEN_ADDON" }, removed);
-            Assert.Equal(new[] { "WEAPON_PISTOL" }, inventory.weapons);
+            Assert.Equal(new[] { "WEAPON_PISTOL" }, result.Restored);
+            Assert.Equal("weapon_not_ready", result.Deferred["WEAPON_BROKEN_ADDON"]);
+            Assert.Contains("WEAPON_BROKEN_ADDON", inventory.weapons);
             Assert.Equal(42, inventory.weapon_ammo["WEAPON_PISTOL"]);
-            Assert.False(inventory.weapon_ammo.ContainsKey(
-                "WEAPON_BROKEN_ADDON"));
-            Assert.False(inventory.weapon_customizations.ContainsKey(
+            Assert.Equal(99, inventory.weapon_ammo["WEAPON_BROKEN_ADDON"]);
+            Assert.True(inventory.weapon_customizations.ContainsKey(
                 "WEAPON_BROKEN_ADDON"));
         }
 

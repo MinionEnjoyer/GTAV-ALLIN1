@@ -1,0 +1,70 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+
+namespace ALLIN1
+{
+    internal sealed class DrivingOptions
+    {
+        internal string Provider = "auto", Units = "kmh", Telemetry = "towing";
+        internal bool ShiftControls = true;
+        internal static DrivingOptions Parse(IEnumerable<string> lines)
+        {
+            var result = new DrivingOptions(); bool script = false;
+            foreach (var raw in lines)
+            {
+                var line = raw.Split('#')[0].Trim();
+                if (line.StartsWith("[")) { script = line == "[script]"; continue; }
+                int split = line.IndexOf('='); if (!script || split < 0) continue;
+                var key = line.Substring(0, split).Trim();
+                var value = line.Substring(split + 1).Trim().Trim('"').ToLowerInvariant();
+                switch (key)
+                {
+                    case "speedometer_provider":
+                        if (Array.IndexOf(new[] { "auto", "builtin", "rex", "lefix", "off" }, value) < 0) throw new InvalidDataException("Invalid speedometer_provider");
+                        result.Provider = value; break;
+                    case "speedometer_units":
+                        if (value != "kmh" && value != "mph") throw new InvalidDataException("Invalid speedometer_units");
+                        result.Units = value; break;
+                    case "driving_telemetry":
+                        if (value != "off" && value != "towing" && value != "all") throw new InvalidDataException("Invalid driving_telemetry");
+                        result.Telemetry = value; break;
+                    case "shift_controls_enabled":
+                        if (value != "true" && value != "false") throw new InvalidDataException("Invalid shift_controls_enabled");
+                        result.ShiftControls = value == "true"; break;
+                }
+            }
+            return result;
+        }
+    }
+    internal static class DrivingPolicy
+    {
+        internal static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
+        internal static object Number(float value) => Finite(value) ? (object)value : null;
+        internal static float DisplaySpeed(float metresPerSecond, string units) => Finite(metresPerSecond)
+            ? Math.Max(0, metresPerSecond) * (units == "mph" ? 2.2369363f : 3.6f) : 0;
+        internal static float Angle(float degrees) => (degrees % 360 + 540) % 360 - 180;
+        // GTA gear 0 is reverse, not neutral. Unsupported memory reads must not be labelled N.
+        internal static string Gear(int gear, int count) => count < 1 || count > 10 || gear < 0 || gear > count
+            ? "?" : gear == 0 ? "R" : gear.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        internal static string Provider(string requested, bool rexLoaded, bool lefixLoaded)
+        {
+            if (requested == "off" || requested == "builtin") return requested;
+            if ((requested == "auto" || requested == "rex") && rexLoaded) return "rex";
+            if ((requested == "auto" || requested == "lefix") && lefixLoaded) return "lefix";
+            return "builtin";
+        }
+        internal static bool CanHold(bool safe, bool driver, bool landVehicle, bool externalController,
+            bool engineRunning, int actual, int count, float rpm) => safe && driver && landVehicle
+            && !externalController && engineRunning && count >= 1 && count <= 10
+            && actual >= 1 && actual <= count && Finite(rpm) && rpm >= 0 && rpm <= 1.1f;
+        internal static int Shift(int current, int direction, int count, float rpm)
+        {
+            if (count < 1 || count > 10 || current < 1 || current > count || !Finite(rpm)
+                || rpm < 0 || rpm > 1.1f || (direction != -1 && direction != 1)) return current;
+            // Conservative guard, not a gear-ratio/redline simulation.
+            if (direction < 0 && rpm > .7f) return current;
+            return Math.Max(1, Math.Min(count, current + direction));
+        }
+    }
+}

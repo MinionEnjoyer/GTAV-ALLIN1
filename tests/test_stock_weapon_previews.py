@@ -7,7 +7,7 @@ from allin1 import stock_weapon_previews as s
 from allin1 import prelaunch_previews as p
 
 
-def test_catalog_excludes_throwables_even_misc_acid_package(tmp_path):
+def test_catalog_includes_throwables_and_routes_misc_acid_package(tmp_path):
     (tmp_path/'data').mkdir()
     (tmp_path/'data/weapons.toml').write_text('''
 [[weapons]]
@@ -23,7 +23,8 @@ category="throwables"
 name="WEAPON_ACIDPACKAGE"
 category="misc"
 ''')
-    assert s.catalog_names(tmp_path)==['WEAPON_KNIFE','WEAPON_PISTOL']
+    assert s.catalog_names(tmp_path)==['WEAPON_ACIDPACKAGE','WEAPON_GRENADE','WEAPON_KNIFE','WEAPON_PISTOL']
+    assert s.throwable_names(tmp_path)=={'WEAPON_ACIDPACKAGE','WEAPON_GRENADE'}
 
 
 @pytest.mark.parametrize('path',['../a','x/../a','C:/a','/a','a\\b','a\nb','x//y'])
@@ -64,7 +65,7 @@ def test_installed_catalog_selection_matches_gbay_source():
     root=Path(__file__).resolve().parents[1]
     names=s.catalog_names(root)
     assert 'WEAPON_PISTOL' in names and 'WEAPON_KNIFE' in names
-    assert 'WEAPON_GRENADE' not in names and 'WEAPON_MOLOTOV' not in names
+    assert 'WEAPON_GRENADE' in names and 'WEAPON_MOLOTOV' in names
     assert len(names)>80
 
 

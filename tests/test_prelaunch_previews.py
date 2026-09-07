@@ -14,6 +14,9 @@ from allin1 import prelaunch_previews as p
 
 @pytest.fixture
 def fixture(tmp_path, monkeypatch):
+    from allin1 import preview_blender
+    executable=tmp_path/'blender.exe';executable.write_bytes(b'fixture-blender')
+    monkeypatch.setattr(preview_blender,'select_blender',lambda *_:executable)
     game, project, cache = tmp_path/'game', tmp_path/'project', tmp_path/'cache'
     game.mkdir(); project.mkdir()
     (game/'GTA5_Enhanced.exe').touch()
@@ -34,7 +37,8 @@ def fixture(tmp_path, monkeypatch):
     monkeypatch.setattr(p,'worker_command',lambda *_:(['fake-worker'],'renderer-1'))
     def render(command,job,work,seconds):
         calls.append(job)
-        assert job['weapon']=='WEAPON_TEST' and seconds<=40
+        assert job['weapon']=='WEAPON_TEST' and seconds<=180
+        assert job['blender_executable']==str(executable) and job['blender_identity']==p.sha(executable)
         return data
     monkeypatch.setattr(p,'render',render)
     return SimpleNamespace(game=game,project=project,cache=cache,archive=archive,catalog=catalog,
@@ -51,6 +55,69 @@ def test_render_then_reuse_without_worker(fixture):
     assert f.run()['cached']==1 and len(f.calls)==1
     assert list(index(f))==['weapon_test']
     assert p.sha(f.game/f.archive)==f.receipt['files'][0]['sha256']
+
+
+def test_missing_only_keeps_old_renderer_images_without_blender(fixture, monkeypatch):
+    from allin1 import preview_blender
+    f = fixture
+    f.run()
+    original = index(f)
+    monkeypatch.setattr(p, 'worker_command', lambda *_: (['fake-worker'], 'renderer-2'))
+    monkeypatch.setattr(preview_blender, 'select_blender', lambda *_: pytest.fail('No Blender needed for retained previews'))
+    result = f.run(missing_only=True)
+    assert result['cached'] == 1 and result['rendered'] == 0
+    assert index(f) == original and len(f.calls) == 1
+    assert result['pruned_images'] == 0
+
+
+def test_missing_only_fills_missing_entry_and_default_still_refreshes(fixture, monkeypatch):
+    f = fixture
+    first = f.run(missing_only=True)
+    assert first['rendered'] == 1
+    original = index(f)
+    (f.game/p.PUBLIC/original['weapon_test']).unlink()
+    monkeypatch.setattr(p, 'worker_command', lambda *_: (['fake-worker'], 'renderer-2'))
+    assert f.run(missing_only=True)['rendered'] == 1
+    assert index(f) != original
+    monkeypatch.setattr(p, 'worker_command', lambda *_: (['fake-worker'], 'renderer-3'))
+    assert f.run()['rendered'] == 1
+
+
+def test_missing_only_does_not_retain_unvalidated_source(fixture):
+    f = fixture
+    f.run()
+    p.atomic(f.game/f.archive, b'tampered')
+    assert f.run(missing_only=True)['rendered'] == 0
+    assert not index(f) and len(f.calls) == 1
+
+
+def test_missing_only_mixed_catalog_keeps_existing_and_renders_new(fixture, monkeypatch):
+    f = fixture
+    f.run()
+    original = index(f)['weapon_test']
+    discover = p.validated_weapons
+    def expanded(*args, **kwargs):
+        items, errors = discover(*args, **kwargs)
+        return [*items, {**items[0], 'weapon': 'WEAPON_NEW'}], errors
+    monkeypatch.setattr(p, 'validated_weapons', expanded)
+    monkeypatch.setattr(p, 'worker_command', lambda *_: (['fake-worker'], 'renderer-2'))
+    calls = []
+    monkeypatch.setattr(p, 'render', lambda command, job, work, seconds: calls.append(job['weapon']) or f.data)
+    result = f.run(missing_only=True)
+    assert result['rendered'] == 1 and result['cached'] == 1
+    assert calls == ['WEAPON_NEW']
+    assert index(f)['weapon_test'] == original and 'weapon_new' in index(f)
+
+
+def test_existing_preview_rejects_modified_pixels_and_path_traversal(fixture):
+    f = fixture
+    f.run()
+    public = f.game/p.PUBLIC
+    doc = p.document(public/'index.json')
+    assert p.existing_preview(public, doc['images'], doc['image_sha256'], 'weapon_test')
+    p.atomic(public/doc['images']['weapon_test'], b'corrupt')
+    assert p.existing_preview(public, doc['images'], doc['image_sha256'], 'weapon_test') is None
+    assert p.existing_preview(public, {'weapon_test': '../outside.png'}, {}, 'weapon_test') is None
 
 
 def test_both_game_editions_reuse_their_cache_without_cross_publication(fixture):
@@ -128,6 +195,18 @@ def test_skip_and_budget_do_not_infer_or_launch(fixture):
     assert not f.calls
     f.run()
     assert f.run(skip=True)['cached']==1
+
+
+def test_default_has_no_catalog_deadline_but_retains_per_model_timeout(fixture,monkeypatch):
+    assert p.MAX_SECONDS is None
+    clock=[0]
+    def now():
+        clock[0]+=3601
+        return clock[0]
+    monkeypatch.setattr(p.time,'monotonic',now)
+    report=fixture.run()
+    assert report['rendered']==1 and report['pending']==0
+    assert fixture.calls[0]['render_threads']>=1
 
 
 def test_render_failure_is_reported_and_retryable(fixture,monkeypatch):

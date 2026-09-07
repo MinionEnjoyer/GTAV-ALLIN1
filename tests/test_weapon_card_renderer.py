@@ -2,7 +2,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 from PIL import Image
-from allin1.weapon_card_renderer import render_card, pegboard
+from allin1.weapon_card_renderer import render_card, studio_backdrop, studio_lighting, pegboard
 
 
 def geometry():
@@ -36,9 +36,30 @@ def test_bounded_geometry_and_dimensions():
     with pytest.raises(ValueError,match='indices'): render_card([g],{},lambda _: '')
 
 
-def test_pegboard_is_procedural_and_not_flat():
-    image=pegboard((512,320))
-    assert len(image.getcolors(512*320))>30
+def test_studio_has_light_concrete_and_textured_asphalt():
+    image=np.asarray(studio_backdrop((512,320)))[:,:,:3]
+    assert image[:160].mean()>image[230:].mean()+50
+    assert image[250:300,100:400].std()>4
+
+
+def test_lighting_is_directional_and_keeps_colours():
+    normals=np.array([[-.6,.6,.53],[.6,-.6,.53]])
+    normals/=np.linalg.norm(normals,axis=1,keepdims=True)
+    colors=studio_lighting(np.full((2,3),.4),normals)
+    assert colors[0].mean()>colors[1].mean()*1.2
+    assert np.isfinite(colors).all() and colors.min()>=0 and colors.max()<=1
+
+
+def test_missing_studio_asset_fails_instead_of_caching_wrong_background(tmp_path):
+    with pytest.raises(FileNotFoundError): studio_backdrop((512,320),tmp_path/'missing.png')
+
+
+@pytest.mark.parametrize('category', ['weapons','gear'])
+def test_weapons_and_gear_keep_pegboard(category, tmp_path):
+    image=render_card([geometry()],{'base':Image.new('RGB',(4,4),'red')},lambda _:'base',
+                      category=category, backdrop=tmp_path/'not-used.png')
+    expected=pegboard((1024,640)).resize((512,320),Image.Resampling.LANCZOS)
+    assert image.getpixel((10,300))==expected.getpixel((10,300))
 
 
 def test_directx_uv_vertical_orientation():

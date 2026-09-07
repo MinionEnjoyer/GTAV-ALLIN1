@@ -13,7 +13,7 @@ namespace ALLIN1.Tests
     public sealed class GbayReactorContractTests
     {
         [Fact]
-        public void CatalogArtworkNamesMatchTheLauncherPortableFilenameContract()
+        public void MissingCatalogArtworkDoesNotInventBundledImageUrls()
         {
             string packageDirectory = Path.Combine(
                 AppContext.BaseDirectory, "reactor-package", "scripts", "ReactorV");
@@ -22,17 +22,16 @@ namespace ALLIN1.Tests
             Type bridge = Assert.Single(plugin.GetTypes(), type =>
                 type.FullName == "ALLIN1.ReactorBridge.Allin1ReactorBridge");
             MethodInfo validate = bridge.GetMethod(
-                "TryPortableArtworkName",
+                "CatalogArtworkNode",
                 BindingFlags.Static | BindingFlags.NonPublic);
             Assert.NotNull(validate);
 
-            object[] accepted = { "Addon-Card.v2", null };
-            Assert.True((bool)validate.Invoke(null, accepted));
-            Assert.Equal("addon-card.v2", accepted[1]);
-
-            object[] rejected = { "../escape", null };
-            Assert.False((bool)validate.Invoke(null, rejected));
-            Assert.Equal("", rejected[1]);
+            Assert.Null(validate.Invoke(null, new object[] {
+                "missing-test-card", "Missing", "vehicles", "old_dictionary", "missing_test_vehicle", null
+            }));
+            Assert.Null(validate.Invoke(null, new object[] {
+                "unsafe-test-card", "Unsafe", "vehicles", "old_dictionary", "../escape", null
+            }));
         }
 
         [Fact]
@@ -593,17 +592,9 @@ namespace ALLIN1.Tests
                     .Value<string>("model"));
                 Assert.Contains("Manufacturer: Truffade",
                     vehicleNode.Value<string>("description"));
-                JObject vehicleArtwork = vehicles
-                    .Descendants()
-                    .OfType<JObject>()
-                    .Single(node =>
-                        node.Value<string>("kind") == "media" &&
-                        node.Value<string>("id") ==
-                            vehicleNode.Value<string>("id") + "-preview");
-                Assert.Equal("assets/allin1/vehicles/adder.png?allin1-art=1",
-                    vehicleArtwork.Value<string>("source"));
-                Assert.Equal("image",
-                    vehicleArtwork.Value<string>("mediaType"));
+                Assert.DoesNotContain(vehicles.Descendants().OfType<JObject>(), node =>
+                    node.Value<string>("kind") == "media" &&
+                    node.Value<string>("id") == vehicleNode.Value<string>("id") + "-preview");
                 Assert.Single(vehicles.Descendants().OfType<JObject>(),
                     node => node.Value<string>("actionId") == "vehicle.favorite");
                 JObject vehicleFavorite = vehicles.Descendants()
@@ -1026,15 +1017,9 @@ namespace ALLIN1.Tests
                     weapon["boundParameters"].Value<string>("weapon"));
                 Assert.Contains("Price: $500",
                     weapon.Value<string>("description"));
-                JObject weaponArtwork = weapons
-                    .Descendants()
-                    .OfType<JObject>()
-                    .Single(node =>
-                        node.Value<string>("kind") == "media" &&
-                        node.Value<string>("id") ==
-                            weapon.Value<string>("id") + "-preview");
-                Assert.Equal("assets/allin1/weapons/weapon_pistol.png?allin1-art=1",
-                    weaponArtwork.Value<string>("source"));
+                Assert.DoesNotContain(weapons.Descendants().OfType<JObject>(), node =>
+                    node.Value<string>("kind") == "media" &&
+                    node.Value<string>("id") == weapon.Value<string>("id") + "-preview");
                 object weaponResult = InvokeHost(
                     core, "InvokeMenu", "allin1.gbay", "weapons",
                     weapon.Value<string>("id"), "activate", new JObject(),
@@ -1050,15 +1035,9 @@ namespace ALLIN1.Tests
                 JObject gear = DescribeMenu(core, "gear");
                 JObject gearAction = gear.Descendants().OfType<JObject>().Single(
                     node => node.Value<string>("actionId") == "gear.apply");
-                JObject gearArtwork = gear
-                    .Descendants()
-                    .OfType<JObject>()
-                    .Single(node =>
-                        node.Value<string>("kind") == "media" &&
-                        node.Value<string>("id") ==
-                            gearAction.Value<string>("id") + "-preview");
-                Assert.Equal("assets/allin1/gear/armor_heavy.png?allin1-art=1",
-                    gearArtwork.Value<string>("source"));
+                Assert.DoesNotContain(gear.Descendants().OfType<JObject>(), node =>
+                    node.Value<string>("kind") == "media" &&
+                    node.Value<string>("id") == gearAction.Value<string>("id") + "-preview");
                 object gearResult = InvokeHost(
                     core, "InvokeMenu", "allin1.gbay", "gear",
                     gearAction.Value<string>("id"), "activate", new JObject(),
@@ -1294,14 +1273,9 @@ namespace ALLIN1.Tests
                         "weapon.customize.select");
                 Assert.Equal("WEAPON_PISTOL",
                     owned["boundParameters"].Value<string>("weapon"));
-                JObject ownedArtwork = customize.Descendants()
-                    .OfType<JObject>().Single(node =>
-                        node.Value<string>("id") ==
-                            owned.Value<string>("id") + "-preview" &&
-                        node.Value<string>("kind") == "media");
-                Assert.Equal(
-                    "assets/allin1/weapons/weapon_pistol.png?allin1-art=1",
-                    ownedArtwork.Value<string>("source"));
+                Assert.DoesNotContain(customize.Descendants().OfType<JObject>(), node =>
+                    node.Value<string>("kind") == "media" &&
+                    node.Value<string>("id") == owned.Value<string>("id") + "-preview");
                 InvokeHost(core, "SetMenuPresentationHostAvailable", true);
                 if (!bridge.IsMenuActive)
                 {

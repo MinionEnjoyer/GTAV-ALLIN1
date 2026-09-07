@@ -76,6 +76,53 @@ it("reports a poll failure once without toggling the foreground status", async (
   expect(screen.queryByText("Working…")).not.toBeInTheDocument();
 });
 
+it("acknowledges a stopped monitor without claiming recovery, deleting history, or calling the service", async () => {
+  const task = await launch(); await dispatched(task.apply);
+  await waitFor(() => expect(task.request).toHaveBeenCalledWith("startup_status", {}), { timeout: 2000 });
+  await act(async () => { task.poll.reject(new Error("Reactor disconnected")); });
+  expect(screen.getByLabelText("Launcher status")).toHaveTextContent("Needs attention");
+  const calls = task.request.mock.calls.length;
+  fireEvent.click(within(screen.getByRole("region", { name: "Reactor startup" })).getByRole("button", { name: "Acknowledge warning" }));
+  expect(task.request).toHaveBeenCalledTimes(calls);
+  expect(screen.getByLabelText("Launcher status")).toHaveTextContent("Ready");
+  expect(screen.getByLabelText("Launcher status")).not.toHaveTextContent("Story Mode ready");
+  expect(screen.queryByRole("region", { name: "Startup needs attention" })).not.toBeInTheDocument();
+  expect(screen.getByText("Previous startup warning — acknowledged")).toBeVisible();
+  fireEvent.click(within(screen.getByRole("navigation", { name: "Primary" })).getByRole("button", { name: "Activity" }));
+  await waitFor(() => expect(screen.getByLabelText("Activity log")).toHaveTextContent("Acknowledged startup warning: Startup monitoring interrupted: Error: Reactor disconnected"));
+  task.request.mockRejectedValueOnce(new Error("A new operation failed"));
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  await screen.findByText("Error: A new operation failed");
+  expect(screen.getByLabelText("Launcher status")).toHaveTextContent("Needs attention");
+});
+
+it("raises the same warning again on a new launch after acknowledgement", async () => {
+  const task = await launch(); await dispatched(task.apply);
+  await waitFor(() => expect(task.request).toHaveBeenCalledWith("startup_status", {}), { timeout: 2000 });
+  await act(async () => { task.poll.reject(new Error("offline")); });
+  fireEvent.click(screen.getByRole("button", { name: "Acknowledge warning" }));
+  fireEvent.click(screen.getByRole("button", { name: "Launch Story Mode" }));
+  const review = await screen.findByRole("region", { name: "Review changes" });
+  fireEvent.click(within(review).getByRole("checkbox", { name: "I reviewed these changes" }));
+  fireEvent.click(within(review).getByRole("button", { name: "Apply reviewed changes" }));
+  await screen.findByRole("button", { name: "Acknowledge warning" }, { timeout: 2500 });
+  expect(screen.getByLabelText("Launcher status")).toHaveTextContent("Needs attention");
+});
+
+it("acknowledges completed-operation warnings separately from unrelated errors", async () => {
+  const task = await launch();
+  await act(async () => { task.apply.resolve({ action: "launch", result: {}, warning: "Could not update the activity journal" }); });
+  const warning = await screen.findByRole("region", { name: "Operation warning" });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled());
+  expect(screen.getByLabelText("Launcher status")).toHaveTextContent("Needs attention");
+  task.request.mockRejectedValueOnce(new Error("service offline"));
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  await screen.findByText("Error: service offline");
+  fireEvent.click(within(warning).getByRole("button", { name: "Acknowledge warning" }));
+  expect(screen.queryByRole("region", { name: "Operation warning" })).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Launcher status")).toHaveTextContent("Needs attention");
+});
+
 it("cancels the active launch without unlocking early or claiming GTA started", async () => {
   const task = await launch();
   expect(screen.getByRole("button", { name: "Cancel launch" })).toBeDisabled();

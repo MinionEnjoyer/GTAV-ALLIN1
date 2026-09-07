@@ -19,5 +19,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\RealisticSuppressors.csproj" />
+    <None Include="../examples/profiles/suppressor-profile.json" Link="TestData/suppressor-profile.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

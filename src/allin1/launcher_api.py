@@ -19,7 +19,7 @@ EXTERNAL = {"open_activity_folder", "open_launcher_release"}
 # Explicit action parameters: adding a backend action requires a contract entry.
 ACTION_FIELDS = {
     "save_config": [], "sync_config": [], "install": ["reactor_consent", "rpf_loader_consent"],
-    "uninstall": [], "launch": ["skip_previews"], "prepare_previews": ["skip_previews"], "save_profile": ["name"], "delete_profile": ["name"],
+    "uninstall": [], "launch": ["skip_previews", "skip_preview_categories", "quick_launch", "missing_previews_only"], "prepare_previews": ["skip_previews", "skip_preview_categories", "missing_previews_only"], "save_profile": ["name"], "delete_profile": ["name"],
     "export_profile": ["name", "destination"], "import_preferences": ["source"],
     "package_install": ["source", "settings", "expected_state_sha256"],
     "package_enable": ["id"], "package_disable": ["id"], "package_uninstall": ["id"],
@@ -36,9 +36,11 @@ ACTION_FIELDS = {
 
 def schema(fields, required=()):
     types = {"config": "object", "settings": "object", "document": "object", "assistant_config": "object",
-             "confirmed": "boolean", "reactor_consent": "boolean", "rpf_loader_consent": "boolean", "skip_previews": "boolean"}
+             "confirmed": "boolean", "reactor_consent": "boolean", "rpf_loader_consent": "boolean", "skip_previews": "boolean", "quick_launch": "boolean", "missing_previews_only": "boolean"}
+    from allin1.preview_policy import PREVIEW_CATEGORIES
     return {"type": "object", "additionalProperties": False,
-            "properties": {field: {"type": types.get(field, "string")} for field in fields}, "required": list(required)}
+            "properties": {field: ({"type": "array", "items": {"type": "string", "enum": list(PREVIEW_CATEGORIES)}, "uniqueItems": True, "maxItems": 3}
+                                   if field == "skip_preview_categories" else {"type": types.get(field, "string")}) for field in fields}, "required": list(required)}
 
 
 def contract():
@@ -65,6 +67,7 @@ def contract():
                            "review: action=package_install, source=<export>, settings=<reviewed settings>, expected_state_sha256=<inspection>",
                            "apply: review_id, review_sha256, confirmed=true", "inspect: module=mods"],
         "notes": ["Keep one agent-api process alive for review/apply; review IDs are session-local and single-use.",
+                  "launch and prepare_previews accept skip_preview_categories (weapons, vehicles, gear) to skip new renders while validating caches, and missing_previews_only=true to keep intact indexed images even after model/renderer updates and fill missing entries only. launch also accepts quick_launch=true to skip all preview discovery and rendering, leaving existing artwork unchanged. Neither bypasses launch safety or approval.",
                   "During a launch apply, send cancel_launch with its review_id in the same agent-api session. A requested acknowledgement is not completion; wait for the apply result. Cancellation never terminates GTA after dispatch.",
                   "CLI review emits a 5-minute plan; CLI apply requires its approval hash and explicit write authority.",
                   "No automatic action replay. Reinspect files/receipts after an interrupted write.",
@@ -96,9 +99,12 @@ class LauncherAPI:
             raise ValueError("Unknown or invalid Launcher API parameters")
         for key, value in payload.items():
             expected = schema([key])["properties"][key]["type"]
-            cls = {"string": str, "object": dict, "boolean": bool}[expected]
+            cls = {"string": str, "object": dict, "boolean": bool, "array": list}[expected]
             if type(value) is not cls:
                 raise ValueError(f"Invalid type for {key}; expected {expected}")
+            if key == "skip_preview_categories":
+                from allin1.preview_policy import validate_skip_categories
+                validate_skip_categories(value)
 
     def read(self, operation, payload):
         if operation not in READS and operation not in EXTERNAL:

@@ -1142,7 +1142,8 @@ namespace ALLIN1
                 GbayRenderer.FONT_CHALET);
 
             // Price
-            string priceText = card.Price <= 0 ? "FREE" : $"${card.Price:N0}";
+            string priceText = RuntimeVehicleCatalog.IsCatalogOnly(card.Model)
+                ? "CATALOG ONLY" : card.Price <= 0 ? "FREE" : $"${card.Price:N0}";
             Color priceColor = card.Price <= 0
                 ? GbayRenderer.TextPriceFree : GbayRenderer.TextPrice;
             GbayRenderer.DrawStatusPill(priceText,
@@ -1511,6 +1512,12 @@ namespace ALLIN1
 
         private void OpenDeliveryConfirm(string model, int price)
         {
+            if (RuntimeVehicleCatalog.IsCatalogOnly(model))
+            {
+                GbayRenderer.PlayError();
+                GTA.UI.Screen.ShowSubtitle("~y~Catalog only — purchasing and delivery are not enabled yet.", 3500);
+                return;
+            }
             bool worldAsset = WorldAssetList.IsWorldAsset(model);
 
             if (!worldAsset && !RuntimeVehicleCatalog.IsModelAvailable(model))
@@ -3081,6 +3088,7 @@ namespace ALLIN1
                     !GbayPreferences.IsVehicleFavorite(model)) continue;
                 if (_vehicleSearch.Length > 0 &&
                     displayName.IndexOf(_vehicleSearch, StringComparison.OrdinalIgnoreCase) < 0 &&
+                    RuntimeVehicleCatalog.SearchAliases(model).IndexOf(_vehicleSearch, StringComparison.OrdinalIgnoreCase) < 0 &&
                     model.IndexOf(_vehicleSearch, StringComparison.OrdinalIgnoreCase) < 0)
                     continue;
 

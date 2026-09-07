@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "profiles": [
+    {
+      "weapon": "WEAPON_A1_KRISS_VECTOR",
+      "component": "COMPONENT_AT_PI_SUPP",
+      "preset": "smg_45",
+      "profile_code": "A1V45",
+      "thermal_basis": ".45-class Vector gameplay approximation"
+    }
+  ]
+}

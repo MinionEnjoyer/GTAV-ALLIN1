@@ -45,7 +45,6 @@ from allin1.garage_map_detection import (
     refresh_garage_map_detection,
 )
 from allin1.launch_policy import remove_retired_offline_policy
-from allin1.preview_assets import GEAR_PREVIEW_ITEMS, WORLD_ASSET_PREVIEW_ITEMS
 from allin1.processes import run_hidden
 from allin1.reactor_bridge_contract import (
     CONTRACT_FILENAME as REACTOR_BRIDGE_CONTRACT_FILENAME,
@@ -128,14 +127,6 @@ _PRELOAD_MANIFEST_SOURCE = (
 _PRELOAD_MANIFEST_RELATIVE = Path(
     "scripts", ".reactorv", "preload", "allin1.json"
 )
-_REACTOR_ARTWORK_RELATIVE = Path(
-    "plugins", "ReactorV", "ui", "assets", "allin1"
-)
-_REACTOR_ARTWORK_SOURCES = {
-    "vehicles": "previews",
-    "weapons": "weapon_previews",
-    "gear": "equipment_previews",
-}
 
 _MAP_GAMECONFIG_ENTRY = "common/data/gameconfig.xml"
 _MAP_DLCLIST_ENTRY = "common/data/dlclist.xml"
@@ -703,11 +694,8 @@ def uninstall(config: Config) -> list[Path]:
             removed.append(reactor_file)
             log.info("Removed %s from scripts/ReactorV/", reactor_name)
 
-    reactor_artwork = gta_path / _REACTOR_ARTWORK_RELATIVE
-    if reactor_artwork.is_dir() and not managed_reactor_ui:
-        shutil.rmtree(reactor_artwork)
-        removed.append(reactor_artwork)
-        log.info("Removed ALLIN1 artwork from the Reactor V asset host")
+    # Preview stores are separately owned. Only the consumer receipt may retire
+    # old bundled UI art; never recursively remove generated/downloaded caches.
 
     for dirname in RETIRED_DEVELOPER_DIRECTORIES:
         dpath = scripts_dir / dirname
@@ -866,12 +854,6 @@ def _deploy_script(gta_path: Path, config: Config | None = None) -> bool:
     write_installed_version(scripts_dir)
     log.info("Deployed %s → %s", DLL_FILENAME, dest)
 
-    # Optional presentation adapter. It is inert unless Reactor's Script and
-    # Core assemblies are already loaded, and it never brings a second copy of
-    # Reactor Core into the game process.
-    if reactor_bridge_src.exists():
-        _deploy_reactor_catalog_artwork(gta_path)
-
     # Deploy the exact in-memory configuration selected by this install. This
     # keeps custom CLI config paths and extension compatibility bindings from
     # silently falling back to an unrelated project-root file.
@@ -913,62 +895,6 @@ def _deploy_script(gta_path: Path, config: Config | None = None) -> bool:
     return True
 
 
-def _deploy_reactor_catalog_artwork(gta_path: Path) -> int:
-    """Publish curated card art inside Reactor's allowlisted UI asset root.
-
-    Reactor deliberately cannot read arbitrary local files.  ALLIN1 therefore
-    copies only its release-owned PNG catalogs beneath the already mapped UI
-    directory.  The bridge can then use portable ``assets/allin1/...`` URLs
-    without exposing a GTA path or widening Reactor's filesystem boundary.
-    """
-    from allin1.reactor_dependency import CONSUMER_RECEIPT
-    if (gta_path / CONSUMER_RECEIPT).is_file():
-        # The dependency transaction already deployed and receipted our art.
-        return 0
-    reactor_ui = gta_path / "plugins" / "ReactorV" / "ui"
-    if not (reactor_ui / "index.html").is_file():
-        log.info(
-            "Reactor V UI is not installed; browser catalog artwork was not staged"
-        )
-        return 0
-
-    destination_root = gta_path / _REACTOR_ARTWORK_RELATIVE
-    copied = 0
-    for category, source_name in _REACTOR_ARTWORK_SOURCES.items():
-        source_root = _SCRIPT_DIST_DIR / source_name
-        if not source_root.is_dir():
-            log.warning(
-                "Reactor catalog artwork source is missing: %s", source_root
-            )
-            continue
-        sources = {
-            source.name.casefold(): source
-            for source in source_root.iterdir()
-            if source.is_file() and source.suffix.casefold() == ".png"
-        }
-        destination = destination_root / category
-        destination.mkdir(parents=True, exist_ok=True)
-        for stale in destination.glob("*.png"):
-            if stale.name.casefold() not in sources:
-                stale.unlink()
-        for source in sources.values():
-            target = destination / source.name
-            if _same_file_payload(source, target):
-                continue
-            temporary = target.with_name(target.name + ".tmp")
-            try:
-                shutil.copy2(source, temporary)
-                os.replace(temporary, target)
-            except Exception:
-                temporary.unlink(missing_ok=True)
-                raise
-            copied += 1
-    log.info(
-        "Published Reactor V catalog artwork (%d updated file(s)) -> %s",
-        copied,
-        destination_root,
-    )
-    return copied
 
 
 def _deploy_preload_manifest(gta_path: Path) -> Path:
@@ -1157,207 +1083,6 @@ def _check_openrpf(gta_path: Path, enhanced: bool) -> bool:
     return status.ready
 
 
-def _deploy_preview_dlc(
-    gta_path: Path,
-    result: InstallResult,
-    progress: InstallProgress | None = None,
-) -> bool:
-    """Build and register a DLC pack containing streamed preview dictionaries."""
-    from allin1.generators import dlc_previews
-    from allin1.generators import ytd_builder
-    from allin1.preview_assets import merge_previews
-
-    previews_src = _SCRIPT_DIST_DIR / "previews"
-    logo_src = _SCRIPT_DIST_DIR / "PHAT.png"
-    brand_logo_src = _SCRIPT_DIST_DIR / "ALLIN1.png"
-    weapon_previews_src = _SCRIPT_DIST_DIR / "weapon_previews"
-    equipment_previews_src = _SCRIPT_DIST_DIR / "equipment_previews"
-    world_asset_previews_src = _SCRIPT_DIST_DIR / "world_asset_previews"
-
-    if not previews_src.is_dir():
-        log.warning("No previews/ directory found — skipping preview build")
-        result.warnings.append("Preview images not found; vehicle thumbnails "
-                               "will show colored placeholders.")
-        return False
-
-    rpf_patcher = _TOOLS_DIR / "RpfPatcher" / "RpfPatcher.exe"
-    if not rpf_patcher.exists():
-        log.warning("RpfPatcher.exe not found — skipping preview build. "
-                     "Run runtools.ps1 first.")
-        result.warnings.append("RpfPatcher.exe missing; run runtools.ps1 first.")
-        return False
-
-    # Dictionary assignment is generated from the complete sorted catalog.
-    # Never derive it from the set of successful captures: one missing image
-    # would shift every subsequent texture into the wrong dictionary.
-    models = sorted(v.model for v in VehicleDatabase.load(
-        _PROJECT_ROOT / "data" / "vehicles.toml"
-    ))
-    with (_PROJECT_ROOT / "data" / "weapons.toml").open("rb") as stream:
-        weapon_ids = sorted(
-            item["name"] for item in tomllib.load(stream).get("weapons", [])
-        )
-    gear_ids = sorted(GEAR_PREVIEW_ITEMS)
-    world_asset_ids = sorted(WORLD_ASSET_PREVIEW_ITEMS)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        ytd_out = tmp_path / "ytd"
-        preview_inputs = tmp_path / "preview_inputs"
-        weapon_preview_inputs = tmp_path / "weapon_preview_inputs"
-        equipment_preview_inputs = tmp_path / "equipment_preview_inputs"
-        world_asset_preview_inputs = tmp_path / "world_asset_preview_inputs"
-
-        # Raw captures are source material, not approved catalog art. Package
-        # only the reviewed repository assets so an old or incomplete capture
-        # folder cannot silently replace curated previews during repair.
-        merged = merge_previews(
-            [previews_src],
-            preview_inputs,
-            models,
-        )
-        if merged.copied == 0:
-            log.warning("No valid PNG preview files found")
-            result.warnings.append("No valid vehicle previews were found.")
-            return False
-        if merged.rejected:
-            result.warnings.append(
-                f"Ignored {len(merged.rejected)} invalid preview capture(s)."
-            )
-        if merged.missing:
-            result.warnings.append(
-                f"{len(merged.missing)} vehicle preview(s) missing; placeholders will be used."
-            )
-        log.info("Building preview textures for %d/%d vehicles...",
-                 merged.copied, len(models))
-
-        weapon_merged = merge_previews(
-            [weapon_previews_src],
-            weapon_preview_inputs,
-            weapon_ids,
-        )
-        equipment_merged = merge_previews(
-            [equipment_previews_src],
-            equipment_preview_inputs,
-            gear_ids,
-        )
-        world_asset_merged = merge_previews(
-            [world_asset_previews_src],
-            world_asset_preview_inputs,
-            world_asset_ids,
-        )
-        if (weapon_merged.rejected or equipment_merged.rejected
-                or world_asset_merged.rejected):
-            rejected_count = (
-                len(weapon_merged.rejected) + len(equipment_merged.rejected)
-                + len(world_asset_merged.rejected)
-            )
-            result.warnings.append(
-                f"Ignored {rejected_count} invalid catalog preview capture(s)."
-            )
-        if weapon_merged.copied:
-            log.info("Building preview textures for %d/%d weapons...",
-                     weapon_merged.copied, len(weapon_ids))
-        if equipment_merged.copied:
-            log.info("Building preview textures for %d/%d equipment items...",
-                     equipment_merged.copied, len(gear_ids))
-        if world_asset_merged.copied:
-            log.info("Building preview textures for %d/%d world assets...",
-                     world_asset_merged.copied, len(world_asset_ids))
-
-        preview_groups = []
-        if weapon_merged.copied:
-            preview_groups.append(
-                ("allin1_weapon", weapon_preview_inputs, weapon_ids)
-            )
-        if equipment_merged.copied:
-            preview_groups.append(
-                ("allin1_gear", equipment_preview_inputs, gear_ids)
-            )
-        if world_asset_merged.copied:
-            preview_groups.append(
-                ("allin1_asset", world_asset_preview_inputs, world_asset_ids)
-            )
-
-        # Step 1: Build .ytd files from PNGs
-        _report_progress(progress, 50, "Building preview textures")
-        ytd_files = ytd_builder.build_ytd_files(
-            preview_inputs,
-            logo_src if logo_src.exists() else None,
-            ytd_out, _TOOLS_DIR, models,
-            brand_logo_path=brand_logo_src if brand_logo_src.exists() else None,
-            preview_groups=preview_groups,
-        )
-
-        if not ytd_files:
-            log.warning("No .ytd files were built")
-            result.warnings.append("Failed to build preview textures.")
-            return False
-        _report_progress(progress, 64, "Preview textures built")
-
-        # Step 1b: Convert .ytd files to Enhanced (gen9) format if needed
-        if result.is_enhanced:
-            log.info("Enhanced edition detected — converting .ytd files to gen9 format...")
-            _report_progress(progress, 68, "Converting Enhanced textures")
-            proc = run_hidden(
-                [str(rpf_patcher), "convert-gen9", str(ytd_out)],
-                capture_output=True, text=True, timeout=300,
-            )
-            if proc.stdout:
-                for line in proc.stdout.strip().splitlines():
-                    log.info("RpfPatcher: %s", line)
-            if proc.returncode != 0:
-                error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
-                raise RuntimeError(f"RpfPatcher convert-gen9 failed: {error_msg}")
-            log.info("Gen9 conversion complete.")
-
-        # Put the dictionaries in a nested RPF and register that RPF as DLC
-        # content. This is required for REQUEST_STREAMED_TEXTURE_DICT to see
-        # custom dictionaries on Enhanced; a loose directory inside
-        # update2.rpf is not automatically part of the streaming index.
-        dlc_work = tmp_path / "dlc"
-        dlc_root, ytd_staging = dlc_previews.create_dlc_pack(
-            ytd_files, dlc_work,
-        )
-        output_rpf = dlc_work / "allin1_previews.dlc.rpf"
-        _report_progress(progress, 74, "Packaging preview DLC")
-        proc = run_hidden(
-            [
-                str(rpf_patcher), "build-dlc", str(dlc_root), str(output_rpf),
-                "--embed-rpf", str(ytd_staging), "x64/textures/textures.rpf",
-            ],
-            capture_output=True, text=True, timeout=300,
-        )
-        if proc.stdout:
-            for line in proc.stdout.strip().splitlines():
-                log.info("RpfPatcher: %s", line)
-        if proc.returncode != 0:
-            error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
-            raise RuntimeError(f"RpfPatcher build-dlc failed: {error_msg}")
-        if not output_rpf.is_file() or output_rpf.stat().st_size == 0:
-            raise RuntimeError("RpfPatcher build-dlc produced no archive")
-
-        _report_progress(progress, 84, "Verifying preview DLC")
-        verify = run_hidden(
-            [str(rpf_patcher), "verify-dlc", str(output_rpf), str(ytd_staging)],
-            capture_output=True, text=True, timeout=300,
-        )
-        if verify.stdout:
-            for line in verify.stdout.strip().splitlines():
-                log.info("RpfPatcher: %s", line)
-        if verify.returncode != 0:
-            error_msg = verify.stderr.strip() if verify.stderr else f"exit code {verify.returncode}"
-            raise RuntimeError(f"RpfPatcher verify-dlc failed: {error_msg}")
-
-        deployed_dir = dlc_previews.deploy_dlc_rpf(output_rpf, gta_path)
-        _report_progress(progress, 90, "Registering preview DLC")
-        if not _patch_dlclist_rpf(gta_path, result, "allin1_previews"):
-            shutil.rmtree(deployed_dir, ignore_errors=True)
-            raise RuntimeError(
-                "RpfPatcher patch failed; could not register the preview DLC in dlclist.xml"
-            )
-        log.info("Preview texture DLC built, verified, deployed, and registered")
-        return True
 
 
 def _map_patcher_command(

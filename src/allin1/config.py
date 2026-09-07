@@ -59,6 +59,10 @@ class ScriptConfig:
     seat_selector_enabled: bool = True
     seat_selector_key: str = "L"
     safe_mode: bool = False
+    speedometer_provider: str = "auto"
+    speedometer_units: str = "kmh"
+    driving_telemetry: str = "towing"
+    shift_controls_enabled: bool = True
     ui_scale: float = 1.0
     reduced_motion: bool = False
     colorblind_mode: bool = False
@@ -185,6 +189,10 @@ class Config:
             f"seat_selector_enabled = {boolean(self.script.seat_selector_enabled)}\n"
             f"seat_selector_key = {quote(self.script.seat_selector_key)}\n"
             f"safe_mode = {boolean(self.script.safe_mode)}\n"
+            f"speedometer_provider = {quote(self.script.speedometer_provider)}\n"
+            f"speedometer_units = {quote(self.script.speedometer_units)}\n"
+            f"driving_telemetry = {quote(self.script.driving_telemetry)}\n"
+            f"shift_controls_enabled = {boolean(self.script.shift_controls_enabled)}\n"
             f"ui_scale = {self.script.ui_scale}\n"
             f"reduced_motion = {boolean(self.script.reduced_motion)}\n"
             f"colorblind_mode = {boolean(self.script.colorblind_mode)}\n"
@@ -231,6 +239,16 @@ class Config:
                 "general.target_edition must be 'auto', 'legacy', or 'enhanced'"
             )
         self.general.target_edition = target_edition
+        for name, choices in {
+            "speedometer_provider": {"auto", "builtin", "rex", "lefix", "off"},
+            "speedometer_units": {"kmh", "mph"},
+            "driving_telemetry": {"off", "towing", "all"},
+        }.items():
+            value = getattr(self.script, name)
+            if not isinstance(value, str) or value not in choices:
+                raise ValueError(f"script.{name} must be one of {sorted(choices)}")
+        if type(self.script.shift_controls_enabled) is not bool:
+            raise ValueError("script.shift_controls_enabled must be a boolean")
         keys = {
             "gbay_key": self.script.gbay_key,
             "night_vision_key": self.script.night_vision_key,

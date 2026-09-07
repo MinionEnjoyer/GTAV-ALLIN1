@@ -32,7 +32,6 @@ def test_source_runtime_path_is_unchanged_and_frozen_path_ignores_environment(tm
     ("allin1.installer", "_PROJECT_ROOT", ""),
     ("allin1.mods", "_PROJECT_ROOT", ""),
     ("allin1.reactor_dependency", "UI_SOURCE", "data/reactor/allin1-ui"),
-    ("allin1.reactor_dependency", "ART_SOURCE", "script/dist"),
 ])
 def test_frozen_services_resolve_resources_not_python_extraction_directory(tmp_path, module, field, suffix):
     # Isolate module initialization: reloading shared modules in pytest changes

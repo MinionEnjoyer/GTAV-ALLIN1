@@ -9,7 +9,6 @@ import pytest
 
 from allin1 import installer
 from allin1.generators import dlc_maps
-from allin1.preview_assets import PreviewMergeResult
 
 
 def _write_pe(path, *, size=4096):
@@ -139,80 +138,8 @@ def _known_sparse_onigiri_gameconfig() -> bytes:
 </pools></CGameConfig>"""
 
 
-@pytest.mark.parametrize("missing,warning", [
-    ("previews", "Preview images not found"),
-    ("rpf", "RpfPatcher.exe missing"),
-])
-def test_preview_deploy_reports_missing_inputs(tmp_path, monkeypatch, missing, warning):
-    _project, dist, tools = _layout(tmp_path, monkeypatch)
-    if missing == "previews":
-        (dist / "previews").rename(dist / "gone")
-    else:
-        (tools / "RpfPatcher" / "RpfPatcher.exe").unlink()
-    result = installer.InstallResult(tmp_path)
-    installer._deploy_preview_dlc(tmp_path, result)
-    assert any(warning in item for item in result.warnings)
-
-
-def test_preview_deploy_builds_and_deploys_curated_assets(tmp_path, monkeypatch):
-    _project, dist, _tools = _layout(tmp_path, monkeypatch)
-    from allin1 import preview_assets
-    from allin1.generators import ytd_builder
-
-    merge = Mock(return_value=PreviewMergeResult(1, ("bad.png",), ()))
-    monkeypatch.setattr(preview_assets, "merge_previews", merge)
-
-    def build(_source, _logo, output, _tools, models, **_kwargs):
-        output.mkdir(parents=True)
-        ytd = output / "allin1_prev_01.ytd"
-        ytd.write_bytes(b"ytd")
-        assert models == ["alpha"]
-        return [ytd]
-    monkeypatch.setattr(ytd_builder, "build_ytd_files", build)
-
-    calls = []
-    def run(args, **_kwargs):
-        calls.append(args)
-        if "build-dlc" in args:
-            Path(args[3]).write_bytes(b"valid-dlc-rpf")
-        return Mock(returncode=0, stdout="ok", stderr="")
-    monkeypatch.setattr(installer.subprocess, "run", run)
-    result = installer.InstallResult(tmp_path, is_enhanced=True)
-
-    assert installer._deploy_preview_dlc(tmp_path, result) is True
-
-    assert "Ignored 1 invalid preview capture(s)." in result.warnings
-    assert merge.call_args_list[0].args[0] == [dist / "previews"]
-    assert merge.call_args_list[1].args[0] == [dist / "weapon_previews"]
-    assert merge.call_args_list[2].args[0] == [dist / "equipment_previews"]
-    assert merge.call_args_list[3].args[0] == [dist / "world_asset_previews"]
-    assert any("build-dlc" in args for args in calls)
-    assert any("verify-dlc" in args for args in calls)
-    assert any("patch" in args for args in calls)
-    assert (tmp_path / "mods/update/x64/dlcpacks/allin1_previews/dlc.rpf").exists()
-
-
-@pytest.mark.parametrize("stage", ["convert-gen9", "build-dlc", "verify-dlc", "patch"])
-def test_preview_deploy_surfaces_tool_failures(tmp_path, monkeypatch, stage):
-    _layout(tmp_path, monkeypatch)
-    from allin1 import preview_assets
-    from allin1.generators import ytd_builder
-    monkeypatch.setattr(preview_assets, "merge_previews",
-                        Mock(return_value=PreviewMergeResult(1, (), ())))
-    def build(_a, _b, output, _d, _e, **_kwargs):
-        output.mkdir(parents=True, exist_ok=True)
-        ytd = output / "one.ytd"
-        ytd.write_bytes(b"ytd")
-        return [ytd]
-    monkeypatch.setattr(ytd_builder, "build_ytd_files", build)
-    def run(args, **_kwargs):
-        if "build-dlc" in args and stage != "build-dlc":
-            Path(args[3]).write_bytes(b"valid-dlc-rpf")
-        return Mock(returncode=1 if stage in args else 0, stdout="", stderr="boom")
-    monkeypatch.setattr(installer.subprocess, "run", run)
-    result = installer.InstallResult(tmp_path, is_enhanced=(stage == "convert-gen9"))
-    with pytest.raises(RuntimeError, match=stage):
-        installer._deploy_preview_dlc(tmp_path, result)
+def test_obsolete_preview_dlc_builder_is_removed():
+    assert not hasattr(installer, "_deploy_preview_dlc")
 
 
 def test_openrpf_detection_requires_nonempty_plugin_and_loader(tmp_path):

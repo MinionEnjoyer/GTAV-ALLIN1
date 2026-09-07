@@ -17,7 +17,7 @@ def launch_boundary(service, monkeypatch):
             "executable_path":str(next(game.glob("GTA5*.exe"))),"modules":[],"modules_status":"observed","modules_truncated":False})
     monkeypatch.setattr(runtime_diagnostic_session,"RuntimeSession",diagnostic)
     service.allow_launch = True
-    monkeypatch.setattr(prelaunch_previews, "prepare", lambda *a, **kw: events.append("previews") or {"status":"complete", "skip":kw['skip']})
+    monkeypatch.setattr(prelaunch_previews, "prepare_all", lambda *a, **kw: events.append("previews") or {"status":"complete", "skip":kw['skip']})
     preloader = SimpleNamespace(stop=lambda: events.append("stop"))
     monitor = SimpleNamespace(mark_launch_requested=lambda: events.append("requested"),
                               sample=lambda **kwargs: reactor_bootstrap.BootstrapState(frozenset({"story"})))
@@ -73,7 +73,7 @@ def test_launch_reports_measured_preview_progress_but_no_game_percentage(service
         kwargs['progress'](50, 'Weapon previews: 1/2 processed')
         kwargs['progress'](100, 'Weapon previews: 2/2 processed')
         return {'status': 'complete'}
-    monkeypatch.setattr(prelaunch_previews, 'prepare', previews)
+    monkeypatch.setattr(prelaunch_previews, 'prepare_all', previews)
     apply(service, 'launch')
     assert [p for p, _ in updates if p is not None] == [0, 50, 100]
     assert updates[0][0] is None and updates[-1][0] is None
@@ -109,7 +109,7 @@ def test_optional_map_refresh_failure_does_not_turn_launch_into_failure(service,
 
 def test_optional_preview_failure_does_not_block_launch(service, launch_boundary, monkeypatch):
     def fail(*args, **kw): raise OSError("cache unavailable")
-    monkeypatch.setattr(prelaunch_previews,"prepare",fail)
+    monkeypatch.setattr(prelaunch_previews,"prepare_all",fail)
     result=apply(service,"launch")["result"]
     assert result["status"]=="success" and result["weapon_previews"]["status"]=="unavailable"
 
@@ -122,6 +122,55 @@ def test_prepare_action_does_not_require_launch_authority_or_dispatch(service,la
 
 def test_skip_flag_reaches_launch_preview_phase(service,launch_boundary):
     assert apply(service,"launch",skip_previews=True)["result"]["weapon_previews"]["skip"] is True
+
+
+@pytest.mark.parametrize('action', ['launch', 'prepare_previews'])
+def test_category_choices_reach_previews(service, launch_boundary, monkeypatch, action):
+    seen = []
+    def previews(*args, **kwargs):
+        seen.append(kwargs)
+        return {'status': 'complete'}
+    monkeypatch.setattr(prelaunch_previews, 'prepare_all', previews)
+    apply(service, action, skip_preview_categories=['vehicles', 'gear'], missing_previews_only=True)
+    assert seen[0]['skip_categories'] == ['vehicles', 'gear']
+    assert seen[0]['skip'] is False
+    assert seen[0]['missing_only'] is True
+
+
+def test_quick_launch_never_enters_preview_phase(service, launch_boundary, monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail('Quick Launch must not discover or render previews')
+    monkeypatch.setattr(prelaunch_previews, 'prepare_all', forbidden)
+    receipt = apply(service, 'launch', quick_launch=True)
+    assert receipt['result']['catalog_previews']['reason'] == 'quick_launch'
+    assert launch_boundary == ['map', 'dispatch', 'requested', 'canary']
+
+
+def test_quick_launch_still_blocks_hazards(service, launch_boundary, monkeypatch):
+    monkeypatch.setattr(health, 'scan_launch_hazards', lambda *args: [SimpleNamespace(severity='error', message='unsafe runtime')])
+    with pytest.raises(ValueError, match='unsafe runtime'):
+        apply(service, 'launch', quick_launch=True)
+    assert not launch_boundary
+
+
+def test_quick_launch_still_requires_confirmation(service, launch_boundary):
+    review = service.review({'action': 'launch', 'quick_launch': True})
+    with pytest.raises(ValueError, match='confirmation'):
+        service.apply({'review_id': review['review_id'], 'review_sha256': review['review_sha256'], 'confirmed': False})
+    assert not launch_boundary
+
+
+@pytest.mark.parametrize('policy', [
+    {'skip_preview_categories': ['weapons', 'weapons']},
+    {'skip_preview_categories': ['boats']},
+    {'skip_preview_categories': 'gear'},
+    {'quick_launch': 'yes'},
+    {'missing_previews_only': 'yes'},
+])
+def test_desktop_rejects_invalid_preview_policy_before_review(service, launch_boundary, policy):
+    with pytest.raises(ValueError):
+        service.review({'action': 'launch', **policy})
+    assert not service.reviews and not launch_boundary
 
 
 @pytest.mark.parametrize("stage", ["review", "validation", "previews", "maps", "preloader"])
@@ -140,7 +189,7 @@ def test_cancel_at_each_safe_stage_prevents_dispatch(service, launch_boundary, m
         def previews(*a, **kw):
             cancel()
             checkpoint()  # Must not become an optional-preview failure.
-        monkeypatch.setattr(prelaunch_previews, "prepare", previews)
+        monkeypatch.setattr(prelaunch_previews, "prepare_all", previews)
     elif stage == "maps":
         monkeypatch.setattr(garage_map_detection, "refresh_garage_map_detection", lambda *a: cancel())
     else:

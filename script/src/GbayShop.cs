@@ -1,8 +1,8 @@
 // GbayShop.cs -- GBAY vehicle shop script entrypoint.
 //
 // Thin Script shell that handles config loading, key binding, and delegates
-// all UI rendering to GbayBrowser. Delivery/purchase execution stays here
-// so GbayBrowser only handles presentation.
+// UI presentation to Reactor V. Delivery/purchase execution stays here;
+// the native workbench supplies the in-world camera/character preview only.
 
 using System;
 using System.Collections.Generic;
@@ -26,13 +26,6 @@ namespace ALLIN1
              (_current._menuBridge != null &&
               _current._menuBridge.IsMenuActive));
 
-        private enum GbayUiBackend
-        {
-            Auto,
-            Reactor,
-            Legacy,
-        }
-
         // --- Config ---
         private static readonly string SCRIPTS_DIR =
             AppDomain.CurrentDomain.BaseDirectory;
@@ -43,10 +36,6 @@ namespace ALLIN1
         private Keys _openKey = Keys.F9;
         private Keys _nightVisionKey = Keys.N;
         private bool _freeMode;
-        // Deprecated compatibility alias. It selects the legacy browser only
-        // when gbay_ui_backend is absent from an older configuration.
-        private bool _menuEnabled;
-        private GbayUiBackend _uiBackend = GbayUiBackend.Auto;
         private bool _enableLogging = true;
         private bool _initialized;
         private bool _safeMode;
@@ -82,7 +71,6 @@ namespace ALLIN1
                 new GbayGameStateSynchronizationGate();
         private bool _handoffBlockedLogged;
         private long _lastHandoffSuppressionLoggedGeneration;
-        private bool _reactorWeaponWorkbenchHandoff;
         private bool _gameStateSyncFailureLogged;
 
         // --- Public accessors for GbayBrowser ---
@@ -105,6 +93,8 @@ namespace ALLIN1
 
         private void OnAborted(object sender, EventArgs args)
         {
+            TrailerHitchRuntime.Shutdown();
+            DrivingRuntime.Shutdown();
             using (ClientLog.Time("GBAY", "shutdown_on_aborted",
                 new Dictionary<string, object>
                 {
@@ -193,8 +183,6 @@ namespace ALLIN1
         {
             _openKey = Keys.F9;
             _freeMode = false;
-            _menuEnabled = false;
-            _uiBackend = GbayUiBackend.Auto;
             _enableLogging = true;
             _safeMode = false;
             _garagesAlwaysAccessible = false;
@@ -210,7 +198,6 @@ namespace ALLIN1
                     ? SplitLines(configText)
                     : File.ReadAllLines(CONFIG_PATH);
                 string currentSection = "";
-                bool backendConfigured = false;
                 foreach (string rawLine in configLines)
                 {
                     string line = rawLine.Trim();
@@ -251,30 +238,6 @@ namespace ALLIN1
                     {
                         _freeMode = valLower == "true";
                     }
-                    else if (key == "gbay_menu_enabled")
-                    {
-                        _menuEnabled = valLower == "true";
-                    }
-                    else if (key == "gbay_ui_backend")
-                    {
-                        string cleaned = val.Trim('"', '\'')
-                            .ToLowerInvariant();
-                        if (cleaned == "auto")
-                        {
-                            _uiBackend = GbayUiBackend.Auto;
-                            backendConfigured = true;
-                        }
-                        else if (cleaned == "reactor")
-                        {
-                            _uiBackend = GbayUiBackend.Reactor;
-                            backendConfigured = true;
-                        }
-                        else if (cleaned == "legacy")
-                        {
-                            _uiBackend = GbayUiBackend.Legacy;
-                            backendConfigured = true;
-                        }
-                    }
                     else if (key == "enable_logging")
                     {
                         _enableLogging = valLower == "true";
@@ -300,8 +263,6 @@ namespace ALLIN1
                         _uiScale = Math.Max(0.75f, Math.Min(1.5f, scale));
                     }
                 }
-                if (!backendConfigured && _menuEnabled)
-                    _uiBackend = GbayUiBackend.Legacy;
             }
             catch (Exception ex)
             {
@@ -366,6 +327,7 @@ namespace ALLIN1
             ControllerBindings.Load(CONFIG_PATH);
             ClientLog.Configure(_enableLogging);
             ClientWatchdog.Configure(_safeMode);
+            DrivingRuntime.Initialize(CONFIG_PATH, _safeMode);
             if (_onlineContentEnabled)
             {
                 // Hash the stock Tuners archive away from the Davis entry/black
@@ -393,8 +355,8 @@ namespace ALLIN1
             RuntimeWeaponCatalog.Refresh();
             if (_onlineContentEnabled)
                 LoadGearPrices();
-            Log($"=== GBAY services initialized: backend={_uiBackend} " +
-                $"legacyAlias={_menuEnabled} key={_openKey} " +
+            Log($"=== GBAY services initialized: backend=Reactor " +
+                $"key={_openKey} " +
                 $"freeMode={_freeMode} ===");
 
             if (_onlineContentEnabled)
@@ -429,10 +391,7 @@ namespace ALLIN1
                 }
             }
 
-            if (_uiBackend == GbayUiBackend.Legacy)
-                EnsureBrowser();
-            else
-                TryInitializeReactorBridge(logUnavailable: false);
+            TryInitializeReactorBridge(logUnavailable: false);
             _initialized = true;
         }
 
@@ -477,22 +436,13 @@ namespace ALLIN1
             if (_browser != null)
                 return _browser;
 
-            // Keep the legacy renderer and its static catalog dormant when
-            // Reactor V owns the storefront. Specialized garage access may
-            // still create it lazily until those lists move to Reactor.
+            // Shared camera/dummy preview helpers are allocated only on demand.
+            // This is not a fallback storefront: Reactor owns all menu entry.
             GbayBrowser.ReducedMotion = _reducedMotion;
             GbayRenderer.ColorblindMode = _colorblindMode;
             GbayRenderer.UiScale = _uiScale;
             _browser = new GbayBrowser(this);
             return _browser;
-        }
-
-        internal bool TryOpenVehicleDelivery(string model, int quotedPrice)
-        {
-            GbayBrowser browser = EnsureBrowser();
-            if (browser.IsOpen)
-                return false;
-            return browser.TryOpenVehicleDelivery(model, quotedPrice);
         }
 
         internal bool TryGetCachedWeaponCustomizationCatalog(
@@ -511,17 +461,8 @@ namespace ALLIN1
         internal bool TryOpenReactorWeaponWorkbench(
             string weaponName, string displayName)
         {
-            GbayBrowser browser = EnsureBrowser();
-            if (browser.IsOpen || !browser.TryOpenWeaponCustomization(
-                    weaponName, displayName))
-                return false;
-            _reactorWeaponWorkbenchHandoff = true;
-            ClientLog.Info("GBAY", "reactor_weapon_workbench_handoff_opened",
-                new Dictionary<string, object>
-                {
-                    { "weapon", weaponName ?? "" },
-                });
-            return true;
+            // Retain the bridge method contract, but never open a native menu.
+            return TryOpenReactorWeaponPreview(weaponName, displayName);
         }
 
         internal bool TryOpenReactorWeaponPreview(
@@ -558,11 +499,9 @@ namespace ALLIN1
         }
 
         private void OpenGarageWorldEntry(
-            Allin1GarageWorldEntryLocation location,
-            Action openLegacyList)
+            Allin1GarageWorldEntryLocation location)
         {
-            if (_uiBackend != GbayUiBackend.Legacy &&
-                TryInitializeReactorBridge(logUnavailable: true))
+            if (TryInitializeReactorBridge(logUnavailable: true))
             {
                 try
                 {
@@ -594,24 +533,14 @@ namespace ALLIN1
                 }
             }
 
-            // A forced Reactor backend never opens a second, overlapping UI.
-            // Auto and Legacy retain the 0.5 compatibility list when Reactor
-            // is genuinely unavailable.
-            if (_uiBackend == GbayUiBackend.Reactor)
-            {
-                GTA.UI.Screen.ShowSubtitle(
-                    "~y~Reactor V is not ready. My Garage was not opened.",
-                    2500);
-                return;
-            }
+            ShowReactorUnavailable();
+        }
 
-            if (_uiBackend == GbayUiBackend.Auto)
-                ClientLog.Warn("GBAY", "world_entry_fallback_to_legacy",
-                    new Dictionary<string, object>
-                    {
-                        { "location", location.ToString() },
-                    });
-            openLegacyList();
+        private static void ShowReactorUnavailable()
+        {
+            GTA.UI.Screen.ShowSubtitle(
+                "~y~GBAY requires Reactor V. If loading does not finish, use ALLIN1 Launcher > Install / Repair.",
+                5000);
         }
 
         // ------------------------------------------------------------------ //
@@ -650,6 +579,11 @@ namespace ALLIN1
         /// </summary>
         internal bool ValidateVehiclePurchase(string model, int quotedPrice)
         {
+            if (RuntimeVehicleCatalog.IsCatalogOnly(model))
+            {
+                GTA.UI.Screen.ShowSubtitle("~y~Catalog only — purchasing and delivery are not enabled yet.", 3500);
+                return false;
+            }
             RuntimeVehicleCatalog.Refresh();
             if (!RuntimeVehicleCatalog.IsListed(model) ||
                 !RuntimeVehicleCatalog.IsModelAvailable(model))
@@ -1945,7 +1879,7 @@ namespace ALLIN1
             if (!CanSellVehicle(model, plateText, modelHash)) return 0;
 
             int buyPrice;
-            if (RuntimeVehicleCatalog.IsListed(model))
+            if (RuntimeVehicleCatalog.IsListed(model) && !RuntimeVehicleCatalog.IsCatalogOnly(model))
             {
                 buyPrice = RuntimeVehicleCatalog.GetPrice(model);
             }
@@ -2638,6 +2572,8 @@ namespace ALLIN1
                 if (!_initialized && !Game.IsLoading)
                     Initialize();
 
+                DrivingRuntime.Tick(_menuBridge?.IsMenuActive == true);
+
                 Ped activePlayer = Game.Player.Character;
                 bool playerExists = activePlayer != null &&
                     activePlayer.Exists();
@@ -2713,7 +2649,6 @@ namespace ALLIN1
                     // The native camera/dummy workbench owns temporary player
                     // visibility and camera state. Never carry that state into
                     // death, loading, or a garage transition.
-                    _reactorWeaponWorkbenchHandoff = false;
                     _browser.Close();
                     ClientLog.Warn("GBAY",
                         "weapon_workbench_closed_for_unavailable_story_state");
@@ -2758,44 +2693,16 @@ namespace ALLIN1
                     if (supportedCharacter &&
                         GarageManager.ConsumeHelipadListRequest())
                         OpenGarageWorldEntry(
-                            Allin1GarageWorldEntryLocation.VespucciHelipad,
-                            () => EnsureBrowser().OpenHelipadList());
+                            Allin1GarageWorldEntryLocation.VespucciHelipad);
                     if (supportedCharacter &&
                         GarageManager.ConsumeHarbourListRequest())
                         OpenGarageWorldEntry(
-                            Allin1GarageWorldEntryLocation.Harbour,
-                            () => EnsureBrowser().OpenHarbourList());
+                            Allin1GarageWorldEntryLocation.Harbour);
                 }
 
                 if (supportedCharacter && _browser != null)
                 {
                     _browser.TickReactorWeaponPreview();
-                    _browser.Draw();
-                }
-
-                if (_reactorWeaponWorkbenchHandoff &&
-                    (_browser == null ||
-                     !_browser.IsWeaponCustomizationOpen))
-                {
-                    bool restoreReactor = !reactorMenuUnsafe &&
-                        supportedCharacter && _menuBridge != null;
-                    _reactorWeaponWorkbenchHandoff = false;
-                    _browser?.Close();
-                    if (restoreReactor &&
-                        _menuBridge.TryPresentWeaponCustomization())
-                    {
-                        ClientLog.Info("GBAY",
-                            "reactor_weapon_workbench_handoff_returned");
-                    }
-                    else if (restoreReactor)
-                    {
-                        ClientLog.Warn("GBAY",
-                            "reactor_weapon_workbench_handoff_return_failed",
-                            new Dictionary<string, object>
-                            {
-                                { "status", _menuBridge.Status ?? "not ready" },
-                            });
-                    }
                 }
 
                 if (supportedCharacter &&
@@ -2803,13 +2710,7 @@ namespace ALLIN1
                         ControllerBindings.OpenGbayModifier,
                         ControllerBindings.OpenGbay))
                 {
-                    if (_browser != null && _browser.IsOpen)
-                    {
-                        _reactorWeaponWorkbenchHandoff = false;
-                        _browser.Toggle();
-                    }
-                    else
-                        TryToggleBrowser(isPhysicalF9: false);
+                    TryToggleBrowser(isPhysicalF9: false);
                 }
 
                 if (_onlineContentEnabled && NightVisionOwned &&
@@ -2944,6 +2845,8 @@ namespace ALLIN1
                 {
                     _handoffBlockedLogged = true;
                     ClientLog.Info("GBAY", "f9_waiting_for_reactor_handoff");
+                    if (_menuBridge == null)
+                        ShowReactorUnavailable();
                 }
                 return;
             }
@@ -2951,15 +2854,6 @@ namespace ALLIN1
 
             if (!_initialized)
                 Initialize();
-            if (_browser != null && _browser.IsOpen)
-            {
-                // A direct F9/controller close cancels the Reactor return
-                // handoff. Back inside the native workbench is the deliberate
-                // route that returns to the populated Customize Weapons page.
-                _reactorWeaponWorkbenchHandoff = false;
-                _browser.Toggle();
-                return;
-            }
             // Logical presentation and browser readiness are separate. Once
             // Reactor accepts an open request, reject another F9 until that
             // exact generation has painted; once dismissal is accepted,
@@ -3028,8 +2922,7 @@ namespace ALLIN1
                 return;
             }
 
-            if (_uiBackend != GbayUiBackend.Legacy &&
-                TryInitializeReactorBridge(logUnavailable: true))
+            if (TryInitializeReactorBridge(logUnavailable: true))
             {
                 try
                 {
@@ -3070,23 +2963,7 @@ namespace ALLIN1
                 }
             }
 
-            if (_uiBackend == GbayUiBackend.Reactor)
-            {
-                GTA.UI.Screen.ShowSubtitle(
-                    "~y~Reactor V is not ready. GBAY was not opened.", 2500);
-                return;
-            }
-
-            // Automatic mode fails soft. The native browser is allocated only
-            // when this fallback is actually used, keeping startup lightweight.
-            if (_uiBackend == GbayUiBackend.Auto)
-            {
-                ClientLog.Warn("GBAY", "reactor_fallback_to_legacy");
-                GTA.UI.Screen.ShowSubtitle(
-                    "~y~Reactor V is unavailable; opening compatibility GBAY.",
-                    2200);
-            }
-            EnsureBrowser().Toggle();
+            ShowReactorUnavailable();
         }
 
         private static bool TryReadPhysicalKeyState(

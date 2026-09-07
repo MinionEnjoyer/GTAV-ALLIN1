@@ -51,6 +51,19 @@ def test_stock_component_dictionary_selected_when_present(discovery):
     assert item['assets'][3]['path']=='clip.ytd'
 
 
+def test_stock_reload_only_component_does_not_require_a_drawable(discovery):
+    discovery.stock['components']['CLIP']['create_object']=False
+    discovery.stock['assets']=[r for r in discovery.stock['assets'] if r['name']!='clip.ydr']
+    item=discovery.run()['items'][0]
+    assert item['components']==[] and len(item['assets'])==2
+
+
+def test_base_varmod_is_not_drawn_twice(discovery):
+    discovery.stock['components']['CLIP']['model']='gun'
+    item=discovery.run()['items'][0]
+    assert item['components']==[] and len(item['assets'])==2
+
+
 def test_mount_discovery_preserves_valid_unique_order(tmp_path,monkeypatch):
     game=tmp_path/'game';project=tmp_path/'project'
     assert p.mounted_packs(project,game)==set()
@@ -63,15 +76,28 @@ def test_mount_discovery_preserves_valid_unique_order(tmp_path,monkeypatch):
 
 def test_worker_selection_and_identity_changes(tmp_path,monkeypatch):
     project=tmp_path/'project';helper=project/'tools/RpfPatcher/helper.dll'
+    from allin1.preview_policy import STUDIO_BACKDROP, VEHICLE_TEXTURES, THROWABLE_TEXTURES
+    p.atomic(project/STUDIO_BACKDROP,b'backdrop-v1')
+    for name in VEHICLE_TEXTURES + THROWABLE_TEXTURES:p.atomic(project/name,b'fixture')
     p.atomic(helper,b'v1')
     bundled=project/'tools/WeaponPreview/WeaponPreview.exe';p.atomic(bundled,b'worker')
     command,identity=p.worker_command(project);assert command==[str(bundled)]
     helper.write_bytes(b'v2');assert p.worker_command(project)[1]!=identity
+    identity=p.worker_command(project)[1]
+    p.atomic(project/STUDIO_BACKDROP,b'backdrop-v2')
+    assert p.worker_command(project)[1]!=identity
+    identity=p.worker_command(project)[1]
+    p.atomic(project/VEHICLE_TEXTURES[0],b'texture-change')
+    assert p.worker_command(project)[1]!=identity
+    identity=p.worker_command(project)[1]
+    p.atomic(project/THROWABLE_TEXTURES[0],b'crate-texture-change')
+    assert p.worker_command(project)[1]!=identity
     bundled.unlink()
     monkeypatch.setattr(p.sys,'frozen',True,raising=False)
     with pytest.raises(FileNotFoundError):p.worker_command(project)
     monkeypatch.setattr(p.sys,'frozen',False)
     p.atomic(project.parent/'ALLIN1-SDK/src/allin1_sdk/native_assets.py',b'# build dependency')
+    p.atomic(project.parent/'ALLIN1-SDK/src/allin1_sdk/compiled_render.py',b'# render dependency')
     command,_=p.worker_command(project);assert command[-1]=='allin1.weapon_preview_worker'
 
 

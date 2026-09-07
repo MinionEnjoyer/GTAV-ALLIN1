@@ -664,8 +664,11 @@ namespace ALLIN1
     }
 
     internal sealed class GbayVehicleStorefront :
-        IAllin1VehicleStorefront, IAllin1WeaponPreviewStorefront
+        IAllin1VehicleStorefront, IAllin1WeaponPreviewStorefront, IAllin1HitchStorefront
     {
+        public Allin1HitchSnapshot BrowseHitches() => TrailerHitchRuntime.Browse();
+        public Allin1GbayActionResult ConnectHitch(string token, bool experimentalConfirmed) => TrailerHitchRuntime.Connect(token, experimentalConfirmed);
+        public Allin1GbayActionResult DisconnectHitch(string token) => TrailerHitchRuntime.Disconnect(token);
         private const int MaximumPageSize = 12;
         private const int MaximumSearchLength = 96;
         private static readonly string[] CategoryValues =
@@ -844,6 +847,8 @@ namespace ALLIN1
                         StringComparison.OrdinalIgnoreCase) < 0 &&
                     manufacturer.IndexOf(search,
                         StringComparison.OrdinalIgnoreCase) < 0 &&
+                    RuntimeVehicleCatalog.SearchAliases(model).IndexOf(search,
+                        StringComparison.OrdinalIgnoreCase) < 0 &&
                     model.IndexOf(search,
                         StringComparison.OrdinalIgnoreCase) < 0)
                     continue;
@@ -903,6 +908,9 @@ namespace ALLIN1
                 return Allin1VehicleCheckoutResult.Failure(
                     "invalid_listing", "A vehicle listing is required.");
             string model = request.Model.Trim().ToLowerInvariant();
+            if (RuntimeVehicleCatalog.IsCatalogOnly(model))
+                return Allin1VehicleCheckoutResult.Failure(
+                    "catalog_only", "This vehicle is listed for reference; purchasing and delivery are not enabled yet.");
             if (!GbayShop.TryGetCurrentCharacter(out _))
                 return Allin1VehicleCheckoutResult.Failure(
                     "unsupported_character",
@@ -1289,7 +1297,7 @@ namespace ALLIN1
             string search = (request.Search ?? "").Trim();
             if (search.Length > MaximumSearchLength)
                 search = search.Substring(0, MaximumSearchLength);
-            int pageSize = Math.Max(1, Math.Min(6, request.PageSize));
+            int pageSize = Math.Max(1, Math.Min(64, request.PageSize));
             if (!StoryReady(out string storyFailure))
                 return EmptyCustomizableWeaponPage(
                     category, search, storyFailure, pageSize);
@@ -1312,6 +1320,7 @@ namespace ALLIN1
                             Hash.HAS_PED_GOT_WEAPON,
                             player.Handle, hash, false))
                         return false;
+                    if (!HasWeaponCustomizationChoices(player, value, hash)) return false;
                     string display = WeaponDisplayName(value);
                     return search.Length == 0 ||
                         display.IndexOf(search,
@@ -1349,8 +1358,10 @@ namespace ALLIN1
                 Category = category,
                 Search = search,
                 Status = filtered.Length == 0
-                    ? "No currently held weapons match these filters."
-                    : "Choose a currently held weapon to customize.",
+                    ? "No held weapons with attachment or finish choices match these filters. Ammo is available on the weapon screen."
+                    : filtered.Length > pageSize
+                        ? "Showing " + pageSize + " of " + filtered.Length + " customizable weapons. Narrow the category or search to see the others."
+                        : "Choose a held weapon with attachment or finish choices.",
                 Page = page,
                 PageCount = pageCount,
                 TotalItems = filtered.Length,
@@ -2126,8 +2137,32 @@ namespace ALLIN1
                 failure = "Equip or restore this owned weapon before customizing it.";
                 return false;
             }
+            if (!HasWeaponCustomizationChoices(player, weapon, hash))
+            {
+                failure = "This weapon has no attachment or finish choices. Buy ammunition on the weapon screen.";
+                return false;
+            }
             failure = "";
             return true;
+        }
+
+        private static bool HasWeaponCustomizationChoices(Ped player, string weapon, int hash)
+        {
+            int tints = RuntimeWeaponCatalog.SupportedTintCount(weapon,
+                Function.Call<int>(Hash.GET_WEAPON_TINT_COUNT, hash));
+            if (tints > 1) return true;
+            // SHVDN's per-weapon collection uses the live compatible-component
+            // table. Do not rebuild the full workbench/DLC catalog per listing.
+            var entries = new List<WeaponComponentDefaults.Entry>();
+            foreach (WeaponComponent component in player.Weapons[(WeaponHash)(uint)hash].Components)
+            {
+                int componentHash = unchecked((int)component.ComponentHash);
+                int point = (int)component.AttachmentPoint;
+                bool defaultAccessory = WeaponCustomizationPolicy.CanUnequipComponent(point) &&
+                    WeaponComponentDefaults.IsDefault(hash, componentHash);
+                entries.Add(new WeaponComponentDefaults.Entry(componentHash, point, defaultAccessory));
+            }
+            return WeaponCustomizationPolicy.HasChoices(entries, tints);
         }
 
         private Allin1WeaponCustomizationOptionListing

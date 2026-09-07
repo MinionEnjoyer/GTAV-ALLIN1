@@ -349,8 +349,18 @@ class LauncherService:
         if action == "launch" and not self.allow_launch: raise ValueError("This service does not have launch authority")
         if action in {"launch", "prepare_previews"} and type(request.get("skip_previews", False)) is not bool:
             raise ValueError("skip_previews must be a boolean")
+        if action in {"launch", "prepare_previews"}:
+            if type(request.get("missing_previews_only", False)) is not bool:
+                raise ValueError("missing_previews_only must be a boolean")
+            from allin1.preview_policy import validate_skip_categories
+            validate_skip_categories(request.get("skip_preview_categories", []))
+        if action == "launch" and type(request.get("quick_launch", False)) is not bool:
+            raise ValueError("quick_launch must be a boolean")
         evidence = {"action": action, "target": str(game or self.state), "game_write": action in GAME_ACTIONS,
                     "state_sha256": self.snapshot(request), "request": copy.deepcopy(request)}
+        if action in {"launch", "prepare_previews"}:
+            from allin1.preview_inventory import preview_counts
+            evidence["preview_counts"] = preview_counts(self.project, game)
         if action.startswith("sdk_"): evidence["target"] = str(self.sdk_root)
         if action in {"install", "uninstall"}:
             from allin1.installer import _preflight_installation_roots
@@ -610,19 +620,19 @@ class LauncherService:
             command = [str(status.executable)]
             if status.executable.name == SHELL: command.extend(["--workspace", request.get("workspace", "linker")])
             return {"pid": subprocess.Popen(command, cwd=status.root, **hidden_process_options()).pid}
-        if action == "prepare_previews": return self.prepare_previews(config, skip=request.get("skip_previews", False))
-        if action == "launch": return self.launch(config, skip_previews=request.get("skip_previews", False))
+        if action == "prepare_previews": return self.prepare_previews(config, skip=request.get("skip_previews", False), skip_categories=request.get("skip_preview_categories", []), missing_only=request.get("missing_previews_only", False))
+        if action == "launch": return self.launch(config, skip_previews=request.get("skip_previews", False), skip_preview_categories=request.get("skip_preview_categories", []), quick_launch=request.get("quick_launch", False), missing_previews_only=request.get("missing_previews_only", False))
         raise ValueError("Unsupported Launcher action")
 
-    def prepare_previews(self, config, *, skip=False):
-        from allin1.prelaunch_previews import prepare
+    def prepare_previews(self, config, *, skip=False, skip_categories=(), missing_only=False):
+        from allin1.prelaunch_previews import prepare_all
         try:
-            return prepare(self.project, self.game(config), self.state/"weapon-previews", skip=skip, progress=self.progress)
+            return prepare_all(self.project, self.game(config), self.state/"weapon-previews", skip=skip, skip_categories=skip_categories, progress=self.progress, missing_only=missing_only)
         except (OSError, ValueError, RuntimeError) as error:
-            self.progress(None, f"Optional weapon previews unavailable: {error}")
+            self.progress(None, f"Optional catalog previews unavailable: {error}")
             return {"status":"unavailable", "errors":[{"reason":str(error)}]}
 
-    def launch(self, config, *, skip_previews=False):
+    def launch(self, config, *, skip_previews=False, skip_preview_categories=(), quick_launch=False, missing_previews_only=False):
         if not self.allow_launch: raise ValueError("Launch authority is required")
         from allin1.health import scan_launch_hazards, consume_rpf_canary
         from allin1.game_launcher import launch_gta, observe_gta_launch
@@ -637,7 +647,11 @@ class LauncherService:
         checkpoint()
         self.manager.save_config(config)
         checkpoint()
-        previews = self.prepare_previews(config, skip=skip_previews)
+        if quick_launch:
+            self.progress(None, "Quick Launch: keeping existing artwork; skipping preview discovery and rendering")
+            previews = {"status": "skipped", "reason": "quick_launch", "rendered": 0, "cached": 0, "pending": 0, "categories": {}}
+        else:
+            previews = self.prepare_previews(config, skip=skip_previews, skip_categories=skip_preview_categories, missing_only=missing_previews_only)
         checkpoint()
         self.progress(None, "Checking garage map data")
         try: refresh_garage_map_detection(game)
@@ -685,7 +699,8 @@ class LauncherService:
                     if trace.observe(observation.process_id): trace.watch(observation.process_id)
                 except (OSError, ValueError, KeyError, TypeError) as error:
                     record("observer_error", {"reason":str(error)[:300]})
-            return {**serializable(observation), "startup_monitoring": self.startup_monitor is not None, "weapon_previews": previews,
+            return {**serializable(observation), "startup_monitoring": self.startup_monitor is not None,
+                "catalog_previews": previews, "weapon_previews": previews.get("categories", {}).get("weapons", previews),
                 "diagnostic_session_id":trace.value["session_id"] if trace else None,
                 "diagnostic_session_path":str(trace.path) if trace else None}
         except Exception as error:

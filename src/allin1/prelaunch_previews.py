@@ -25,11 +25,11 @@ from allin1.weapon_catalog import WeaponCatalog
 from allin1.launch_cancellation import checkpoint
 
 SCHEMA = 1
-RENDER_VERSION = 'weapon-card-4-default-assembly'
-MAX_SECONDS = 1800  # First full catalog render; subsequent launches reuse the cache.
+RENDER_VERSION = 'catalog-card-7-runway-static-rotors'
+MAX_SECONDS = None  # Complete the queue unless explicitly cancelled or skipped.
 MAX_WEAPONS = 128
 MAX_IMAGE_BYTES = 4 * 1024 * 1024
-MAX_CACHE_IMAGES = 256
+MAX_CACHE_IMAGES = 4096
 PUBLIC = 'plugins/ReactorV/ui/assets/allin1/generated-weapons'
 NAME = re.compile(r'weapon_[a-z0-9_]{1,56}')
 HASH = re.compile(r'[0-9a-f]{64}')
@@ -76,6 +76,8 @@ def validated_weapons(game, mounted, *, progress=lambda *_: None):
         try:
             receipt = document(path)
             if receipt.get('enabled') is not True: continue
+            declarations = (receipt.get('extension') or {}).get('gbay', {}).get('catalogs', [])
+            if not any(d.get('kind')=='weapon' for d in declarations):continue
             records = receipt.get('files', [])
             if not isinstance(records, list) or len(records) > 8192: raise ValueError('Invalid receipt files')
             owned = {}
@@ -89,7 +91,6 @@ def validated_weapons(game, mounted, *, progress=lambda *_: None):
                 owned[record['destination']] = expected
             selected = []
             packs = receipt.get('dlc_packs', [])
-            declarations = (receipt.get('extension') or {}).get('gbay', {}).get('catalogs', [])
             for declaration in declarations:
                 if declaration.get('kind') != 'weapon': continue
                 source = declaration['source']
@@ -132,11 +133,14 @@ def mounted_packs(project, game):
                 if (match := re.fullmatch(r'dlcpacks:[/\\]([a-zA-Z0-9_-]+)[/\\]',(node.text or '').strip()))))
 
 def worker_command(project):
+    from allin1.preview_policy import STUDIO_BACKDROP, VEHICLE_TEXTURES, THROWABLE_TEXTURES
+    backdrop_identity = sha(contained(project, STUDIO_BACKDROP))
+    backdrop_identity += ''.join(sha(contained(project,name)) for name in VEHICLE_TEXTURES+THROWABLE_TEXTURES)
     bundled = no_links(Path(project)/'tools/WeaponPreview/WeaponPreview.exe')
     helper_folder = Path(project)/'tools/RpfPatcher'
     helper_identity = hashlib.sha256(''.join(path.name+sha(path) for path in sorted(helper_folder.iterdir())
         if path.is_file() and path.suffix.lower() in {'.exe','.dll','.xml','.json'}).encode()).hexdigest()
-    if bundled.is_file(): return [str(bundled)], sha(bundled)+helper_identity
+    if bundled.is_file(): return [str(bundled)], sha(bundled)+helper_identity+backdrop_identity
     # Development only. Published builds contain the isolated worker, not an SDK checkout dependency.
     sdk = Path(project).parent/'ALLIN1-SDK/src'
     if not getattr(sys,'frozen',False) and (sdk/'allin1_sdk/native_assets.py').is_file():
@@ -144,8 +148,16 @@ def worker_command(project):
                     + sha(Path(__file__).with_name('weapon_card_renderer.py'))
                     + sha(Path(__file__).with_name('stock_weapon_previews.py'))
                     + sha(Path(__file__).with_name('weapon_preview_assembly.py'))
+                    + sha(Path(__file__).with_name('catalog_model_previews.py'))
+                    + sha(Path(__file__).with_name('catalog_model_renderer.py'))
+                    + sha(Path(__file__).with_name('vehicle_blender_renderer.py'))
+                    + sha(Path(__file__).with_name('vehicle_blender_scene.py'))
+                    + sha(Path(__file__).with_name('vehicle_preview_paint.py'))
+                    + sha(Path(__file__).with_name('pegboard_blender_renderer.py'))
+                    + sha(Path(__file__).with_name('pegboard_blender_scene.py'))
+                    + sha(sdk/'allin1_sdk/compiled_render.py')
                     + sha(sdk/'allin1_sdk/native_assets.py'))
-        return [sys.executable,'-m','allin1.weapon_preview_worker'], identity+helper_identity
+        return [sys.executable,'-m','allin1.weapon_preview_worker'], identity+helper_identity+backdrop_identity
     raise FileNotFoundError('Bundled weapon preview renderer unavailable; existing artwork retained')
 
 def key_for(item, edition, renderer):
@@ -179,7 +191,11 @@ def render(command, job, work, seconds):
     # Worker stdout/stderr are files, not unbounded pipe buffers. Kill the whole
     # worker tree on timeout so CodeWalker cannot continue into gameplay.
     with (work/'worker.log').open('wb') as log:
-        process = subprocess.Popen([*command,str(request)],stdout=log,stderr=log,**hidden_process_options())
+        # The desktop host is concurrently reading its synchronous IPC pipe.
+        # Inheriting that stdin can deadlock Windows/Python worker startup.
+        environment = dict(os.environ, OPENBLAS_NUM_THREADS='1', OMP_NUM_THREADS='1', MKL_NUM_THREADS='1')
+        process = subprocess.Popen([*command,str(request)],stdin=subprocess.DEVNULL,stdout=log,stderr=log,
+                                   env=environment,**hidden_process_options())
         deadline = time.monotonic() + seconds
         try:
             while True:
@@ -212,17 +228,18 @@ def stop_worker(process):
         process.wait(timeout=10)
 
 
-def stock_items(command,project,game,cache,mounted,progress):
+def stock_items(command,project,game,cache,mounted,progress, *, category='weapons', managed=()):
     """Discover through the isolated worker; no SDK runtime in the launcher."""
     from allin1.stock_weapon_previews import catalog_names
-    if not catalog_names(project):return {'items':[],'errors':[]}
+    if category=='weapons' and not catalog_names(project):return {'items':[],'errors':[]}
     checkpoint()
     with tempfile.TemporaryDirectory(prefix='discovery-',dir=cache) as folder:
         work=Path(folder);request=work/'job.json'
         atomic(request,json.dumps({'operation':'discover_stock','project':str(project),'game':str(game),
+            'category':category,'managed':list(managed),
             'mounted':list(mounted),'discovery_cache':str(cache/'stock-discovery')}).encode())
         with (work/'discovery.log').open('wb') as log:
-            process=subprocess.Popen([*command,str(request)],stdout=log,stderr=log,**hidden_process_options())
+            process=subprocess.Popen([*command,str(request)],stdin=subprocess.DEVNULL,stdout=log,stderr=log,**hidden_process_options())
             deadline=time.monotonic()+600
             next_progress=time.monotonic()+5
             try:
@@ -246,11 +263,15 @@ def stock_items(command,project,game,cache,mounted,progress):
 def source_unchanged(game,item):
     if item.get('kind')=='stock':
         from allin1.stock_weapon_previews import file_state
+        authority=item.get('authority')
+        if authority and sha(contained(game,authority['archive']))!=authority['archive_sha256']:return False
         return all(file_state(contained(game,a['archive']))==a['state'] for a in item['assets'])
     return sha(contained(game,item['archive']))==item['archive_sha256']
 
-def prepare(project, game, cache_root, *, skip=False, progress=lambda *_:None, budget=MAX_SECONDS):
+def prepare(project, game, cache_root, *, skip=False, progress=lambda *_:None, budget=MAX_SECONDS, category='weapons', skip_categories=(), missing_only=False):
     """Serialize per-game cache publication; no renderer survives this call."""
+    from allin1.preview_policy import validate_skip_categories
+    skip_categories = validate_skip_categories(list(skip_categories))
     checkpoint()
     root = no_links(Path(cache_root))
     root.mkdir(parents=True, exist_ok=True)
@@ -261,103 +282,200 @@ def prepare(project, game, cache_root, *, skip=False, progress=lambda *_:None, b
         return {'status':'unavailable','errors':[{'reason':'Preview preparation is already active (or a stale cache lock needs removal)'}]}
     try:
         with stream:
-            return _prepare(project,game,cache_root,skip=skip,progress=progress,budget=budget)
+            if type(missing_only) is not bool: raise ValueError('missing_only must be a boolean')
+            if category=='all':return _prepare_all(project,game,cache_root,skip=skip,progress=progress,budget=budget,skip_categories=skip_categories,missing_only=missing_only)
+            return _prepare(project,game,cache_root,skip=skip or category in skip_categories,progress=progress,budget=budget,category=category,missing_only=missing_only)
     finally: lock.unlink(missing_ok=True)
 
 
-def preview_queue(items, progress):
+def preview_queue(items, progress, category='weapons'):
     """Report completed queue entries, not elapsed time or assumed render success."""
     total = len(items)
     for index, item in enumerate(items):
         checkpoint()
         progress(int(100 * index / total),
-                 f'Weapon previews: {index}/{total} processed · Checking {item["weapon"]}')
+                 f'{"Weapon" if category=="weapons" else category.title()} previews: {index}/{total} processed · Checking {item["weapon"]}')
         yield item
     if total:
-        progress(100, f'Weapon previews: {total}/{total} processed')
+        progress(100, f'{"Weapon" if category=="weapons" else category.title()} previews: {total}/{total} processed')
 
 
-def _prepare(project, game, cache_root, *, skip=False, progress=lambda *_:None, budget=MAX_SECONDS):
+def prune_published(public, cache, published, pattern, previous_hashes=None):
+    """Prune obsolete generated copies, including orphans from interrupted passes.
+
+    Never infer ownership from a PNG extension alone. The generated filename
+    and recorded content digest must agree; modified/user files remain intact.
+    Cache copies are retained, so deleted public copies can be regenerated.
+    """
+    removed = 0
+    previous_hashes = previous_hashes or {}
+    keep = set(published.values())
+    for path in no_links(public).glob('*.png'):
+        if path.name in keep or not re.fullmatch(pattern.pattern+r'\.[a-f0-9]{64}\.png', path.name):
+            continue
+        try:
+            checkpoint()
+            path = contained(public, path.name)
+            key = path.name.rsplit('.', 2)[1]
+            expected = previous_hashes.get(path.name)
+            if not isinstance(expected, str) or not HASH.fullmatch(expected):
+                receipt = cache/(key+'.json')
+                record = document(receipt) if receipt.exists() else {}
+                expected = record.get('sha256') if record.get('key') == key else None
+            if isinstance(expected, str) and HASH.fullmatch(expected) and sha(path) == expected:
+                path.unlink()
+                removed += 1
+        except (OSError, ValueError):
+            # Links, malformed receipts and user-modified files aren't ours.
+            continue
+    return removed
+
+
+def existing_preview(public, images, hashes, name):
+    """Keep an intact indexed generated image, regardless of renderer revision."""
+    checkpoint()
+    filename = images.get(name)
+    if not isinstance(filename, str) or not re.fullmatch(re.escape(name)+r'\.[a-f0-9]{64}\.png', filename):
+        return None
+    expected = hashes.get(filename)
+    if not isinstance(expected, str) or not HASH.fullmatch(expected): return None
+    try:
+        data = png(contained(public, filename).read_bytes())
+        if hashlib.sha256(data).hexdigest() != expected: return None
+        return filename.rsplit('.', 2)[1], data, 'cached', None
+    except (OSError, ValueError):
+        return None
+
+
+def _prepare(project, game, cache_root, *, skip=False, progress=lambda *_:None, budget=MAX_SECONDS, category='weapons', missing_only=False):
     """Optional artwork phase, after hazards and before Reactor/GTA startup."""
     started = time.monotonic()
+    if category not in ('weapons','vehicles','gear'):raise ValueError('Invalid preview category')
+    limit=MAX_WEAPONS if category=='weapons' else 2048
+    pattern=NAME if category=='weapons' else re.compile(r'[a-z0-9][a-z0-9_-]{0,63}')
     game, project = no_links(game).resolve(), no_links(project).resolve()
     edition = 'Enhanced' if (game/'GTA5_Enhanced.exe').exists() else 'Legacy'
     cache = no_links(Path(cache_root)/hashlib.sha256(str(game).casefold().encode()).hexdigest()[:16])
+    if category!='weapons':cache=no_links(cache/category)
     report = {'schema_version':SCHEMA,'status':'complete','edition':edition,'rendered':0,'cached':0,'pending':0,'errors':[],'weapons':[]}
-    public = contained(game, PUBLIC)
+    public = contained(game, PUBLIC if category=='weapons' else PUBLIC.replace('generated-weapons','generated-'+category))
     index_path = public/'index.json'
     try:
         # Do not take ownership of an unrelated file at our publication path.
         if index_path.exists() and document(index_path).get('owner') != 'allin1.prelaunch-previews':
             raise ValueError('Preview publication index is not ALLIN1-owned')
         old_images = document(index_path).get('images', {}) if index_path.exists() else {}
-        if not isinstance(old_images, dict) or len(old_images)>MAX_WEAPONS:
+        old_hashes = document(index_path).get('image_sha256', {}) if index_path.exists() else {}
+        if not isinstance(old_hashes, dict): old_hashes = {}
+        if not isinstance(old_images, dict) or len(old_images)>limit:
             raise ValueError('Invalid previous preview index')
         mounted=mounted_packs(project,game)
         checkpoint()
-        items, rejected = validated_weapons(game, mounted,progress=progress)
+        if category=='vehicles':
+            from allin1.catalog_model_previews import validated_vehicles
+            items,rejected=validated_vehicles(game,mounted,progress=progress)
+        elif category=='gear':items,rejected=[],[]
+        else:items, rejected = validated_weapons(game, mounted,progress=progress)
         report['errors'].extend(rejected)
         from allin1.stock_weapon_previews import catalog_names
-        requested_stock=catalog_names(project)
+        if category=='weapons':requested_stock=catalog_names(project)
+        else:
+            from allin1.catalog_model_previews import catalog_names as model_names
+            requested_stock=model_names(project,category)
         command, renderer = worker_command(project) if items or requested_stock else ([], '')
         cache.mkdir(parents=True,exist_ok=True)
-        if requested_stock:
+        if requested_stock or (category!='weapons' and items):
             try:
-                stock=stock_items(command,project,game,cache,mounted,progress)
-                items=stock['items']+items
+                if category=='weapons':
+                    stock=stock_items(command,project,game,cache,mounted,progress)
+                    items=stock['items']+items
+                else:
+                    stock=stock_items(command,project,game,cache,mounted,progress,category=category,managed=items)
+                    items=stock['items']
                 report['errors'].extend(stock['errors'])
+                report['fallbacks']=stock.get('fallbacks',[])
                 report['stock_requested']=len(requested_stock)
             except (OSError,ValueError,RuntimeError,subprocess.SubprocessError) as error:
                 report['errors'].append({'reason':str(error)})
-        if len(items)>MAX_WEAPONS:raise ValueError('Full catalog exceeds preview queue limit')
+                if category!='weapons':items=[]
+        if len(items)>limit:raise ValueError('Full catalog exceeds preview queue limit')
+        # Store identities, not an entire vehicle catalog's PNG bytes in RAM.
+        retained = {item['weapon']: result[0] for item in items
+                    if (result := existing_preview(public, old_images, old_hashes, item['weapon'].lower()))} if missing_only else {}
+        blender_job = {}
+        if any(not retained.get(item['weapon']) for item in items):
+            from allin1.preview_blender import select_blender, identity
+            blender = select_blender(project)
+            blender_hash = identity(blender)
+            renderer += blender_hash
+            blender_job = {'blender_executable':str(blender),'blender_identity':blender_hash}
         report['selected_weapons'] = [item['weapon'] for item in items]
         protected = {key_for(item,edition,renderer) for item in items}
+        protected.update(retained.values())
         published = {}
-        for item in preview_queue(items, progress):
+        published_hashes = {}
+        from allin1.preview_render_pool import ordered_results, render_workers
+        workers = render_workers()
+        report['missing_only'] = missing_only
+        report['render_workers'] = workers if not skip and any(not retained.get(item['weapon']) for item in items) else 0
+        if report['render_workers']:
+            progress(None, f'{category.title()} previews: {workers} parallel Blender workers; no catalog time limit')
+        elif retained:
+            progress(None, f'{category.title()} previews: keeping {len(retained)} existing images')
+        def prepare_item(item):
+            checkpoint()
+            if retained.get(item['weapon']):
+                result = existing_preview(public, old_images, old_hashes, item['weapon'].lower())
+                return result or (retained[item['weapon']], None, 'pending', 'Existing preview changed during preparation; retry the pass')
             key = key_for(item,edition,renderer)
             data = cached(cache,key)
-            if data is not None: report['cached']+=1
-            elif skip or time.monotonic()-started >= budget:
-                report['pending']+=1
-                continue
-            else:
-                try:
-                    with tempfile.TemporaryDirectory(prefix='render-',dir=cache) as temp:
-                        work = Path(temp)
-                        job = {**item,'game':str(game),'project':str(project),'edition':edition}
-                        data = render(command,job,work,min(40,max(1,budget-(time.monotonic()-started))))
-                    if not source_unchanged(game,item): raise ValueError('Weapon archive changed during rendering')
+            if data is not None: return key, data, 'cached', None
+            if skip: return key, None, 'pending', None
+            if budget is not None and time.monotonic()-started >= budget:
+                return key, None, 'pending', 'Explicit preview time budget reached'
+            try:
+                with tempfile.TemporaryDirectory(prefix='render-',dir=cache) as temp:
+                    job = {**item,**blender_job,'game':str(game),'project':str(project),'edition':edition,
+                           'render_threads':max(1,min(8,((os.cpu_count() or 2)-2)//workers))}
+                    timeout = 180 if budget is None else min(180,max(1,budget-(time.monotonic()-started)))
+                    data = render(command,job,Path(temp),timeout)
+                return key, data, 'rendered', None
+            except (OSError,ValueError,RuntimeError,subprocess.SubprocessError) as error:
+                return key, None, 'pending', str(error)
+        with ordered_results(items, prepare_item, workers) as results:
+            for index, (item, (key, data, state, error)) in enumerate(results):
+                progress(int(100*index/len(items)), f'{category.title()} previews: {index}/{len(items)} processed · {item["weapon"]}')
+                if error: report['errors'].append({'weapon':item['weapon'],'reason':error})
+                if data is None:
+                    report['pending']+=1
+                    continue
+                if not source_unchanged(game,item):
+                    report['errors'].append({'weapon':item['weapon'],'reason':'Weapon archive changed before publication'})
+                    report['pending']+=1
+                    continue
+                if state == 'rendered':
+                    # Single publication owner: parallel workers return pixels only.
                     if not (cache/(key+'.png')).exists(): reserve_cache_slot(cache,protected)
                     atomic(cache/(key+'.png'),data)
                     atomic(cache/(key+'.json'),json.dumps({'sha256':hashlib.sha256(data).hexdigest(),'key':key}).encode())
-                    report['rendered']+=1
-                except (OSError,ValueError,RuntimeError,subprocess.SubprocessError) as error:
-                    report['errors'].append({'weapon':item['weapon'],'reason':str(error)})
-                    report['pending']+=1
+                report[state]+=1
+                name = item['weapon'].lower()
+                if not pattern.fullmatch(name): raise ValueError('Invalid artwork identity')
+                filename = name+'.'+key+'.png'
+                target = contained(public,filename)
+                if target.exists() and sha(target)!=hashlib.sha256(data).hexdigest():
+                    report['errors'].append({'weapon':item['weapon'],'reason':'Existing generated image was modified'})
                     continue
-            name = item['weapon'].lower()
-            if not NAME.fullmatch(name): raise ValueError('Invalid artwork identity')
-            if not source_unchanged(game,item):
-                raise ValueError('Weapon archive changed before publication')
-            filename = name+'.'+key+'.png'
-            target = contained(public,filename)
-            if target.exists() and sha(target)!=hashlib.sha256(data).hexdigest():
-                report['errors'].append({'weapon':item['weapon'],'reason':'Existing generated image was modified'})
-                continue
-            if not target.exists(): atomic(target,data)
-            published[name] = filename
-            report['weapons'].append({'weapon':item['weapon'],'cache_key':key})
+                if not target.exists(): atomic(target,data)
+                published[name] = filename
+                published_hashes[filename] = hashlib.sha256(data).hexdigest()
+                report['weapons'].append({'weapon':item['weapon'],'cache_key':key})
+        if items: progress(100, f'{category.title()} previews: {len(items)}/{len(items)} processed')
         # Fresh index omits disabled/unmounted/tampered sources and stale results.
         checkpoint()
-        atomic(index_path,json.dumps({'schema_version':SCHEMA,'owner':'allin1.prelaunch-previews','images':published}).encode())
-        for previous in set(old_images.values())-set(published.values()):
-            # Only prune a formerly indexed image if it still matches our cache.
-            if not isinstance(previous,str) or not re.fullmatch(r'weapon_[a-z0-9_]{1,56}\.[a-f0-9]{64}\.png',previous): continue
-            key = previous.rsplit('.',2)[1]
-            data = cached(cache,key)
-            old_path = contained(public,previous)
-            if data is not None and old_path.exists() and sha(old_path)==hashlib.sha256(data).hexdigest():
-                old_path.unlink()
+        atomic(index_path,json.dumps({'schema_version':SCHEMA,'owner':'allin1.prelaunch-previews',
+            'images':published,'image_sha256':published_hashes}).encode())
+        report['pruned_images'] = prune_published(public, cache, published, pattern, old_hashes)
     except (OSError,ValueError,KeyError,TypeError,AttributeError,subprocess.SubprocessError) as error:
         report['status']='unavailable'
         report['errors'].append({'reason':str(error)})
@@ -368,9 +486,27 @@ def _prepare(project, game, cache_root, *, skip=False, progress=lambda *_:None, 
         except (OSError,ValueError,AttributeError): pass
     report['elapsed_seconds']=round(time.monotonic()-started,3)
     if report['pending'] or report['errors']: report['status']='partial' if report['weapons'] else 'unavailable'
-    progress(None,f'Weapon previews: {report["rendered"]} generated, {report["cached"]} cached, {report["pending"]} pending')
+    progress(None,f'{"Weapon" if category=="weapons" else category.title()} previews: {report["rendered"]} generated, {report["cached"]} cached, {report["pending"]} pending')
     try:
         cache.mkdir(parents=True,exist_ok=True)
         atomic(cache/'last-run.json',json.dumps(report,indent=2).encode())
     except OSError: pass
     return report
+
+
+def prepare_all(project, game, cache_root, *, skip=False, progress=lambda *_:None, budget=MAX_SECONDS, skip_categories=(), missing_only=False):
+    return prepare(project,game,cache_root,skip=skip,progress=progress,budget=budget,category='all',skip_categories=skip_categories,missing_only=missing_only)
+
+
+def _prepare_all(project, game, cache_root, *, skip=False, progress=lambda *_:None, budget=MAX_SECONDS, skip_categories=(), missing_only=False):
+    """Complete all selected categories; only individual workers have deadlines."""
+    started=time.monotonic(); reports={}
+    for ordinal,category in enumerate(('weapons','vehicles','gear')):
+        checkpoint()
+        def update(percent,message):
+            progress(None if percent is None else int((ordinal*100+percent)/3),message)
+        reports[category]=_prepare(project,game,cache_root,skip=skip or category in skip_categories,progress=update,
+            budget=None if budget is None else max(0,budget-(time.monotonic()-started)),category=category,missing_only=missing_only)
+    return dict(status='complete' if all(r['status']=='complete' for r in reports.values()) else 'partial',
+        categories=reports,**{k:sum(r.get(k,0) for r in reports.values()) for k in ('rendered','cached','pending')},
+        errors=[dict(category=c,**e) for c,r in reports.items() for e in r.get('errors',[])])

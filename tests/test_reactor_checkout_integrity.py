@@ -15,7 +15,14 @@ def test_checksum_protected_reactor_ui_survives_autocrlf_checkout(tmp_path):
     prefix = tmp_path.as_posix() + "/"
     subprocess.run(["git", "-C", str(ROOT), "-c", "core.autocrlf=true", "checkout-index",
         "--prefix=" + prefix, "--", *names], check=True, capture_output=True)
-    actual = consumer_files(tmp_path / "data/reactor/allin1-ui", artwork=False)
-    expected = consumer_files(ROOT / "data/reactor/allin1-ui", artwork=False)
+    actual = consumer_files(tmp_path / "data/reactor/allin1-ui")
+    # Compare the same index snapshot with/without Windows checkout conversion.
+    # A newer, uncommitted UI build must not be compared with an older index.
+    # consumer_files validates both inventories against their actual hashes.
+    reference = tmp_path / "unconverted-index"
+    reference.mkdir()
+    subprocess.run(["git", "-C", str(ROOT), "-c", "core.autocrlf=false", "checkout-index",
+        "--prefix=" + reference.as_posix() + "/", "--", *names], check=True, capture_output=True)
+    expected = consumer_files(reference / "data/reactor/allin1-ui")
     assert actual.keys() == expected.keys()
     assert all(actual[name].read_bytes() == expected[name].read_bytes() for name in actual)

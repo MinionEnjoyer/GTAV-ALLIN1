@@ -473,6 +473,21 @@ def test_story_ready_requires_fresh_runtime_marker_and_reactor(tmp_path, monkeyp
     assert complete.story_ready is True
 
 
+def test_fresh_story_readiness_at_deadline_does_not_raise_false_timeout(tmp_path, monkeypatch):
+    game, local = tmp_path / "game", tmp_path / "local"
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    paths = _write_logs(game, local)
+    clock = [0.0]
+    monitor = bootstrap.ReactorStartupMonitor(game, hard_timeout_seconds=5, now=lambda: clock[0])
+    with paths["reactor"].open("a", encoding="utf-8") as stream:
+        stream.write("webview_navigation_completed success=True\nstory_mode_ready\n")
+    clock[0] = 6.0
+    state = monitor.sample(process_running=True)
+    assert state.story_ready
+    assert state.failure is None
+    assert not state.terminal
+
+
 def test_runtime_failure_game_exit_and_timeout_are_terminal(tmp_path, monkeypatch):
     game = tmp_path / "game"
     local = tmp_path / "local"

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import pytest
 import numpy as np
 from lxml import etree as E
-from allin1.stock_weapon_previews import default_components
+from allin1.stock_weapon_previews import default_components,component_preview
 from allin1.weapon_preview_assembly import bone_matrix,attach_geometry,unique_component
 
 @pytest.fixture
@@ -54,6 +54,42 @@ def test_pack_with_multiple_component_metadata_files_resolves_by_id():
            E.fromstring('<Root><Item><Name>COMPONENT_B</Name><Model>model_b</Model></Item></Root>')]
     assert unique_component(roots,'COMPONENT_B').findtext('Model')=='model_b'
     with pytest.raises(ValueError,match='ambiguous'):unique_component([*roots,roots[1]],'COMPONENT_B')
+
+
+def test_component_root_is_allowed_only_for_child_and_tag_zero(sdk_geometry):
+    child=root('W_PI_APPistol_Mag1',2)
+    E.SubElement(child.find('Skeleton/Bones/Item'),'Tag',value='0')
+    assert bone_matrix(child,'AAPClip',component_root=True)[0,3]==2
+    assert bone_matrix(child,'',component_root=True)[0,3]==2
+    with pytest.raises(ValueError,match='attachment bone'):bone_matrix(child,'AAPClip')
+    child.find('Skeleton/Bones/Item/Tag').set('value','42')
+    with pytest.raises(ValueError,match='attachment bone'):bone_matrix(child,'AAPClip',component_root=True)
+
+
+def test_duplicate_identity_anchor_child_is_equivalent(sdk_geometry):
+    import copy
+    parent=root('WAPScop_2',4)
+    bone=parent.find('Skeleton/Bones/Item');E.SubElement(bone,'Tag',value='3634')
+    alias=copy.deepcopy(bone);alias.find('ParentIndex').set('value','0');alias.find('Translation').set('x','0')
+    parent.find('Skeleton/Bones').append(alias)
+    assert bone_matrix(parent,'WAPScop_2')[0,3]==4
+    alias.find('Translation').set('x','0.01')
+    with pytest.raises(ValueError,match='ambiguous'):bone_matrix(parent,'WAPScop_2')
+    alias.find('Translation').set('x','4');alias.find('ParentIndex').set('value','-1')
+    with pytest.raises(ValueError,match='ambiguous'):bone_matrix(parent,'WAPScop_2')
+
+
+def test_singular_component_pivot_is_rejected(sdk_geometry):
+    child=root('AAPClip',0);child.find('Skeleton/Bones/Item/Scale').set('x','0')
+    with pytest.raises(ValueError,match='Singular'):attach_geometry(root('WAPClip',0),child,[],'WAPClip','AAPClip')
+
+
+def test_metadata_controls_render_object_creation():
+    row=E.fromstring('<Item><Model>w_lr_40mm</Model><AttachBone/><CreateObject value="false"/></Item>')
+    assert component_preview(row)=={'model':'w_lr_40mm','child_bone':'','create_object':False}
+    row.find('CreateObject').set('value','true');assert component_preview(row)['create_object']
+    row.find('CreateObject').set('value','invalid')
+    with pytest.raises(ValueError,match='CreateObject'):component_preview(row)
 
 def test_real_regression_previews_have_required_parts():
     import json

@@ -126,7 +126,7 @@ def test_vehicle_previews_cover_database():
         assert f'{{ "{model}", "allin1_prev_' not in preview_source
 
 
-def test_world_asset_preview_is_packaged_and_streamed_separately():
+def test_legacy_world_asset_source_is_preserved_but_not_repackaged():
     preview = ROOT / "script/dist/world_asset_previews/allin1_super_yacht.png"
     assert preview.is_file()
     with Image.open(preview) as image:
@@ -139,7 +139,7 @@ def test_world_asset_preview_is_packaged_and_streamed_separately():
     assert '"allin1_asset_01"' in asset_list
     assert "WorldAssetList.PreviewDict.TryGetValue" in renderer
     assert "GbayRenderer.TryGetPreviewDict" in browser
-    assert '"allin1_asset"' in installer
+    assert "def _deploy_preview_dlc(" not in installer
     assert '"world_asset_previews"' in installer
 
 
@@ -330,8 +330,8 @@ def test_current_online_weapons_are_generated_and_safely_granted():
 def test_installer_and_seat_selector_contracts():
     installer = (ROOT / "src/allin1/installer.py").read_text()
     seat = (ROOT / "script/src/SeatSelector.cs").read_text()
-    assert "Package" in installer and "reviewed repository assets" in installer
-    assert "models = sorted(v.model" in installer
+    assert "def _deploy_preview_dlc(" not in installer
+    assert "def _deploy_reactor_catalog_artwork(" not in installer
     assert '"weapon_previews"' in installer
     assert '"equipment_previews"' in installer
     assert "RETIRED_DEVELOPER_ARTIFACTS" in installer
@@ -443,29 +443,27 @@ def test_floor_garage_initializes_after_temporary_safe_mode_expires():
     assert recovery < floor_tick
 
 
-def test_gbay_backend_is_optional_and_garage_services_stay_independent():
+def test_gbay_requires_reactor_and_garage_services_stay_independent():
     shop = (ROOT / "script/src/GbayShop.cs").read_text(encoding="utf-8")
-    assert 'key == "gbay_menu_enabled"' in shop
-    assert 'key == "gbay_ui_backend"' in shop
-    assert "private bool _menuEnabled;" in shop
-    assert "_menuEnabled = false;" in shop
-    assert "_menuEnabled = true;" not in shop
-    assert "GbayUiBackend.Auto" in shop
+    assert "GbayUiBackend" not in shop
+    assert "_menuEnabled" not in shop
     assert "TryInitializeReactorBridge" in shop
-    assert '"reactor_fallback_to_legacy"' in shop
-    assert "if (_uiBackend == GbayUiBackend.Reactor)" in shop
+    assert '"reactor_fallback_to_legacy"' not in shop
+    assert "ShowReactorUnavailable();" in shop
+    assert "EnsureBrowser().Toggle()" not in shop
+    assert "_browser.Draw()" not in shop
+    assert "_browser.TickReactorWeaponPreview()" in shop
     assert "if (_initialized && _onlineContentEnabled)" in shop
     assert "GarageManager.OnTick();" in shop
     assert "if (e.KeyCode == _openKey)" in shop
     # World markers now route through the same typed Reactor handoff as the
-    # rest of the garage UI, while retaining the legacy browser callback as
-    # the explicit fallback.  Keep both services independent of GBAY startup.
+    # rest of the garage UI. No native menu fallback is allowed.
     assert "GarageManager.ConsumeHelipadListRequest()" in shop
     assert "Allin1GarageWorldEntryLocation.VespucciHelipad" in shop
-    assert "() => EnsureBrowser().OpenHelipadList())" in shop
+    assert "EnsureBrowser().OpenHelipadList()" not in shop
     assert "GarageManager.ConsumeHarbourListRequest()" in shop
     assert "Allin1GarageWorldEntryLocation.Harbour" in shop
-    assert "() => EnsureBrowser().OpenHarbourList())" in shop
+    assert "EnsureBrowser().OpenHarbourList()" not in shop
 
 
 def test_reactor_bridge_keeps_allin1_authoritative_and_server_pages_catalog():
@@ -703,12 +701,20 @@ def test_gbay_weapons_restore_without_clobbering_story_loadouts():
     extension_runtime = (ROOT / "script/src/ExtensionRuntime.cs").read_text()
     assert "bool hasSavedWeapons = inventory.weapons.Count > 0" in inventory
     assert "inventory.equipped_gear.Count == 0 && !hasSavedWeapons" in inventory
-    apply_start = inventory.index("private static void Apply(string character)")
+    apply_start = inventory.index("private void Apply(string character)")
+    grant = inventory.index("RestoreWeapons(ped, inventory, inventory.weapons)", apply_start)
     weapon_loop = inventory.index("foreach (var entry in WeaponHashes)", apply_start)
-    grant = inventory.index("ped.Weapons.Give", weapon_loop)
-    managed_remove = inventory.index("else if (inventory.managed)", grant)
+    managed_remove = inventory.index("if (!owned.Contains(entry.Key) && inventory.managed)", weapon_loop)
     remove = inventory.index("REMOVE_WEAPON_FROM_PED", managed_remove)
-    assert weapon_loop < grant < managed_remove < remove
+    assert grant < weapon_loop < managed_remove < remove
+    assert "RuntimeWeaponCatalog.Refresh();" in inventory[apply_start:grant]
+    assert "WeaponLoadoutRestore.Restore(inventory, candidates, RuntimeWeaponCatalog.All" in inventory
+    assert "CleanupInvalidSavedWeapons(character, ped, inventory)" not in inventory
+    assert "RetryDeferredWeapons(character)" in inventory
+    assert "_weaponRestoreRetries >= 5" in inventory
+    assert '"weapons", restored.Restored.Count' in inventory
+    restore = inventory[inventory.index("private static WeaponRestoreResult RestoreWeapons"):]
+    assert restore.index("Hash.GIVE_WEAPON_TO_PED") < restore.index("Hash.HAS_PED_GOT_WEAPON") < restore.index("Hash.SET_PED_AMMO")
     assert "Game.IsLoading" in inventory
     assert "_restorePending" in inventory
     assert "player.IsDead" in inventory
@@ -1709,7 +1715,7 @@ def test_garage_sales_fall_back_to_native_values_for_uncatalogued_vehicles():
     assert "GET_VEHICLE_CLASS_FROM_NAME" in shop
     assert "GetFallbackVehicleValue" in shop
     assert "IS_MODEL_A_VEHICLE" in shop
-    assert "if (RuntimeVehicleCatalog.IsListed(model))" in shop
+    assert "if (RuntimeVehicleCatalog.IsListed(model) && !RuntimeVehicleCatalog.IsCatalogOnly(model))" in shop
     assert "buyPrice = RuntimeVehicleCatalog.GetPrice(model);" in shop
 
 
@@ -2276,8 +2282,8 @@ def test_enhanced_smoke_uses_independent_weapons_and_grounded_deployment():
     assert "DlcWeaponHashOffset = 8" in catalog
     assert "1, false, true" in inventory
     assert '"registered_custom_weapon_types"' in controller
-    assert "RemoveInvalidWeaponsInMemory" in inventory
-    assert '"invalid_managed_weapons_cleaned"' in inventory
+    assert "RemoveInvalidWeaponsInMemory" not in inventory
+    assert '"ownership_preserved", true' in inventory
     assert '"staged_smoke_stock_preserved"' in inventory
     assert '"registration_mode", registeredWeapons ==' in inventory
     assert '"registration_required", false' in inventory

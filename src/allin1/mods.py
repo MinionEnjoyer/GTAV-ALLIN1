@@ -77,9 +77,13 @@ def _official_vehicle_models() -> frozenset[str]:
     if _OFFICIAL_VEHICLE_MODELS is None:
         online = VehicleDatabase.load(_PROJECT_ROOT / "data" / "vehicles.toml")
         story = VehicleCatalog.load(_PROJECT_ROOT / "data" / "story_vehicles.json")
+        catalog_only_path = _PROJECT_ROOT / "data" / "catalog_only_vehicles.json"
+        catalog_only = (json.loads(catalog_only_path.read_text(encoding="utf-8"))["vehicles"]
+                        if catalog_only_path.is_file() else [])
         _OFFICIAL_VEHICLE_MODELS = frozenset(
             [vehicle.model.casefold() for vehicle in online.all_vehicles]
             + [vehicle.model.casefold() for vehicle in story.vehicles]
+            + [vehicle["model"].casefold() for vehicle in catalog_only]
         )
     return _OFFICIAL_VEHICLE_MODELS
 

@@ -67,6 +67,27 @@ namespace ALLIN1.Tests
             Assert.Equal(0, record.SizeTier);
             Assert.False(record.TrafficEnabled);
             Assert.Equal(1.0, record.TrafficWeight);
+            Assert.Null(record.Hitches);
+        }
+
+        [Fact]
+        public void HitchProfilesReachRuntimeAndRejectMismatchedOwnership()
+        {
+            var vehicle = Newtonsoft.Json.Linq.JObject.Parse(Vehicle("examplecar"));
+            vehicle["hitches"] = Newtonsoft.Json.Linq.JObject.Parse(@"{
+                'schema_version':1,'vehicle_model':'examplecar','points':[{
+                    'id':'rear','mode':'native','bone':'attach_female',
+                    'position':[0,0,0],'rotation':[0,0,0],
+                    'coupler_bone':'attach_male','coupler_offset':[0,0,0],
+                    'compatible_models':['trailers'],'connect_distance':1,'break_force':10000
+                }]}");
+            var record = Assert.Single(Parse("example.hitches", "Hitches", vehicle.ToString()).Vehicles);
+            Assert.Equal("rear", Assert.Single(record.Hitches.Points).Id);
+            vehicle["hitches"]["vehicle_model"] = "othercar";
+            Assert.Throws<InvalidDataException>(() => Parse("example.hitches", "Hitches", vehicle.ToString()));
+            vehicle["hitches"]["vehicle_model"] = "examplecar";
+            vehicle["hitches"]["points"] = new Newtonsoft.Json.Linq.JArray();
+            Assert.Empty(Assert.Single(Parse("example.hitches", "Hitches", vehicle.ToString()).Vehicles).Hitches.Points);
         }
 
         [Fact]

@@ -1685,7 +1685,7 @@
     },
     {
       "model": "dune2",
-      "name": "Dune2",
+      "name": "Space Docker",
       "manufacturer": "",
       "category": "offroad",
       "price": 55000,
@@ -2707,7 +2707,7 @@
     },
     {
       "model": "jb700",
-      "name": "Jb700",
+      "name": "JB 700",
       "manufacturer": "Dewbauch",
       "category": "sportsclassics",
       "price": 165000,
@@ -2847,7 +2847,7 @@
     },
     {
       "model": "ztype",
-      "name": "Ztype",
+      "name": "Z-Type",
       "manufacturer": "Truffade",
       "category": "sportsclassics",
       "price": 165000,
@@ -2903,7 +2903,7 @@
     },
     {
       "model": "entityxf",
-      "name": "Entityxf",
+      "name": "Entity XF",
       "manufacturer": "Overflod",
       "category": "super",
       "price": 500000,

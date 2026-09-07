@@ -6,6 +6,8 @@ import ContentSettings from "./ContentSettings";
 import PackageDraft from "./PackageDraft";
 import AssistantSettings from "./AssistantSettings";
 import OperationProgress from "./OperationProgress";
+import PreviewControls from "./PreviewControls";
+import StartupStatus from "./StartupStatus";
 import logo from "../../src/allin1/assets/ALLIN1.png";
 import { descriptions, EmptyState, ReviewDialog, WorkspaceIcon } from "./WorkspaceChrome";
 
@@ -42,6 +44,8 @@ export default function App({ client = nativeClient }: { client?: Client }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
+  const [warning, setWarning] = useState("");
+  const [acknowledgedStartup, setAcknowledgedStartup] = useState<string | null>(null);
   const [activity, setActivity] = useState<string[]>([]),
     [profile, setProfile] = useState(""),
     [query, setQuery] = useState("");
@@ -60,9 +64,12 @@ export default function App({ client = nativeClient }: { client?: Client }) {
   const [sdkRelease, setSdkRelease] = useState<RecordData | null>(null),
     [startup, setStartup] = useState<RecordData | null>(null);
   const [launcherRelease, setLauncherRelease] = useState<RecordData | null>(null);
+  const startupAcknowledged = !!startup?.failure && !startup?.active && acknowledgedStartup === startup.failure;
+  const startupAttention = !!startup?.failure && !startupAcknowledged;
+  const needsAttention = !!error || !!warning || startupAttention;
   const [handoff, setHandoff] = useState<RecordData | null>(null);
   const [settingsSearch, setSettingsSearch] = useState("");
-  const [skipPreviews, setSkipPreviews] = useState(false);
+  const [skipPreviewCategories, setSkipPreviewCategories] = useState<string[]>([]);
   const [operationProgress, setOperationProgress] = useState<RecordData | null>(null);
   const [cancellingLaunch, setCancellingLaunch] = useState(false);
   const cancelFlight = useRef(false);
@@ -77,6 +84,18 @@ export default function App({ client = nativeClient }: { client?: Client }) {
   const flight = useRef(false),
     mounted = useRef(true),
     generation = useRef(0);
+  const recordActivity = (message: string) => {
+    setActivity((rows) => [...rows.slice(-199), message]);
+    setActivityCleared(false);
+  };
+  const acknowledgeStartup = () => {
+    if (!startup?.failure || startup.active) return;
+    recordActivity(`Acknowledged startup warning: ${startup.failure}`);
+    setAcknowledgedStartup(startup.failure);
+  };
+  useEffect(() => {
+    if (startup?.failure) recordActivity(`Startup warning: ${startup.failure}`);
+  }, [startup?.failure]);
   const run = async (
     operation: string,
     payload: RecordData,
@@ -277,7 +296,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
   });
   const beginReview = (action: string, values: RecordData = {}) => {
     if (locked) return;
-    void run("review", { action, config, ...(action === "launch" ? { skip_previews: skipPreviews } : {}), ...values }, (loaded) => {
+    void run("review", { action, config, ...(action === "launch" ? { skip_previews: false, skip_preview_categories: skipPreviewCategories } : {}), ...values }, (loaded) => {
       setReview(loaded);
       setConfirmed(false);
     });
@@ -289,7 +308,10 @@ export default function App({ client = nativeClient }: { client?: Client }) {
     setCancellingLaunch(false);
     cancelFlight.current = false;
     setOperationProgress({ action: current.action, message: "Preparing reviewed action…" });
-    if (current.action === "launch") setStartup(null);
+    if (current.action === "launch") {
+      setStartup(null);
+      setAcknowledgedStartup(null);
+    }
     let appliedConfig = config;
     const succeeded = await run(
       "apply",
@@ -300,11 +322,15 @@ export default function App({ client = nativeClient }: { client?: Client }) {
       },
       (result) => {
         const cancelled = result.result?.status === "cancelled";
-        setNotice(result.warning || (cancelled
+        if (result.warning) {
+          setWarning(String(result.warning));
+          recordActivity(`Operation warning: ${result.warning}`);
+        }
+        setNotice(cancelled
           ? "Launch cancelled. GTA was not started; completed previews remain cached."
           : result.action === "launch"
           ? "GTA started. Startup readiness is tracked separately below."
-          : `${title(result.action)} completed`));
+          : `${title(result.action)} completed`);
         setActivity((rows) => [
           ...rows.slice(-199),
           `${title(result.action)} ${cancelled ? "cancelled" : "completed"}`,
@@ -493,7 +519,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
             <div><strong>Could not complete this operation</strong><p>{error}</p></div>
             <div className="notice-actions">
             <button disabled={busy} onClick={() => void reconnect()}>Reconnect service</button>
-            <button onClick={() => setError("")}>Dismiss</button>
+            <button onClick={() => { recordActivity(`Dismissed operation error: ${error}`); setError(""); }}>Dismiss</button>
             </div>
           </div>
         )}
@@ -506,6 +532,10 @@ export default function App({ client = nativeClient }: { client?: Client }) {
             {notice}
           </p>
         )}
+        {warning && <section className="notice warning" aria-label="Operation warning">
+          <div><strong>Completed with a warning</strong><p>{warning}</p></div>
+          <button onClick={() => { recordActivity(`Acknowledged operation warning: ${warning}`); setWarning(""); }}>Acknowledge warning</button>
+        </section>}
         {handoff && (
           <section className="notice" aria-label="SDK package request">
             <p>
@@ -529,26 +559,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
             </button>
           </section>
         )}
-        {startup && (
-          <section aria-label="Reactor startup">
-            <h2>Reactor startup</h2>
-            <p>
-              {startup.failure ||
-                (startup.active
-                  ? "Waiting for fresh startup evidence…"
-                  : "Startup monitoring finished")}
-            </p>
-            <ol>
-              {(startup.milestones ?? []).map(
-                ([key, label]: [string, string]) => (
-                  <li key={key}>
-                    {startup.ready?.includes(key) ? "✓" : "…"} {label}
-                  </li>
-                ),
-              )}
-            </ol>
-          </section>
-        )}
+        {startup && <StartupStatus startup={startup} acknowledged={startupAcknowledged} onAcknowledge={acknowledgeStartup} />}
         {review && (
           <ReviewDialog busy={busy} cancel={() => { setReview(null); setConfirmed(false); }}>
           <section className="review" aria-label="Review changes">
@@ -567,16 +578,17 @@ export default function App({ client = nativeClient }: { client?: Client }) {
                 : "Cancel preparation before GTA starts. This does not close a running game."}</p>
             </div>}
             <p>Target: {review.target}</p>
-            {review.action === "launch" && <label className="check">
-              <input type="checkbox" checked={!!review.request?.skip_previews} disabled={busy}
-                onChange={(event) => {
-                  const skip = event.target.checked;
-                  setSkipPreviews(skip);
+        {review.action === "launch" && <PreviewControls busy={busy} counts={review.preview_counts}
+                skipped={review.request?.skip_preview_categories ?? []}
+                quick={!!review.request?.quick_launch}
+                missingOnly={!!review.request?.missing_previews_only}
+                onChange={(categories, quick, missingOnly) => {
+                  setSkipPreviewCategories(categories);
                   setConfirmed(false);
                   void run("review", { ...review.request, action: "launch", config: review.request?.config ?? config,
-                    skip_previews: skip }, (loaded) => { setReview(loaded); setConfirmed(false); });
-                }} /> Skip new previews (reuse valid cached artwork)
-            </label>}
+                    skip_previews: false, skip_preview_categories: categories, quick_launch: quick, missing_previews_only: missingOnly },
+                    (loaded) => { setReview(loaded); setConfirmed(false); });
+                }} />}
             {review.preservation && <p>{review.preservation}</p>}
             {review.migration && (
               <div aria-label="Preference import plan">
@@ -1147,14 +1159,14 @@ export default function App({ client = nativeClient }: { client?: Client }) {
         )}
       </main>
       <footer>
-        {!review && (operationProgress || startup) && <OperationProgress
+        {!review && (operationProgress || (startup && !startupAcknowledged)) && <OperationProgress
           heading={operationProgress ? "Launcher operation" : startup?.failure ? "Startup needs attention" : startup?.active ? "GTA startup" : startup?.ready?.includes("story") ? "Story Mode ready" : "Startup monitoring finished"}
           message={operationProgress?.message ?? startup?.failure ?? (startup?.active
             ? "Waiting for game services. See the readiness checklist above; GTA does not report a loading percentage."
             : "You can return to the game. No further startup polling is running.")}
           percentage={operationProgress?.percentage}
           active={!!operationProgress || !!startup?.active} />}
-        <span className="footer-status"><i className={`activity-dot ${error || startup?.failure ? "error" : busy || startup?.active ? "busy" : config ? "ready" : ""}`} />{busy ? "Working…" : dirty ? "Unsaved changes" : error || startup?.failure ? "Needs attention" : !config ? "Connecting…" : startup?.active ? "Game starting…" : startup?.ready?.includes("story") ? "Story Mode ready" : "Ready"}</span>
+        <span className="footer-status" aria-label="Launcher status"><i className={`activity-dot ${error ? "error" : warning || startupAttention ? "warning" : busy || startup?.active ? "busy" : config ? "ready" : ""}`} />{busy ? "Working…" : dirty ? "Unsaved changes" : needsAttention ? "Needs attention" : !config ? "Connecting…" : startup?.active ? "Game starting…" : !startup?.failure && startup?.ready?.includes("story") ? "Story Mode ready" : "Ready"}</span>
         <div className="toolbar">
           <button
             disabled={locked || !config || !dirty || Object.keys(draft).length > 0}
@@ -1174,6 +1186,13 @@ export default function App({ client = nativeClient }: { client?: Client }) {
             onClick={() => beginReview("launch")}
           >
             Launch Story Mode
+          </button>
+          <button
+            disabled={locked || !config || Object.keys(draft).length > 0}
+            title="Review a launch without preview discovery or generation; keep existing artwork"
+            onClick={() => beginReview("launch", { quick_launch: true })}
+          >
+            Quick Launch
           </button>
         </div>
       </footer>

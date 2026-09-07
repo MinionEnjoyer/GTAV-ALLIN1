@@ -1,6 +1,6 @@
 """Isolated read-only native weapon thumbnail worker; never loads the game.
 
-The frozen distribution contains the SDK's CPU renderer. In source checkouts
+The frozen distribution contains the SDK's asset decoder. In source checkouts
 the same modules are resolved from the adjacent SDK, never downloaded at launch.
 """
 from __future__ import annotations
@@ -12,14 +12,14 @@ import subprocess
 
 from lxml import etree
 from PIL import Image
-from allin1.weapon_card_renderer import render_card
+from allin1.weapon_card_renderer import render_card, STUDIO_BACKDROP
 from allin1.prelaunch_previews import contained, document, sha, NAME
 from allin1.processes import hidden_process_options
 
 
 def main(request):
     job_path = Path(request).resolve()
-    job = document(job_path, 65536)
+    job = document(job_path, 4*1024*1024)
     project, game = Path(job['project']), Path(job['game'])
     if not getattr(sys, 'frozen', False):
         sys.path.insert(0, str(project.parent/'ALLIN1-SDK/src'))
@@ -27,16 +27,27 @@ def main(request):
     from allin1_sdk.native_assets import NativeAssetInspector, _model_scene_from_xml, _model_diffuse_texture_name
 
     if job.get('operation')=='discover_stock':
-        from allin1.stock_weapon_previews import discover
-        result=discover(project,game,Path(job['discovery_cache']),job['mounted'],
-                        progress=lambda p,m:print(m,flush=True))
+        category=job.get('category','weapons')
+        if category=='weapons':
+            from allin1.stock_weapon_previews import discover
+            result=discover(project,game,Path(job['discovery_cache']),job['mounted'],
+                            progress=lambda p,m:print(m,flush=True))
+        else:
+            from allin1.catalog_model_previews import discover
+            result=discover(project,game,Path(job['discovery_cache']),job['mounted'],category,
+                job.get('managed',()),progress=lambda p,m:print(m,flush=True))
         (job_path.parent/'discovery.json').write_text(json.dumps(result),encoding='utf-8')
         return
 
     if job['edition'] not in ('Legacy', 'Enhanced'): raise ValueError('Invalid edition')
+    if job.get('category') in ('vehicles','gear'):
+        from allin1.catalog_model_renderer import render_job
+        render_job(job,job_path.parent)
+        return
     if job.get('kind')=='stock':
-        from allin1.stock_weapon_previews import catalog_names, extract, file_state
-        if job['weapon'] not in catalog_names(project):raise ValueError('Weapon is not in the non-throwable GBAY catalog')
+        from allin1.stock_weapon_previews import catalog_names, throwable_names, extract, file_state
+        if job['weapon'] not in catalog_names(project):raise ValueError('Weapon is not in the GBAY catalog')
+        job={**job,'preview_backdrop':'ammo-crate' if job['weapon'] in throwable_names(project) else 'pegboard'}
         assets=job['assets']
         parts=job.get('components',[])
         if len(parts)>16 or len(assets)!=2+2*len(parts):raise ValueError('Invalid stock preview assembly')
@@ -45,7 +56,7 @@ def main(request):
         for i,part in enumerate(parts):
             if part['asset_index']!=2+2*i or Path(assets[2+2*i]['path']).name.casefold()!=part['model']+'.ydr':raise ValueError('Component asset identity mismatch')
         extracted=[extract(project,game,ref,job_path.parent/('asset'+str(i)+('.ydr' if i%2==0 else '.ytd'))) for i,ref in enumerate(assets)]
-        image=render_assets(project,game,job['model'],extracted,job['edition'],job_path.parent,parts=parts)
+        image=render_assets(project,game,job['model'],extracted,job['edition'],job_path.parent,parts=parts,job=job)
         if any(file_state(contained(game,a['archive']))!=a['state'] for a in assets):raise ValueError('Stock preview source changed')
         image.save(job_path.parent/'preview.png',format='PNG')
         print('Rendered stock',job['weapon'],flush=True)
@@ -76,6 +87,7 @@ def main(request):
     definitions = xml('weapons.meta').xpath('.//Item[@type="CWeaponInfo"]')
     definitions = [item for item in definitions if item.findtext('Name') == job['weapon']]
     if len(definitions) != 1: raise ValueError('Weapon definition is missing or ambiguous')
+    job={**job,'preview_backdrop':'ammo-crate' if definitions[0].findtext('Group')=='GROUP_THROWN' else 'pegboard'}
     model = definitions[0].findtext('Model') or ''
     archetypes = xml('weaponarchetypes.meta')
     dictionaries = [item.findtext('txdName') for item in archetypes.findall('.//Item')
@@ -85,7 +97,7 @@ def main(request):
     texture_entry = select(dictionaries[0]+'.ytd')
     resources = (model_entry, texture_entry)
     extracted = [service.extract(index, entry, job_path.parent/('asset'+entry.suffix)) for entry in resources]
-    from allin1.stock_weapon_previews import default_components
+    from allin1.stock_weapon_previews import default_components, component_preview
     selected=default_components(definitions[0]);parts=[]
     if selected:
         from allin1.weapon_preview_assembly import unique_component
@@ -102,9 +114,10 @@ def main(request):
             if path.stat().st_size>4*1024*1024:raise ValueError('Component metadata exceeds limit')
             components.append(etree.parse(str(path),etree.XMLParser(resolve_entities=False,no_network=True)))
         for choice in selected:
-            row=unique_component(components,choice['name']);cm=row.findtext('Model') or ''
-            if not cm:continue
+            row=unique_component(components,choice['name']);info=component_preview(row);cm=info['model']
+            if not cm or not info['create_object']:continue
             cd=select(cm+'.ydr')
+            if cd==model_entry:continue
             txds=[n.findtext('txdName') for n in archetypes.findall('.//Item') if n.findtext('modelName')==cm]
             if len(txds)>1:raise ValueError('Ambiguous component dictionary')
             txd=(txds[0] if txds else cm)+'.ytd'
@@ -112,20 +125,19 @@ def main(request):
             parts.append({**choice,'model':cm,'child_bone':row.findtext('AttachBone') or '', 'asset_index':len(extracted)})
             for entry in (cd,ct):
                 extracted.append(service.extract(index,entry,job_path.parent/('asset'+str(len(extracted))+entry.suffix)))
-    image=render_assets(project,game,model,extracted,job['edition'],job_path.parent,parts=parts)
+    image=render_assets(project,game,model,extracted,job['edition'],job_path.parent,parts=parts,job=job)
     if sha(source) != job['archive_sha256']: raise ValueError('Source changed during rendering')
     image.save(job_path.parent/'preview.png', format='PNG')
     print('Rendered', job['weapon'], model, flush=True)
 
 
-def render_assets(project,game,model,extracted,edition,work,*,parts=()):
+def render_assets(project,game,model,extracted,edition,work,*,parts=(),job=None):
     from allin1_sdk.native_assets import NativeAssetInspector, _model_scene_from_xml, _model_diffuse_texture_name
     inspector = NativeAssetInspector(project, game)
     workspaces = [inspector.export_workspace(path, work/('decoded'+suffix), edition=edition)
                   for suffix, path in zip(('.ydr','.ytd'), extracted)]
     manifests = [document(path/'native-workspace.json', 4*1024*1024) for path in workspaces]
     drawable=contained(workspaces[0], manifests[0]['xml']['path'])
-    if not parts:return render_decoded(drawable, workspaces[1], model)
     from allin1.weapon_preview_assembly import attach_geometry
     geometries,textures,materials,root=decode_card(drawable,workspaces[1],model)
     for i,part in enumerate(parts):
@@ -137,18 +149,20 @@ def render_assets(project,game,model,extracted,edition,work,*,parts=()):
         placed=attach_geometry(root,child,gs,part['parent_bone'],part['child_bone'])
         for original,new in zip(gs,placed):materials[id(new)]={**ms[id(original)],'textures':ts}
         geometries.extend(placed)
-    return render_card(geometries,textures,_model_diffuse_texture_name,materials=materials,
-                       flat=model.casefold().startswith('w_me_knuckle'))
+    from allin1.pegboard_blender_renderer import render_pegboard
+    return render_pegboard(geometries,textures,_model_diffuse_texture_name,materials=materials,
+        flat=model.casefold().startswith('w_me_knuckle'),job=job or {'project':str(project)},work=work)
 
 
-def render_decoded(drawable, texture_folder, model):
+def render_decoded(drawable, texture_folder, model, *, backdrop=None):
     from allin1_sdk.native_assets import _model_diffuse_texture_name
     geometries,textures,materials,_=decode_card(drawable,texture_folder,model)
     return render_card(geometries,textures,_model_diffuse_texture_name,materials=materials,
-                       flat=model.casefold().startswith('w_me_knuckle'))
+                       flat=model.casefold().startswith('w_me_knuckle'), backdrop=backdrop)
 
 def decode_card(drawable, texture_folder, model):
     from allin1_sdk.native_assets import _model_scene_from_xml, _model_diffuse_texture_name
+    from allin1.vehicle_blender_renderer import open_texture
     scene, _, warning = _model_scene_from_xml(drawable, model)
     if scene is None: raise ValueError('Native drawable conversion failed: '+str(warning))
     root = etree.parse(str(drawable), etree.XMLParser(resolve_entities=False, no_network=True)).getroot()
@@ -165,7 +179,11 @@ def decode_card(drawable, texture_folder, model):
         shader_name = shader.findtext('FileName','').casefold()
         alpha_palette = 'TextureSamplerDiffPal' in parameters or '_palette.sps' in shader_name or shader_name in tuple(f'hash_{h:08x}' for h in (231364109,3294641629,731050667))
         material = dict(palette=palette, palette_mode='alpha' if alpha_palette else 'vertex',
+                        normal=parameters.get('BumpSampler'),specular=parameters.get('SpecSampler'),
                         decal=shader.find('RenderBucket') is not None and shader.find('RenderBucket').get('value') in ('1','2','3'))
+        # Opaque GTA weapon shaders use diffuse alpha for material data too.
+        # Only explicitly alpha-tested/blended render buckets cut out geometry.
+        material['opaque'] = shader.find('RenderBucket') is not None and shader.find('RenderBucket').get('value') == '0'
         if palette and not alpha_palette:
             offset=0; colour_offset=None
             for item in buffer.findall('Layout/*'):
@@ -178,11 +196,12 @@ def decode_card(drawable, texture_folder, model):
     textures = {}
     needed = {(_model_diffuse_texture_name(g) or '').casefold() for g in scene.geometries}
     needed.update(m['palette'].casefold() for m in materials.values() if m['palette'])
+    needed.update(m[role].casefold() for m in materials.values() for role in ('normal','specular') if m.get(role))
     # Native YDRs may embed their own palette (knuckle dusters do). External
     # dictionaries are loaded first; the drawable's embedded texture wins.
     for texture in [*Path(texture_folder).rglob('*.dds'), *Path(drawable).parent.rglob('*.dds')]:
         if texture.stem.casefold() not in needed: continue
-        with Image.open(texture) as decoded:
+        with open_texture(texture) as decoded:
             if decoded.width*decoded.height > 4096*4096: raise ValueError('Diffuse texture exceeds preview pixel budget')
             decoded.load()
             decoded.thumbnail((1024,1024), Image.Resampling.LANCZOS)

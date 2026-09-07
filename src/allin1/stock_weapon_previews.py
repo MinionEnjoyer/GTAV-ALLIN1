@@ -11,7 +11,15 @@ from allin1.prelaunch_previews import atomic, contained, document, no_links, sha
 from allin1.processes import hidden_process_options
 from allin1.garage_map_detection import _effective_pack_archives
 
-REVISION=2
+REVISION=3
+
+
+def component_preview(row):
+    create = row.find('CreateObject')
+    value = create.get('value','').casefold() if create is not None else 'true'
+    if value not in ('true','false'):raise ValueError('Invalid component CreateObject flag')
+    return {'model':(row.findtext('Model') or '').casefold(),
+            'child_bone':row.findtext('AttachBone') or '', 'create_object':value=='true'}
 
 def default_components(row):
     result=[]
@@ -36,11 +44,18 @@ def catalog_names(project):
     if not path.exists():return []
     if path.stat().st_size>1024*1024:raise ValueError('Stock catalog exceeds limit')
     rows=tomllib.loads(path.read_text(encoding='utf-8'))['weapons']
-    # Acid Package is currently in GBAY's misc category but is a thrown item.
-    names=[r['name'] for r in rows if r['category']!='throwables' and r['name']!='WEAPON_ACIDPACKAGE']
+    names=[r['name'] for r in rows]
     if len(names)>128 or len(set(names))!=len(names) or any(not NAME.fullmatch(n.lower()) for n in names):
         raise ValueError('Invalid stock weapon catalog')
     return sorted(names)
+
+
+def throwable_names(project):
+    names=set(catalog_names(project))
+    if not names:return set()
+    rows=tomllib.loads(contained(project,'data/weapons.toml').read_text(encoding='utf-8'))['weapons']
+    return {r['name'] for r in rows if r['name'] in names and
+        (r['category']=='throwables' or r['name']=='WEAPON_ACIDPACKAGE')}
 
 
 def archives(game, mounted):
@@ -80,10 +95,10 @@ def extract(project,game,reference,destination):
     return destination
 
 
-def inventory(project,game,archive,cache,helper_id):
+def inventory(project,game,archive,cache,helper_id, *, category='weapons'):
     from lxml import etree as E
     relative=archive.relative_to(game).as_posix();state=file_state(archive)
-    identity={'archive':relative,'state':state,'helper':helper_id,'revision':REVISION}
+    identity={'archive':relative,'state':state,'helper':helper_id,'revision':REVISION,'category':category,'model_revision':2}
     key=hashlib.sha256(json.dumps(identity,sort_keys=True).encode()).hexdigest()
     stored=cache/(key+'.json')
     if stored.exists():
@@ -100,11 +115,12 @@ def inventory(project,game,archive,cache,helper_id):
         for e in entries:
             name=e['name'].casefold()
             ref={'archive':relative,'state':state,'archive_path':safe_virtual(e['archive_path'],archive=True),'path':safe_virtual(e['path'])}
-            if name.endswith(('.ydr','.ytd')):assets.append({'name':name,**ref})
+            if name.endswith(('.ydr','.ytd','.yft')):assets.append({'name':name,**ref})
             if name.endswith('.meta') and 'weapon' in name and not any(s in name for s in ('anim','shop','personality')):
-                metas.append(e)
+                if category=='weapons':metas.append(e)
+            if category=='vehicles' and name=='vehicles.meta':metas.append(e)
         if len(metas)>512:raise ValueError('Weapon metadata scan exceeds limit')
-        definitions={};archetypes={};components={}
+        definitions={};archetypes={};components={};parents={}
         if metas:
             output=work/'metadata';manifest=work/'extract.tsv'
             manifest.write_text(''.join(f"{safe_virtual(e['archive_path'],archive=True)}\t{safe_virtual(e['path'])}\t{n}.meta\n" for n,e in enumerate(metas)),encoding='utf-8')
@@ -119,12 +135,15 @@ def inventory(project,game,archive,cache,helper_id):
                     if name and model:definitions[name]={'model':model.casefold(),'metadata':e['path'],'components':default_components(row)}
                 for row in root.xpath('.//Item[starts-with(@type,"CWeaponComponent")]'):
                     name=row.findtext('Name');model=row.findtext('Model')
-                    if name:components[name]={'model':(model or '').casefold(),'child_bone':row.findtext('AttachBone') or ''}
+                    if name:components[name]=component_preview(row)
                 for row in root.findall('.//Item'):
                     model=row.findtext('modelName');txd=row.findtext('txdName')
                     if model and txd:archetypes[model.casefold()]=txd.casefold()
+                for row in root.findall('.//txdRelationships/Item'):
+                    child=row.findtext('child');parent=row.findtext('parent')
+                    if child and parent:parents[child.casefold()]=parent.casefold()
         if file_state(archive)!=state:raise ValueError('Stock archive changed during discovery')
-        result={'identity':identity,'assets':assets,'definitions':definitions,'archetypes':archetypes,'components':components}
+        result={'identity':identity,'assets':assets,'definitions':definitions,'archetypes':archetypes,'components':components,'parents':parents}
         atomic(stored,json.dumps(result).encode());return result
 
 
@@ -163,8 +182,9 @@ def discover(project,game,cache,mounted,progress=lambda *_:None):
             for selected in definition.get('components',[]):
                 component=components[selected['name']]
                 cm=component['model']
-                if not cm:continue  # Data-only component; no drawable declared.
+                if not cm or not component.get('create_object',True):continue
                 cd=choose(cm+'.ydr',definition['source'])
+                if cd==drawable:continue  # Base varmod already is the displayed drawable.
                 ct_name=archetypes.get(cm,cm)+'.ytd'
                 # Some components use the parent's shared dictionary.
                 ct=choose(ct_name,cd['archive']) if assets.get(ct_name) else texture

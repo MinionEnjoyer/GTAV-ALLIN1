@@ -1,12 +1,17 @@
 """Bounded offline catalog renderer, not an emulation of GTA's material shaders.
 
-Orthographic z-buffer, interpolated UVs/normals, studio key/fill and a procedural
-pegboard. No Blender, GPU context, game hooks, network or per-frame game work.
+Orthographic z-buffer, interpolated UVs/normals and a three-light studio.
+Vehicles use asphalt/concrete; weapons and gear retain their pegboard.
+No GPU context, game hooks, network or per-frame game work.
 """
 import math
+from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
+
+
+from allin1.preview_policy import STUDIO_BACKDROP
 
 
 def pegboard(size):
@@ -25,9 +30,43 @@ def pegboard(size):
     return image
 
 
-def render_card(geometries, textures, diffuse_name, size=(512, 320), *, materials=None, flat=False):
-    if not geometries or sum(len(g.triangles) for g in geometries) > 50000:
-        raise ValueError('Catalog geometry is empty or exceeds 50,000 triangles')
+def studio_backdrop(size, path=None):
+    from allin1.release_paths import no_links
+    source = no_links(Path(path) if path is not None else Path(__file__).resolve().parents[2] / STUDIO_BACKDROP)
+    if source.stat().st_size > 16 * 1024 * 1024:
+        raise ValueError('Studio backdrop exceeds size limit')
+    with Image.open(source) as image:
+        if image.format != 'PNG' or not (1024 <= image.width <= 4096 and 640 <= image.height <= 4096):
+            raise ValueError('Invalid studio backdrop dimensions or format')
+        return image.convert('RGBA').resize(size, Image.Resampling.LANCZOS)
+
+
+def studio_lighting(sample, normals, *, category='weapons', decal=False):
+    """Linear-light soft key, cool fill, grazing rim; no invented material maps."""
+    def direction(value):
+        value = np.asarray(value, dtype=float)
+        return value / np.linalg.norm(value)
+    key = direction((-.55, .7, .65))
+    fill = direction((.8, .2, .55))
+    rim = direction((.8, .5, -.35))
+    diffuse = (.16 + .09 * np.maximum(normals[:, 1], 0))[:, None]
+    diffuse = diffuse + .95 * np.maximum(normals @ key, 0)[:, None] * [1.04, 1.0, .94]
+    diffuse += .22 * np.maximum(normals @ fill, 0)[:, None] * [.83, .94, 1.08]
+    half = direction(key + [0, 0, 1])
+    highlight = np.maximum(normals @ half, 0) ** (28 if category == 'vehicles' else 18)
+    edge = (1 - np.clip(normals[:, 2], 0, 1)) ** 3 * np.maximum(normals @ rim, 0)
+    specular = (highlight * (.045 if category == 'vehicles' else .016))[:, None]
+    specular = specular + edge[:, None] * [.055, .075, .095]
+    if decal:
+        specular = 0
+    return np.clip(sample ** 2.2 * diffuse + specular, 0, 1) ** (1 / 2.2)
+
+
+def render_card(geometries, textures, diffuse_name, size=(512, 320), *, materials=None, flat=False, category='weapons', backdrop=None):
+    if category not in ('weapons','vehicles','gear'):raise ValueError('Invalid rendering category')
+    triangle_limit=150000 if category=='vehicles' else 50000
+    if not geometries or sum(len(g.triangles) for g in geometries) > triangle_limit:
+        raise ValueError('Catalog geometry is empty or exceeds triangle budget')
     if sum(len(g.vertices) for g in geometries) > 200000:
         raise ValueError('Catalog vertex budget exceeded')
     if size != (512, 320):
@@ -37,6 +76,10 @@ def render_card(geometries, textures, diffuse_name, size=(512, 320), *, material
     yaw, pitch = math.radians(12), math.radians(8)
     c, s, cp, sp = math.cos(yaw), math.sin(yaw), math.cos(pitch), math.sin(pitch)
     rotation = np.array([[c, -s, 0], [-s*sp, -c*sp, cp], [s*cp, c*cp, sp]])
+    if category=='vehicles':
+        yaw,pitch=math.radians(35),math.radians(16)
+        c,s,cp,sp=math.cos(yaw),math.sin(yaw),math.cos(pitch),math.sin(pitch)
+        rotation=np.array([[c,-s,0],[-s*sp,-c*sp,cp],[s*cp,c*cp,sp]])
     vertices = [np.asarray(g.vertices, dtype=float) for g in geometries]
     if any(v.ndim != 2 or v.shape[1] != 3 or not np.isfinite(v).all() for v in vertices):
         raise ValueError('Invalid model coordinates')
@@ -54,8 +97,6 @@ def render_card(geometries, textures, diffuse_name, size=(512, 320), *, material
     scale = min(width*.84/max(hi[0]-lo[0], 1e-8), height*.74/max(hi[1]-lo[1], 1e-8))
     depth = np.full((height, width), -np.inf)
     pixels = np.zeros((height, width, 4), dtype='uint8')
-    key = np.array([-.4, .65, .7]); key /= np.linalg.norm(key)
-    fill = np.array([.7, .15, .65]); fill /= np.linalg.norm(fill)
     materials = materials or {}
     draw_order = sorted(zip(geometries, transformed), key=lambda pair: (
         bool(materials.get(id(pair[0]), {}).get('decal')), pair[1][:, 2].mean()))
@@ -71,10 +112,16 @@ def render_card(geometries, textures, diffuse_name, size=(512, 320), *, material
         for k in range(3):
             np.add.at(normals, tri[:,k], faces)
         normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-12)
+        if material.get('cull_backfaces'):
+            # Our model-to-camera basis has negative determinant. Outward
+            # GTA triangles facing the camera therefore have negative Z here.
+            tri=tri[faces[:,2]<0]
         screen = (v-center)*[scale, -scale, 1]+[width/2, height/2, 0]
         name = diffuse_name(g)
         local_textures = material.get('textures', textures)
         texture = local_textures.get((name or '').casefold())
+        if texture is None and material.get('solid_colour') is not None:
+            texture=Image.new('RGBA',(1,1),material['solid_colour'])
         if texture is None or len(g.texcoords) != len(v):
             raise ValueError('Missing diffuse texture or UVs: '+str(name))
         texture = np.asarray(texture.convert('RGBA'), dtype=float)/255
@@ -136,10 +183,7 @@ def render_card(geometries, textures, diffuse_name, size=(512, 320), *, material
             n = w @ normals[indices]
             n /= np.maximum(np.linalg.norm(n,axis=1,keepdims=True),1e-12)
             n *= np.where(n[:,2:3] < 0, -1, 1)
-            lighting = .42+.7*np.maximum(n @ key,0)+.2*np.maximum(n @ fill,0)
-            # Work in approximate linear light, then encode sRGB. Subtle broad highlight.
-            specular = .012*np.maximum(n @ key,0)**18
-            color = np.clip(sample**2.2*lighting[:,None]+specular[:,None],0,1)**(1/2.2)
+            color = studio_lighting(sample, n, category=category, decal=material.get('decal', False))
             target = pixels[y0:y1+1,x0:x1+1]
             prior = target[visible].astype(float)/255
             out_alpha = alpha+prior[:,3]*(1-alpha)
@@ -148,10 +192,22 @@ def render_card(geometries, textures, diffuse_name, size=(512, 320), *, material
             target[visible,3] = (out_alpha*255).astype('uint8')
             region[visible] = np.where(alpha>0, z[visible], region[visible])
     foreground = Image.fromarray(pixels)
-    board = pegboard((width,height)).convert('RGBA')
+    board = studio_backdrop((width, height), backdrop) if category == 'vehicles' else pegboard((width,height)).convert('RGBA')
     # Layered contact/soft shadow: no wraparound at the card edges.
     mask = foreground.getchannel('A')
-    for radius, offset, strength in ((12,(7,13),.28),(3,(3,5),.18)):
+    if category == 'vehicles':
+        # Ground the model on the asphalt, rather than a car-shaped wall shadow.
+        bounds = mask.getbbox()
+        if bounds:
+            left, top, right, bottom = bounds
+            footprint = Image.new('L', (width, height))
+            draw = ImageDraw.Draw(footprint)
+            depth = max(10, (right-left) // 15)
+            draw.ellipse((left+8, bottom-depth, right-8, min(height-1, bottom+depth//2)), fill=145)
+            shadow = Image.new('RGBA', (width, height), (12, 16, 21, 0))
+            shadow.putalpha(footprint.filter(ImageFilter.GaussianBlur(12)))
+            board = Image.alpha_composite(board, shadow)
+    for radius, offset, strength in (() if category == 'vehicles' else ((15,(9,15),.24),(3,(3,5),.16))):
         shifted = Image.new('L',(width,height)); shifted.paste(mask,offset)
         shadow = Image.new('RGBA',(width,height),(25,22,18,0))
         shadow.putalpha(shifted.filter(ImageFilter.GaussianBlur(radius)).point(lambda p: int(p*strength)))

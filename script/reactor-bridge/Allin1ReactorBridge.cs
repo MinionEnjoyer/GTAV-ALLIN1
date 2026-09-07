@@ -25,9 +25,9 @@ namespace ALLIN1.ReactorBridge
         IReactorExtensionLifecycle
     {
         private const string ExtensionId = "allin1.gbay";
-        private const string CatalogArtworkRevision = "1";
         private const string HomeMenuId = "home";
         private const string VehiclesMenuId = "vehicles";
+        private const string HitchesMenuId = "vehicle-hitches";
         private const string WeaponsMenuId = "weapons";
         private const string CustomizeMenuId = "weapons.customize";
         private const string GearMenuId = "gear";
@@ -55,7 +55,7 @@ namespace ALLIN1.ReactorBridge
         private Allin1CatalogRequest _weaponRequest = DefaultCatalogRequest();
         private Allin1WeaponCatalogPage? _weaponPage;
         private Allin1CatalogRequest _customWeaponRequest =
-            DefaultCatalogRequest();
+            new Allin1CatalogRequest { Category = "all", Page = 1, PageSize = 64 };
         private Allin1CustomizableWeaponPage? _customWeaponPage;
         private Allin1WeaponCustomizationPage? _customizationPage;
         private string _customizationGroup = "components";
@@ -252,6 +252,7 @@ namespace ALLIN1.ReactorBridge
                                 2048));
                             builder.AddMenu(BuildHomeMenu(_snapshot));
                             builder.AddMenu(BuildVehiclesMenu(_page));
+                            if (_storefront is IAllin1HitchStorefront) builder.AddMenu(BuildHitchesMenu());
                             builder.AddMenu(BuildWeaponsMenu(_weaponPage));
                             builder.AddMenu(BuildCustomizeMenu());
                             builder.AddMenu(BuildGearMenu(_gearPage));
@@ -576,6 +577,21 @@ namespace ALLIN1.ReactorBridge
 
         private void RegisterActions(ReactorExtensionBuilder builder)
         {
+            if (_storefront is IAllin1HitchStorefront)
+            {
+                foreach (bool experimental in new[] { false, true })
+                {
+                    bool confirmation = experimental;
+                    builder.AddAction(new ReactorActionDescriptor(
+                        experimental ? "hitch.connect.experimental" : "hitch.connect", experimental ? "Confirm experimental physical hitch" : "Connect trailer",
+                        ReactorActionRisk.Gameplay, new[] { new ReactorParameterDescriptor("token", ReactorValueType.String, required: true, maximumLength: 32) },
+                        requiresConfirmation: true, description: experimental ? "Experimental physics: stop both vehicles. The joint may behave differently between editions." : "Rechecks driver, proximity, occupancy and authored hitch bones."),
+                        (_, values) => HitchAction(values.Value<string>("token") ?? "", disconnect: false, experimental: confirmation));
+                }
+                builder.AddAction(new ReactorActionDescriptor("hitch.disconnect", "Disconnect trailer", ReactorActionRisk.Gameplay,
+                    new[] { new ReactorParameterDescriptor("token", ReactorValueType.String, required: true, maximumLength: 32) }, requiresConfirmation: true),
+                    (_, values) => HitchAction(values.Value<string>("token") ?? "", disconnect: true, experimental: false));
+            }
             builder.AddAction(
                 new ReactorActionDescriptor(
                     "vehicle.search", "Search vehicles", ReactorActionRisk.Read,
@@ -1933,6 +1949,8 @@ namespace ALLIN1.ReactorBridge
         private void PublishSynchronizedMenus(bool force)
         {
             var changed = new List<string>();
+            if (_storefront is IAllin1HitchStorefront)
+                PublishIfChanged(HitchesMenuId, BuildHitchesMenu(), force, changed);
             PublishIfChanged(
                 VehiclesMenuId, BuildVehiclesMenu(_page!), force, changed);
             PublishIfChanged(
@@ -2097,7 +2115,7 @@ namespace ALLIN1.ReactorBridge
                     listing.DisplayName,
                     "vehicles",
                     listing.PreviewDictionary,
-                    listing.PreviewTexture))
+                    listing.PreviewTexture, listing.Model))
                 .Where(node => node != null)
                 .Cast<ReactorMenuNode>()
                 .ToArray();
@@ -2126,6 +2144,8 @@ namespace ALLIN1.ReactorBridge
             };
             nodes.Add(new ReactorGridNode(
                 "catalog", "Vehicles", cards, columns: 3));
+            if (_storefront is IAllin1HitchStorefront)
+                nodes.Insert(0, new ReactorSubmenuNode("vehicle-hitches", "Trailer hitches", HitchesMenuId, "Connect or disconnect a trailer on your current vehicle."));
             nodes.AddRange(artwork);
             if (favoriteActions.Length > 0)
                 nodes.Add(new ReactorListNode(
@@ -2137,6 +2157,34 @@ namespace ALLIN1.ReactorBridge
                 VehiclesMenuId, "VEHICLES", nodes,
                 "Browse the ALLIN1 vehicle catalog and choose a guarded delivery.",
                 icon: "vehicle", order: 10);
+        }
+
+        private ReactorMenuDescriptor BuildHitchesMenu()
+        {
+            var snapshot = ((IAllin1HitchStorefront)_storefront!).BrowseHitches();
+            var nodes = new List<ReactorMenuNode> { new ReactorStatusNode("hitch-status", "Current vehicle", snapshot.Status) };
+            if (!string.IsNullOrEmpty(snapshot.DisconnectToken))
+                nodes.Add(new ReactorActionNode("hitch-detach", "Disconnect trailer", "hitch.disconnect", "Stop both vehicles first.",
+                    enabled: true, visible: true, boundParameters: new JObject { ["token"] = snapshot.DisconnectToken }));
+            foreach (var option in snapshot.Options)
+                nodes.Add(new ReactorActionNode("hitch-" + option.Token, option.Label,
+                    option.Experimental ? "hitch.connect.experimental" : "hitch.connect", option.Status,
+                    enabled: option.Available, visible: true, boundParameters: new JObject { ["token"] = option.Token }));
+            nodes.Add(new ReactorSubmenuNode("hitch-back", "Back to vehicles", VehiclesMenuId));
+            return new ReactorMenuDescriptor(HitchesMenuId, "TRAILER HITCHES", nodes,
+                "SDK-authored front/rear profiles and native hitch detection. One live connection per vehicle.", icon: "vehicle", order: 11);
+        }
+
+        private ReactorActionResult HitchAction(string token, bool disconnect, bool experimental)
+        {
+            lock (_sync)
+            {
+                if (!Available() || !(_storefront is IAllin1HitchStorefront hitches)) return Unavailable();
+                var result = disconnect ? hitches.DisconnectHitch(token) : hitches.ConnectHitch(token, experimental);
+                UpdateMenu(BuildHitchesMenu());
+                return result.Succeeded ? ReactorActionResult.Success(new JObject { ["message"] = result.Message, ["presentation"] = "refresh", ["menuRevision"] = RevisionText() })
+                    : ReactorActionResult.Failure(result.Code, result.Message);
+            }
         }
 
         private ReactorMenuDescriptor BuildDeliveryMenu(
@@ -2228,7 +2276,7 @@ namespace ALLIN1.ReactorBridge
                     value.DisplayName,
                     "weapons",
                     value.PreviewDictionary,
-                    value.PreviewTexture))
+                    value.PreviewTexture, value.Id))
                 .Where(node => node != null)
                 .Cast<ReactorMenuNode>()
                 .ToArray();
@@ -2316,7 +2364,7 @@ namespace ALLIN1.ReactorBridge
                         value.DisplayName,
                         "weapons",
                         value.PreviewDictionary,
-                        value.PreviewTexture))
+                        value.PreviewTexture, value.Id))
                     .Where(node => node != null)
                     .Cast<ReactorMenuNode>()
                     .ToArray();
@@ -2338,11 +2386,8 @@ namespace ALLIN1.ReactorBridge
                         weapons, columns: 3),
                 };
                 nodes.AddRange(artwork);
-                nodes.Add(new ReactorPaginationNode(
-                    "custom-pages", "Page",
-                    "weapon.customize.page",
-                    _customWeaponPage.Page,
-                    _customWeaponPage.PageCount));
+                nodes.Add(new ReactorStatusNode("custom-scroll-status", "Weapon list",
+                    BoundText(_customWeaponPage.Status, 240)));
                 return new ReactorMenuDescriptor(
                     CustomizeMenuId,
                     "CUSTOMIZE WEAPONS",
@@ -2499,7 +2544,7 @@ namespace ALLIN1.ReactorBridge
                     value.DisplayName,
                     "gear",
                     value.PreviewDictionary,
-                    value.PreviewTexture))
+                    value.PreviewTexture, value.Id))
                 .Where(node => node != null)
                 .Cast<ReactorMenuNode>()
                 .ToArray();
@@ -3025,57 +3070,38 @@ namespace ALLIN1.ReactorBridge
                 ["quotedprice"] = value.Price,
             };
 
+        private static readonly Lazy<Dictionary<string, string>> WeaponArtwork =
+            new Lazy<Dictionary<string, string>>(() => ReadCatalogArtwork("weapons", 128));
+        private static readonly Lazy<Dictionary<string, string>> VehicleArtwork =
+            new Lazy<Dictionary<string, string>>(() => ReadCatalogArtwork("vehicles", 2048));
+        private static readonly Lazy<Dictionary<string, string>> GearArtwork =
+            new Lazy<Dictionary<string, string>>(() => ReadCatalogArtwork("gear", 128));
+
+        private static Dictionary<string, string> ReadCatalogArtwork(string category, int limit) =>
+            CatalogPreviewArtwork.Read(
+                Path.GetDirectoryName(GtaEditionDetector.SafeCurrentProcessExecutable()) ?? "", category, limit);
+
         private static ReactorMediaNode? CatalogArtworkNode(
             string cardId,
             string label,
             string category,
             string previewDictionary,
-            string previewTexture)
+            string previewTexture,
+            string? weaponId = null)
         {
-            if (string.IsNullOrWhiteSpace(previewDictionary) ||
-                !TryPortableArtworkName(previewTexture, out string fileName))
-                return null;
-            return new ReactorMediaNode(
-                cardId + "-preview",
-                label + " preview",
-                "assets/allin1/" + category + "/" + fileName +
-                    ".png?allin1-art=" + CatalogArtworkRevision,
-                "image",
-                label + " preview");
+            var images = category == "weapons" ? WeaponArtwork.Value :
+                category == "vehicles" ? VehicleArtwork.Value : GearArtwork.Value;
+            if (!images.TryGetValue(weaponId ?? previewTexture, out string path)) return null;
+            return new ReactorMediaNode(cardId + "-preview", label + " preview",
+                path, "image", label + " preview");
         }
-
-        private static bool TryPortableArtworkName(
-            string value, out string fileName)
-        {
-            fileName = (value ?? "").Trim().ToLowerInvariant();
-            if (fileName.Length == 0 || fileName.Length > 128 ||
-                !IsAsciiLetterOrDigit(fileName[0]))
-            {
-                fileName = "";
-                return false;
-            }
-            for (int index = 0; index < fileName.Length; index++)
-            {
-                char character = fileName[index];
-                if (!IsAsciiLetterOrDigit(character) &&
-                    character != '_' && character != '-' && character != '.')
-                {
-                    fileName = "";
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        private static bool IsAsciiLetterOrDigit(char character) =>
-            (character >= 'a' && character <= 'z') ||
-            (character >= '0' && character <= '9');
 
         private static string ListingDescription(Allin1VehicleListing value)
         {
-            string price = value.Price <= 0
+            bool catalogOnly = string.Equals(value.Storage, "catalog_only", StringComparison.OrdinalIgnoreCase);
+            string price = catalogOnly ? "CATALOG ONLY" : value.Price <= 0
                 ? "FREE" : "$" + value.Price.ToString("N0");
-            string ownership = value.Owned ? "Owned" : "Available";
+            string ownership = catalogOnly ? "Not offered yet" : value.Owned ? "Owned" : "Available";
             string favorite = value.Favorite ? " · Favorite" : "";
             string manufacturer = string.IsNullOrWhiteSpace(value.Manufacturer)
                 ? "Unknown" : value.Manufacturer;

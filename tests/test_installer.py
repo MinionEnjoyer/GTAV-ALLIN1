@@ -295,55 +295,8 @@ def test_deploy_script_rolls_back_both_binaries_on_partial_pair_failure(
     ).read_bytes() == b"old-contract"
 
 
-def test_deploy_reactor_catalog_artwork_uses_only_allowlisted_ui_root(
-    tmp_path, monkeypatch,
-):
-    dist = tmp_path / "dist"
-    vehicle_source = dist / "previews"
-    weapon_source = dist / "weapon_previews"
-    gear_source = dist / "equipment_previews"
-    vehicle_source.mkdir(parents=True)
-    weapon_source.mkdir()
-    gear_source.mkdir()
-    (vehicle_source / "barrage.png").write_bytes(b"vehicle-art")
-    (vehicle_source / "notes.txt").write_text("not artwork")
-    (weapon_source / "weapon_pistol.png").write_bytes(b"weapon-art")
-    (gear_source / "armor_heavy.png").write_bytes(b"gear-art")
-    game = _game(tmp_path)
-    ui = game / "plugins" / "ReactorV" / "ui"
-    ui.mkdir(parents=True)
-    (ui / "index.html").write_text("<html></html>")
-    owned = ui / "assets" / "allin1"
-    (owned / "vehicles").mkdir(parents=True)
-    (owned / "vehicles" / "retired.png").write_bytes(b"stale")
-    (owned / "vehicles" / "keep.txt").write_text("foreign")
-    monkeypatch.setattr(installer, "_SCRIPT_DIST_DIR", dist)
-
-    assert installer._deploy_reactor_catalog_artwork(game) == 3
-    assert (owned / "vehicles" / "barrage.png").read_bytes() == b"vehicle-art"
-    assert (
-        owned / "weapons" / "weapon_pistol.png"
-    ).read_bytes() == b"weapon-art"
-    assert (owned / "gear" / "armor_heavy.png").read_bytes() == b"gear-art"
-    assert not (owned / "vehicles" / "retired.png").exists()
-    assert (owned / "vehicles" / "keep.txt").read_text() == "foreign"
-    assert not (owned / "vehicles" / "notes.txt").exists()
-
-    # Repair is content-aware: unchanged assets are not rewritten.
-    assert installer._deploy_reactor_catalog_artwork(game) == 0
-
-
-def test_deploy_reactor_catalog_artwork_skips_uninstalled_reactor(
-    tmp_path, monkeypatch,
-):
-    dist = tmp_path / "dist"
-    (dist / "previews").mkdir(parents=True)
-    (dist / "previews" / "barrage.png").write_bytes(b"vehicle-art")
-    game = _game(tmp_path)
-    monkeypatch.setattr(installer, "_SCRIPT_DIST_DIR", dist)
-
-    assert installer._deploy_reactor_catalog_artwork(game) == 0
-    assert not (game / installer._REACTOR_ARTWORK_RELATIVE).exists()
+def test_legacy_catalog_artwork_copier_is_removed():
+    assert not hasattr(installer, "_deploy_reactor_catalog_artwork")
 
 
 def test_deploy_script_removes_retired_developer_artifacts(tmp_path, monkeypatch):
@@ -585,7 +538,7 @@ def test_uninstall_removes_owned_files_and_preserves_other_flags(tmp_path, monke
         scripts / "ReactorV" / "ALLIN1.ReactorBridge.contract.json"
     )
     reactor_contract.write_text("{}")
-    reactor_artwork = game / installer._REACTOR_ARTWORK_RELATIVE
+    reactor_artwork = game / "plugins/ReactorV/ui/assets/allin1/generated-vehicles"
     reactor_artwork.mkdir(parents=True)
     (reactor_artwork / "fixture.png").write_bytes(b"art")
     config = Config.default()
@@ -605,7 +558,7 @@ def test_uninstall_removes_owned_files_and_preserves_other_flags(tmp_path, monke
     assert not preload_manifest.exists()
     assert not reactor_bridge.exists()
     assert not reactor_contract.exists()
-    assert not reactor_artwork.exists()
+    assert (reactor_artwork / "fixture.png").read_bytes() == b"art"
     assert foreign_lemonui.read_bytes() == b"owned by another mod"
     assert (game / "commandline.txt").read_text() == "-windowed\n"
     assert not (game / "args.txt").exists()
@@ -614,7 +567,7 @@ def test_uninstall_removes_owned_files_and_preserves_other_flags(tmp_path, monke
     assert preload_manifest in removed
     assert reactor_bridge in removed
     assert reactor_contract in removed
-    assert reactor_artwork in removed
+    assert reactor_artwork not in removed
     unpatch.assert_called_once_with(game)
     remove_ytds.assert_called_once_with(game)
 
@@ -743,7 +696,6 @@ def test_install_orchestrates_steps_and_retires_legacy_previews(tmp_path, monkey
         installer, "refresh_garage_map_detection",
         Mock(return_value=SimpleNamespace(summary="map names verified")),
     )
-    monkeypatch.setattr(installer, "_deploy_preview_dlc", Mock(side_effect=RuntimeError("preview failed")))
     patch = Mock()
     monkeypatch.setattr(installer, "_patch_dlclist_rpf", patch)
     monkeypatch.setattr(installer.asi_loader, "ensure_nobattleye", Mock(return_value="set"))
@@ -756,7 +708,7 @@ def test_install_orchestrates_steps_and_retires_legacy_previews(tmp_path, monkey
     assert result.standalone_maps_deployed is True
     assert result.battleye_status == "set"
     assert not any('Preview texture injection failed' in warning for warning in result.warnings)
-    installer._deploy_preview_dlc.assert_not_called()
+    assert not hasattr(installer, "_deploy_preview_dlc")
     map_deploy.assert_called_once_with(game, result, progress=None)
     remove_map.assert_not_called()
     unpatch.assert_called_once_with(game, 'allin1_previews')
@@ -771,7 +723,7 @@ def test_install_uses_approved_optional_rpf_dependency(tmp_path, monkeypatch, re
         ("_clean_legacy_files", None), ("_deploy_script", True),
         ("_check_scripthookv", True), ("_check_shvdn", True),
         ("_remove_preview_pack", []), ("_remove_map_pack", []),
-        ("_unpatch_dlclist_rpf", None), ("_deploy_preview_dlc", True),
+        ("_unpatch_dlclist_rpf", None),
     ):
         monkeypatch.setattr(installer, name, Mock(return_value=value))
     check = Mock(side_effect=[False, True])
@@ -826,13 +778,11 @@ def test_reactor_install_uses_png_artwork_and_retires_preview_dlc(
     )
     consent = Mock(return_value=False)
     dependency = Mock()
-    deploy = Mock(return_value=True)
     remove_preview = Mock(return_value=[])
     unpatch = Mock(return_value=True)
     monkeypatch.setattr(
         installer, "install_recommended_rpf_loader", dependency,
     )
-    monkeypatch.setattr(installer, "_deploy_preview_dlc", deploy)
     monkeypatch.setattr(installer, "_remove_preview_pack", remove_preview)
     monkeypatch.setattr(installer, "_unpatch_dlclist_rpf", unpatch)
     monkeypatch.setattr(
@@ -848,7 +798,7 @@ def test_reactor_install_uses_png_artwork_and_retires_preview_dlc(
     else:
         consent.assert_called_once_with(game, False)
     dependency.assert_not_called()
-    deploy.assert_not_called()
+    assert not hasattr(installer, "_deploy_preview_dlc")
     remove_preview.assert_called_once_with(game)
     assert unpatch.call_args_list == [
         call(game, "allin1_maps"),
@@ -868,7 +818,7 @@ def test_optional_rpf_dependency_io_failure_does_not_block_repair(
         ("_clean_legacy_files", None), ("_deploy_script", True),
         ("_check_scripthookv", True), ("_check_shvdn", True),
         ("_remove_preview_pack", []), ("_remove_map_pack", []),
-        ("_unpatch_dlclist_rpf", None), ("_deploy_preview_dlc", True),
+        ("_unpatch_dlclist_rpf", None),
     ):
         monkeypatch.setattr(installer, name, Mock(return_value=value))
     monkeypatch.setattr(installer, "_check_openrpf", Mock(return_value=False))
@@ -902,7 +852,6 @@ def test_install_replaces_legacy_map_pack_with_metadata_bridge(
         ("_clean_legacy_files", None), ("_deploy_script", True),
         ("_check_scripthookv", True), ("_check_shvdn", True),
         ("_check_openrpf", True), ("_remove_preview_pack", []),
-        ("_deploy_preview_dlc", True),
     ):
         monkeypatch.setattr(installer, name, Mock(return_value=value))
     def replace_with_bridge(_game, _result, progress=None):
@@ -945,13 +894,11 @@ def test_install_retires_previews_even_when_old_config_enables_them(tmp_path, mo
         ("_remove_map_pack", []), ("_unpatch_dlclist_rpf", None),
     ):
         monkeypatch.setattr(installer, name, Mock(return_value=value))
-    deploy = Mock(return_value=True)
-    monkeypatch.setattr(installer, "_deploy_preview_dlc", deploy)
     monkeypatch.setattr(installer.asi_loader, "ensure_nobattleye", Mock(return_value="set"))
     progress = Mock()
     result = installer.install(config, Mock(), progress=progress)
     assert result.rpf_previews_deployed is False
-    deploy.assert_not_called()
+    assert not hasattr(installer, "_deploy_preview_dlc")
     percentages = [call.args[0] for call in progress.call_args_list]
     assert percentages == sorted(percentages)
     assert percentages[0] == 0 and percentages[-1] == 100

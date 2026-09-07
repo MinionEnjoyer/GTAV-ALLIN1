@@ -37,6 +37,9 @@ namespace ALLIN1
         private readonly List<string> _gearLostOnDeath = new List<string>();
         private DateTime _lastStorySaveWriteUtc;
         private DateTime _nextStorySavePollUtc;
+        private List<string> _deferredWeapons = new List<string>();
+        private int _weaponRestoreRetries;
+        private DateTime _nextWeaponRestoreUtc;
 
         public sealed class Inventory
         {
@@ -235,6 +238,7 @@ namespace ALLIN1
 
             if (Game.IsLoading)
             {
+                _deferredWeapons.Clear();
                 _restorePending = true;
                 _discardStagedAfterLoad = true;
                 _saveWasInProgress = false;
@@ -317,7 +321,10 @@ namespace ALLIN1
             _saveWasInProgress = saveInProgress;
 
             if (character == _lastCharacter && player.Handle == _lastPedHandle)
+            {
+                RetryDeferredWeapons(character);
                 return;
+            }
             _lastCharacter = character;
             _lastPedHandle = player.Handle;
             Apply(character);
@@ -416,8 +423,10 @@ namespace ALLIN1
                 player.Armor = 0;
         }
 
-        private static void Apply(string character)
+        private void Apply(string character)
         {
+            _deferredWeapons.Clear();
+            _weaponRestoreRetries = 0;
             if (!_state.TryGetValue(character, out Inventory inventory)) return;
             NormalizeInventory(inventory);
             bool hasSavedWeapons = inventory.weapons.Count > 0;
@@ -429,23 +438,17 @@ namespace ALLIN1
                 inventory.equipped_gear.Count == 0 && !hasSavedWeapons &&
                 !hasSavedCustomizations && !hasSavedSmoke) return;
             Ped ped = Game.Player.Character;
-            CleanupInvalidSavedWeapons(character, ped, inventory);
             var owned = new HashSet<string>(inventory.weapons ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+            RuntimeWeaponCatalog.Refresh();
+            WeaponRestoreResult restored = RestoreWeapons(ped, inventory, inventory.weapons);
+            _deferredWeapons = new List<string>(restored.Deferred.Keys);
+            _nextWeaponRestoreUtc = DateTime.UtcNow.AddSeconds(2);
+            // Preserve the existing managed-stock removal policy. Add-on grants
+            // come from saved ownership and the current receipt-authorized catalog.
             foreach (var entry in WeaponHashes)
             {
                 Hash hash = (Hash)entry.Value;
-                if (owned.Contains(entry.Key))
-                {
-                    int ammo = 9999;
-                    if (inventory.weapon_ammo.TryGetValue(entry.Key, out int savedAmmo))
-                        ammo = Math.Max(0, savedAmmo);
-                    ped.Weapons.Give((WeaponHash)(uint)hash, ammo, false, false);
-                    // GIVE_WEAPON_TO_PED may add to an already-present weapon. Set
-                    // the total explicitly so a save restore cannot duplicate ammo.
-                    Function.Call(Hash.SET_PED_AMMO, ped.Handle, hash, ammo);
-                    ApplyWeaponCustomization(ped, entry.Key, hash, inventory);
-                }
-                else if (inventory.managed)
+                if (!owned.Contains(entry.Key) && inventory.managed)
                     Function.Call(Hash.REMOVE_WEAPON_FROM_PED, ped.Handle, hash);
             }
             ApplySmokeInventory(ped, inventory);
@@ -478,8 +481,44 @@ namespace ALLIN1
             if (inventory.outfit?.managed ?? false) ApplyOutfit(ped, inventory.outfit);
             if (inventory.progress?.managed ?? false) ApplyProgress(character, inventory.progress);
             ClientLog.Info("Character", "loadout_applied", new Dictionary<string, object> {
-                { "character", character }, { "weapons", owned.Count },
+                { "character", character }, { "weapons", restored.Restored.Count },
+                { "saved_weapons", owned.Count }, { "deferred_weapons", restored.Deferred },
                 { "managed", inventory.managed }, { "gear", inventory.gear?.Count ?? 0 }
+            });
+        }
+
+        private static WeaponRestoreResult RestoreWeapons(Ped ped, Inventory inventory,
+            IEnumerable<string> candidates)
+        {
+            return WeaponLoadoutRestore.Restore(inventory, candidates, RuntimeWeaponCatalog.All,
+                weapon => Function.Call<bool>(Hash.IS_WEAPON_VALID, GetWeaponHash(weapon)),
+                (weapon, ammo) => {
+                    int hash = GetWeaponHash(weapon);
+                    Function.Call(Hash.GIVE_WEAPON_TO_PED, ped.Handle, hash, ammo, false, false);
+                    if (!Function.Call<bool>(Hash.HAS_PED_GOT_WEAPON, ped.Handle, hash, false))
+                        return false;
+                    // Restore exactly, even when GTA already supplied the weapon.
+                    Function.Call(Hash.SET_PED_AMMO, ped.Handle, hash, ammo);
+                    return true;
+                },
+                weapon => ApplyWeaponCustomization(ped, weapon, (Hash)GetWeaponHash(weapon), inventory));
+        }
+
+        private void RetryDeferredWeapons(string character)
+        {
+            if (_deferredWeapons.Count == 0 || _weaponRestoreRetries >= 5 ||
+                DateTime.UtcNow < _nextWeaponRestoreUtc) return;
+            if (!_state.TryGetValue(character, out Inventory inventory)) return;
+            _weaponRestoreRetries++;
+            _nextWeaponRestoreUtc = DateTime.UtcNow.AddSeconds(2);
+            RuntimeWeaponCatalog.Refresh();
+            WeaponRestoreResult result = RestoreWeapons(Game.Player.Character, inventory, _deferredWeapons);
+            _deferredWeapons = new List<string>(result.Deferred.Keys);
+            ClientLog.Info("Character", "loadout_restore_retry", new Dictionary<string, object> {
+                { "character", character }, { "attempt", _weaponRestoreRetries },
+                { "restored_weapons", result.Restored }, { "deferred_weapons", result.Deferred },
+                { "retry_exhausted", _weaponRestoreRetries >= 5 && _deferredWeapons.Count > 0 },
+                { "ownership_preserved", true }
             });
         }
 
@@ -1367,60 +1406,6 @@ namespace ALLIN1
             changed |= inventory.equipped_gear.RemoveAll(value => string.Equals(
                 value, item, StringComparison.OrdinalIgnoreCase)) > 0;
             return changed;
-        }
-
-        internal static List<string> RemoveInvalidWeaponsInMemory(
-            Inventory inventory, Func<string, bool> isValid)
-        {
-            var removed = new List<string>();
-            if (inventory == null || inventory.weapons == null ||
-                isValid == null) return removed;
-            foreach (string weapon in new List<string>(inventory.weapons))
-            {
-                bool valid = !string.IsNullOrWhiteSpace(weapon) &&
-                    isValid(weapon);
-                if (valid) continue;
-                inventory.weapons.RemoveAll(value => string.Equals(
-                    value, weapon, StringComparison.OrdinalIgnoreCase));
-                if (!string.IsNullOrEmpty(weapon))
-                {
-                    inventory.weapon_ammo?.Remove(weapon);
-                    inventory.weapon_customizations?.Remove(weapon);
-                }
-                string removedName = weapon ?? "";
-                if (!ContainsIgnoreCase(removed, removedName))
-                    removed.Add(removedName);
-            }
-            return removed;
-        }
-
-        private static void CleanupInvalidSavedWeapons(
-            string character, Ped ped, Inventory inventory)
-        {
-            List<string> removed = RemoveInvalidWeaponsInMemory(
-                inventory, weapon => Function.Call<bool>(
-                    Hash.IS_WEAPON_VALID, GetWeaponHash(weapon)));
-            if (removed.Count == 0) return;
-            foreach (string weapon in removed)
-            {
-                if (string.IsNullOrWhiteSpace(weapon)) continue;
-                Function.Call(Hash.REMOVE_WEAPON_FROM_PED,
-                    ped.Handle, GetWeaponHash(weapon));
-            }
-            StageStateLocked(character, "invalid_weapons_cleaned",
-                string.Join(",", removed));
-            ClientLog.Warn("Character", "invalid_managed_weapons_cleaned",
-                new Dictionary<string, object>
-                {
-                    { "character", character },
-                    { "count", removed.Count },
-                    { "weapons", string.Join(",", removed) },
-                    { "removed_from_runtime", true },
-                    { "persistence", "next_story_save" },
-                });
-            GTA.UI.Screen.ShowSubtitle(
-                $"~y~ALLIN1 removed {removed.Count} invalid weapon" +
-                (removed.Count == 1 ? "." : "s."), 3500);
         }
 
         private static void ApplySmokeInventory(Ped ped, Inventory inventory)

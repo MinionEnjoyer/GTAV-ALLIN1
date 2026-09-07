@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\reactor-bridge\CatalogPreviewArtwork.cs" Link="CatalogPreviewArtwork.cs" />
     <ProjectReference Include="..\ALLIN1.csproj" />
     <ProjectReference Include="..\reactor-bridge\ALLIN1.ReactorBridge.csproj"
                       ReferenceOutputAssembly="false" />

@@ -17,6 +17,31 @@ from tests.test_desktop_service import service, PROJECT
 from tests.test_extensions import _content_package
 
 
+@pytest.mark.parametrize('value', [None, 'weapons', True, {}, ['cars'], ['weapons', 'weapons'], [1], [{}]])
+def test_preview_category_contract_rejects_invalid_choices(value):
+    with pytest.raises(ValueError):
+        LauncherAPI.validate({'skip_preview_categories': value}, ['skip_preview_categories'])
+
+
+def test_preview_choices_available_to_cli_and_agents():
+    from allin1.launcher_api import schema
+    for action in ('launch', 'prepare_previews'):
+        fields = ACTION_FIELDS[action]
+        LauncherAPI.validate({'missing_previews_only': True}, fields)
+        assert schema(fields)['properties']['missing_previews_only']['type'] == 'boolean'
+        with pytest.raises(ValueError):
+            LauncherAPI.validate({'missing_previews_only': 'true'}, fields)
+        LauncherAPI.validate({'skip_preview_categories': ['weapons', 'gear'], 'skip_previews': False}, fields)
+        field = schema(fields)['properties']['skip_preview_categories']
+        assert field['items']['enum'] == ['weapons', 'vehicles', 'gear']
+        assert field['uniqueItems'] is True
+    LauncherAPI.validate({'quick_launch': True}, ACTION_FIELDS['launch'])
+    with pytest.raises(ValueError):
+        LauncherAPI.validate({'quick_launch': 'yes'}, ACTION_FIELDS['launch'])
+    with pytest.raises(ValueError):
+        LauncherAPI.validate({'quick_launch': True}, ACTION_FIELDS['prepare_previews'])
+
+
 def test_catalog_covers_every_desktop_action_and_fails_closed(monkeypatch):
     catalog = contract()
     assert {item["name"] for item in catalog["actions"]} == GAME_ACTIONS | LOCAL_ACTIONS

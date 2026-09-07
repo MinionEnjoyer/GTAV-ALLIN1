@@ -17,12 +17,18 @@ SOURCE_COMMIT = "ecf49a38a6361a29c0b2b9c97f365f149d3d8149"
 RELEASE = "v0.2.0-preview.2"
 
 
-def build(root: Path, output: Path) -> None:
+def build(root: Path, output: Path, *, development: bool = False) -> None:
     def run(*args: str, cwd: Path = root) -> str:
         return subprocess.check_output(args, cwd=cwd, text=True).strip()
 
-    if run("git", "rev-parse", "HEAD") != SOURCE_COMMIT or run("git", "status", "--porcelain", "--untracked-files=no"):
+    source_commit = run("git", "rev-parse", "HEAD")
+    if not development and (source_commit != SOURCE_COMMIT or run("git", "status", "--porcelain", "--untracked-files=no")):
         raise ValueError("Reactor source must be the clean pinned Preview 2 commit")
+    def source_digest():
+        files = sorted(p for p in (root / 'web/src').rglob('*') if p.is_file())
+        files += sorted(p for p in (root / 'web').iterdir() if p.is_file())
+        return hashlib.sha256(json.dumps({p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in files},sort_keys=True).encode()).hexdigest()
+    source_sha256 = source_digest()
     pnpm = shutil.which("pnpm")
     if not pnpm:
         raise ValueError("pnpm is required to build ALLIN1's browser UI")
@@ -48,7 +54,7 @@ def build(root: Path, output: Path) -> None:
         for package in packages:
             shutil.copyfile(Path(package["root"]) / "LICENSE", stage / (package["name"] + "-LICENSE.txt"))
         (stage / "THIRD_PARTY_NOTICES.txt").write_text(
-            "ALLIN1 presentation composition, built from GTAV-REACTOR-V " + SOURCE_COMMIT + ".\n"
+            "ALLIN1 presentation composition, built from GTAV-REACTOR-V " + source_commit + (" (local development candidate)" if development else "") + ".\n"
             "Original Reactor V code: MIT, copyright (c) 2026 MinionEnjoyer; see LICENSE.\n"
             "React, React DOM and Scheduler retain their included MIT notices.\n"
             "Bebas Neue and Oswald retain their SIL Open Font License notices in fonts/.\n"
@@ -61,7 +67,10 @@ def build(root: Path, output: Path) -> None:
                  for path in sorted(stage.rglob("*")) if path.is_file()}
         manifest = dict(schema_version=1, profile="allin1-composition", reactor_release=RELEASE,
                         source_repository="https://github.com/MinionEnjoyer/GTAV-REACTOR-V",
-                        source_commit=SOURCE_COMMIT, files=files)
+                        source_commit=source_commit, files=files)
+        if development:
+            manifest.update(development_build=True, source_sha256=source_sha256)
+        if source_digest() != source_sha256: raise ValueError('Reactor source changed during build')
         (stage / "allin1-ui.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         # Remove only previously generated files; refuse to clobber untracked extras.
         if output.exists():
@@ -81,5 +90,6 @@ def build(root: Path, output: Path) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reactor-root", type=Path, required=True)
+    parser.add_argument("--development", action="store_true", help="Local test composition only; records dirty-source identity, not a release build")
     options = parser.parse_args()
-    build(options.reactor_root.resolve(), Path(__file__).resolve().parents[1] / "data/reactor/allin1-ui")
+    build(options.reactor_root.resolve(), Path(__file__).resolve().parents[1] / "data/reactor/allin1-ui", development=options.development)

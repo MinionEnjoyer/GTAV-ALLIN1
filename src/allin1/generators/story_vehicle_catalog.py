@@ -113,7 +113,8 @@ def build_story_catalog(xml_text: str) -> dict[str, Any]:
         make_label = _text(item, "vehicleMakeName")
         vehicles.append({
             "model": model,
-            "name": _fallback_label(game_label),
+            "name": {"dune2": "Space Docker", "jb700": "JB 700",
+                     "ztype": "Z-Type", "entityxf": "Entity XF"}.get(model, _fallback_label(game_label)),
             "manufacturer": MAKE_LABELS.get(make_label, _fallback_label(make_label)),
             "category": category,
             "price": CLASS_PRICES[category],

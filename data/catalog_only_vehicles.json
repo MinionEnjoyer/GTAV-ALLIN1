@@ -1,0 +1,1750 @@
+{
+  "schema_version": 1,
+  "description": "Browse-only completion of the 935-model Rockstar inventory. No prices, traffic activation or delivery authority.",
+  "vehicles": [
+    {
+      "name": "Alpha",
+      "source_pack": "mpbusiness",
+      "manufacturer": "ALBANY",
+      "model": "alpha",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Army Trailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "armytanker",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Army Trailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "armytrailer",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Army Trailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "armytrailer2",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Avenger",
+      "source_pack": "mpchristmas2017",
+      "manufacturer": "MAMMOTH",
+      "model": "avenger2",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Avenger",
+      "source_pack": "mp2023_01",
+      "manufacturer": "MAMMOTH",
+      "model": "avenger3",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Avenger",
+      "source_pack": "mp2023_01",
+      "manufacturer": "MAMMOTH",
+      "model": "avenger4",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Baletrailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "baletrailer",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Barracks",
+      "source_pack": "mpheist",
+      "manufacturer": "",
+      "model": "barracks3",
+      "native_class": "MILITARY",
+      "category": "military"
+    },
+    {
+      "name": "Besra",
+      "source_pack": "mppilot",
+      "manufacturer": "WESTERN",
+      "model": "besra",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Bifta",
+      "source_pack": "mpbeach",
+      "manufacturer": "BF",
+      "model": "bifta",
+      "native_class": "OFF_ROAD",
+      "category": "offroad"
+    },
+    {
+      "name": "Blade",
+      "source_pack": "mphipster",
+      "manufacturer": "VAPID",
+      "model": "blade",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Atomic Blimp",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "blimp",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Xero Blimp",
+      "source_pack": "spupgrade",
+      "manufacturer": "",
+      "model": "blimp2",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Blimp",
+      "source_pack": "mpbattle",
+      "manufacturer": "",
+      "model": "blimp3",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Blista Compact",
+      "source_pack": "spupgrade",
+      "manufacturer": "DINKA",
+      "model": "blista2",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Go Go Monkey Blista",
+      "source_pack": "spupgrade",
+      "manufacturer": "DINKA",
+      "model": "blista3",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Boat Trailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "boattrailer",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Boat Trailer",
+      "source_pack": "mp2023_02",
+      "manufacturer": "",
+      "model": "boattrailer2",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Boat Trailer",
+      "source_pack": "mp2023_02",
+      "manufacturer": "",
+      "model": "boattrailer3",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Armored Boxville",
+      "source_pack": "mpimportexport",
+      "manufacturer": "",
+      "model": "boxville5",
+      "native_class": "VAN",
+      "category": "vans"
+    },
+    {
+      "name": "Brickade",
+      "source_pack": "mpexecutive",
+      "manufacturer": "MTL",
+      "model": "brickade",
+      "native_class": "SERVICE",
+      "category": "service"
+    },
+    {
+      "name": "Brickade 6x6",
+      "source_pack": "mpchristmas3",
+      "manufacturer": "MTL",
+      "model": "brickade2",
+      "native_class": "SERVICE",
+      "category": "service"
+    },
+    {
+      "name": "Brigham",
+      "source_pack": "mp2023_01",
+      "manufacturer": "ALBANY",
+      "model": "brigham",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Broadway",
+      "source_pack": "mpchristmas3",
+      "manufacturer": "CLASSIQUE",
+      "model": "broadway",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Future Shock Bruiser",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "BENEFAC",
+      "model": "bruiser2",
+      "native_class": "OFF_ROAD",
+      "category": "offroad"
+    },
+    {
+      "name": "Nightmare Bruiser",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "BENEFAC",
+      "model": "bruiser3",
+      "native_class": "OFF_ROAD",
+      "category": "offroad"
+    },
+    {
+      "name": "Future Shock Brutus",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "DECLASSE",
+      "model": "brutus2",
+      "native_class": "OFF_ROAD",
+      "category": "offroad"
+    },
+    {
+      "name": "Nightmare Brutus",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "DECLASSE",
+      "model": "brutus3",
+      "native_class": "OFF_ROAD",
+      "category": "offroad"
+    },
+    {
+      "name": "Roosevelt",
+      "source_pack": "mpvalentines",
+      "manufacturer": "ALBANY",
+      "model": "btype",
+      "native_class": "SPORT_CLASSIC",
+      "category": "sportsclassics"
+    },
+    {
+      "name": "Fränken Stange",
+      "source_pack": "mphalloween",
+      "manufacturer": "ALBANY",
+      "model": "btype2",
+      "native_class": "SPORT_CLASSIC",
+      "category": "sportsclassics"
+    },
+    {
+      "name": "Roosevelt Valor",
+      "source_pack": "mpvalentines2",
+      "manufacturer": "ALBANY",
+      "model": "btype3",
+      "native_class": "SPORT_CLASSIC",
+      "category": "sportsclassics"
+    },
+    {
+      "name": "Sprunk Buffalo",
+      "source_pack": "spupgrade",
+      "manufacturer": "BRAVADO",
+      "model": "buffalo3",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Cable Car",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "cablecar",
+      "native_class": "RAIL",
+      "category": "special"
+    },
+    {
+      "name": "Caddy",
+      "source_pack": "mpgunrunning",
+      "manufacturer": "",
+      "model": "caddy3",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Calico GTF",
+      "source_pack": "mptuner",
+      "manufacturer": "KARIN",
+      "model": "calico",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Cargobob",
+      "source_pack": "mpapartment",
+      "manufacturer": "",
+      "model": "cargobob4",
+      "native_class": "HELICOPTER",
+      "category": "helicopters"
+    },
+    {
+      "name": "Cargo Plane",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "cargoplane",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Cargo Plane",
+      "source_pack": "mpchristmas3",
+      "manufacturer": "",
+      "model": "cargoplane2",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Apocalypse Cerberus",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "MTL",
+      "model": "cerberus",
+      "native_class": "COMMERCIAL",
+      "category": "industrial"
+    },
+    {
+      "name": "Future Shock Cerberus",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "MTL",
+      "model": "cerberus2",
+      "native_class": "COMMERCIAL",
+      "category": "industrial"
+    },
+    {
+      "name": "Nightmare Cerberus",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "MTL",
+      "model": "cerberus3",
+      "native_class": "COMMERCIAL",
+      "category": "industrial"
+    },
+    {
+      "name": "Cheburek",
+      "source_pack": "mpassault",
+      "manufacturer": "RUNE",
+      "model": "cheburek",
+      "native_class": "SPORT_CLASSIC",
+      "category": "sportsclassics"
+    },
+    {
+      "name": "Coquette Classic",
+      "source_pack": "mppilot",
+      "manufacturer": "INVERTO",
+      "model": "coquette2",
+      "native_class": "SPORT_CLASSIC",
+      "category": "sportsclassics"
+    },
+    {
+      "name": "Cuban 800",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "cuban800",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Apocalypse Deathbike",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "WESTERN",
+      "model": "deathbike",
+      "native_class": "MOTORCYCLE",
+      "category": "motorcycles"
+    },
+    {
+      "name": "Future Shock Deathbike",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "WESTERN",
+      "model": "deathbike2",
+      "native_class": "MOTORCYCLE",
+      "category": "motorcycles"
+    },
+    {
+      "name": "Nightmare Deathbike",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "WESTERN",
+      "model": "deathbike3",
+      "native_class": "MOTORCYCLE",
+      "category": "motorcycles"
+    },
+    {
+      "name": "Dinghy",
+      "source_pack": "mpheist",
+      "manufacturer": "NAGASAKI",
+      "model": "dinghy3",
+      "native_class": "BOAT",
+      "category": "boats"
+    },
+    {
+      "name": "Dinghy",
+      "source_pack": "mpapartment",
+      "manufacturer": "NAGASAKI",
+      "model": "dinghy4",
+      "native_class": "BOAT",
+      "category": "boats"
+    },
+    {
+      "name": "DOCKTRAILER",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "docktrailer",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Dodo",
+      "source_pack": "spupgrade",
+      "manufacturer": "MAMMOTH",
+      "model": "dodo",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Pisswasser Dominator",
+      "source_pack": "spupgrade",
+      "manufacturer": "VAPID",
+      "model": "dominator2",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Apocalypse Dominator",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "VAPID",
+      "model": "dominator4",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Future Shock Dominator",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "VAPID",
+      "model": "dominator5",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Nightmare Dominator",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "VAPID",
+      "model": "dominator6",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Chavos V6",
+      "source_pack": "mp2025_01",
+      "manufacturer": "DINKA",
+      "model": "driftchavosv6",
+      "native_class": "SEDAN",
+      "category": "sedans"
+    },
+    {
+      "name": "Cheburek",
+      "source_pack": "mp2024_02",
+      "manufacturer": "RUNE",
+      "model": "driftcheburek",
+      "native_class": "SPORT_CLASSIC",
+      "category": "sportsclassics"
+    },
+    {
+      "name": "DRIFTCOQUE",
+      "source_pack": "mp2026_01",
+      "manufacturer": "INVERTO",
+      "model": "driftcoquette",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Cypher",
+      "source_pack": "mp2024_01",
+      "manufacturer": "UBERMACHT",
+      "model": "driftcypher",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Dominator FX",
+      "source_pack": "mp2025_01",
+      "manufacturer": "VAPID",
+      "model": "driftdominator10",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "DRIFTDOM8",
+      "source_pack": "mp2026_01",
+      "manufacturer": "VAPID",
+      "model": "driftdominator8",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Dominator GT",
+      "source_pack": "mp2025_02",
+      "manufacturer": "VAPID",
+      "model": "driftdominator9",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "DRIFTELEGY",
+      "source_pack": "mp2026_01",
+      "manufacturer": "ANNIS",
+      "model": "driftelegy",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Euros",
+      "source_pack": "mp2023_02",
+      "manufacturer": "ANNIS",
+      "model": "drifteuros",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "FR36",
+      "source_pack": "mp2023_02",
+      "manufacturer": "FATHOM",
+      "model": "driftfr36",
+      "native_class": "COUPE",
+      "category": "coupes"
+    },
+    {
+      "name": "Futo GTX",
+      "source_pack": "mp2023_02",
+      "manufacturer": "KARIN",
+      "model": "driftfuto",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Futo",
+      "source_pack": "mp2024_02",
+      "manufacturer": "KARIN",
+      "model": "driftfuto2",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Gauntlet Hellfire",
+      "source_pack": "mp2025_01",
+      "manufacturer": "BRAVADO",
+      "model": "driftgauntlet4",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Hardy",
+      "source_pack": "mp2025_01",
+      "manufacturer": "ANNIS",
+      "model": "drifthardy",
+      "native_class": "SEDAN",
+      "category": "sedans"
+    },
+    {
+      "name": "Jester RR",
+      "source_pack": "mp2023_02",
+      "manufacturer": "DINKA",
+      "model": "driftjester",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Jester Classic",
+      "source_pack": "mp2024_02",
+      "manufacturer": "DINKA",
+      "model": "driftjester3",
+      "native_class": "SPORT_CLASSIC",
+      "category": "sportsclassics"
+    },
+    {
+      "name": "Keitora",
+      "source_pack": "mp2025_02",
+      "manufacturer": "SHITZU",
+      "model": "driftkeitora",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Drift Walton L35",
+      "source_pack": "mp2025_01",
+      "manufacturer": "DECLASSE",
+      "model": "driftl352",
+      "native_class": "OFF_ROAD",
+      "category": "offroad"
+    },
+    {
+      "name": "Nebula Turbo",
+      "source_pack": "mp2024_01",
+      "manufacturer": "VULCAR",
+      "model": "driftnebula",
+      "native_class": "SPORT_CLASSIC",
+      "category": "sportsclassics"
+    },
+    {
+      "name": "Remus",
+      "source_pack": "mp2023_02",
+      "manufacturer": "ANNIS",
+      "model": "driftremus",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "RT3000",
+      "source_pack": "mp2025_02",
+      "manufacturer": "DINKA",
+      "model": "driftrt3000",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Sentinel Classic Widebody",
+      "source_pack": "mp2024_01",
+      "manufacturer": "UBERMACH",
+      "model": "driftsentinel",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Sentinel XS",
+      "source_pack": "mp2025_02",
+      "manufacturer": "UBERMACH",
+      "model": "driftsentinel2",
+      "native_class": "COUPE",
+      "category": "coupes"
+    },
+    {
+      "name": "Drift Tampa",
+      "source_pack": "mp2023_02",
+      "manufacturer": "DECLASSE",
+      "model": "drifttampa",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Vorschlaghammer",
+      "source_pack": "mp2024_01",
+      "manufacturer": "BENEFACTOR",
+      "model": "driftvorschlag",
+      "native_class": "SEDAN",
+      "category": "sedans"
+    },
+    {
+      "name": "Drift Yosemite",
+      "source_pack": "mp2023_02",
+      "manufacturer": "DECLASSE",
+      "model": "driftyosemite",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "ZR350",
+      "source_pack": "mp2023_02",
+      "manufacturer": "ANNIS",
+      "model": "driftzr350",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Dubsta 6x6",
+      "source_pack": "mphipster",
+      "manufacturer": "BENEFAC",
+      "model": "dubsta3",
+      "native_class": "OFF_ROAD",
+      "category": "offroad"
+    },
+    {
+      "name": "Dukes",
+      "source_pack": "spupgrade",
+      "manufacturer": "IMPONTE",
+      "model": "dukes",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Duke O'Death",
+      "source_pack": "spupgrade",
+      "manufacturer": "IMPONTE",
+      "model": "dukes2",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Ramp Buggy",
+      "source_pack": "mpimportexport",
+      "manufacturer": "",
+      "model": "dune4",
+      "native_class": "OFF_ROAD",
+      "category": "offroad"
+    },
+    {
+      "name": "Duster",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "duster",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Dynasty",
+      "source_pack": "mpvinewood",
+      "manufacturer": "WEENY",
+      "model": "dynasty",
+      "native_class": "SPORT_CLASSIC",
+      "category": "sportsclassics"
+    },
+    {
+      "name": "Eudora",
+      "source_pack": "mpchristmas3",
+      "manufacturer": "WILLARD",
+      "model": "eudora",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Fagaloa",
+      "source_pack": "mpassault",
+      "manufacturer": "VULCAR",
+      "model": "fagaloa",
+      "native_class": "SPORT_CLASSIC",
+      "category": "sportsclassics"
+    },
+    {
+      "name": "Freight Train",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "freight",
+      "native_class": "RAIL",
+      "category": "special"
+    },
+    {
+      "name": "Freight Train",
+      "source_pack": "mp2023_02",
+      "manufacturer": "",
+      "model": "freight2",
+      "native_class": "RAIL",
+      "category": "special"
+    },
+    {
+      "name": "Freight Train",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "freightcar",
+      "native_class": "RAIL",
+      "category": "special"
+    },
+    {
+      "name": "Freight Train",
+      "source_pack": "mptuner",
+      "manufacturer": "",
+      "model": "freightcar2",
+      "native_class": "RAIL",
+      "category": "special"
+    },
+    {
+      "name": "Freight Train",
+      "source_pack": "mp2024_02",
+      "manufacturer": "",
+      "model": "freightcar3",
+      "native_class": "RAIL",
+      "category": "special"
+    },
+    {
+      "name": "Freight Train",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "freightcont1",
+      "native_class": "RAIL",
+      "category": "special"
+    },
+    {
+      "name": "Freight Train",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "freightcont2",
+      "native_class": "RAIL",
+      "category": "special"
+    },
+    {
+      "name": "Freight Train",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "freightgrain",
+      "native_class": "RAIL",
+      "category": "special"
+    },
+    {
+      "name": "FREIGHTTRAILER",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "freighttrailer",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Furore GT",
+      "source_pack": "mplts",
+      "manufacturer": "LAMPADA",
+      "model": "furoregt",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Redwood Gauntlet",
+      "source_pack": "spupgrade",
+      "manufacturer": "BRAVADO",
+      "model": "gauntlet2",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Gang Burrito",
+      "source_pack": "mpheist",
+      "manufacturer": "DECLASSE",
+      "model": "gburrito2",
+      "native_class": "VAN",
+      "category": "vans"
+    },
+    {
+      "name": "Glendale",
+      "source_pack": "mphipster",
+      "manufacturer": "BENEFAC",
+      "model": "glendale",
+      "native_class": "SEDAN",
+      "category": "sedans"
+    },
+    {
+      "name": "Graintrailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "graintrailer",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Greenwood",
+      "source_pack": "mpsum2",
+      "manufacturer": "BRAVADO",
+      "model": "greenwood",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Hakuchou",
+      "source_pack": "mplts",
+      "manufacturer": "SHITZU",
+      "model": "hakuchou",
+      "native_class": "MOTORCYCLE",
+      "category": "motorcycles"
+    },
+    {
+      "name": "Huntley S",
+      "source_pack": "mpbusiness2",
+      "manufacturer": "ENUS",
+      "model": "huntley",
+      "native_class": "SUV",
+      "category": "suvs"
+    },
+    {
+      "name": "Weaponized Ignus",
+      "source_pack": "mpg9ec",
+      "manufacturer": "PEGASSI",
+      "model": "ignus2",
+      "native_class": "SUPER",
+      "category": "super"
+    },
+    {
+      "name": "Apocalypse Impaler",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "DECLASSE",
+      "model": "impaler2",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Future Shock Impaler",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "DECLASSE",
+      "model": "impaler3",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Nightmare Impaler",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "DECLASSE",
+      "model": "impaler4",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Future Shock Imperator",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "VAPID",
+      "model": "imperator2",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Nightmare Imperator",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "VAPID",
+      "model": "imperator3",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Innovation",
+      "source_pack": "mplts",
+      "manufacturer": "LCC",
+      "model": "innovation",
+      "native_class": "MOTORCYCLE",
+      "category": "motorcycles"
+    },
+    {
+      "name": "Insurgent",
+      "source_pack": "mpheist",
+      "manufacturer": "HVY",
+      "model": "insurgent2",
+      "native_class": "OFF_ROAD",
+      "category": "offroad"
+    },
+    {
+      "name": "Apocalypse Issi",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "WEENY",
+      "model": "issi4",
+      "native_class": "COMPACT",
+      "category": "compacts"
+    },
+    {
+      "name": "Future Shock Issi",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "WEENY",
+      "model": "issi5",
+      "native_class": "COMPACT",
+      "category": "compacts"
+    },
+    {
+      "name": "Nightmare Issi",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "WEENY",
+      "model": "issi6",
+      "native_class": "COMPACT",
+      "category": "compacts"
+    },
+    {
+      "name": "Jester",
+      "source_pack": "mpbusiness",
+      "manufacturer": "DINKA",
+      "model": "jester",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Jester (Racecar)",
+      "source_pack": "mpchristmas2",
+      "manufacturer": "DINKA",
+      "model": "jester2",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Jet",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "jet",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Kalahari",
+      "source_pack": "mpbeach",
+      "manufacturer": "CANIS",
+      "model": "kalahari",
+      "native_class": "OFF_ROAD",
+      "category": "offroad"
+    },
+    {
+      "name": "Kosatka",
+      "source_pack": "mpheist4",
+      "manufacturer": "RUNE",
+      "model": "kosatka",
+      "native_class": "BOAT",
+      "category": "boats"
+    },
+    {
+      "name": "P-996 LAZER",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "lazer",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Lurcher",
+      "source_pack": "mphalloween",
+      "manufacturer": "ALBANY",
+      "model": "lurcher",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Luxor",
+      "source_pack": "base",
+      "manufacturer": "BUCKING",
+      "model": "luxor",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Mammatus",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "mammatus",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Marshall",
+      "source_pack": "spupgrade",
+      "manufacturer": "CHEVAL",
+      "model": "marshall",
+      "native_class": "OFF_ROAD",
+      "category": "offroad"
+    },
+    {
+      "name": "Massacro",
+      "source_pack": "mpbusiness2",
+      "manufacturer": "DEWBAUCH",
+      "model": "massacro",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Massacro (Racecar)",
+      "source_pack": "mpchristmas2",
+      "manufacturer": "DEWBAUCH",
+      "model": "massacro2",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Freight Train",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "metrotrain",
+      "native_class": "RAIL",
+      "category": "special"
+    },
+    {
+      "name": "Miljet",
+      "source_pack": "mppilot",
+      "manufacturer": "BUCKING",
+      "model": "miljet",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Invade and Persuade Tank",
+      "source_pack": "mpheist3",
+      "manufacturer": "",
+      "model": "minitank",
+      "native_class": "MILITARY",
+      "category": "military"
+    },
+    {
+      "name": "Monster",
+      "source_pack": "mpindependence",
+      "manufacturer": "VAPID",
+      "model": "monster",
+      "native_class": "OFF_ROAD",
+      "category": "offroad"
+    },
+    {
+      "name": "Future Shock Sasquatch",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "BRAVADO",
+      "model": "monster4",
+      "native_class": "OFF_ROAD",
+      "category": "offroad"
+    },
+    {
+      "name": "Nightmare Sasquatch",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "BRAVADO",
+      "model": "monster5",
+      "native_class": "OFF_ROAD",
+      "category": "offroad"
+    },
+    {
+      "name": "Mule",
+      "source_pack": "mpsecurity",
+      "manufacturer": "MAIBATSU",
+      "model": "mule5",
+      "native_class": "COMMERCIAL",
+      "category": "industrial"
+    },
+    {
+      "name": "Panto",
+      "source_pack": "mphipster",
+      "manufacturer": "BENEFAC",
+      "model": "panto",
+      "native_class": "COMPACT",
+      "category": "compacts"
+    },
+    {
+      "name": "Paradise",
+      "source_pack": "mpbeach",
+      "manufacturer": "BRAVADO",
+      "model": "paradise",
+      "native_class": "VAN",
+      "category": "vans"
+    },
+    {
+      "name": "Patriot Stretch",
+      "source_pack": "mpbattle",
+      "manufacturer": "MAMMOTH",
+      "model": "patriot2",
+      "native_class": "SUV",
+      "category": "suvs"
+    },
+    {
+      "name": "Peyote Custom",
+      "source_pack": "mpsum",
+      "manufacturer": "VAPID",
+      "model": "peyote3",
+      "native_class": "SPORT_CLASSIC",
+      "category": "sportsclassics"
+    },
+    {
+      "name": "Phantom",
+      "source_pack": "mp2023_02",
+      "manufacturer": "JOBUILT",
+      "model": "phantom4",
+      "native_class": "COMMERCIAL",
+      "category": "industrial"
+    },
+    {
+      "name": "Pigalle",
+      "source_pack": "mphipster",
+      "manufacturer": "LAMPADA",
+      "model": "pigalle",
+      "native_class": "SPORT_CLASSIC",
+      "category": "sportsclassics"
+    },
+    {
+      "name": "proptrailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "proptrailer",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Trailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "raketrailer",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Rat Bike",
+      "source_pack": "mpbiker",
+      "manufacturer": "WESTERN",
+      "model": "ratbike",
+      "native_class": "MOTORCYCLE",
+      "category": "motorcycles"
+    },
+    {
+      "name": "Rat-Truck",
+      "source_pack": "mpchristmas2",
+      "manufacturer": "BRAVADO",
+      "model": "ratloader2",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "RC Bandito",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "",
+      "model": "rcbandito",
+      "native_class": "OFF_ROAD",
+      "category": "offroad"
+    },
+    {
+      "name": "Retinue Mk II",
+      "source_pack": "mpheist3",
+      "manufacturer": "VAPID",
+      "model": "retinue2",
+      "native_class": "SPORT_CLASSIC",
+      "category": "sportsclassics"
+    },
+    {
+      "name": "Rhapsody",
+      "source_pack": "mphipster",
+      "manufacturer": "DECLASSE",
+      "model": "rhapsody",
+      "native_class": "COMPACT",
+      "category": "compacts"
+    },
+    {
+      "name": "Ruiner",
+      "source_pack": "mpimportexport",
+      "manufacturer": "IMPONTE",
+      "model": "ruiner3",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Sanctus",
+      "source_pack": "mpbiker",
+      "manufacturer": "LCC",
+      "model": "sanctus",
+      "native_class": "MOTORCYCLE",
+      "category": "motorcycles"
+    },
+    {
+      "name": "Future Shock Scarab",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "HVY",
+      "model": "scarab2",
+      "native_class": "MILITARY",
+      "category": "military"
+    },
+    {
+      "name": "Nightmare Scarab",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "HVY",
+      "model": "scarab3",
+      "native_class": "MILITARY",
+      "category": "military"
+    },
+    {
+      "name": "Seashark",
+      "source_pack": "mpapartment",
+      "manufacturer": "SPEEDOPH",
+      "model": "seashark3",
+      "native_class": "BOAT",
+      "category": "boats"
+    },
+    {
+      "name": "Sea Sparrow",
+      "source_pack": "mpassault",
+      "manufacturer": "",
+      "model": "seasparrow",
+      "native_class": "HELICOPTER",
+      "category": "helicopters"
+    },
+    {
+      "name": "Sparrow",
+      "source_pack": "mpheist4",
+      "manufacturer": "",
+      "model": "seasparrow2",
+      "native_class": "HELICOPTER",
+      "category": "helicopters"
+    },
+    {
+      "name": "Sparrow",
+      "source_pack": "mpheist4",
+      "manufacturer": "",
+      "model": "seasparrow3",
+      "native_class": "HELICOPTER",
+      "category": "helicopters"
+    },
+    {
+      "name": "Shamal",
+      "source_pack": "base",
+      "manufacturer": "BUCKING",
+      "model": "shamal",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Slamvan",
+      "source_pack": "mpchristmas2",
+      "manufacturer": "VAPID",
+      "model": "slamvan",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Slamvan Custom",
+      "source_pack": "mplowrider2",
+      "manufacturer": "VAPID",
+      "model": "slamvan3",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Apocalypse Slamvan",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "VAPID",
+      "model": "slamvan4",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Future Shock Slamvan",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "VAPID",
+      "model": "slamvan5",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Nightmare Slamvan",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "VAPID",
+      "model": "slamvan6",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Sovereign",
+      "source_pack": "mpindependence",
+      "manufacturer": "WESTERN",
+      "model": "sovereign",
+      "native_class": "MOTORCYCLE",
+      "category": "motorcycles"
+    },
+    {
+      "name": "Speeder",
+      "source_pack": "mpbeach",
+      "manufacturer": "PEGASSI",
+      "model": "speeder",
+      "native_class": "BOAT",
+      "category": "boats"
+    },
+    {
+      "name": "Speeder",
+      "source_pack": "mpapartment",
+      "manufacturer": "PEGASSI",
+      "model": "speeder2",
+      "native_class": "BOAT",
+      "category": "boats"
+    },
+    {
+      "name": "Speedo Custom",
+      "source_pack": "mp2023_01",
+      "manufacturer": "VAPID",
+      "model": "speedo5",
+      "native_class": "VAN",
+      "category": "vans"
+    },
+    {
+      "name": "Stallion",
+      "source_pack": "spupgrade",
+      "manufacturer": "DECLASSE",
+      "model": "stalion",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Burger Shot Stallion",
+      "source_pack": "spupgrade",
+      "manufacturer": "DECLASSE",
+      "model": "stalion2",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Mallard",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "stunt",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Submersible",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "submersible",
+      "native_class": "BOAT",
+      "category": "boats"
+    },
+    {
+      "name": "Kraken",
+      "source_pack": "spupgrade",
+      "manufacturer": "",
+      "model": "submersible2",
+      "native_class": "BOAT",
+      "category": "boats"
+    },
+    {
+      "name": "Swift",
+      "source_pack": "mppilot",
+      "manufacturer": "BUCKING",
+      "model": "swift",
+      "native_class": "HELICOPTER",
+      "category": "helicopters"
+    },
+    {
+      "name": "Trailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "tanker",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "TANKER",
+      "source_pack": "mpheist",
+      "manufacturer": "",
+      "model": "tanker2",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Freight Train",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "tankercar",
+      "native_class": "RAIL",
+      "category": "special"
+    },
+    {
+      "name": "Technical Aqua",
+      "source_pack": "mpimportexport",
+      "manufacturer": "KARIN",
+      "model": "technical2",
+      "native_class": "OFF_ROAD",
+      "category": "offroad"
+    },
+    {
+      "name": "Thrust",
+      "source_pack": "mpbusiness2",
+      "manufacturer": "DINKA",
+      "model": "thrust",
+      "native_class": "MOTORCYCLE",
+      "category": "motorcycles"
+    },
+    {
+      "name": "Titan",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "titan",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Tornado Custom",
+      "source_pack": "mplowrider2",
+      "manufacturer": "DECLASSE",
+      "model": "tornado5",
+      "native_class": "SPORT_CLASSIC",
+      "category": "sportsclassics"
+    },
+    {
+      "name": "Tornado Rat Rod",
+      "source_pack": "mpbiker",
+      "manufacturer": "DECLASSE",
+      "model": "tornado6",
+      "native_class": "SPORT_CLASSIC",
+      "category": "sportsclassics"
+    },
+    {
+      "name": "Toro",
+      "source_pack": "mpapartment",
+      "manufacturer": "LAMPADA",
+      "model": "toro2",
+      "native_class": "BOAT",
+      "category": "boats"
+    },
+    {
+      "name": "Tow Truck",
+      "source_pack": "mp2023_02",
+      "manufacturer": "",
+      "model": "towtruck3",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Trailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "tr2",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Trailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "tr3",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Trailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "tr4",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Mobile Operations Center",
+      "source_pack": "mpgunrunning",
+      "manufacturer": "",
+      "model": "trailerlarge",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Trailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "trailerlogs",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Trailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "trailers",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Trailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "trailers2",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Trailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "trailers3",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Trailer",
+      "source_pack": "mpgunrunning",
+      "manufacturer": "",
+      "model": "trailers4",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Trailer",
+      "source_pack": "mp2023_02",
+      "manufacturer": "",
+      "model": "trailers5",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Trailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "trailersmall",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Anti-Aircraft Trailer",
+      "source_pack": "mpgunrunning",
+      "manufacturer": "VOMFEUER",
+      "model": "trailersmall2",
+      "native_class": "MILITARY",
+      "category": "military"
+    },
+    {
+      "name": "Trashmaster",
+      "source_pack": "mpheist",
+      "manufacturer": "",
+      "model": "trash2",
+      "native_class": "SERVICE",
+      "category": "service"
+    },
+    {
+      "name": "Trailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "trflat",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "TRAILER",
+      "source_pack": "mp2026_01",
+      "manufacturer": "",
+      "model": "trflat2",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Tropic",
+      "source_pack": "mpapartment",
+      "manufacturer": "SHITZU",
+      "model": "tropic2",
+      "native_class": "BOAT",
+      "category": "boats"
+    },
+    {
+      "name": "Turismo R",
+      "source_pack": "mpbusiness",
+      "manufacturer": "GROTTI",
+      "model": "turismor",
+      "native_class": "SUPER",
+      "category": "super"
+    },
+    {
+      "name": "Trailer",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "tvtrailer",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Trailer",
+      "source_pack": "mp2023_02",
+      "manufacturer": "",
+      "model": "tvtrailer2",
+      "native_class": "UTILITY",
+      "category": "service"
+    },
+    {
+      "name": "Valkyrie MOD.0",
+      "source_pack": "mpapartment",
+      "manufacturer": "",
+      "model": "valkyrie2",
+      "native_class": "HELICOPTER",
+      "category": "helicopters"
+    },
+    {
+      "name": "Velum",
+      "source_pack": "base",
+      "manufacturer": "",
+      "model": "velum",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Vestra",
+      "source_pack": "mpbusiness",
+      "manufacturer": "BUCKING",
+      "model": "vestra",
+      "native_class": "PLANE",
+      "category": "planes"
+    },
+    {
+      "name": "Veto Classic",
+      "source_pack": "mpheist4",
+      "manufacturer": "DINKA",
+      "model": "veto",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Veto Modern",
+      "source_pack": "mpheist4",
+      "manufacturer": "DINKA",
+      "model": "veto2",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Virgo",
+      "source_pack": "mpluxe",
+      "manufacturer": "ALBANY",
+      "model": "virgo",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Voodoo Custom",
+      "source_pack": "mplowrider",
+      "manufacturer": "DECLASSE",
+      "model": "voodoo",
+      "native_class": "MUSCLE",
+      "category": "muscle"
+    },
+    {
+      "name": "Warrener",
+      "source_pack": "mphipster",
+      "manufacturer": "VULCAR",
+      "model": "warrener",
+      "native_class": "SEDAN",
+      "category": "sedans"
+    },
+    {
+      "name": "XLS",
+      "source_pack": "mpexecutive",
+      "manufacturer": "BENEFAC",
+      "model": "xls",
+      "native_class": "SUV",
+      "category": "suvs"
+    },
+    {
+      "name": "Youga Custom",
+      "source_pack": "mpsecurity",
+      "manufacturer": "VAPID",
+      "model": "youga4",
+      "native_class": "VAN",
+      "category": "vans"
+    },
+    {
+      "name": "Zentorno",
+      "source_pack": "mpbusiness2",
+      "manufacturer": "PEGASSI",
+      "model": "zentorno",
+      "native_class": "SUPER",
+      "category": "super"
+    },
+    {
+      "name": "Apocalypse ZR380",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "ANNIS",
+      "model": "zr380",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Future Shock ZR380",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "ANNIS",
+      "model": "zr3802",
+      "native_class": "SPORT",
+      "category": "sports"
+    },
+    {
+      "name": "Nightmare ZR380",
+      "source_pack": "mpchristmas2018",
+      "manufacturer": "ANNIS",
+      "model": "zr3803",
+      "native_class": "SPORT",
+      "category": "sports"
+    }
+  ]
+}

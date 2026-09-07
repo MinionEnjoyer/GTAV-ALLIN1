@@ -234,12 +234,11 @@ namespace RealisticSuppressors
             46, // ShootPedSuppressed
         };
 
-        private static readonly int MichaelHash =
-            Game.GenerateHash("player_zero");
-        private static readonly int FranklinHash =
-            Game.GenerateHash("player_one");
-        private static readonly int TrevorHash =
-            Game.GenerateHash("player_two");
+        // These enum values are the same fixed model hashes, without invoking
+        // the game runtime during type initialization or offline policy tests.
+        private const int MichaelHash = unchecked((int)PedHash.Michael);
+        private const int FranklinHash = unchecked((int)PedHash.Franklin);
+        private const int TrevorHash = unchecked((int)PedHash.Trevor);
 
         private sealed class ThermalRuntimeState
         {
@@ -367,6 +366,53 @@ namespace RealisticSuppressors
             Aborted += OnAborted;
         }
 
+        private SuppressorProfileCatalog _profiles = new SuppressorProfileCatalog();
+        private bool _profilesLoaded;
+
+        private void LoadProfiles()
+        {
+            if (_profilesLoaded) return;
+            _profilesLoaded = true;
+            try
+            {
+#if ALLIN1_HOST
+                string root = SuppressorProfileDiscovery.ResolveGameRoot(
+                    System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", "RealisticSuppressors", "RealisticSuppressors.dll"), AppDomain.CurrentDomain.BaseDirectory);
+                _profiles = SuppressorProfileDiscovery.Load(root, null,
+                    Allin1ExtensionApi.IsPackageEnabled);
+#else
+                string directory = System.IO.Path.GetDirectoryName(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", "RealisticSuppressors", "RealisticSuppressors.dll"));
+                _profiles = SuppressorProfileDiscovery.Load(null,
+                    System.IO.Path.Combine(directory, "profiles"));
+#endif
+            }
+            catch (Exception ex)
+            {
+                _profiles = new SuppressorProfileCatalog(diagnostics:
+                    new[] { "Profile discovery initialization failed: " + ex.Message });
+            }
+            foreach (string warning in _profiles.Diagnostics)
+                ClientLog.Warn("SUPPRESSORS", "profile_discovery_warning",
+                    new Dictionary<string, object> { { "warning", warning } });
+            foreach (var source in _profiles.Sources)
+            {
+                _profiles.TryGet(source.Key, out var profile);
+                ClientLog.Info("SUPPRESSORS", "custom_profile_loaded",
+                    new Dictionary<string, object>
+                    {
+                        { "source", source.Value }, { "weapon", profile.WeaponName },
+                        { "weapon_hash", profile.WeaponHash }, { "component_hash", profile.ComponentHash },
+                        { "profile_code", profile.ProfileCode }
+                    });
+            }
+            ClientLog.Info("SUPPRESSORS", "profile_discovery_completed",
+                new Dictionary<string, object>
+                {
+                    { "custom_profiles", _profiles.CustomCount }, { "total_profiles", _profiles.All.Count },
+                    { "warnings", _profiles.Diagnostics.Count }, { "reload", "script_restart" }
+                });
+        }
+
         private bool TryActivateRuntime(bool recoveredAtRuntime)
         {
             _lastActivationAttemptAt = Game.GameTime;
@@ -441,6 +487,7 @@ namespace RealisticSuppressors
             _saveRegistration = saveRegistration;
             _componentRegistration = componentRegistration;
             _runtimeEnabled = true;
+            LoadProfiles();
             _activationFailureLogged = false;
             _stealthEnabled =
                 Allin1ExtensionApi.GetBooleanSetting(
@@ -475,7 +522,7 @@ namespace RealisticSuppressors
                         _heatSmokeIntensityScale },
                     { "durability_scale", _durabilityScale },
                     { "profiled_weapons",
-                        SuppressorThermalProfiles.All.Count },
+                        _profiles.All.Count },
                     { "recovered_at_runtime", recoveredAtRuntime },
                 });
             return true;
@@ -499,6 +546,7 @@ namespace RealisticSuppressors
             _durabilityScale = settings.DurabilityScale;
             _heatSmokeIntensityScale = settings.HeatSmokeIntensity;
             _runtimeEnabled = true;
+            LoadProfiles();
             Interval = 0;
 
             ClientLog.Info("SUPPRESSORS", "configured",
@@ -517,7 +565,7 @@ namespace RealisticSuppressors
                         _heatSmokeIntensityScale },
                     { "durability_scale", _durabilityScale },
                     { "profiled_weapons",
-                        SuppressorThermalProfiles.All.Count },
+                        _profiles.All.Count },
                     { "recovered_at_runtime", recoveredAtRuntime },
                 });
             foreach (string warning in settings.Warnings)
@@ -627,7 +675,7 @@ namespace RealisticSuppressors
                     : nativeSilenced;
 
                 if (nativeSilenced && !knownSuppressorAttached &&
-                    !SuppressorThermalProfiles.TryGet(
+                    !_profiles.TryGet(
                         unsignedWeaponHash, out _) &&
                     _unprofiledWeaponsLogged.Add(unsignedWeaponHash))
                 {
@@ -965,7 +1013,7 @@ namespace RealisticSuppressors
             int brokenRecords = 0;
             int absentRecords = 0;
             foreach (SuppressorThermalProfile profile in
-                SuppressorThermalProfiles.All)
+                _profiles.All)
             {
                 float persisted = _stateStore.GetDurability(
                     character, profile.WeaponName, profile.ComponentHash);
@@ -1068,7 +1116,7 @@ namespace RealisticSuppressors
             out ThermalRuntimeState state)
         {
             state = null;
-            if (!SuppressorThermalProfiles.TryGet(
+            if (!_profiles.TryGet(
                     weaponHash, out SuppressorThermalProfile profile))
             {
                 FlushActiveThermalState(now, true);
@@ -2340,29 +2388,10 @@ namespace RealisticSuppressors
             return "";
         }
 
-        private static bool TryGetLifecycleProfile(
+        private bool TryGetLifecycleProfile(
             string weaponName, int componentHash,
-            out SuppressorThermalProfile profile)
-        {
-            profile = null;
-            if (string.IsNullOrWhiteSpace(weaponName) ||
-                componentHash == 0)
-                return false;
-            uint unsignedComponentHash = unchecked((uint)componentHash);
-            foreach (SuppressorThermalProfile candidate in
-                SuppressorThermalProfiles.All)
-            {
-                if (candidate.ComponentHash == unsignedComponentHash &&
-                    string.Equals(candidate.WeaponName,
-                        weaponName.Trim(),
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    profile = candidate;
-                    return true;
-                }
-            }
-            return false;
-        }
+            out SuppressorThermalProfile profile) =>
+            _profiles.TryGetLifecycle(weaponName, componentHash, out profile);
 
         private static SuppressorWeaponClass ClassifyWeapon(Weapon weapon)
         {

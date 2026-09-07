@@ -4,6 +4,27 @@ namespace ALLIN1.Tests
 {
     public sealed class WeaponCustomizationPolicyTests
     {
+        [Fact]
+        public void Ammo_or_a_single_mandatory_magazine_is_not_customization()
+        {
+            Assert.False(WeaponCustomizationPolicy.HasChoices(new WeaponComponentDefaults.Entry[0], 0));
+            Assert.False(WeaponCustomizationPolicy.HasChoices(new[] {
+                new WeaponComponentDefaults.Entry(1, unchecked((int)GTA.WeaponAttachmentPoint.Clip), true) }, 1));
+            Assert.True(WeaponCustomizationPolicy.HasChoices(new[] {
+                new WeaponComponentDefaults.Entry(1, unchecked((int)GTA.WeaponAttachmentPoint.Clip), true),
+                new WeaponComponentDefaults.Entry(2, unchecked((int)GTA.WeaponAttachmentPoint.Clip), false) }, 0));
+            Assert.True(WeaponCustomizationPolicy.HasChoices(new WeaponComponentDefaults.Entry[0], 2));
+        }
+
+        [Theory]
+        [InlineData(true, false)]
+        [InlineData(false, true)]
+        public void Single_scope_is_a_choice_only_if_optional(bool mandatory, bool expected)
+        {
+            Assert.Equal(expected, WeaponCustomizationPolicy.HasChoices(new[] {
+                new WeaponComponentDefaults.Entry(4, (int)GTA.WeaponAttachmentPoint.Scope, mandatory) }, 0));
+        }
+
         [Theory]
         [InlineData(GTA.WeaponAttachmentPoint.Scope, true)]
         [InlineData(GTA.WeaponAttachmentPoint.Scope2, true)]

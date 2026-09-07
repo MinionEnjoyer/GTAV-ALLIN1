@@ -73,6 +73,12 @@ seat_selector_enabled = true
 seat_selector_key = "L"
 # Recovery mode: disables DLC traffic and the multi-floor garage initializer.
 safe_mode = false
+# auto detects loaded Rex/LeFix displays, otherwise uses the small ALLIN1 HUD.
+speedometer_provider = "auto" # auto | builtin | rex | lefix | off
+speedometer_units = "kmh" # kmh | mph; numpad decimal toggles for this session
+driving_telemetry = "towing" # off | towing | all; local bounded JSONL, no upload
+# Starts automatic. Numpad * opts into experimental forward-gear hold; +/- shift.
+shift_controls_enabled = true
 ui_scale = 1.0
 # Disable GBAY's brief page-transition fade overlay.
 reduced_motion = false

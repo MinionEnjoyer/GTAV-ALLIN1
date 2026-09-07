@@ -85,7 +85,7 @@ PUBLIC_TREE_RULES = {
     "src/allin1": frozenset({".py", ".png", ".ico"}),
     "content": frozenset({".json"}),
     "data": None,
-    "script/dist": frozenset({".dll", ".plugin", ".png"}),
+    "script/dist": frozenset({".dll", ".plugin"}),
 }
 
 FORBIDDEN_PARTS = frozenset({
@@ -141,7 +141,7 @@ def collect_public_files(root: Path, *, require_toolchain: bool = True) -> list[
         files.extend(_files_under(root, relative, suffixes))
 
     from allin1.reactor_dependency import consumer_files
-    consumer_files(root / "data/reactor/allin1-ui", artwork=False)
+    consumer_files(root / "data/reactor/allin1-ui")
 
     patcher = root / "tools" / "RpfPatcher"
     if require_toolchain:
@@ -176,6 +176,8 @@ def _validate_public_path(relative: str) -> None:
     normalized = path.as_posix()
     lowered_parts = {part.lower() for part in path.parts}
     if tuple(part.casefold() for part in path.parts[:2]) == ("script", "dist"):
+        if path.suffix.casefold() == ".png":
+            raise ValueError("Catalog artwork belongs in the separate preview download pack, not the launcher release")
         if path.suffix.casefold() in {".dll", ".plugin", ".asi", ".exe", ".zip", ".oiv"} and normalized not in {
             f"script/dist/{CORE_FILENAME}", f"script/dist/{BRIDGE_FILENAME}",
         }:

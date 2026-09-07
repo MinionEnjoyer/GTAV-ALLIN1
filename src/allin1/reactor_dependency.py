@@ -29,7 +29,6 @@ BACKUP_ROOT = "scripts/.reactorv/dependencies/neutral-ui/"
 from allin1.runtime_resources import resource_root
 
 UI_SOURCE = resource_root() / "data/reactor/allin1-ui"
-ART_SOURCE = resource_root() / "script/dist"
 CONFIGS = frozenset({"scripts/ReactorV/ReactorV.json", "plugins/ReactorV/ReactorV.Preloader.json"})
 ROOT_ASIS = frozenset({"ReactorV.Bootstrap.asi", "ReactorV.ScriptProbe.asi", "ReactorV.RenderHook.asi"})
 MAX_UNPACKED = 600 * 1024 * 1024
@@ -281,7 +280,8 @@ def _extract(archive: Path, stage: Path, release: ReactorRelease) -> dict[str, P
         raise ReactorInstallError(f"Invalid Reactor archive: {exc}") from exc
 
 
-def consumer_files(source: Path | None = None, *, artwork: bool = True) -> dict[str, Path]:
+def consumer_files(source: Path | None = None) -> dict[str, Path]:
+    """Ship the UI only; generated and downloaded artwork are independently owned."""
     source = source or UI_SOURCE
     manifest = _json(_path(source, "allin1-ui.json"))
     if (manifest.get("schema_version"), manifest.get("profile"), manifest.get("reactor_release")) != (1, "allin1-composition", TAG):
@@ -303,12 +303,6 @@ def consumer_files(source: Path | None = None, *, artwork: bool = True) -> dict[
     actual_files = {p.relative_to(source).as_posix() for p in source.rglob("*") if p.is_file()}
     if actual_files != {*inventory, "allin1-ui.json"}:
         raise ReactorInstallError("Unexpected or missing file in ALLIN1 UI payload")
-    if artwork:
-        for kind, directory in {"vehicles": "previews", "weapons": "weapon_previews", "gear": "equipment_previews"}.items():
-            for path in sorted((ART_SOURCE / directory).glob("*.png")):
-                if path.is_file():
-                    _path(ART_SOURCE, path.relative_to(ART_SOURCE).as_posix())
-                    files[UI_ROOT + f"assets/allin1/{kind}/{path.name}"] = path
     return files
 
 
