@@ -18,6 +18,51 @@ def catalog(manager, game, config):
                      "source": entry.get("source", "built-in"), "enabled": entry.get("enabled", False),
                      "blocked_reason": entry.get("blocked_reason"), "settings": settings,
                      "schema_settings": [setting.to_dict() for setting in manifest.settings]})
+    if game:
+        from allin1.mods import ModIntegrationService
+
+        for status in ModIntegrationService(game).list_installed():
+            if status.mod_id in installed:
+                continue
+            enabled_setting = {
+                "key": "enabled",
+                "label": "Enabled",
+                "type": "boolean",
+                "default": status.enabled,
+                "description": (
+                    "Apply or restore this component's managed files. GTA V must be "
+                    "closed when the reviewed change is applied."
+                ),
+                "group": "Lifecycle",
+            }
+            rows.append({
+                "schema_version": None,
+                "api_version": None,
+                "id": status.mod_id,
+                "name": status.name,
+                "version": status.version,
+                "description": f"Managed {status.mod_type.upper()} package.",
+                "capabilities": [],
+                "systems": [{
+                    "id": "package-lifecycle",
+                    "name": "Package configuration",
+                    "description": "Controls the installed state of this managed component.",
+                    "category": "Packages",
+                    "experimental": False,
+                    "enabled_by_default": True,
+                    "settings": [enabled_setting],
+                }],
+                "gbay": {"sections": [], "catalogs": []},
+                "runtime": {"assemblies": []},
+                "installed": True,
+                "source": "managed package",
+                "enabled": status.enabled,
+                "blocked_reason": None,
+                "settings": {"enabled": status.enabled},
+                "schema_settings": [enabled_setting],
+                "managed_package": True,
+            })
+        rows.sort(key=lambda item: (str(item["name"]).casefold(), str(item["id"])))
     return rows
 
 

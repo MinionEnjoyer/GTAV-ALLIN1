@@ -47,6 +47,46 @@ def _oiv_archive(root: Path) -> Path:
     return archive
 
 
+OIVS_SUPER = """<superpackage version="1.0" target="Five">
+<gameversion>enhanced</gameversion>
+<metadata><name>CoreFX Test</name><version><major>1</major><minor>3</minor></version>
+<author><displayName>CoreFX</displayName></author></metadata>
+<modules>
+  <module id="base" name="Base" required="true"><install><content>
+    <add source="base/oiv/CoreFX.addon64">CoreFX.addon64</add>
+    <archive path="update/update.rpf">
+      <add source="base/oiv/visualsettings.dat">common/data/visualsettings.dat</add>
+    </archive>
+  </content></install></module>
+  <module id="roads" name="Classic Roads" required="false" default="true">
+    <install><folder source="roads/files"/></install>
+  </module>
+</modules>
+<groups>
+  <group id="flare" type="single" title="Lens flare" allowNone="true" default="star">
+    <option id="star" name="Star"><install><content>
+      <add source="flare_star/oiv/flare.xml">mods/update/x64/data/flare.xml</add>
+    </content></install></option>
+    <option id="wide" name="Wide"><install><content>
+      <add source="flare_wide/oiv/flare.xml">mods/update/x64/data/flare.xml</add>
+    </content></install></option>
+  </group>
+</groups>
+</superpackage>"""
+
+
+def _oivs_archive(root: Path, manifest: str = OIVS_SUPER) -> Path:
+    archive = root / "corefx-test.oivs"
+    with zipfile.ZipFile(archive, "w") as package:
+        package.writestr("super.xml", manifest)
+        package.writestr("content/base/oiv/CoreFX.addon64", b"addon")
+        package.writestr("content/base/oiv/visualsettings.dat", b"visual")
+        package.writestr("content/roads/files/reshade-shaders/CoreFX.fx", b"shader")
+        package.writestr("content/flare_star/oiv/flare.xml", b"<star />")
+        package.writestr("content/flare_wide/oiv/flare.xml", b"<wide />")
+    return archive
+
+
 def test_oiv_plan_and_managed_export_cover_files_and_exact_rpf_entries(tmp_path):
     source = _oiv_folder(tmp_path)
     workbench = OivWorkbench()
@@ -82,6 +122,57 @@ def test_oiv_archive_export_streams_only_declared_sources(tmp_path):
         OivWorkbench().export_managed_package(plan, tmp_path / "export")
 
 
+def test_oivs_defaults_flatten_into_one_valid_managed_package(tmp_path):
+    source = _oivs_archive(tmp_path)
+    workbench = OivWorkbench()
+    plan = workbench.inspect(source)
+
+    assert plan.package_format == "oivs"
+    assert plan.name == "CoreFX Test"
+    assert plan.version == "1.3"
+    assert plan.author == "CoreFX"
+    assert plan.editions == ("enhanced",)
+    assert plan.selection == (
+        "module:base (required)", "module:roads", "group:flare=star",
+    )
+    assert plan.translatable
+
+    manifest_path = workbench.export_managed_package(plan, tmp_path / "managed")
+    manifest = ModManifest.load(manifest_path)
+    assert manifest.mod_id == "corefx-test"
+    assert manifest.dependencies == ("openrpf",)
+    assert {item.destination.as_posix() for item in manifest.files} == {
+        "CoreFX.addon64", "reshade-shaders/corefx.fx", "mods/update/x64/data/flare.xml",
+    }
+    assert len(manifest.rpf_entries) == 1
+
+
+def test_oivs_explicit_selection_keeps_required_and_replaces_defaults(tmp_path):
+    plan = OivWorkbench().inspect(
+        _oivs_archive(tmp_path), selection="-roads,flare=wide",
+    )
+    assert plan.selection == ("module:base (required)", "group:flare=wide")
+    assert plan.translatable
+    sources = {item.source for item in plan.add_operations}
+    assert "content/flare_wide/oiv/flare.xml" in sources
+    assert "content/flare_star/oiv/flare.xml" not in sources
+    assert not any("roads/files" in source for source in sources)
+
+
+@pytest.mark.parametrize(
+    ("selection", "message"),
+    [
+        ("missing", "Unknown OIVS module"),
+        ("missing=wide", "Unknown OIVS group"),
+        ("flare=missing", "Unknown OIVS option"),
+        ("flare=star,flare=wide", "duplicate OIVS group"),
+    ],
+)
+def test_oivs_rejects_invalid_explicit_selections(tmp_path, selection, message):
+    with pytest.raises(ValueError, match=message):
+        OivWorkbench().inspect(_oivs_archive(tmp_path), selection=selection)
+
+
 @pytest.mark.parametrize(
     ("operation", "code"),
     [
@@ -104,17 +195,63 @@ def test_oiv_plan_blocks_destructive_merge_and_unknown_operations(
         OivWorkbench().export_managed_package(plan, tmp_path / "blocked")
 
 
-def test_oiv_plan_blocks_missing_sources_nested_and_created_archives(tmp_path):
-    assembly = """<package><content>
+def test_oiv_plan_blocks_missing_sources_deeply_nested_and_unsafe_archives(tmp_path):
+    assembly = """<package><metadata><game><gameVersion>Legacy</gameVersion></game></metadata><content>
       <add source="missing.bin">scripts/missing.bin</add>
       <archive path="update/update.rpf"><archive path="nested.rpf">
-        <add source="data.xml">data.xml</add></archive></archive>
-      <archive path="new.rpf" createIfNotExist="true" />
+        <archive path="too-deep.rpf"><add source="data.xml">data.xml</add>
+        </archive></archive></archive>
+      <archive path="not-an-archive.bin" createIfNotExist="true" />
     </content></package>"""
     plan = OivWorkbench().inspect(_oiv_folder(tmp_path, assembly))
     codes = {item.code for item in plan.findings}
-    assert {"missing_oiv_source", "nested_archive", "archive_creation"} <= codes
+    assert {"missing_oiv_source", "nested_archive", "unsafe_archive"} <= codes
     assert not plan.translatable
+
+
+def test_oiv_plan_translates_stock_archive_clones_and_managed_dlclist(tmp_path):
+    assembly = """<package><content>
+      <archive path="update/update.rpf" createIfNotExist="true">
+        <text path="common/data/dlclist.xml">
+          <insert where="Before" line="*&lt;/Paths&gt;*" condition="Mask">
+            &lt;Item&gt;dlcpacks:/corefx/&lt;/Item&gt;
+          </insert>
+        </text>
+      </archive>
+      <add source="addonhelper.addon">addonhelper.addon</add>
+      <add source="settings.json">CustomShaders/settings.json</add>
+    </content></package>"""
+    folder = _oiv_folder(tmp_path, assembly)
+    (folder / "content" / "addonhelper.addon").write_bytes(b"addon")
+    (folder / "content" / "settings.json").write_bytes(b"{}")
+    plan = OivWorkbench().inspect(folder)
+    assert plan.translatable
+
+
+def test_oiv_nested_export_requires_and_records_original_checksum(tmp_path):
+    assembly = """<package><metadata><game><gameVersion>Legacy</gameVersion></game></metadata><content>
+      <archive path="x64e.rpf" createIfNotExist="true">
+        <archive path="levels/gta5/vehicles.rpf" createIfNotExist="true">
+          <add source="vehshare.ytd">vehshare.ytd</add>
+        </archive>
+      </archive>
+    </content></package>"""
+    folder = _oiv_folder(tmp_path, assembly)
+    (folder / "content" / "vehshare.ytd").write_bytes(b"replacement")
+    plan = OivWorkbench().inspect(folder)
+    assert plan.translatable
+    with pytest.raises(ValueError, match="exact original member checksum"):
+        OivWorkbench().export_managed_package(plan, tmp_path / "missing-hash")
+    digest = "a" * 64
+    manifest_path = OivWorkbench().export_managed_package(
+        plan, tmp_path / "managed-nested",
+        nested_original_sha256={
+            ("mods/x64e.rpf", "levels/gta5/vehicles.rpf!vehshare.ytd"): digest,
+        },
+    )
+    manifest = ModManifest.load(manifest_path)
+    assert manifest.schema_version == 4
+    assert manifest.rpf_entries[0].original_sha256 == digest
 
 
 def test_oiv_plan_blocks_destinations_outside_managed_roots(tmp_path):

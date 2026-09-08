@@ -1970,15 +1970,23 @@ def sdk_import_package(source: Path, output: Path | None) -> None:
     "--managed-package", type=click.Path(file_okay=False, path_type=Path),
     help="Extract proven add sources into a new reviewed mod.toml package.",
 )
+@click.option(
+    "--select", "selection",
+    help=(
+        "Adjust this .oivs selection (module ids, -module ids, and "
+        "group=option choices, separated by commas). Omit it to use defaults."
+    ),
+)
 def sdk_oiv_plan(
     source: Path, output: Path, managed_package: Path | None,
+    selection: str | None,
 ) -> None:
-    """Preview an OIV recipe without executing it or touching the game."""
+    """Preview an OIV/OIVS recipe without executing it or touching the game."""
     from allin1.oiv_workbench import OivWorkbench
 
     workbench = OivWorkbench()
     try:
-        plan = workbench.inspect(source)
+        plan = workbench.inspect(source, selection=selection)
         written = plan.write_report(output)
         click.echo(
             f"OIV plan: {len(plan.operations)} operations; "

@@ -305,7 +305,7 @@ class PackageAssetReader:
         self._external_entries: dict[str, tuple[str, int]] | None = None
         if self.source.is_dir():
             self.source_kind = "folder"
-        elif self.source.is_file() and self.source.suffix.lower() in {".oiv", ".zip"}:
+        elif self.source.is_file() and self.source.suffix.lower() in {".oiv", ".oivs", ".zip"}:
             self.source_kind = "archive"
         elif (self.source.is_file()
               and self.source.suffix.lower() in EXTERNAL_ARCHIVE_SUFFIXES):
@@ -320,7 +320,7 @@ class PackageAssetReader:
             self._external_entries = entries
         else:
             raise ValueError(
-                "Asset viewer requires a package folder or .oiv/.zip/.rar/.7z"
+                "Asset viewer requires a package folder or .oiv/.oivs/.zip/.rar/.7z"
             )
 
     def read(
@@ -552,15 +552,15 @@ class AddonPackageInspector:
         if path.is_dir():
             source_kind = "folder"
             entries, findings = self._read_folder(path)
-        elif path.is_file() and path.suffix.lower() in {".oiv", ".zip"}:
-            source_kind = "oiv" if path.suffix.lower() == ".oiv" else "zip"
+        elif path.is_file() and path.suffix.lower() in {".oiv", ".oivs", ".zip"}:
+            source_kind = path.suffix.lower().lstrip(".")
             entries, findings = self._read_zip(path, source_kind)
         elif path.is_file() and path.suffix.lower() in EXTERNAL_ARCHIVE_SUFFIXES:
             source_kind = path.suffix.lower().lstrip(".")
             entries, findings = self._read_external_archive(path)
         else:
             raise ValueError(
-                "Select a DLC folder or an .oiv/.zip/.rar/.7z package"
+                "Select a DLC folder or an .oiv/.oivs/.zip/.rar/.7z package"
             )
 
         weapons: list[WeaponRecord] = []

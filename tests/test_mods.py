@@ -215,6 +215,19 @@ def test_mixed_package_can_own_vehicle_workbench_json_runtime_tree(
 
 
 @pytest.mark.parametrize(
+    "destination",
+    ["addonhelper.addon", "license.md", "CustomShaders/settings.json"],
+)
+def test_mixed_package_can_own_reshade_addon_payloads(
+    tmp_path: Path, destination: str,
+):
+    manifest = ModManifest.load(_package(
+        tmp_path, "reshade-addon-payload", "mixed", destination,
+    ))
+    assert manifest.files[0].destination.as_posix() == destination
+
+
+@pytest.mark.parametrize(
     ("destination", "message"),
     [
         ("OtherRuntime/runtime.json", "Mixed package files"),
@@ -1178,6 +1191,42 @@ def test_rpf_entry_install_toggle_and_uninstall_restore_exact_entry(
     service.uninstall("entry-lifecycle")
     assert entries[(str(archive.resolve()).casefold(), entry.casefold())] == b"stock"
     assert not (service.state_root / ".payloads" / "entry-lifecycle").exists()
+
+
+def test_schema_one_rpf_entry_records_stable_canonical_roundtrip(
+    tmp_path: Path, monkeypatch,
+):
+    game = _game(tmp_path)
+    (game / "x64h.rpf").write_bytes(b"synthetic base archive")
+    service = ModIntegrationService(game)
+    archive = game / "mods" / "x64h.rpf"
+    entry = "levels/gta5/test.bin"
+    key = (str(archive.resolve()).casefold(), entry.casefold())
+    entries = {key: b"stock"}
+    _fake_rpf_service(service, monkeypatch, entries)
+
+    def canonical_replace(archive_path, entry_path, payload, *, expected_sha256=None):
+        data = Path(payload).read_bytes()
+        entries[(str(Path(archive_path).resolve()).casefold(), str(entry_path).casefold())] = (
+            b"canonical replacement" if data == b"replacement entry" else data
+        )
+
+    monkeypatch.setattr(service, "_replace_rpf_entry", canonical_replace)
+    manifest = ModManifest.load(_rpf_entry_package(tmp_path, "entry-canonical"))
+
+    service.install(manifest)
+
+    assert entries[key] == b"canonical replacement"
+    receipt = json.loads(
+        (service.state_root / "entry-canonical.json").read_text(encoding="utf-8")
+    )
+    assert receipt["rpf_entries"][0]["sha256"] == hashlib.sha256(
+        b"canonical replacement"
+    ).hexdigest()
+    service.set_enabled("entry-canonical", False)
+    assert entries[key] == b"stock"
+    service.set_enabled("entry-canonical", True)
+    assert entries[key] == b"canonical replacement"
 
 
 def test_rpf_entry_uninstall_refuses_external_change(tmp_path: Path, monkeypatch):

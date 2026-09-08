@@ -871,7 +871,9 @@ export default function App({ client = nativeClient }: { client?: Client }) {
                     <h2>{item.name}</h2>
                     <p>{item.description}</p>
                     {item.blocked_reason && <p role="status">Blocked: {item.blocked_reason}</p>}
-                    <p>{item.source} · API {item.api_version} · {item.installed ? (item.enabled ? "Enabled" : "Disabled") : "Not installed"}</p>
+                    <p>{item.managed_package
+                      ? `${item.source} · Managed lifecycle · ${item.enabled ? "Enabled" : "Disabled"}`
+                      : `${item.source} · API ${item.api_version} · ${item.installed ? (item.enabled ? "Enabled" : "Disabled") : "Not installed"}`}</p>
                     <ContentSettings item={item}
                       values={draft.settings ?? item.settings}
                       locked={locked}
@@ -886,22 +888,24 @@ export default function App({ client = nativeClient }: { client?: Client }) {
                     />
                     <div className="toolbar">
                       <button
-                        disabled={locked || !draft.settings}
+                        disabled={locked || !draft.settings || (item.managed_package && draft.settings.enabled === item.enabled)}
                         onClick={() =>
-                          beginReview(item.installed ? "content_settings" : "save_content_preferences", {
-                            id: item.id,
-                            settings: item.installed ? draft.settings : Object.fromEntries(
-                              item.schema_settings.filter((setting: RecordData) => setting.config_key)
-                                .map((setting: RecordData) => [setting.key, draft.settings[setting.key]])),
-                          })
+                          item.managed_package
+                            ? beginReview(draft.settings.enabled ? "content_enable" : "content_disable", { id: item.id })
+                            : beginReview(item.installed ? "content_settings" : "save_content_preferences", {
+                              id: item.id,
+                              settings: item.installed ? draft.settings : Object.fromEntries(
+                                item.schema_settings.filter((setting: RecordData) => setting.config_key)
+                                  .map((setting: RecordData) => [setting.key, draft.settings[setting.key]])),
+                            })
                         }
                       >
-                        {item.installed ? "Review content settings" : "Review preinstall preferences"}
+                        {item.managed_package ? "Review package configuration" : item.installed ? "Review content settings" : "Review preinstall preferences"}
                       </button>
-                      {["enable", "disable"].map((action) => (
+                      {!item.managed_package && ["enable", "disable"].map((action) => (
                         <button
                           key={action}
-                          disabled={locked || !item.installed}
+                          disabled={locked || !item.installed || (action === "enable" ? item.enabled : !item.enabled)}
                           onClick={() =>
                             beginReview(`content_${action}`, { id: item.id })
                           }

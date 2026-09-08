@@ -70,6 +70,50 @@ def test_third_party_content_discovery_settings_and_enable_disable(service, tmp_
     assert domain.list_installed()[0].enabled
 
 
+def test_managed_package_without_extension_has_real_content_lifecycle_controls(service, tmp_path):
+    package = tmp_path / "corefx-base"
+    package.mkdir()
+    (package / "corefx.ini").write_text("preset=corefx\n", encoding="utf-8")
+    (package / "mod.toml").write_text(
+        """schema_version = 1
+id = "corefx-legacy-base"
+name = "CoreFX Legacy Base"
+version = "1.2"
+type = "config"
+description = "Managed visual package."
+editions = ["legacy", "enhanced"]
+dependencies = []
+conflicts = []
+
+[[files]]
+source = "corefx.ini"
+destination = "scripts/CoreFX/corefx.ini"
+""",
+        encoding="utf-8",
+    )
+    domain = ModIntegrationService(service.game(service.config()))
+    domain.install(ModManifest.load(package / "mod.toml"))
+
+    rows = service.inspect({"module": "content"})["content"]
+    row = next(item for item in rows if item["id"] == "corefx-legacy-base")
+    assert row["managed_package"] is True
+    assert row["enabled"] is True
+    assert row["systems"][0]["settings"][0]["key"] == "enabled"
+    assert row["settings"] == {"enabled": True}
+    assert row["schema_settings"][0]["type"] == "boolean"
+
+    with pytest.raises(ValueError, match="no package-owned settings"):
+        service.review({
+            "action": "content_settings",
+            "id": "corefx-legacy-base",
+            "settings": {"preset": "other"},
+        })
+    apply(service, "content_disable", id="corefx-legacy-base")
+    assert domain.list_installed()[0].enabled is False
+    apply(service, "content_enable", id="corefx-legacy-base")
+    assert domain.list_installed()[0].enabled is True
+
+
 def test_unsaved_bound_config_wins_over_installed_registry_value(service):
     from allin1.extensions import ExtensionManifest
     source = builtin(service)

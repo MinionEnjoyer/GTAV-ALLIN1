@@ -428,9 +428,19 @@ class LauncherService:
         if action in {"content_settings", "content_enable", "content_disable"}:
             from allin1.extensions import ExtensionRegistry
             registry = ExtensionRegistry(game)
-            manifest = registry.installed_manifest(request.get("id"))
-            if action == "content_settings":
-                for key, value in request.get("settings", {}).items(): manifest.setting(key).validate(value)
+            extension_ids = {item["id"] for item in registry.inspect()["extensions"]}
+            package_id = request.get("id")
+            if package_id in extension_ids:
+                manifest = registry.installed_manifest(package_id)
+                if action == "content_settings":
+                    for key, value in request.get("settings", {}).items(): manifest.setting(key).validate(value)
+            else:
+                from allin1.mods import ModIntegrationService
+                installed_ids = {item.mod_id for item in ModIntegrationService(game).list_installed()}
+                if package_id not in installed_ids:
+                    raise ValueError("Installed content package not found")
+                if action == "content_settings":
+                    raise ValueError("This managed package has no package-owned settings")
         token = uuid.uuid4().hex
         self.reviews = {k: v for k, v in self.reviews.items() if time.monotonic() - v[0] < 300}
         if len(self.reviews) >= 32: self.reviews.pop(next(iter(self.reviews)))
@@ -593,8 +603,8 @@ class LauncherService:
                 self.state.mkdir(parents=True, exist_ok=True)
                 self.manager.save_config(config)
                 return registry.set_settings(request["id"], request["settings"])
-            installed = next(item for item in registry.inspect()["extensions"] if item["id"] == request["id"])
-            if installed["source"] == "built-in":
+            installed = next((item for item in registry.inspect()["extensions"] if item["id"] == request["id"]), None)
+            if installed is not None and installed["source"] == "built-in":
                 return registry.set_builtin_enabled(request["id"], action == "content_enable")
             from allin1.mods import ModIntegrationService
             return ModIntegrationService(self.game(config)).set_enabled(request["id"], action == "content_enable")

@@ -84,7 +84,7 @@ Listing a command here does not authorize execution, imply React UI parity, or q
 | `allin1 sdk inspect-rpf` | Inspect a loose RPF with the edition-aware read-only helper. | archive, --gta-path, --output / -o |
 | `allin1 sdk link` | Write a human-readable linked integration and install-plan report. | manifest, --output / -o |
 | `allin1 sdk list` | List the add-on examples included with the ALLIN1 SDK. |  |
-| `allin1 sdk oiv-plan` | Preview an OIV recipe without executing it or touching the game. | source, --output / -o, --managed-package |
+| `allin1 sdk oiv-plan` | Preview an OIV/OIVS recipe without executing it or touching the game. | source, --output / -o, --managed-package, --select |
 | `allin1 sdk plan-rpf-replacement` | Create a checksummed replacement plan; perform no RPF writes. | archive, entry_path, payload, --archive-path, --gta-path, --output / -o |
 | `allin1 sdk validate` | Validate fields and cross-file references in addon.json. | manifest |
 | `allin1 status` | Show current installation status. |  |

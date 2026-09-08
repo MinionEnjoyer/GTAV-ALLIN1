@@ -251,7 +251,7 @@ def test_invalid_zip_and_unsupported_source_are_rejected(tmp_path):
 
     text = tmp_path / "package.txt"
     text.write_text("content", encoding="utf-8")
-    with pytest.raises(ValueError, match=r"DLC folder or an \.oiv/\.zip/\.rar/\.7z"):
+    with pytest.raises(ValueError, match=r"DLC folder or an \.oiv/\.oivs/\.zip/\.rar/\.7z"):
         AddonPackageInspector().inspect(text)
 
 
@@ -922,7 +922,7 @@ def test_asset_reader_reads_archives_and_rejects_ambiguous_members(tmp_path):
 def test_asset_reader_rejects_unsupported_sources(tmp_path):
     source = tmp_path / "asset.bin"
     source.write_bytes(b"binary")
-    with pytest.raises(ValueError, match=r"package folder or \.oiv/\.zip/\.rar/\.7z"):
+    with pytest.raises(ValueError, match=r"package folder or \.oiv/\.oivs/\.zip/\.rar/\.7z"):
         PackageAssetReader(source)
 
 

@@ -151,6 +151,8 @@ namespace RpfPatcher
                 return ExtractExactEntry(args);
             if (command == "extract-exact-nested-entry")
                 return ExtractExactNestedEntry(args);
+            if (command == "canonicalize-exact-nested-payload")
+                return CanonicalizeExactNestedPayload(args);
             if (command == "replace-exact-nested-entry")
                 return ReplaceExactNestedEntry(args);
             if (command == "replace-entry")
@@ -2933,9 +2935,25 @@ namespace RpfPatcher
                     var parent = FindExactDirectory(rpf, parentPath);
                     if (parent == null)
                     {
-                        Console.Error.WriteLine(
-                            $"ERROR: RPF target directory not found: {parentPath}");
-                        return 5;
+                        parent = rpf.Root;
+                        foreach (string segment in parentPath.Split('/'))
+                        {
+                            if (string.IsNullOrWhiteSpace(segment))
+                                throw new InvalidDataException(
+                                    "RPF target directory contains an empty segment.");
+                            var matches = parent.Directories
+                                .Where(directory => directory.Name.Equals(
+                                    segment, StringComparison.OrdinalIgnoreCase))
+                                .ToArray();
+                            if (matches.Length > 1)
+                                throw new InvalidDataException(
+                                    "RPF target directory is ambiguous: " + parentPath);
+                            parent = matches.SingleOrDefault()
+                                ?? RpfFile.CreateDirectory(parent, segment);
+                            if (parent == null)
+                                throw new IOException(
+                                    "Could not create RPF target directory: " + parentPath);
+                        }
                     }
                     RpfFile.CreateFile(parent, name, data, true);
                     Console.WriteLine($"Added RPF entry: {entryPath} ({data.Length:N0} bytes)");

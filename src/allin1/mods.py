@@ -558,10 +558,10 @@ class ModManifest:
                 raise ValueError("Config/data mod destinations must be below scripts/ or mods/")
             if mod_type == "mixed":
                 root_plugin = len(parts) == 1 and suffix in {
-                    ".asi", ".dll", ".ini", ".toml", ".addon64",
+                    ".asi", ".dll", ".ini", ".toml", ".addon", ".addon64", ".md",
                 }
                 managed_tree = bool(parts) and parts[0] in {
-                    "scripts", "plugins", "mods", "reshade-shaders",
+                    "scripts", "plugins", "mods", "reshade-shaders", "customshaders",
                 }
                 axle_runtime_data = (
                     len(parts) >= 2
@@ -571,7 +571,7 @@ class ModManifest:
                 if not root_plugin and not managed_tree and not axle_runtime_data:
                     raise ValueError(
                         "Mixed package files must target a supported root plug-in "
-                        "or scripts/plugins/mods/reshade-shaders directory, or a "
+                        "or scripts/plugins/mods/reshade-shaders/customshaders directory, or a "
                         "JSON file below the VehicleWorkbenchAxles runtime tree"
                     )
 
@@ -1385,9 +1385,27 @@ class ModIntegrationService:
                 rpf_records.append(record)
                 self._replace_rpf_entry(archive, item.entry, applied, expected_sha256=item.original_sha256)
                 if not self._rpf_entry_matches(record, applied):
-                    raise RuntimeError(
-                        f"RPF entry verification failed: {item.archive}/{item.entry}"
-                    )
+                    if item.original_sha256 is not None:
+                        raise RuntimeError(
+                            f"RPF entry verification failed: {item.archive}/{item.entry}"
+                        )
+                    # CodeWalker canonicalizes some resource payloads (notably
+                    # YTD/YDD data) as they are inserted. Capture that exact,
+                    # stable representation for receipts and later toggles,
+                    # then prove that a second write round-trips byte-for-byte.
+                    canonical = applied.with_name(applied.name + ".canonical")
+                    try:
+                        self._extract_rpf_entry(archive, item.entry, canonical)
+                        shutil.copy2(canonical, applied)
+                    finally:
+                        canonical.unlink(missing_ok=True)
+                    record["sha256"] = _sha256(applied)
+                    self._replace_rpf_entry(archive, item.entry, applied)
+                    if not self._rpf_entry_matches(record, applied):
+                        raise RuntimeError(
+                            "RPF entry canonical verification failed: "
+                            f"{item.archive}/{item.entry}"
+                        )
 
             if not install_enabled:
                 self._deactivate_new_loose_payload(records)
