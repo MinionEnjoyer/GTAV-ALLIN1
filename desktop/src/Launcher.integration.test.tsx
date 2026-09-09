@@ -330,6 +330,29 @@ describe("Launcher React workspaces use the real Python boundary", () => {
     await expect(access(path.join(root, "state/Assistant/component"))).rejects.toThrow();
     await expect(access(path.join(root, "state/SDK"))).rejects.toThrow();
   });
+  it("filters a component ZIP by edition, installs only the reviewed component and retains the import", async () => {
+    await navigate("Packages");
+    vi.mocked(client.selectPath).mockResolvedValue(path.join(root, "project/component-fixture/mod.toml"));
+    await user().click(screen.getByRole("button", { name: "Review package import" }));
+    await idle();
+    expect(await screen.findByText(/enhanced selected automatically/)).toBeInTheDocument();
+    expect(screen.getByText("Component 1 of 1")).toBeInTheDocument();
+    expect(screen.queryByText("Component 2 of 2")).not.toBeInTheDocument();
+    await user().click(screen.getByRole("button", { name: "Review package installation" }));
+    await approve();
+    await screen.findByText("Already installed: 1.3 · Enabled");
+    expect(screen.getByRole("heading", { name: "Collection · 2026.1" })).toBeInTheDocument();
+    const game = path.join(root, "Synthetic game with spaces");
+    expect(await readFile(path.join(game, "scripts/part0.ini"), "utf8")).toBe("enhanced-0");
+    await expect(access(path.join(game, "scripts/part1.ini"))).rejects.toThrow();
+    const receipt = JSON.parse(await readFile(path.join(game, "scripts/.allin1/mods/enhanced.part0.json"), "utf8"));
+    expect(receipt.version).toBe("1.3");
+    await expect(access(path.join(game, "scripts/.allin1/mods/test.collection.json"))).rejects.toThrow();
+    await user().click(screen.getByRole("button", { name: "Reset draft" }));
+    await navigate("Content");
+    await user().click(screen.getByRole("button", { name: /Part 0/ }));
+    expect(screen.getByRole("checkbox", { name: /Enabled/ })).toBeChecked();
+  });
   it("edits initial package settings and manages installed third-party content", async () => {
     await navigate("Packages");
     expect(screen.getByText("ALLIN1 Colored Smoke Grenades")).toBeInTheDocument();
@@ -521,6 +544,7 @@ describe("Launcher React workspaces use the real Python boundary", () => {
     await screen.findByRole("alert");
     expect(client.close).not.toHaveBeenCalled();
     await user().click(screen.getByRole("button", { name: "Reset draft" }));
+    await idle();
     closeHandler();
     await waitFor(() => expect(client.close).toHaveBeenCalledOnce());
   });

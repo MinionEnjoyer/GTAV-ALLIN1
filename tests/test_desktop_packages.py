@@ -10,6 +10,45 @@ from allin1.extensions import ExtensionRegistry
 from tests.test_desktop_service import PROJECT, apply, service
 from tests.test_extensions import _content_package
 from tests.test_edition_bundles import make_bundle, archive_bundle
+from tests.test_component_bundles import write_bundle, zip_bundle
+
+
+def test_collection_inspection_and_review_bind_one_component(service, tmp_path):
+    game = service.game(service.config())
+    (game / "GTA5_Enhanced.exe").rename(game / "GTA5.exe")
+    source = zip_bundle(write_bundle(tmp_path / "components"), tmp_path / "components.zip")
+    before = service.tree_identity(tmp_path)
+    inspection = service.inspect({"module": "package", "source": str(source)})
+    assert service.tree_identity(tmp_path) == before
+    item = inspection["package"]
+    assert item["schema_version"] == 6 and item["selected_edition"] == "legacy"
+    assert [c["id"] for c in item["components"]] == ["legacy.part0", "legacy.part1"]
+    for component in (None, "enhanced.part0", "unknown"):
+        with pytest.raises(ValueError, match="Select one component"):
+            service.review({"action": "package_install", "source": str(source), "component_id": component})
+    review = service.review({"action": "package_install", "source": str(source),
+                              "component_id": "legacy.part1", "expected_state_sha256": inspection["state_sha256"]})
+    assert review["package"]["id"] == "legacy.part1"
+    assert review["package"]["bundle"]["selected_edition"] == "legacy"
+    service.apply({"review_id": review["review_id"], "review_sha256": review["review_sha256"], "confirmed": True})
+    game = service.game(service.config())
+    assert (game / "scripts/part1.ini").read_bytes() == b"legacy-1"
+    assert not (game / "scripts/part0.ini").exists()
+    refreshed = service.inspect({"module": "package", "source": str(source)})["package"]["components"]
+    assert not refreshed[0]["installed"] and refreshed[1]["installed"]
+
+
+def test_collection_change_after_review_cannot_apply(service, tmp_path):
+    game = service.game(service.config())
+    (game / "GTA5_Enhanced.exe").rename(game / "GTA5.exe")
+    root = write_bundle(tmp_path / "components")
+    source = zip_bundle(root, tmp_path / "components.zip")
+    review = service.review({"action": "package_install", "source": str(source), "component_id": "legacy.part0"})
+    (root / "enhanced/0/payload.bin").write_bytes(b"changed")
+    zip_bundle(root, source)
+    with pytest.raises(ValueError, match="changed"):
+        service.apply({"review_id": review["review_id"], "review_sha256": review["review_sha256"], "confirmed": True})
+    assert not (service.game(service.config()) / "scripts/part0.ini").exists()
 
 
 @pytest.mark.parametrize("kind", ["folder", "manifest", "archive"])

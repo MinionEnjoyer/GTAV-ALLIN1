@@ -57,6 +57,8 @@ def main():
     (package / "payload.ini").write_text("fixture = true")
     (package / "mod.toml").write_text('schema_version = 1\nid = "react-fixture"\nname = "React fixture"\nversion = "1.0.0"\ntype = "script"\neditions = ["enhanced"]\n[[files]]\nsource = "payload.ini"\ndestination = "scripts/react-fixture.ini"\n')
     from test_extensions import _content_package
+    from test_component_bundles import write_bundle
+    write_bundle(project / "component-fixture")
     _content_package(project / "mods/catalog", "acme.react-content", runtime=False)
     shutil.copytree(project_source / "sdk/examples", project / "sdk/examples")
     from test_assistant_manager import _write_package, _hardware

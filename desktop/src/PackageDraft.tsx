@@ -3,7 +3,7 @@ import ContentSettings from "./ContentSettings";
 
 export default function PackageDraft({ draft, locked, change, review }: {
   draft: RecordData; locked: boolean; change: (value: RecordData) => void;
-  review: () => void;
+  review: (component?: RecordData) => void;
 }) {
   const item = draft.package;
   return <section aria-label="Package inspection">
@@ -16,6 +16,18 @@ export default function PackageDraft({ draft, locked, change, review }: {
         ? `Edition bundle: ${item.selected_edition} selected automatically. Only this variant will be installed.`
         : "Edition bundle: select a GTA installation to choose the matching variant."}
     </p>}
+    {item.schema_version === 6 ? <>
+      <p>Components are listed in installation order. Review and install each separately; each keeps its own Content controls, receipt and uninstall action. This is not an all-or-nothing batch install.</p>
+      {item.components.map((component: RecordData, index: number) => <div key={component.id}>
+        <p>Component {index + 1} of {item.components.length}</p>
+        <PackageDraft draft={{ source: draft.source, package: component }} locked={locked}
+          review={() => review(component)}
+          change={(value) => change({ ...draft, package: { ...item,
+            components: item.components.map((row: RecordData) => row.id === component.id ? value.package : row) } })} />
+      </div>)}
+    </> : <>
+    {item.installed && <p>Already installed: {item.installed_version} · {item.enabled ? "Enabled" : "Disabled"}</p>}
+    {item.install_blocked_reason && <p role="status">{item.install_blocked_reason}</p>}
     <p>{item.files.length} files · {item.rpf_entry_count} RPF entries</p>
     {item.dependencies.length > 0 && <p>Requires: {item.dependencies.join(", ")}</p>}
     {item.conflicts.length > 0 && <p>Conflicts: {item.conflicts.join(", ")}</p>}
@@ -28,6 +40,8 @@ export default function PackageDraft({ draft, locked, change, review }: {
       <ContentSettings item={{ ...item.extension, installed: true }} values={item.settings} locked={locked}
         change={(key, value) => change({ ...draft, package: { ...item, settings: { ...item.settings, [key]: value } } })} />
     </>}
-    <button disabled={locked || (item.bundle_editions?.length > 0 && !item.selected_edition)} onClick={review}>Review package installation</button>
+    <button disabled={locked || !!item.install_blocked_reason || (item.bundle_editions?.length > 0 && !item.selected_edition)}
+      onClick={() => review()}>Review package installation</button>
+    </>}
   </section>;
 }

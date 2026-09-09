@@ -421,6 +421,10 @@ def content_validate(manifest: Path, edition: str | None = None) -> None:
             f"PASS: {package.mod_id} schema {package.schema_version}; "
             f"{len(package.files)} file(s), {len(package.rpf_entries)} RPF patch(es)"
         )
+        if package.schema_version == 6:
+            for child in package.variants:
+                click.echo(f"  {child.editions[0]}: {child.mod_id} {child.version}; "
+                           f"{len(child.files)} file(s), {len(child.rpf_entries)} RPF patch(es)")
 
 
 @content_group.command("install-package")
@@ -429,6 +433,7 @@ def content_validate(manifest: Path, edition: str | None = None) -> None:
     "--gta-path", type=click.Path(exists=True, file_okay=False, path_type=Path),
 )
 @click.option("--yes", is_flag=True, help="Approve installing the validated package.")
+@click.option("--component", help="Explicit component id from a schema-6 bundle.")
 @click.option(
     "--repair-managed",
     is_flag=True,
@@ -444,6 +449,7 @@ def content_install_package(
     gta_path: Path | None,
     yes: bool,
     repair_managed: bool,
+    component: str | None = None,
 ) -> None:
     """Install a validated mod.toml, package folder, or bounded ZIP package."""
     from allin1.mods import ModIntegrationService, open_mod_package
@@ -451,7 +457,7 @@ def content_install_package(
     game = _content_game_path(ctx, gta_path)
     service = ModIntegrationService(game)
     with open_mod_package(source) as package:
-        package = package.for_edition(service.edition)
+        package = package.select_component(service.edition, component)
         _confirm_content_change(yes, f"Install {package.name} {package.version}?")
         status = service.install(
             package, repair_managed=repair_managed,

@@ -321,6 +321,8 @@ export default function App({ client = nativeClient }: { client?: Client }) {
   const apply = async () => {
     if (!review || !confirmed || flight.current) return;
     const current = review;
+    const collectionSource = current.action === "package_install" && draft.package?.package.schema_version === 6
+      ? draft.package.source : null;
     setNotice("");
     setWarning("");
     activeAction.current = current.action;
@@ -387,7 +389,11 @@ export default function App({ client = nativeClient }: { client?: Client }) {
     setConfirmed(false);
     setCancellingLaunch(false);
     cancelFlight.current = false;
-    if (succeeded) await inspect(module, appliedConfig);
+    if (succeeded) {
+      await inspect(module, appliedConfig);
+      if (collectionSource) await run("inspect", { module: "package", source: collectionSource, config: appliedConfig },
+        (loaded) => setDraft({ package: loaded }));
+    }
   };
   const cancelLaunch = async () => {
     if (cancelFlight.current || !busy || review?.action !== "launch" ||
@@ -431,10 +437,15 @@ export default function App({ client = nativeClient }: { client?: Client }) {
         },
     );
   const reset = () => {
-    if (locked) return;
+    if (locked || flight.current || !baseline) return;
+    const restoredConfig = JSON.parse(baseline);
     setDraft({});
-    setConfig(JSON.parse(baseline));
+    setConfig(restoredConfig);
+    // Inspection data belongs to the previous draft's installation. Drop it
+    // before reloading so stale lifecycle actions stay hidden even on failure.
+    setSession({});
     setError("");
+    void inspect(module, restoredConfig);
   };
   const content = (session.content ?? []) as RecordData[],
     packages = (session.packages ?? []) as RecordData[];
@@ -940,8 +951,9 @@ export default function App({ client = nativeClient }: { client?: Client }) {
             </button>
             {draft.package && <PackageDraft draft={draft.package} locked={locked}
               change={(value) => setDraft({ package: value })}
-              review={() => beginReview("package_install", {
-                source: draft.package.source, settings: draft.package.package.settings,
+              review={(component) => beginReview("package_install", {
+                source: draft.package.source, settings: (component ?? draft.package.package).settings,
+                ...(component ? { component_id: component.id } : {}),
                 expected_state_sha256: draft.package.state_sha256,
               })} />}
             <div className="split">

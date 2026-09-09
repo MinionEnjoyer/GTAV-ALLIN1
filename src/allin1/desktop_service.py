@@ -422,8 +422,14 @@ class LauncherService:
                 raise ValueError("Package or installation changed; inspect the package again")
             with open_mod_package(self.input_path(request.get("source"))) as manifest:
                 from allin1.mods import ModIntegrationService
-                evidence["package"] = describe(manifest, game)
-                manifest = manifest.for_edition(ModIntegrationService(game).edition)
+                bundle_info = describe(manifest, game)
+                manifest = manifest.select_component(ModIntegrationService(game).edition, request.get("component_id"))
+                evidence["package"] = describe(manifest, game) if bundle_info["schema_version"] == 6 else bundle_info
+                if bundle_info["schema_version"] == 6:
+                    evidence["package"]["bundle"] = {"id": bundle_info["id"], "selected_edition": bundle_info["selected_edition"]}
+                    component = next(item for item in bundle_info["components"] if item["id"] == manifest.mod_id)
+                    if component["install_blocked_reason"]:
+                        raise ValueError(component["install_blocked_reason"])
                 manifest.validate_payload()
                 evidence["request"]["settings"] = settings(manifest, request.get("settings"))
             if self.snapshot(request) != evidence["state_sha256"]:
@@ -600,7 +606,8 @@ class LauncherService:
             service = ModIntegrationService(self.game(config), rpf_progress=self.rpf_progress)
             if action == "package_install":
                 with open_mod_package(self.input_path(request["source"])) as manifest:
-                    return service.install(manifest, initial_settings=request.get("settings"))
+                    return service.install(manifest, initial_settings=request.get("settings"),
+                                           component_id=request.get("component_id"))
             if action == "package_uninstall": return service.uninstall(request["id"])
             return service.set_enabled(request["id"], action == "package_enable")
         if action.startswith("content_"):

@@ -279,11 +279,25 @@ class ModManifest:
             raise ValueError("Select a valid GTA V edition")
         if edition not in self.editions:
             raise ValueError(f"{self.name} has no {edition} variant")
+        if self.schema_version == 6:
+            return replace(self, editions=(edition,),
+                           variants=tuple(child for child in self.variants if child.editions == (edition,)))
         if self.schema_version != 5:
             return self
         matches = [child for child in self.variants if child.editions == (edition,)]
         if len(matches) != 1:
             raise ValueError(f"Bundle requires exactly one {edition} variant")
+        return replace(matches[0], bundle_manifest_path=self.manifest_path)
+
+    def select_component(self, edition: str, component_id: str | None = None) -> "ModManifest":
+        selected = self.for_edition(edition)
+        if self.schema_version != 6:
+            if component_id is not None:
+                raise ValueError("Component selection requires a schema-6 bundle")
+            return selected
+        matches = [child for child in selected.variants if child.mod_id == component_id]
+        if not isinstance(component_id, str) or len(matches) != 1:
+            raise ValueError("Select one component from the matching edition before installation")
         return replace(matches[0], bundle_manifest_path=self.manifest_path)
 
     @property
@@ -313,6 +327,11 @@ class ModManifest:
             raise ValueError(f"Invalid mod.toml manifest: {exc}") from exc
 
         schema_version, raw_allin1 = validate_mod_schema_envelope(data)
+        if schema_version == 6:
+            if not _allow_bundle:
+                raise ValueError("Nested edition bundles are not supported")
+            from allin1.component_bundles import load_collection
+            return load_collection(cls, path, data, validate_payload)
         if schema_version == 5:
             if not _allow_bundle:
                 raise ValueError("Nested edition bundles are not supported")
@@ -617,7 +636,7 @@ class ModManifest:
                     )
 
     def validate_payload(self) -> None:
-        if self.schema_version == 5:
+        if self.schema_version in (5, 6):
             # Reload the envelope as well: changed manifests must not bypass their hashes.
             type(self).load(self.manifest_path, validate_payload=True)
             return
@@ -1312,9 +1331,10 @@ class ModIntegrationService:
         *,
         initial_settings: Mapping[str, Any] | None = None,
         repair_managed: bool = False,
+        component_id: str | None = None,
     ) -> ModStatus:
-        if manifest.schema_version == 5:
-            manifest = type(manifest).load(manifest.manifest_path).for_edition(self.edition)
+        from allin1.component_bundles import installation_component
+        manifest = installation_component(manifest, self.edition, component_id)
         self._plan_rpf_work(
             3 * len(manifest.rpf_entries)
             + sum(item.original_sha256 is not None for item in manifest.rpf_entries)

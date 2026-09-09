@@ -5,6 +5,69 @@ The launcher uses the **selected GTA installation**, not the host machine or
 archive filename, to select exactly one variant. Both editions installed on the
 same PC keep independent receipts, backups, dependencies and uninstall ownership.
 
+## Multiple components per edition (schema 6)
+
+Use a component bundle when an edition needs several independent packages:
+
+```powershell
+allin1-sdk build-component-bundle --legacy "Legacy-Base.zip" --legacy "Legacy-Vehicles.zip" --legacy "Legacy-ReShade.zip" --enhanced "Enhanced.zip" --id "author.mod-release" --name "My Mod" --version "2026.09" --output "MyMod-Both-Editions.zip"
+```
+
+Repeat each edition option in installation order. Inputs must be already compiled,
+single-edition schema-1 through schema-4 managed packages. Their IDs, names,
+versions, content descriptors, SDK provenance, payload hashes and exact RPF
+preconditions are preserved. The collection's version describes the distribution;
+Legacy and Enhanced may retain different upstream versions.
+
+Schema 6 uses `type = "collection"` and an ordered list:
+
+```toml
+schema_version = 6
+id = "author.mod-release"
+name = "My Mod"
+version = "2026.09"
+type = "collection"
+editions = ["legacy", "enhanced"]
+
+[[variants.legacy.components]]
+manifest = "legacy/01/mod.toml"
+sha256 = "<actual SHA-256 of child manifest>"
+
+[[variants.enhanced.components]]
+manifest = "enhanced/01/mod.toml"
+sha256 = "<actual SHA-256 of child manifest>"
+```
+
+Each edition supports 1–32 components in disjoint trees. Child IDs must be unique
+within that edition and differ from the collection ID. Nested bundles, overlapping
+destinations, internal conflicts, and misordered/incompatible internal package
+requirements are rejected. All editions are validated even when installing only one.
+
+Import the ZIP in the updated launcher. It shows only the selected GTA edition's
+components, in order. **Review and apply each component separately.** This is not
+an automatic batch or an all-or-nothing transaction. A failure leaves previously
+completed components installed with their own receipts; there is no automatic
+replay. After success the same import refreshes, including installed status.
+Use Reset draft to return to installed-package or Content lifecycle controls.
+
+Existing IDs are recognized; the bundle does not adopt or rename old receipts.
+An installed RPF-owning component must be explicitly uninstalled before replacing
+it, just like a standalone RPF package. Already installed components can be kept.
+There is no collection receipt and no whole-collection enable/disable/uninstall.
+
+SDK API: `build_component_bundle(output, legacy=[...], enhanced=[...], mod_id=...,
+name=..., version=...)` from `allin1_sdk.component_bundle`. Agent API command:
+`build-component-bundle`, classified as `authoring_write`, with arrays for the
+edition inputs. This does not authorize game writes.
+
+Both validators accept schema 6. For explicit CLI installation use
+`allin1 content install-package bundle.zip --component package.id` or the SDK's
+`install-package bundle.zip --component package.id`, with the usual target-game
+and confirmation flags. An omitted/wrong-edition component is rejected before writes.
+
+Older launchers and SDKs reject schema 6. Rebuild/update both applications before
+distributing this format; do not relabel it as schema 5 to bypass acceptance.
+
 This requires the updated schema-5 reader in the launcher and SDK. Older readers
 reject schema 5; they must not be given a schema-1 manifest containing conditional
 fields that they would ignore. The code change alone does not update an already
