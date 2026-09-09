@@ -52,7 +52,9 @@ export default function App({ client = nativeClient }: { client?: Client }) {
     [query, setQuery] = useState("");
   const [activityCleared, setActivityCleared] = useState(false);
   const activityText = activityCleared ? "" : activity.length ? activity.join("\n") :
-    (session.activity ?? []).map((event: RecordData) => `${new Date(event.time * 1000).toLocaleString()} · ${title(event.action)} completed`).join("\n");
+    (session.activity ?? []).map((event: RecordData) =>
+      `${new Date(event.time * 1000).toLocaleString()} · ${title(event.action)} ${event.event === "launcher.action.cancelled" ? "cancelled" : "completed"}`
+    ).join("\n");
   const [selected, setSelected] = useState(""),
     [reactorConsent, setReactorConsent] = useState(false),
     [rpfConsent, setRpfConsent] = useState(false);

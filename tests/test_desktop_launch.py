@@ -203,6 +203,8 @@ def test_cancel_at_each_safe_stage_prevents_dispatch(service, launch_boundary, m
     assert not service.reviews and not service.launch_cancellation.status()["cancellable"]
     assert service.activity[-1]["event"] == "launcher.action.cancelled"
     assert not any(e["event"] == "launcher.action.completed" for e in service.activity)
+    from allin1.desktop_activity import read
+    assert read(service.state) == service.activity
 
 
 def test_cancel_after_os_handoff_cannot_report_cancelled_or_stop_game(service, launch_boundary):

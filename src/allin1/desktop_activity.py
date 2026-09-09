@@ -1,11 +1,23 @@
 """Bounded, versioned local action journal, independent of human progress text."""
 import json
+import math
 import uuid
 
 from allin1.release_paths import contained, no_links, strict_json
 
 MAX_EVENTS = 200
 MAX_BYTES = 1024 * 1024
+
+
+def _validate_event(row):
+    # Use the same contract before writing and after reading. A cancelled launch
+    # is a terminal event too; rejecting it would block every subsequent append.
+    if (not isinstance(row, dict) or type(row.get("schema_version")) is not int or row["schema_version"] != 1
+            or row.get("event") not in ("launcher.action.completed", "launcher.action.cancelled")
+            or not isinstance(row.get("action"), str) or not isinstance(row.get("review_id"), str)
+            or type(row.get("time")) not in (float, int)
+            or (type(row["time"]) is float and not math.isfinite(row["time"]))):
+        raise ValueError("Invalid structured activity event")
 
 
 def read(root):
@@ -22,15 +34,12 @@ def read(root):
     if not isinstance(rows, list) or len(rows) > MAX_EVENTS:
         raise ValueError("Invalid activity event inventory")
     for row in rows:
-        if (not isinstance(row, dict) or type(row.get("schema_version")) is not int or row["schema_version"] != 1
-                or row.get("event") != "launcher.action.completed"
-                or not isinstance(row.get("action"), str) or not isinstance(row.get("review_id"), str)
-                or type(row.get("time")) not in (float, int)):
-            raise ValueError("Invalid structured activity event")
+        _validate_event(row)
     return rows
 
 
 def append(root, event):
+    _validate_event(event)
     rows = [*read(root)[-(MAX_EVENTS - 1):], event]
     target = contained(root, "logs/activity.json")
     encoded = json.dumps({"schema_version": 1, "events": rows}, indent=2, allow_nan=False) + "\n"

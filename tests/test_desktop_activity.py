@@ -19,6 +19,56 @@ def test_activity_survives_service_restart_without_progress_text_parsing(service
     assert rows[0]["action"] == "save_profile" and rows[0]["review_id"] == receipt["review_id"]
 
 
+def test_existing_cancelled_launch_does_not_block_later_activity(service):
+    cancelled = {"schema_version": 1, "event": "launcher.action.cancelled", "action": "launch",
+                 "review_id": "cancelled-before-restart", "time": 1788712109.035506}
+    path = service.state / "logs/activity.json"
+    path.parent.mkdir(parents=True)
+    original = json.dumps({"schema_version": 1, "events": [cancelled]}).encode()
+    path.write_bytes(original)
+
+    assert service.inspect({"module": "activity"})["activity"] == [cancelled]
+    assert path.read_bytes() == original  # Reading legacy history needs no migration.
+    receipt = apply(service, "save_profile", name="After cancellation")
+    assert "warning" not in receipt
+    restarted = LauncherService(service.project, service.state)
+    rows = restarted.inspect({"module": "activity"})["activity"]
+    assert rows[0] == cancelled
+    assert len(rows) == 2 and rows[1]["event"] == "launcher.action.completed"
+    assert rows[1]["review_id"] == receipt["review_id"]
+
+
+@pytest.mark.parametrize("changes", [
+    {"schema_version": True}, {"schema_version": 2}, {"event": "launcher.action.unknown"},
+    {"event": []}, {"action": None}, {"review_id": 1}, {"time": True},
+    {"time": "123"}, {"time": float("nan")}, {"time": float("inf")},
+])
+@pytest.mark.parametrize("existing", [False, True])
+def test_invalid_append_cannot_create_or_poison_journal(tmp_path, changes, existing):
+    root = tmp_path / "state"
+    event = {"schema_version": 1, "event": "launcher.action.completed", "action": "save_profile",
+             "review_id": "valid", "time": 1}
+    path = root / "logs/activity.json"
+    if existing:
+        desktop_activity.append(root, event)
+    before = path.read_bytes() if existing else None
+    with pytest.raises(ValueError):
+        desktop_activity.append(root, {**event, **changes})
+    assert (path.read_bytes() if path.exists() else None) == before
+    if not existing:
+        assert not root.exists()
+
+
+def test_nonfinite_exponent_in_existing_journal_is_rejected(tmp_path):
+    path = tmp_path / "logs/activity.json"
+    path.parent.mkdir()
+    path.write_text('{"schema_version":1,"events":[{"schema_version":1,'
+                    '"event":"launcher.action.completed","action":"save_profile",'
+                    '"review_id":"invalid-time","time":1e999}]}')
+    with pytest.raises(ValueError, match="Invalid structured activity event"):
+        desktop_activity.read(tmp_path)
+
+
 def test_open_log_folder_uses_only_host_owned_path(service, monkeypatch):
     seen = []
     monkeypatch.setattr(desktop_service, "os", SimpleNamespace(name="nt", startfile=seen.append))

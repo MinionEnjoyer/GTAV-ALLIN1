@@ -272,6 +272,28 @@ describe("Launcher React workspaces use the real Python boundary", () => {
     expect(await readFile(target, "utf8")).toBe(external);
     expect(screen.getByRole("button", { name: "Remove garage slot 0" })).toBeInTheDocument();
   });
+  it("reads cancelled-launch history and saves later activity without a warning", async () => {
+    const journalPath = path.join(root, "state/logs/activity.json");
+    const cancelled = { schema_version: 1, event: "launcher.action.cancelled", action: "launch",
+      review_id: "previous-session-cancelled", time: 1788712109.035506 };
+    await mkdir(path.dirname(journalPath), { recursive: true });
+    const original = JSON.stringify({ schema_version: 1, events: [cancelled] });
+    await writeFile(journalPath, original);
+    await navigate("Activity");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Activity log")).toHaveTextContent("Launch cancelled");
+    expect(screen.getByLabelText("Activity log")).not.toHaveTextContent("Launch completed");
+    expect(await readFile(journalPath, "utf8")).toBe(original);
+    await navigate("Setup");
+    await user().type(screen.getByRole("combobox", { name: "Profile name" }), "After cancellation");
+    await user().click(screen.getByRole("button", { name: "Save profile" }));
+    await approve();
+    expect(screen.queryByText("Completed with a warning")).not.toBeInTheDocument();
+    const saved = JSON.parse(await readFile(journalPath, "utf8"));
+    expect(saved.events).toHaveLength(2);
+    expect(saved.events[0]).toEqual(cancelled);
+    expect(saved.events[1]).toMatchObject({ event: "launcher.action.completed", action: "save_profile" });
+  });
   it("copies visible activity and clearing the view preserves the structured journal", async () => {
     await user().type(screen.getByRole("combobox", { name: "Profile name" }), "Activity test");
     await user().click(screen.getByRole("button", { name: "Save profile" }));
