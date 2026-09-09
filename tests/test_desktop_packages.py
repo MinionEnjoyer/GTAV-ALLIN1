@@ -9,6 +9,7 @@ from allin1.desktop_service import LauncherService
 from allin1.extensions import ExtensionRegistry
 from tests.test_desktop_service import PROJECT, apply, service
 from tests.test_extensions import _content_package
+from tests.test_edition_bundles import make_bundle, archive_bundle
 
 
 @pytest.mark.parametrize("kind", ["folder", "manifest", "archive"])
@@ -101,3 +102,28 @@ def test_retired_installed_preview_setting_is_not_presented_or_resaved(service, 
     assert "preview_artwork" not in online["settings"]
     assert not any(setting["key"] == "preview_artwork" for setting in online["schema_settings"])
     assert "free_purchases" in online["settings"]
+
+
+def test_edition_bundle_review_and_install(service, tmp_path):
+    package = make_bundle(tmp_path / "bundle")
+    source = archive_bundle(package, tmp_path / "bundle.zip")
+    game = service.game(service.config())
+    expected = b"enhanced" if (game / "GTA5_Enhanced.exe").exists() else b"legacy"
+    inspection = service.inspect({"module": "package", "source": str(source)})
+    assert inspection["package"]["selected_edition"] == expected.decode()
+    assert inspection["package"]["bundle_editions"] == ["legacy", "enhanced"]
+    apply(service, "package_install", source=str(source), settings={},
+          expected_state_sha256=inspection["state_sha256"])
+    assert (game / "scripts/test.ini").read_bytes() == expected
+
+
+def test_edition_bundle_payload_change_invalidates_review(service, tmp_path):
+    package = make_bundle(tmp_path / "bundle")
+    source = archive_bundle(package, tmp_path / "bundle.zip")
+    review = service.review({"action": "package_install", "source": str(source)})
+    (package / "enhanced/payload.bin").write_bytes(b"changed")
+    archive_bundle(package, source)
+    with pytest.raises(ValueError, match="changed"):
+        service.apply({"review_id": review["review_id"], "review_sha256": review["review_sha256"],
+                       "confirmed": True})
+    assert not (service.game(service.config()) / "scripts/test.ini").exists()

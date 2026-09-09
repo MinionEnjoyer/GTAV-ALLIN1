@@ -116,6 +116,7 @@ class LauncherService:
         self.profiles = ProfileStore(contained(self.state, "profiles"))
         self.allow_game_writes, self.allow_launch = allow_game_writes, allow_launch
         self.progress = progress or (lambda percent, message: None)
+        self.rpf_progress = None
         self.reviews = {}
         self.activity = []
         self.sdk_release = None
@@ -420,8 +421,10 @@ class LauncherService:
             if "expected_state_sha256" in request and request["expected_state_sha256"] != evidence["state_sha256"]:
                 raise ValueError("Package or installation changed; inspect the package again")
             with open_mod_package(self.input_path(request.get("source"))) as manifest:
-                manifest.validate_payload()
+                from allin1.mods import ModIntegrationService
                 evidence["package"] = describe(manifest, game)
+                manifest = manifest.for_edition(ModIntegrationService(game).edition)
+                manifest.validate_payload()
                 evidence["request"]["settings"] = settings(manifest, request.get("settings"))
             if self.snapshot(request) != evidence["state_sha256"]:
                 raise ValueError("Package changed during review; inspect it again")
@@ -492,11 +495,17 @@ class LauncherService:
             if not self.allow_game_writes: raise ValueError("Game-write authority is required")
             self.require_closed()
         self.progress(None if action in {"launch", "prepare_previews"} else 0, f"Starting {action.replace('_', ' ')}")
-        if action in {'launch', 'prepare_previews'}:
-            with self.preview_render_control.session(review['review_id']):
+        from allin1.rpf_progress import RpfProgress
+        if action.startswith("package_") or action in {"content_enable", "content_disable"}:
+            self.rpf_progress = RpfProgress(self.progress)
+        try:
+            if action in {'launch', 'prepare_previews'}:
+                with self.preview_render_control.session(review['review_id']):
+                    result = self.perform(request, config)
+            else:
                 result = self.perform(request, config)
-        else:
-            result = self.perform(request, config)
+        finally:
+            self.rpf_progress = None
         receipt = {"schema_version": 1, "kind": "launcher_applied", "action": action,
                    "review_id": review["review_id"], "review_sha256": review["review_sha256"], "result": serializable(result)}
         if action in {"save_config", "sync_config", "install", "launch", "content_settings", "save_content_preferences", "import_preferences"}:
@@ -588,7 +597,7 @@ class LauncherService:
         if action == "uninstall": return self.manager.uninstall(config)
         if action.startswith("package_"):
             from allin1.mods import ModIntegrationService, open_mod_package
-            service = ModIntegrationService(self.game(config))
+            service = ModIntegrationService(self.game(config), rpf_progress=self.rpf_progress)
             if action == "package_install":
                 with open_mod_package(self.input_path(request["source"])) as manifest:
                     return service.install(manifest, initial_settings=request.get("settings"))
@@ -607,7 +616,7 @@ class LauncherService:
             if installed is not None and installed["source"] == "built-in":
                 return registry.set_builtin_enabled(request["id"], action == "content_enable")
             from allin1.mods import ModIntegrationService
-            return ModIntegrationService(self.game(config)).set_enabled(request["id"], action == "content_enable")
+            return ModIntegrationService(self.game(config), rpf_progress=self.rpf_progress).set_enabled(request["id"], action == "content_enable")
         if action in {"characters_save", "garages_save"}:
             content = self.character_bytes(request, config)
             target = no_links(self.game(config) / "scripts" / ("ALLIN1_characters.json" if action == "characters_save" else "ALLIN1_garage.json"))

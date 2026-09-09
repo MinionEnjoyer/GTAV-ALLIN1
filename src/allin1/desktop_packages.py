@@ -15,6 +15,10 @@ def settings(manifest, values):
 
 
 def describe(manifest, game):
+    bundle = manifest if manifest.schema_version == 5 else None
+    if bundle and game:
+        from allin1.mods import ModIntegrationService
+        manifest = bundle.for_edition(ModIntegrationService(game).edition)
     extension = manifest.extension
     initial = {item.key: item.default for item in extension.settings} if extension else {}
     if extension and game:
@@ -28,6 +32,8 @@ def describe(manifest, game):
                     item.validate(value)
                     initial[item.key] = value
     return {"id": manifest.mod_id, "name": manifest.name, "version": manifest.version,
+            "bundle_editions": list(bundle.editions) if bundle else [],
+            "selected_edition": manifest.editions[0] if bundle and game else None,
             "description": manifest.description, "editions": list(manifest.editions),
             "schema_version": manifest.schema_version, "type": manifest.mod_type,
             "dependencies": list(manifest.dependencies), "conflicts": list(manifest.conflicts),

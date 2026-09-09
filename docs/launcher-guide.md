@@ -272,6 +272,21 @@ If the service connection stalls or fails, **Reconnect service** keeps drafts,
 invalidates prior reviews and never replays a save. The native broker rejects
 malformed/oversized responses and waits at most two minutes without a response
 frame. Reconnect cannot terminate a still-running writer with an unknown outcome.
+Long-running service requests send liveness heartbeats every 15 seconds. These
+keep the connection alive but do not count as completed work. Package RPF actions
+also report backup, replacement and verification progress, with helper-call
+counts and elapsed time. Install normally uses three helper calls per entry;
+uninstall and enable/disable normally use two. Original-checksum preflight, DLC
+registration, resource canonicalization and recovery can add calls.
+
+The RPF workload budget is advisory: two minutes of setup allowance plus five
+seconds per estimated helper call. Additional calls extend the budget. A helper
+running for two minutes or an operation exceeding that budget displays a warning,
+not cancellation or an automatic retry. Keep the launcher open until it reports
+a definitive result. The progress bar stays below 100% until the reviewed action
+finishes; a live service alone does not prove that its archive helper is advancing.
+Successful reconnect refreshes the installed state while retaining drafts, so a
+retained package draft no longer prevents recovery-state inspection.
 After an interrupted write, verify the files and receipts before reviewing again.
 Saving one character document does not refresh the original identity of an
 unsaved draft for another document; external changes must be reviewed explicitly.

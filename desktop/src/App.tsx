@@ -143,7 +143,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
       setConfirmed(false);
       setNotice("Draft kept; previous review invalidated. No action was replayed. Verify files and receipts before repeating an interrupted write.");
     })) return;
-    if (await run("catalog", {}, setCatalog) && !config) await inspect("setup", null);
+    if (await run("catalog", {}, setCatalog)) await inspect(config ? module : "setup", config);
   };
   useEffect(() => {
     mounted.current = true;
@@ -192,12 +192,15 @@ export default function App({ client = nativeClient }: { client?: Client }) {
           launch_review_id: progress.launch_review_id,
           preview_render: progress.preview_render,
           preview_control_error: previous?.preview_control_error,
+          rpf_work: progress.rpf_work ?? previous?.rpf_work,
           percentage: typeof progress.percentage === "number" && Number.isFinite(progress.percentage)
             ? Math.max(previous?.percentage ?? 0, Math.min(100, Math.max(0, progress.percentage)))
             : undefined,
         }));
-        setActivity((rows) => [...rows.slice(-199), progress.message]);
-        setActivityCleared(false);
+        if (!progress.heartbeat) {
+          setActivity((rows) => [...rows.slice(-199), progress.message]);
+          setActivityCleared(false);
+        }
       })
       .then((remove) => {
         if (mounted.current) removeProgress = remove;
@@ -316,6 +319,8 @@ export default function App({ client = nativeClient }: { client?: Client }) {
   const apply = async () => {
     if (!review || !confirmed || flight.current) return;
     const current = review;
+    setNotice("");
+    setWarning("");
     activeAction.current = current.action;
     setCancellingLaunch(false);
     cancelFlight.current = false;
@@ -579,7 +584,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
             {operationProgress && <OperationProgress
               heading={operationProgress.action === "launch" ? "Preparing GTA launch" : title(operationProgress.action)}
               message={operationProgress.message}
-              percentage={operationProgress.percentage} />}
+              percentage={operationProgress.percentage} rpfWork={operationProgress.rpf_work} />}
             {busy && review.action === "launch" && <div className="launch-cancel-control">
               <button onClick={() => void cancelLaunch()}
                 disabled={cancellingLaunch || !operationProgress?.cancellable || operationProgress.launch_review_id !== review.review_id}
@@ -1207,6 +1212,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
             ? "Waiting for game services. See the readiness checklist above; GTA does not report a loading percentage."
             : "You can return to the game. No further startup polling is running.")}
           percentage={operationProgress?.percentage}
+          rpfWork={operationProgress?.rpf_work}
           active={!!operationProgress || !!startup?.active} />}
         <span className="footer-status" aria-label="Launcher status"><i className={`activity-dot ${error ? "error" : warning || startupAttention ? "warning" : busy || startup?.active ? "busy" : config ? "ready" : ""}`} />{busy ? "Working…" : dirty ? "Unsaved changes" : needsAttention ? "Needs attention" : !config ? "Connecting…" : startup?.active ? "Game starting…" : !startup?.failure && startup?.ready?.includes("story") ? "Story Mode ready" : "Ready"}</span>
         <div className="toolbar">

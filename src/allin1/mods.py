@@ -13,7 +13,7 @@ import tempfile
 import uuid
 import zipfile
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Iterator, Mapping
@@ -24,7 +24,8 @@ from allin1.extensions import (
     ExtensionRegistry,
 )
 from allin1.processes import run_hidden
-from allin1.mod_package_contract import validate_mod_schema_envelope, rpf_targets_overlap, split_nested_rpf_entry
+from allin1.mod_package_contract import validate_mod_schema_envelope, validate_edition_bundle, rpf_targets_overlap, split_nested_rpf_entry
+from allin1.release_paths import no_links
 from allin1.vehicle_catalog import VehicleCatalog
 from allin1.weapon_catalog import WeaponCatalog
 from allin1.vehicles.database import VehicleDatabase
@@ -270,6 +271,20 @@ class ModManifest:
     package_requirements: tuple[PackageRequirement, ...] = ()
     extension: ExtensionManifest | None = None
     schema_version: int = 1
+    variants: tuple["ModManifest", ...] = ()
+    bundle_manifest_path: Path | None = None
+
+    def for_edition(self, edition: str) -> "ModManifest":
+        if edition not in SUPPORTED_EDITIONS:
+            raise ValueError("Select a valid GTA V edition")
+        if edition not in self.editions:
+            raise ValueError(f"{self.name} has no {edition} variant")
+        if self.schema_version != 5:
+            return self
+        matches = [child for child in self.variants if child.editions == (edition,)]
+        if len(matches) != 1:
+            raise ValueError(f"Bundle requires exactly one {edition} variant")
+        return replace(matches[0], bundle_manifest_path=self.manifest_path)
 
     @property
     def package_root(self) -> Path:
@@ -277,11 +292,13 @@ class ModManifest:
 
     @classmethod
     def load(
-        cls, manifest_path: str | Path, *, validate_payload: bool = True
+        cls, manifest_path: str | Path, *, validate_payload: bool = True,
+        _allow_bundle: bool = True,
     ) -> "ModManifest":
-        path = Path(manifest_path).resolve()
+        path = no_links(Path(manifest_path)).resolve()
         if path.is_dir():
             path = path / "mod.toml"
+        no_links(path)
         if not path.is_file():
             raise FileNotFoundError(f"Mod manifest not found: {path}")
         if path.name.casefold() != "mod.toml":
@@ -296,6 +313,30 @@ class ModManifest:
             raise ValueError(f"Invalid mod.toml manifest: {exc}") from exc
 
         schema_version, raw_allin1 = validate_mod_schema_envelope(data)
+        if schema_version == 5:
+            if not _allow_bundle:
+                raise ValueError("Nested edition bundles are not supported")
+            children = []
+            for edition, relative in validate_edition_bundle(data).items():
+                child_path = _contained_path(path.parent, relative)
+                if not child_path.is_file() or _sha256(child_path) != data["variants"][edition]["sha256"]:
+                    raise ValueError(f"Variant manifest missing or checksum mismatch: {edition}")
+                child = cls.load(child_path, validate_payload=validate_payload, _allow_bundle=False)
+                if child.editions != (edition,):
+                    raise ValueError(f"Variant must declare only its matching edition: {edition}")
+                if any(item.sha256 is None for item in (*child.files, *child.rpf_entries)):
+                    raise ValueError("Edition bundle payloads require SHA-256 checksums")
+                if (child.mod_id, child.name, child.version) != (data["id"], data["name"], data["version"]):
+                    raise ValueError("Bundle and variant id, name and version must match")
+                children.append(child)
+            return cls(
+                manifest_path=path, mod_id=data["id"], name=data["name"],
+                version=data["version"], mod_type="bundle",
+                description=str(data.get("description", "")),
+                editions=tuple(data["editions"]), dependencies=(), conflicts=(),
+                dlc_packs=(), files=(), rpf_entries=(), schema_version=5,
+                variants=tuple(children),
+            )
         mod_id = str(data.get("id", "")).strip().lower()
         if not _ID_PATTERN.fullmatch(mod_id):
             raise ValueError("Mod id must be 2-64 lowercase letters, numbers, dots, dashes, or underscores")
@@ -576,6 +617,10 @@ class ModManifest:
                     )
 
     def validate_payload(self) -> None:
+        if self.schema_version == 5:
+            # Reload the envelope as well: changed manifests must not bypass their hashes.
+            type(self).load(self.manifest_path, validate_payload=True)
+            return
         package_root = self.package_root.resolve()
         for item in self.files:
             unresolved_source = package_root / Path(*item.source.parts)
@@ -627,8 +672,9 @@ def open_mod_package(
     """Open a folder/manifest or safely stage one unambiguous ZIP package.
 
     ZIP imports are deliberately temporary. Every member is validated before
-    writing, only the tree containing the sole ``mod.toml`` is extracted, and
-    both declared and observed output are bounded.
+    writing, only the tree containing the root ``mod.toml`` is extracted, and
+    both declared and observed output are bounded. Schema 5 permits only its
+    explicitly declared child manifests; arbitrary multi-package ZIPs fail.
     """
     selected = Path(source).expanduser()
     if selected.is_dir() or (
@@ -668,14 +714,18 @@ def open_mod_package(
                     candidates.append(relative)
             if not candidates:
                 raise ValueError("ZIP package does not contain a mod.toml manifest")
-            if len(candidates) != 1:
+            roots = [candidate for candidate in candidates if all(
+                other == candidate or candidate.parent in other.parents
+                for other in candidates
+            )]
+            if len(roots) != 1:
                 names = ", ".join(path.as_posix() for path in candidates)
                 raise ValueError(
                     "ZIP package contains multiple mod.toml manifests; "
                     f"select an unambiguous package archive ({names})"
                 )
 
-            manifest_member = candidates[0]
+            manifest_member = roots[0]
             package_prefix = manifest_member.parent
             extracted = [
                 (info, relative) for info, relative in members
@@ -720,10 +770,17 @@ def open_mod_package(
                             output.write(chunk)
                     if member_total != info.file_size:
                         raise ValueError(f"ZIP member size changed while reading: {relative}")
-                yield ModManifest.load(
+                manifest = ModManifest.load(
                     staging_root / Path(*manifest_member.parts),
                     validate_payload=validate_payload,
                 )
+                declared = {manifest_member} | {
+                    PurePosixPath(child.manifest_path.relative_to(staging_root).as_posix())
+                    for child in manifest.variants
+                }
+                if set(candidates) != declared:
+                    raise ValueError("ZIP contains undeclared or multiple mod.toml manifests")
+                yield manifest
     except zipfile.BadZipFile as exc:
         raise ValueError(f"Invalid ZIP package: {exc}") from exc
 
@@ -841,7 +898,7 @@ def default_mod_catalog(
 class ModIntegrationService:
     """Installs optional mod packages with receipts, backups, and rollback."""
 
-    def __init__(self, gta_path: str | Path) -> None:
+    def __init__(self, gta_path: str | Path, *, rpf_progress=None) -> None:
         candidate = Path(gta_path).expanduser().resolve()
         if not candidate.is_dir() or not (
             (candidate / "GTA5.exe").is_file()
@@ -853,6 +910,30 @@ class ModIntegrationService:
         self.gta_path = candidate
         self.state_root = self.gta_path / "scripts" / ".allin1" / "mods"
         self.backup_root = self.gta_path / "ALLIN1_Backups" / "Mods"
+        self.rpf_progress = rpf_progress
+        self._rpf_phase = None
+
+    def _plan_rpf_work(self, actions: int, entries: int = 0) -> None:
+        if self.rpf_progress is not None:
+            self.rpf_progress.plan(actions, entries)
+
+    @contextmanager
+    def _report_rpf_phase(self, phase: str):
+        previous, self._rpf_phase = self._rpf_phase, phase
+        try:
+            yield
+        finally:
+            self._rpf_phase = previous
+
+    @contextmanager
+    def _report_rpf_action(self, command: str, entry: object):
+        if self.rpf_progress is not None:
+            self.rpf_progress.start(command, str(entry), self._rpf_phase)
+        try:
+            yield
+        finally:
+            if self.rpf_progress is not None:
+                self.rpf_progress.finish()
 
     @property
     def edition(self) -> str:
@@ -895,10 +976,11 @@ class ModIntegrationService:
             raise ValueError(f"Invalid DLC pack name in install receipt: {pack}")
         patcher = self._rpf_patcher_path("managed DLC registration")
         command = "register-dlc" if enabled else "unregister-dlc"
-        result = run_hidden(
-            [patcher, command, self.gta_path, pack],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-        )
+        with self._report_rpf_action(command, pack):
+            result = run_hidden(
+                [patcher, command, self.gta_path, pack],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+            )
         if result.returncode:
             detail = (result.stderr or result.stdout or "unknown helper error").strip()
             raise RuntimeError(
@@ -920,10 +1002,11 @@ class ModIntegrationService:
         return patcher
 
     def _run_rpf_command(self, command: str, *arguments: object):
-        result = run_hidden(
-            [self._rpf_patcher_path(), command, self.gta_path, *arguments],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-        )
+        with self._report_rpf_action(command, arguments[1] if len(arguments) > 1 else command):
+            result = run_hidden(
+                [self._rpf_patcher_path(), command, self.gta_path, *arguments],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+            )
         return result
 
     def _ensure_mods_archive(self, relative: str | PurePosixPath) -> Path:
@@ -1015,9 +1098,10 @@ class ModIntegrationService:
             ).hexdigest(),
         )
         try:
-            exists = self._extract_rpf_entry(
-                archive, item["entry"], probe, allow_missing=True,
-            )
+            with self._report_rpf_phase("Verifying"):
+                exists = self._extract_rpf_entry(
+                    archive, item["entry"], probe, allow_missing=True,
+                )
             if expected is None:
                 return not exists
             return exists and _sha256(probe) == _sha256(expected)
@@ -1037,7 +1121,8 @@ class ModIntegrationService:
                 if not archive.is_file():
                     raise FileNotFoundError(f"Base RPF archive is missing: {item.archive}")
                 probe = Path(directory) / str(index)
-                self._extract_rpf_entry(archive, item.entry, probe)
+                with self._report_rpf_phase("Checking original"):
+                    self._extract_rpf_entry(archive, item.entry, probe)
                 if _sha256(probe) != item.original_sha256:
                     raise ValueError(f"Original RPF member checksum mismatch: {item.archive}/{item.entry}")
 
@@ -1057,8 +1142,9 @@ class ModIntegrationService:
             self._delete_rpf_entry(archive, item["entry"])
 
     def _rollback_rpf_records(self, records: Iterable[dict[str, Any]]) -> None:
-        for item in reversed(list(records)):
-            self._restore_rpf_record(item)
+        with self._report_rpf_phase("Rolling back"):
+            for item in reversed(list(records)):
+                self._restore_rpf_record(item)
 
     def list_installed(self) -> list[ModStatus]:
         if not self.state_root.is_dir():
@@ -1227,6 +1313,13 @@ class ModIntegrationService:
         initial_settings: Mapping[str, Any] | None = None,
         repair_managed: bool = False,
     ) -> ModStatus:
+        if manifest.schema_version == 5:
+            manifest = type(manifest).load(manifest.manifest_path).for_edition(self.edition)
+        self._plan_rpf_work(
+            3 * len(manifest.rpf_entries)
+            + sum(item.original_sha256 is not None for item in manifest.rpf_entries)
+            + len(manifest.dlc_packs), len(manifest.rpf_entries),
+        )
         manifest.validate_payload()
         from allin1 import sdk_provenance
         sdk_lineage = sdk_provenance.read(manifest, self.edition)
@@ -1356,9 +1449,10 @@ class ModIntegrationService:
                     backup_dir,
                     PurePosixPath(".rpf-entries") / str(index) / item.entry,
                 )
-                existed = self._extract_rpf_entry(
-                    archive, item.entry, backup, allow_missing=True,
-                )
+                with self._report_rpf_phase("Backing up"):
+                    existed = self._extract_rpf_entry(
+                        archive, item.entry, backup, allow_missing=True,
+                    )
                 if item.original_sha256 is not None and (not existed or _sha256(backup) != item.original_sha256):
                     raise ValueError(f"Original RPF member changed before replacement: {item.entry}")
                 if not existed:
@@ -1394,8 +1488,10 @@ class ModIntegrationService:
                     # stable representation for receipts and later toggles,
                     # then prove that a second write round-trips byte-for-byte.
                     canonical = applied.with_name(applied.name + ".canonical")
+                    self._plan_rpf_work(3)
                     try:
-                        self._extract_rpf_entry(archive, item.entry, canonical)
+                        with self._report_rpf_phase("Canonicalizing"):
+                            self._extract_rpf_entry(archive, item.entry, canonical)
                         shutil.copy2(canonical, applied)
                     finally:
                         canonical.unlink(missing_ok=True)
@@ -1616,6 +1712,12 @@ class ModIntegrationService:
             self._check_dependents(mod_id)
         original_receipt = json.loads(json.dumps(receipt))
 
+        self._plan_rpf_work(
+            2 * len(receipt.get("rpf_entries", []))
+            + len(receipt.get("owned_dlc_packs", receipt.get("dlc_packs", []))),
+            len(receipt.get("rpf_entries", [])),
+        )
+
         loose_state: list[tuple[dict[str, Any], bool]] = []
         changed_rpf_entries: list[dict[str, Any]] = []
         dlc_packs = [
@@ -1793,6 +1895,12 @@ class ModIntegrationService:
         if check_dependents:
             self._check_dependents(mod_id)
         was_enabled = bool(receipt.get("enabled", True))
+        if was_enabled:
+            self._plan_rpf_work(
+                2 * len(receipt.get("rpf_entries", []))
+                + len(receipt.get("owned_dlc_packs", receipt.get("dlc_packs", []))),
+                len(receipt.get("rpf_entries", [])),
+            )
         receipt_path = self._receipt_path(mod_id)
         receipt_snapshot = receipt_path.read_bytes()
 

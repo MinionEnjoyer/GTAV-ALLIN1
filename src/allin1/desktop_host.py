@@ -7,19 +7,69 @@ import os
 from pathlib import Path
 import sys
 from queue import Full, Queue
-from threading import Lock, Thread
+from threading import Event, Lock, Thread
 from allin1.desktop_service import LauncherService, serializable
 from allin1.release_paths import strict_json
 from allin1.runtime_resources import frozen_identity
 
 MAX_REQUEST = 1024 * 1024
+HEARTBEAT_SECONDS = 15
 OPERATIONS = frozenset({
     "catalog", "inspect", "review", "apply", "load_profile", "health",
     "check_update", "read_garages", "check_sdk_update", "startup_status", "shutdown", "open_activity_folder", "open_launcher_release", "cancel_launch", "set_preview_workers",
 })
 
 
-def serve(service, incoming, outgoing):
+@contextlib.contextmanager
+def progress_frames(service, request_id, send, interval):
+    """Liveness is not advancement; stop/join before sending the terminal frame."""
+    stopped, emission_lock = Event(), Lock()
+    last = (None, "Waiting for the launcher service")
+    connected = True
+
+    def emit(heartbeat=False):
+        nonlocal connected
+        if not connected:
+            return
+        control = getattr(service, "launch_cancellation", None)
+        previews = getattr(service, "preview_render_control", None)
+        work = getattr(service, "rpf_progress", None)
+        snapshot = work.snapshot() if work is not None else None
+        try:
+            send(request_id, "progress", {"schema_version": 1, "event": "launcher.progress",
+                 "percentage": last[0], "message": last[1], **({"heartbeat": True} if heartbeat else {}),
+                 **(control.status() if control else {}),
+                 **({"preview_render": previews.status()} if previews else {}),
+                 **({"rpf_work": snapshot} if snapshot is not None else {})})
+        except OSError:
+            # Losing a progress consumer must not abort/roll back an archive write.
+            connected = False
+            stopped.set()
+
+    def progress(percentage, message):
+        nonlocal last
+        with emission_lock:
+            last = (percentage, message)
+            emit()
+
+    def heartbeat():
+        while not stopped.wait(interval):
+            with emission_lock:
+                emit(heartbeat=True)
+
+    service.progress = progress
+    ticker = Thread(target=heartbeat, name="launcher-heartbeat")
+    ticker.start()
+    try:
+        yield
+    finally:
+        stopped.set()
+        ticker.join()
+
+
+def serve(service, incoming, outgoing, *, heartbeat_interval=HEARTBEAT_SECONDS):
+    if heartbeat_interval <= 0:
+        raise ValueError("Heartbeat interval must be positive")
     output_lock = Lock()
     def send(request_id, kind, payload):
         message = json.dumps({"schema_version": 1, "request_id": request_id, "kind": kind, "payload": serializable(payload)}, allow_nan=False)
@@ -37,14 +87,7 @@ def serve(service, incoming, outgoing):
                 if operation == "protocol_error":
                     send(request_id, "error", payload)
                     continue
-                def progress(percentage, message):
-                    control = getattr(service, "launch_cancellation", None)
-                    previews = getattr(service, "preview_render_control", None)
-                    send(request_id, "progress", {"schema_version": 1, "event": "launcher.progress",
-                         "percentage": percentage, "message": message, **(control.status() if control else {}),
-                         **({'preview_render': previews.status()} if previews else {})})
-                service.progress = progress
-                with contextlib.redirect_stdout(sys.stderr):
+                with progress_frames(service, request_id, send, heartbeat_interval), contextlib.redirect_stdout(sys.stderr):
                     if operation == "shutdown": result = {"closed": True}
                     elif operation == "review": result = service.review(payload)
                     elif operation == "apply": result = service.apply(payload)

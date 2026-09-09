@@ -19,6 +19,16 @@ struct Envelope {
 
 pub enum Response { Progress(Value), Result(Value), Error(String) }
 
+fn valid_rpf_work(work: &Value) -> bool {
+    let fields = ["estimated_actions", "completed_actions", "entries", "elapsed_seconds", "budget_seconds", "active_seconds"];
+    work.is_object()
+        && fields.iter().all(|field| work[*field].as_u64().is_some())
+        && work["estimated_actions"].as_u64().unwrap_or(0) > 0
+        && work["completed_actions"].as_u64() <= work["estimated_actions"].as_u64()
+        && work["budget_seconds"].as_u64().unwrap_or(0) > 0
+        && work["slow_action"].is_boolean() && work["budget_exceeded"].is_boolean()
+}
+
 pub fn decode(line: &str, request_id: &str) -> Result<Response, String> {
     let row: Envelope = serde_json::from_str(line).map_err(|e| format!("Invalid Launcher response: {e}"))?;
     if row.schema_version != 1 || row.request_id != request_id || !row.payload.is_object() {
@@ -30,7 +40,9 @@ pub fn decode(line: &str, request_id: &str) -> Result<Response, String> {
                 || row.payload["event"] != "launcher.progress"
                 || !row.payload.get("percentage").is_some_and(|value|
                     value.is_null() || value.as_u64().is_some_and(|number| number <= 100))
-                || !row.payload["message"].is_string() {
+                || !row.payload["message"].is_string()
+                || row.payload.get("heartbeat").is_some_and(|value| !value.is_boolean())
+                || row.payload.get("rpf_work").is_some_and(|value| !valid_rpf_work(value)) {
                 return Err("Invalid Launcher progress schema".into());
             }
             Ok(Response::Progress(row.payload))
@@ -121,6 +133,21 @@ mod tests {
             json!({"schema_version":1,"event":"launcher.progress","percentage":0.5,"message":"bad"}),
             json!({"schema_version":1,"event":"launcher.progress","message":"missing percentage"}),
         ] { assert!(decode(&frame("progress", payload), "one").is_err()); }
+    }
+    #[test]
+    fn heartbeats_are_progress_not_completion_and_workload_metadata_is_bounded() {
+        let payload = json!({"schema_version":1,"event":"launcher.progress","percentage":25,"message":"Verifying RPF",
+            "heartbeat":true,"rpf_work":{"estimated_actions":1260,"completed_actions":315,"entries":420,
+                "elapsed_seconds":1443,"budget_seconds":6420,"active_seconds":130,"slow_action":true,"budget_exceeded":false}});
+        assert!(matches!(decode(&frame("progress", payload.clone()), "one"), Ok(Response::Progress(_))));
+        for (key, value) in [("estimated_actions", json!(0)), ("completed_actions", json!(1261)),
+            ("elapsed_seconds", json!(-1)), ("budget_seconds", json!(true)), ("active_seconds", json!(1.5)),
+            ("slow_action", json!("yes"))] {
+            let mut invalid = payload.clone(); invalid["rpf_work"][key] = value;
+            assert!(decode(&frame("progress", invalid), "one").is_err());
+        }
+        let mut invalid = payload; invalid["heartbeat"] = json!("alive");
+        assert!(decode(&frame("progress", invalid), "one").is_err());
     }
     #[test]
     fn frame_bound_and_utf8_are_enforced() {

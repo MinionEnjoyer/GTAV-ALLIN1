@@ -118,6 +118,73 @@ def test_oversize_or_unterminated_frame_closes_without_dispatch(text):
     assert output.getvalue() == ""
 
 
+@pytest.mark.parametrize("agent", [False, True])
+def test_live_heartbeats_preserve_busy_writer_and_stop_before_terminal_result(agent):
+    from queue import Queue
+    from threading import Thread, Event
+    from allin1.rpf_progress import RpfProgress
+    from allin1.launcher_api import LauncherAPI
+    rows, release, now = Queue(), Event(), [0.0]
+
+    class Output:
+        def write(self, line): rows.put(json.loads(line))
+        def flush(self): pass
+
+    class Service:
+        def apply(self, payload):
+            self.rpf_progress = RpfProgress(self.progress, clock=lambda: now[0])
+            self.rpf_progress.plan(1260, 420)
+            self.rpf_progress.start("replace-entry", "common/test.xml")
+            assert release.wait(5), "Test did not release the simulated helper"
+            self.rpf_progress.finish()
+            return {"committed": True}
+
+    service = Service()
+    transport = LauncherAPI(service, allow_writes=True) if agent else service
+    incoming = io.StringIO(json.dumps(envelope("apply", {"review_id": "fixture", "review_sha256": "hash", "confirmed": True})) + "\n")
+    host = Thread(target=serve, args=(transport, incoming, Output()), kwargs={"heartbeat_interval": .01})
+    host.start()
+    observed = []
+    try:
+        while len(observed) < 2:
+            observed.append(rows.get(timeout=3))
+        now[0] = 121
+        def heartbeat_where(predicate):
+            for _ in range(50):
+                row = rows.get(timeout=3); observed.append(row)
+                assert row["kind"] == "progress"
+                if row["payload"].get("heartbeat") and predicate(row["payload"]["rpf_work"]):
+                    return row
+            raise AssertionError("Expected heartbeat not emitted")
+        row = heartbeat_where(lambda work: work["slow_action"])
+        assert row["payload"]["rpf_work"]["completed_actions"] == 0
+        now[0] = 6500
+        row = heartbeat_where(lambda work: work["budget_exceeded"])
+        assert row["payload"]["percentage"] == 0
+        assert host.is_alive()  # Even EOF and budget overrun cannot cancel the writer.
+    finally:
+        release.set(); host.join(5)
+    assert not host.is_alive()
+    while not rows.empty(): observed.append(rows.get_nowait())
+    assert observed[-1]["kind"] == "result" and observed[-1]["payload"]["committed"]
+    assert sum(row["kind"] == "result" for row in observed) == 1
+    assert {row["request_id"] for row in observed} == {"apply"}
+
+
+def test_progress_disconnect_does_not_interrupt_the_worker():
+    from allin1.desktop_host import progress_frames
+    class Service: pass
+    service = Service()
+    attempts = []
+    def disconnected(*args):
+        attempts.append(args)
+        raise BrokenPipeError("Disconnected consumer")
+    with progress_frames(service, "apply", disconnected, .01):
+        service.progress(0, "Starting")
+        service.progress(50, "Write completed despite disconnect")
+    assert len(attempts) == 1
+
+
 def test_dispatch_progress_and_incidental_stdout_remain_separate(capsys):
     class Service:
         def review(self, payload):

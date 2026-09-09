@@ -92,6 +92,9 @@ class LauncherAPI:
     def progress(self, value): self.service.progress = value
 
     @property
+    def rpf_progress(self): return getattr(self.service, "rpf_progress", None)
+
+    @property
     def launch_cancellation(self): return self.service.launch_cancellation
 
     def cancel_launch(self, payload):

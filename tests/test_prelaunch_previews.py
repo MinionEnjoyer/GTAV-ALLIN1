@@ -152,6 +152,69 @@ def test_existing_preview_rejects_modified_pixels_and_path_traversal(fixture):
     assert p.existing_preview(public, {'weapon_test': '../outside.png'}, {}, 'weapon_test') is None
 
 
+def set_managed_catalog(f, names):
+    catalog = p.document(f.game/f.catalog)
+    template = catalog['weapons'][0]
+    catalog['weapons'] = [{**template, 'weapon': name, 'name': name} for name in names]
+    p.atomic(f.game/f.catalog, json.dumps(catalog).encode())
+    f.receipt['files'][1]['sha256'] = p.sha(f.game/f.catalog)
+    p.atomic(f.receipt_path, json.dumps(f.receipt).encode())
+
+
+def test_full_stock_plus_addon_catalog_crosses_128_and_only_renders_missing(fixture, monkeypatch):
+    from allin1 import stock_weapon_previews
+    f = fixture
+    stock_names = [f'WEAPON_STOCK_{i}' for i in range(111)]
+    managed = [f'WEAPON_ADDON_{i}' for i in range(16)]
+    missing = ['WEAPON_A1_EQ_M249', 'WEAPON_A1_EQ_LVOAC']
+    set_managed_catalog(f, managed + missing)
+    monkeypatch.setattr(stock_weapon_previews, 'catalog_names', lambda *_: stock_names)
+    monkeypatch.setattr(p, 'stock_items', lambda *_: {
+        'items': [{'weapon': name, 'kind': 'stock', 'assets': []} for name in stock_names], 'errors': []})
+    old = {name.lower(): name.lower()+'.'+hashlib.sha256(name.encode()).hexdigest()+'.png'
+           for name in stock_names + managed}
+    public = f.game/p.PUBLIC
+    for filename in old.values(): p.atomic(public/filename, f.data)
+    p.atomic(public/'index.json', json.dumps({'schema_version': 1, 'owner': 'allin1.prelaunch-previews',
+        'images': old, 'image_sha256': {name: hashlib.sha256(f.data).hexdigest() for name in old.values()}}).encode())
+    calls = []
+    monkeypatch.setattr(p, 'render', lambda command, job, work, seconds: calls.append(job['weapon']) or f.data)
+    result = f.run(missing_only=True)
+    assert result['status'] == 'complete' and not result['errors']
+    assert result['rendered'] == 2 and result['cached'] == 127 and result['pending'] == 0
+    assert sorted(calls) == sorted(missing)
+    after = index(f)
+    assert len(after) == 129 and all(after[name] == filename for name, filename in old.items())
+    assert all((public/filename).read_bytes() == f.data for filename in old.values())
+    assert result['pruned_images'] == 0
+    calls.clear()
+    again = f.run(missing_only=True)  # A publication larger than 128 must be readable on the next run too.
+    assert again['cached'] == 129 and not calls and index(f) == after
+
+
+def test_managed_weapon_limit_remains_separate_from_combined_catalog(fixture):
+    f = fixture
+    set_managed_catalog(f, [f'WEAPON_ADDON_{i}' for i in range(p.MAX_MANAGED_WEAPONS + 1)])
+    with pytest.raises(ValueError, match='Managed weapon preview count 129 exceeds limit 128'):
+        p.validated_weapons(f.game, {'test_pack'})
+
+
+def test_total_queue_limit_preserves_previous_publication(fixture, monkeypatch):
+    from allin1 import stock_weapon_previews
+    f = fixture
+    f.run()
+    old = (f.game/p.PUBLIC/'index.json').read_bytes()
+    monkeypatch.setattr(p, 'MAX_WEAPONS', 2)
+    monkeypatch.setattr(stock_weapon_previews, 'catalog_names', lambda *_: ['WEAPON_A', 'WEAPON_B'])
+    monkeypatch.setattr(p, 'stock_items', lambda *_: {
+        'items': [{'weapon': n, 'kind': 'stock', 'assets': []} for n in ['WEAPON_A', 'WEAPON_B']], 'errors': []})
+    monkeypatch.setattr(p, 'render', lambda *_: pytest.fail('Oversized queue must not render'))
+    result = f.run()
+    assert result['status'] == 'unavailable'
+    assert '3 entries; preview queue limit is 2' in result['errors'][-1]['reason']
+    assert (f.game/p.PUBLIC/'index.json').read_bytes() == old
+
+
 def test_both_game_editions_reuse_their_cache_without_cross_publication(fixture):
     f = fixture
     legacy = f.game.parent/'Legacy game'

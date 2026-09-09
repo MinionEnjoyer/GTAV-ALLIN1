@@ -400,7 +400,8 @@ def content_list(ctx: click.Context, gta_path: Path | None, json_output: bool) -
 
 @content_group.command("validate")
 @click.argument("manifest", type=click.Path(exists=True, path_type=Path))
-def content_validate(manifest: Path) -> None:
+@click.option("--edition", type=click.Choice(["legacy", "enhanced"]))
+def content_validate(manifest: Path, edition: str | None = None) -> None:
     """Validate a content descriptor, mod.toml, package folder, or ZIP."""
     from allin1.mods import open_mod_package
 
@@ -414,6 +415,8 @@ def content_validate(manifest: Path) -> None:
         )
         return
     with open_mod_package(manifest) as package:
+        if edition:
+            package = package.for_edition(edition)
         click.echo(
             f"PASS: {package.mod_id} schema {package.schema_version}; "
             f"{len(package.files)} file(s), {len(package.rpf_entries)} RPF patch(es)"
@@ -446,9 +449,11 @@ def content_install_package(
     from allin1.mods import ModIntegrationService, open_mod_package
 
     game = _content_game_path(ctx, gta_path)
+    service = ModIntegrationService(game)
     with open_mod_package(source) as package:
+        package = package.for_edition(service.edition)
         _confirm_content_change(yes, f"Install {package.name} {package.version}?")
-        status = ModIntegrationService(game).install(
+        status = service.install(
             package, repair_managed=repair_managed,
         )
     click.echo(

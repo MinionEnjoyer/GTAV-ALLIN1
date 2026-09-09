@@ -33,6 +33,43 @@ def apply(service, action, **fields):
     return service.apply({"review_id": review["review_id"], "review_sha256": review["review_sha256"], "confirmed": True})
 
 
+def test_reviewed_package_actions_share_workload_progress_and_clear_it_afterward(service, tmp_path, monkeypatch):
+    from allin1.mods import ModIntegrationService, ModStatus
+    from tests.test_mods import _rpf_entry_package
+    package = _rpf_entry_package(tmp_path, "progress-wiring")
+    observed = []
+    service.progress = lambda percent, message: observed.append(
+        (percent, service.rpf_progress.snapshot() if service.rpf_progress is not None else None))
+
+    def execute(domain, *_args, **_kwargs):
+        assert domain.rpf_progress is service.rpf_progress and domain.rpf_progress is not None
+        domain.rpf_progress.plan(3, 1)
+        for command in ("extract-exact-entry", "replace-entry", "extract-exact-entry"):
+            domain.rpf_progress.start(command, "test.bin")
+            domain.rpf_progress.finish()
+        return ModStatus("progress-wiring", "Test", "1", "rpf", True, True)
+
+    monkeypatch.setattr(ModIntegrationService, "install", execute)
+    monkeypatch.setattr(ModIntegrationService, "set_enabled", execute)
+    monkeypatch.setattr(ModIntegrationService, "uninstall", execute)
+    for action, fields in (("package_install", {"source": str(package)}),
+                           ("package_disable", {"id": "progress-wiring"}),
+                           ("package_uninstall", {"id": "progress-wiring"})):
+        observed.clear()
+        assert apply(service, action, **fields)["kind"] == "launcher_applied"
+        assert observed[-1] == (100, None)
+        assert observed[-2][1]["completed_actions"] == 3
+        assert observed[-2][1]["budget_seconds"] == 135
+        assert service.rpf_progress is None
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("synthetic operation failure")
+    monkeypatch.setattr(ModIntegrationService, "uninstall", fail)
+    with pytest.raises(RuntimeError, match="synthetic operation failure"):
+        apply(service, "package_uninstall", id="progress-wiring")
+    assert service.rpf_progress is None
+
+
 @pytest.mark.parametrize("module", [key for key, _ in NAVIGATION])
 def test_every_workspace_has_read_only_happy_path(service, module):
     before = service.tree_identity(service.project.parent)

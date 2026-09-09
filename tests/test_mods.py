@@ -765,7 +765,7 @@ def test_manifest_metadata_validation(tmp_path: Path, replacement: str, message:
     manifest_path = package / "mod.toml"
     text = manifest_path.read_text()
     if replacement.startswith("schema"):
-        text = text.replace(replacement, "schema_version = 5")
+        text = text.replace(replacement, "schema_version = 99")
     elif replacement.startswith("id"):
         text = text.replace(replacement, 'id = "BAD ID"')
     elif replacement.startswith("type"):
@@ -1338,6 +1338,59 @@ def test_rpf_archive_copy_and_helper_wrappers(tmp_path: Path, monkeypatch):
     result = service._run_rpf_command("inspect", archive)
     assert result.returncode == 0
     assert calls[0][0][:3] == [helper, "inspect", game]
+
+
+@pytest.mark.parametrize("canonical,fail_verification", [(False, False), (True, False), (False, True)])
+def test_rpf_helper_progress_counts_lifecycle_canonicalization_and_rollback(tmp_path, monkeypatch, canonical, fail_verification):
+    from allin1.rpf_progress import RpfProgress
+    game = _game(tmp_path)
+    (game / "x64h.rpf").write_bytes(b"synthetic archive")
+    frames, content = [], {"levels/gta5/test.bin": b"original"}
+    work = RpfProgress(lambda percent, message: frames.append((percent, message)))
+    service = ModIntegrationService(game, rpf_progress=work)
+    monkeypatch.setattr(service, "_check_dependencies", lambda _: None)
+    monkeypatch.setattr(service, "_rpf_patcher_path", lambda *_: tmp_path / "synthetic-helper.exe")
+
+    def helper(args, **kwargs):
+        command, entry = args[1], str(args[4])
+        if command == "extract-exact-entry":
+            if fail_verification and ".probes" in str(args[5]):
+                return SimpleNamespace(returncode=1, stdout="", stderr="verification failed")
+            if entry not in content:
+                return SimpleNamespace(returncode=5, stdout="", stderr="not found")
+            Path(args[5]).write_bytes(content[entry])
+        elif command == "replace-entry":
+            value = Path(args[5]).read_bytes()
+            content[entry] = b"canonical entry" if canonical and value == b"replacement entry" else value
+        elif command == "delete-entry":
+            content.pop(entry, None)
+        else:
+            raise AssertionError(command)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("allin1.mods.run_hidden", helper)
+    manifest = ModManifest.load(_rpf_entry_package(tmp_path, "progress-package"))
+    if fail_verification:
+        with pytest.raises(RuntimeError, match="verification failed"):
+            service.install(manifest)
+        assert content["levels/gta5/test.bin"] == b"original"
+        assert not service.list_installed()
+        assert work.snapshot()["completed_actions"] == work.snapshot()["estimated_actions"] == 4
+        assert any("Rolling back" in message for _, message in frames)
+    else:
+        service.install(manifest)
+        assert work.snapshot()["completed_actions"] == work.snapshot()["estimated_actions"] == (6 if canonical else 3)
+        for action in (lambda: service.set_enabled(manifest.mod_id, False),
+                       lambda: service.set_enabled(manifest.mod_id, True),
+                       lambda: service.uninstall(manifest.mod_id)):
+            service.rpf_progress = RpfProgress(lambda percent, message: frames.append((percent, message)))
+            action()
+            assert service.rpf_progress.snapshot()["completed_actions"] == 2
+            assert service.rpf_progress.snapshot()["estimated_actions"] == 2
+        assert content["levels/gta5/test.bin"] == b"original"
+    assert all(percent < 100 for percent, _ in frames)
+    for phase in ("Backing up", "Replacing", "Verifying"):
+        assert any(phase in message for _, message in frames)
 
 
 def test_rpf_extract_replace_delete_error_contracts(tmp_path: Path, monkeypatch):

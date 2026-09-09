@@ -11,6 +11,11 @@ export default function PackageDraft({ draft, locked, change, review }: {
     <p>{item.description || "This package does not provide a description."}</p>
     <p className="path">{draft.source}</p>
     <p>{item.editions.join(" / ")} · {item.type} · schema {item.schema_version}</p>
+    {item.bundle_editions?.length > 0 && <p role="status">
+      {item.selected_edition
+        ? `Edition bundle: ${item.selected_edition} selected automatically. Only this variant will be installed.`
+        : "Edition bundle: select a GTA installation to choose the matching variant."}
+    </p>}
     <p>{item.files.length} files · {item.rpf_entry_count} RPF entries</p>
     {item.dependencies.length > 0 && <p>Requires: {item.dependencies.join(", ")}</p>}
     {item.conflicts.length > 0 && <p>Conflicts: {item.conflicts.join(", ")}</p>}
@@ -23,6 +28,6 @@ export default function PackageDraft({ draft, locked, change, review }: {
       <ContentSettings item={{ ...item.extension, installed: true }} values={item.settings} locked={locked}
         change={(key, value) => change({ ...draft, package: { ...item, settings: { ...item.settings, [key]: value } } })} />
     </>}
-    <button disabled={locked} onClick={review}>Review package installation</button>
+    <button disabled={locked || (item.bundle_editions?.length > 0 && !item.selected_edition)} onClick={review}>Review package installation</button>
   </section>;
 }

@@ -27,7 +27,10 @@ from allin1.launch_cancellation import checkpoint
 SCHEMA = 1
 RENDER_VERSION = 'catalog-card-7-runway-static-rotors'
 MAX_SECONDS = None  # Complete the queue unless explicitly cancelled or skipped.
-MAX_WEAPONS = 128
+# Receipt-authorized add-ons and the combined stock/add-on catalog are distinct
+# budgets. The current 111 stock + 18 add-on weapons already exceed 128 total.
+MAX_MANAGED_WEAPONS = 128
+MAX_WEAPONS = 2048
 MAX_IMAGE_BYTES = 4 * 1024 * 1024
 MAX_CACHE_IMAGES = 4096
 PUBLIC = 'plugins/ReactorV/ui/assets/allin1/generated-weapons'
@@ -116,7 +119,8 @@ def validated_weapons(game, mounted, *, progress=lambda *_: None):
     ambiguous = {item['weapon'] for item in result if counts[vehicle_model_hash(item['weapon'])] != 1}
     for name in sorted(ambiguous): rejected.append({'weapon':name,'reason':'Ambiguous catalog ownership'})
     result = sorted((v for v in result if v['weapon'] not in ambiguous), key=lambda v:v['weapon'])
-    if len(result)>MAX_WEAPONS: raise ValueError('Preview weapon count exceeds bounded queue')
+    if len(result)>MAX_MANAGED_WEAPONS:
+        raise ValueError(f'Managed weapon preview count {len(result)} exceeds limit {MAX_MANAGED_WEAPONS}')
     progress(None, f'Validated mod list: {len(result)} mounted add-on weapons; {len(rejected)} rejected entries')
     return result, rejected
 
@@ -414,7 +418,8 @@ def _prepare(project, game, cache_root, *, skip=False, progress=lambda *_:None, 
                 report['errors'].append({'reason':str(error)})
                 discovery_incomplete = True
                 if category!='weapons':items=[]
-        if len(items)>limit:raise ValueError('Full catalog exceeds preview queue limit')
+        if len(items)>limit:
+            raise ValueError(f'Full {category} catalog has {len(items)} entries; preview queue limit is {limit}')
         # Defaults stay in their own store. Never copy them into generated or
         # let fallback installation hide a user's generated/custom render.
         if missing_only or skip:
