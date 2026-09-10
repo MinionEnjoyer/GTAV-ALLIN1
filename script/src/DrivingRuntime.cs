@@ -168,7 +168,15 @@ namespace ALLIN1
                 if (vehicle.CurrentGear != _selected || vehicle.NextGear != _selected)
                     Auto("gear write could not be verified");
             }
-            PublishHud(_provider == "builtin", speed, vehicle.CurrentGear, gears, _provider == "builtin" ? "driving" : "provider_" + _provider);
+            // Use live phone activity, not the key that opens it (calls can be scripted).
+            // CAN_PHONE_BE_SEEN_ON_SCREEN is not usable: it always returns true.
+            string hudReason = DrivingPolicy.HudReason(_provider,
+                _provider == "builtin" && Function.Call<bool>(Hash.IS_PED_RUNNING_MOBILE_PHONE_TASK, ped.Handle),
+                _provider == "builtin" && Function.Call<bool>(Hash.IS_MOBILE_PHONE_CALL_ONGOING),
+                _provider == "builtin" && Function.Call<bool>(Hash.IS_IN_VEHICLE_MOBILE_PHONE_CAMERA_RENDERING),
+                _provider == "builtin" && CharacterWheelHeld(),
+                _provider == "builtin" && Function.Call<bool>(Hash.IS_PLAYER_SWITCH_IN_PROGRESS));
+            PublishHud(hudReason == "driving", speed, vehicle.CurrentGear, gears, hudReason);
             if (_log != null && (now >= _nextSample || now < _nextSample - 200))
             {
                 _nextSample = now + 200;
@@ -179,6 +187,16 @@ namespace ALLIN1
                     ClientLog.Warn("Driving", "telemetry_write_failed");
                 }
             }
+        }
+        private static bool CharacterWheelHeld()
+        {
+            // GTA's binding covers Alt, remapped keys and controller D-pad down.
+            // The selector can disable gameplay input while it owns the frontend.
+            int control = (int)GTA.Control.CharacterWheel;
+            return Function.Call<bool>(Hash.IS_CONTROL_PRESSED, 0, control)
+                || Function.Call<bool>(Hash.IS_DISABLED_CONTROL_PRESSED, 0, control)
+                || Function.Call<bool>(Hash.IS_CONTROL_PRESSED, 2, control)
+                || Function.Call<bool>(Hash.IS_DISABLED_CONTROL_PRESSED, 2, control);
         }
         private static bool HeldKey(Keys key) => (GetAsyncKeyState((int)key) & 0x8000) != 0;
         private static void PublishHud(bool visible, float speed = 0, int gear = 0, int gears = 0, string reason = "shutdown")

@@ -6,6 +6,10 @@ This candidate requires the coordinated Reactor V build with `PassiveHudContract
 
 HUD updates are bounded to 10 Hz. Both native host and React readout revoke stale data, and the React readout clears after one second without updates. Menu presentation supersedes the HUD; it never acquires pointer/keyboard ownership. The dependency contains only a generic speedometer prefab/protocol, no ALLIN1-specific content.
 
+The built-in HUD hides while the player uses the phone, during a phone call, or while the in-vehicle phone camera is active. It returns automatically when phone use ends and the normal driving visibility checks permit it. Phone use does not change the saved provider/units, reset gear hold, or interrupt telemetry. Visibility transitions are logged as `hud_visibility` with reason `phone`; external speedometer mods control their own displays.
+
+Holding the character-wheel control (Alt by default, or its remapped/controller binding) also hides the built-in HUD. It stays hidden during an actual character switch and returns after cancelling or completing selection, once normal driving visibility checks permit it. This uses GTA's input state, including disabled controls while the selector owns input, and logs reason `character_switch`; it does not change saved display preferences.
+
 ## Configuration and controls
 
 Launcher **Gameplay** exposes these settings. They also round-trip through the launcher config/CLI/API and deploy to `scripts/ALLIN1.toml`:

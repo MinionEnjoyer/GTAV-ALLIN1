@@ -21,6 +21,69 @@ namespace ALLIN1.Tests
             Assert.Equal(controls, actual.Controls);
         }
         [Theory]
+        [InlineData(false, false, false, "driving")]
+        [InlineData(true, false, false, "phone")]
+        [InlineData(false, true, false, "phone")]
+        [InlineData(false, false, true, "phone")]
+        [InlineData(true, true, false, "phone")]
+        [InlineData(true, false, true, "phone")]
+        [InlineData(false, true, true, "phone")]
+        [InlineData(true, true, true, "phone")]
+        public void PhoneActivityHidesBuiltinHud(bool task, bool call, bool camera, string reason)
+            => Assert.Equal(reason, DrivingPolicy.HudReason("builtin", task, call, camera));
+
+        [Fact]
+        public void PhoneClosingRestoresHudWithoutChangingDrivingAvailability()
+        {
+            Assert.Equal("driving", DrivingPolicy.HudReason("builtin", false, false, false));
+            Assert.Equal("phone", DrivingPolicy.HudReason("builtin", true, false, false));
+            Assert.Equal("phone", DrivingPolicy.HudReason("builtin", false, true, false));
+            Assert.Equal("driving", DrivingPolicy.HudReason("builtin", false, false, false));
+            Assert.True(DrivingPolicy.Availability(true, false).Controls);
+            Assert.True(DrivingPolicy.Availability(true, true).Hud);
+        }
+
+        [Theory]
+        [InlineData("off")]
+        [InlineData("rex")]
+        [InlineData("lefix")]
+        public void PhoneClosingDoesNotEnableUnselectedBuiltinProvider(string provider)
+        {
+            Assert.Equal("provider_" + provider, DrivingPolicy.HudReason(provider, true, true, true));
+            Assert.Equal("provider_" + provider, DrivingPolicy.HudReason(provider, false, false, false));
+        }
+        [Theory]
+        [InlineData(false, false, false, "driving")]
+        [InlineData(true, false, false, "character_switch")]
+        [InlineData(false, true, false, "character_switch")]
+        [InlineData(true, true, false, "character_switch")]
+        [InlineData(false, false, true, "phone")]
+        [InlineData(true, false, true, "character_switch")]
+        [InlineData(false, true, true, "character_switch")]
+        [InlineData(true, true, true, "character_switch")]
+        public void CharacterSelectorAndSwitchHideBuiltinHud(bool wheel, bool switching, bool phone, string reason)
+            => Assert.Equal(reason, DrivingPolicy.HudReason("builtin", phone, false, false, wheel, switching));
+
+        [Fact]
+        public void CharacterSelectorCancelAndSwitchCompletionRestoreHud()
+        {
+            Assert.Equal("character_switch", DrivingPolicy.HudReason("builtin", false, false, false, true, false));
+            Assert.Equal("driving", DrivingPolicy.HudReason("builtin", false, false, false, false, false));
+            Assert.Equal("character_switch", DrivingPolicy.HudReason("builtin", false, false, false, true, false));
+            Assert.Equal("character_switch", DrivingPolicy.HudReason("builtin", false, false, false, false, true));
+            Assert.Equal("driving", DrivingPolicy.HudReason("builtin", false, false, false, false, false));
+        }
+
+        [Theory]
+        [InlineData("off")]
+        [InlineData("rex")]
+        [InlineData("lefix")]
+        public void CharacterSelectorClosingPreservesProvider(string provider)
+        {
+            Assert.Equal("provider_" + provider, DrivingPolicy.HudReason(provider, false, false, false, true, true));
+            Assert.Equal("provider_" + provider, DrivingPolicy.HudReason(provider, false, false, false, false, false));
+        }
+        [Theory]
         [InlineData(10, "kmh", 36)]
         [InlineData(10, "mph", 22.369363)]
         [InlineData(-1, "kmh", 0)]
