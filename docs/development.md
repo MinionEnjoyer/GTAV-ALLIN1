@@ -1,13 +1,13 @@
 # Launcher development and validation
 
-Target: 0.6.5, React in Tauri v2, Python domain services and a separate C# Story
+Target: 0.6.5 — React/Tauri v2, Python domain services, and a separate C# Story
 Mode runtime. The source CLI remains; GUI aliases route to Tauri only.
 
 ## Setup
 
-Use Windows for native desktop validation. Install the Node/pnpm versions in
-`desktop/package.json`, Rust/MSVC, WebView2 and Visual Studio Build Tools; .NET 8
-is needed to rebuild native/.NET helpers and the paired game components.
+Use Windows for native desktop validation. Install the Node/pnpm versions from
+`desktop/package.json`, Rust/MSVC, WebView2, Visual Studio Build Tools, and .NET
+8 for native/.NET helpers and paired game components.
 
 ```powershell
 python -m venv .venv
@@ -16,9 +16,10 @@ pnpm --dir desktop install --frozen-lockfile
 pnpm --dir desktop tauri dev
 ```
 
-The development broker currently uses `.venv/Scripts/python.exe` under this
-checkout. The release-side broker expects a frozen service, but the Launcher
-bundle pipeline is not complete. Do not publish its bare development executable.
+The development broker uses this checkout's `.venv/Scripts/python.exe`.
+Packaged Launcher services require the verified shared `runtime/` and
+`resources/` layout; a development executable is neither distributable nor
+installer/lifecycle evidence.
 
 Never exercise write tests against a real GTA/user tree. Use the synthetic
 fixtures: they allocate disposable directories, include user-data canaries and
@@ -35,22 +36,20 @@ cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
 dotnet test script/tests/ALLIN1.Tests.csproj -c Release
 ```
 
-Coverage remains 91% and skipped required tests are untested. `tests/` contains
-the ALLIN1 product suite, including generic package and weapon integration.
-Suppressors Enhanced, the weapon pack bundle, GTA VR and FPV are separate
-projects, not ALLIN1 release components. Their results cannot qualify ALLIN1.
-Native runtime tests are not evidence that GTA was launched or rendered correctly.
+The Python suite retains its 91% coverage threshold; a required skip is
+untested, not a pass. Native/runtime results do not establish packaged GUI or
+live-game behavior. Separate products are outside ALLIN1 qualification.
 
-The repository-hosted Suppressors Enhanced checks are retained independently:
+For the source-only, evidence-producing aggregate check in a prepared checkout:
 
 ```powershell
-.venv/Scripts/python.exe -m pytest mods/realistic-suppressors/tests/test_package_contract.py
-dotnet test mods/realistic-suppressors/tests/RealisticSuppressors.Tests.csproj -c Release
+.venv/Scripts/python.exe tools/hardening_harness.py
 ```
 
-These checks run in their own CI workflow and are not prerequisites for an
-ALLIN1 build. Separating ownership does not resolve the mod's stale 1.1.0 archive
-versus staged-DLL mismatch; that remains work for its independent 1.2.1 release.
+The default profile skips Windows-tool and RpfPatcher key-context tests.
+`--real-tools` is only for a prepared Windows runner with those tools; neither
+profile builds a public release, runs an installer, or launches GTA. See the
+[hardening harness](hardening-harness.md) for its evidence and status rules.
 
 For explicitly selected sibling SDK source:
 
@@ -59,11 +58,10 @@ For explicitly selected sibling SDK source:
 .venv/Scripts/python.exe tools/verify_sdk_portable_contract.py --sdk-source ../ALLIN1-SDK
 ```
 
-This is development-only coordination; neither shipped application imports the
-sibling checkout. The harness enables SDK native React cases, requires pinned
-Blender and records fresh source-bound reports. `--full-python` adds each full
-coverage suite. Read [harness scope](react-release-harness.md) before interpreting
-a PASS. The source-retirement check is separate from packaged/live qualification.
+This is development-only coordination; shipped applications do not import the
+sibling checkout. `--full-python` adds each full coverage suite. The [React
+harness](react-release-harness.md) defines the source-bound evidence, native
+requirements, and limits of its PASS.
 
 ## Documentation checks
 
@@ -72,10 +70,10 @@ a PASS. The source-retirement check is separate from packaged/live qualification
 .venv/Scripts/python.exe tools/documentation_audit.py --product sdk --sdk-source ../ALLIN1-SDK
 ```
 
-`docs/catalog.json` classifies project-owned docs. The audit checks coverage of
-the inventory, local links/headings and source-derived references. It does not
-fetch external URLs or approve factual claims merely because a link exists.
-Historical records require a prominent notice and never qualify new binaries.
+`docs/catalog.json` classifies project-owned docs. The audit checks inventory
+coverage, local links/headings, and source-derived references; it neither fetches
+external URLs nor approves claims from a link alone. Historical records need a
+prominent notice and never qualify new binaries.
 
 Generate reference text for review, then update the checked-in document:
 
@@ -84,19 +82,19 @@ Generate reference text for review, then update the checked-in document:
 .venv/Scripts/python.exe tools/documentation_audit.py --render config
 ```
 
-The generator only inspects the command tree/default configuration. It does not
-run install/repair/launch commands. Update user-facing Help and the relevant
-manual when behavior changes; tests must keep the reference inventory current.
+The generator only inspects the command tree/default configuration: it does not
+run install, repair, or launch commands. Update Help and the relevant manual
+with behavior changes, and keep the reference inventory current in tests.
 
 ## Architecture rules
 
-React owns drafts and presentation. Rust owns fixed native-dialog/process
-capabilities. Python owns validation, package semantics, guarded writes and
-receipts. Do not add raw shell/file-system WebView privileges or move destructive
-logic into React. The SDK keeps the same separation independently.
+React owns drafts and presentation; Rust owns fixed native-dialog/process
+capabilities; Python owns validation, package semantics, guarded writes, and
+receipts. Do not grant the WebView raw shell/file-system access or move
+destructive logic into React. The SDK follows the same separation.
 
-New asynchronous UI code needs loading/error states, stale-result and dirty-state
-tests, and no automatic whole-app reload during unresolved work. New archive or
-rollback writers need disposable containment and outside-root canary tests.
+Async UI needs loading/error, stale-result, and dirty-state tests; do not reload
+the app while work is unresolved. Archive/rollback writers need disposable
+containment and outside-root canaries.
 
 The [release guide](release-0.6.5.md) is the current qualification checklist.

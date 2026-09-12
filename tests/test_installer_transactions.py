@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from allin1 import installer
+from allin1.release_paths import filesystem_path
 
 
 @pytest.fixture
@@ -75,7 +76,7 @@ def test_partial_copy_failure_does_not_restore_stale_backup(deployment, monkeypa
     backup.write_bytes(b"ancient")
     original = installer.shutil.copy2
     def fail_copy(src, dst, *args, **kwargs):
-        if Path(src) == source:
+        if filesystem_path(Path(src)) == filesystem_path(source):
             Path(dst).write_bytes(b"partial")
             raise OSError("injected copy failure")
         return original(src, dst, *args, **kwargs)
@@ -135,7 +136,7 @@ def test_staging_detects_destination_change_and_preserves_it(deployment, monkeyp
     copy = installer.shutil.copy2
     def edit_during_copy(src, dst, *args, **kwargs):
         result = copy(src, dst, *args, **kwargs)
-        if Path(src) == source: target.write_bytes(b"concurrent edit")
+        if filesystem_path(Path(src)) == filesystem_path(source): target.write_bytes(b"concurrent edit")
         return result
     monkeypatch.setattr(installer.shutil, "copy2", edit_during_copy)
     with pytest.raises(ValueError, match="changed during staging"):
@@ -165,3 +166,36 @@ def test_json_serialization_failure_is_read_only_and_success_retains_previous(de
     installer._write_json_atomic({"schema_version": 1}, target)
     assert json.loads(target.read_text()) == {"schema_version": 1}
     assert target.with_name(target.name + ".bak").read_bytes() == b"old core.dll"
+
+
+def test_atomic_copy_uses_extended_io_for_long_transaction_temporary(tmp_path, monkeypatch):
+    """The random atomic suffix must not turn a valid deep deployment into MAX_PATH failure."""
+    source = tmp_path
+    for index in range(5):
+        source /= ("source" + str(index) + "_" + "y" * 48)
+    source /= "source.dll"
+    filesystem_path(source.parent).mkdir(parents=True)
+    filesystem_path(source).write_bytes(b"new payload")
+    destination = tmp_path
+    for index in range(5):
+        destination /= ("deep" + str(index) + "_" + "x" * 48)
+    destination /= "ALLIN1.ReactorBridge.contract.json"
+    filesystem_path(destination.parent).mkdir(parents=True)
+    filesystem_path(destination).write_bytes(b"previous payload")
+
+    installer._copy_atomic(source, destination)
+    assert filesystem_path(destination).read_bytes() == b"new payload"
+    assert filesystem_path(destination.with_name(destination.name + ".bak")).read_bytes() == b"previous payload"
+
+    filesystem_path(destination).write_bytes(b"previous payload")
+    original = installer.shutil.copy2
+    def fail_copy(src, dst, *args, **kwargs):
+        if filesystem_path(Path(src)) == filesystem_path(source):
+            filesystem_path(Path(dst)).write_bytes(b"partial")
+            raise OSError("synthetic long-path copy failure")
+        return original(src, dst, *args, **kwargs)
+    monkeypatch.setattr(installer.shutil, "copy2", fail_copy)
+    with pytest.raises(OSError, match="synthetic long-path"):
+        installer._copy_atomic(source, destination)
+    assert filesystem_path(destination).read_bytes() == b"previous payload"
+    assert not list(filesystem_path(destination.parent).glob("*.tmp*"))

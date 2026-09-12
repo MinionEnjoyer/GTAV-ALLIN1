@@ -6,76 +6,50 @@
 
 A Windows launcher and guarded package manager for **GTA V Story Mode**, supporting Legacy and Enhanced.
 
-**0.6.5** — **unsigned portable release.** The Launcher uses **React in Tauri v2**, backed by a shared Python service, CLI and agent API. Exact final-build automated and package checks are recorded with the release. Full installer lifecycle and fresh final-build Legacy/Enhanced in-game acceptance remain untested.
-
-Start with the [0.6.5 release guide](docs/release-0.6.5.md), [Launcher manual](docs/launcher-guide.md), or [documentation index](docs/README.md).
-
-0.6.5 builds are **unsigned manual downloads**, without a
-promised SignPath certificate. Verify official release checksums and build
-identity after publication; checksums are not publisher authentication. Existing
-automatic-update trust checks remain enforced. See the [0.6.5 notes](RELEASE_NOTES.md).
+**0.6.5** — unsigned portable release. React/Tauri v2 provides the desktop UI;
+shared Python services power it, the CLI and agent API. Start with the
+[Launcher manual](docs/launcher-guide.md) or [release notes](RELEASE_NOTES.md).
 
 ## Product boundaries
 
-| Component | Responsibility |
-| --- | --- |
-| Launcher | Paths/edition, profiles, dependency consent, configuration, package lifecycle, diagnostics and launching |
-| ALLIN1 SDK | Independent package/asset authoring and inspection; optional Launcher handoff |
-| ALLIN1 Online Content | GBAY catalogs, vehicles/weapons/gear, garages, properties, character systems and traffic |
-| ALLIN1 Experimental Gameplay | Optional NPC physics/police features; off by default |
-| Reactor V | Separately provisioned in-game renderer dependency; not the SDK viewport |
-
-Package support does not imply bundled content. Consult each release's included components and dependency requirements before installing.
+The Launcher manages installation and launch workflows; gameplay comes from
+installed content packages. The optional [ALLIN1 SDK](https://github.com/MinionEnjoyer/ALLIN1-SDK)
+authors and inspects packages independently. Reactor V is a separately
+provisioned in-game renderer. Package support does not imply bundled content;
+check each release's contents and dependencies.
 
 ## What is available
 
-The existing services support explicit Legacy/Enhanced selection, install/repair, receipt-owned package import/enable/disable/uninstall, profiles, readiness checks, diagnostics, SDK management and character/garage configuration. Official content supplies GBAY purchasing, category catalogs, owned loadouts and persistent per-character garages.
-
-React exposes nine Launcher workspaces: Setup, Gameplay, Content, Input, Packages, Characters, SDK Manager, Activity and Help Center. Core workflows, local Qwen provisioning and catalog settings have real-Python synthetic tests. A slim green sidebar arrow frees workspace space, with Ctrl+B support and a remembered collapsed state. See the [release guide](docs/release-0.6.5.md#remaining-work) for the remaining validation boundaries.
+- Edition/path selection, profiles, dependency consent, installation and repair.
+- Receipt-owned package import, enable/disable and removal; diagnostics and SDK management.
+- GBAY catalog and character/garage configuration, with downloaded, cached or locally generated previews.
 
 ## Using ALLIN1 safely
 
-- Use Story Mode only. Never use the modded configuration in GTA Online.
-- Confirm the exact game edition and path before a review. Close GTA before installation, repair, updates or removal.
-- Use trusted, version-compatible ScriptHookV/ScriptHookVDotNet Enhanced dependencies. Dependency installation requires deliberate consent.
-- Review package identity, destinations, ownership and compatibility before applying changes.
-- Retain backups and receipts. Do not rename payload files to bypass package validation.
-- SDK package-only authoring does not require the Launcher or ALLIN1 gameplay client.
+- Story Mode only—never GTA Online. Confirm edition/path and close GTA before changing its installation.
+- Review package identity, destinations, ownership and compatibility; explicitly consent to trusted, version-compatible dependencies.
+- Keep backups and receipts. Never rename payloads to bypass validation.
 
-The portable Launcher includes its own isolated Python runtime for services and preview generation; users do not install Python. Keep `runtime/` and `resources/` beside the executable, and extract upgrades into a fresh folder. Blender remains required for generating new Blender previews, not for using downloaded or cached previews.
+Portable builds include Python. Keep `runtime/` and `resources/` beside the
+executable and extract upgrades into a fresh folder. Blender is needed only for
+generating new Blender previews, not downloaded/cached images. Python source
+[GUI entrypoints](docs/launcher-guide.md#legacy-python-distribution) require an installed Tauri desktop.
 
-For Python source users, the [compatibility entrypoints](docs/launcher-guide.md#legacy-python-distribution) now launch an installed Tauri desktop; Python installation alone supplies no GUI. Downloaded builds must be checked against their own published version and artifact identity.
+Verify official checksums and artifact identity: checksums do not authenticate a
+publisher. Automatic-update trust checks remain enforced. Full installer
+lifecycle and fresh final-build Legacy/Enhanced in-game acceptance remain
+untested; see the [release guide and qualification limits](docs/release-0.6.5.md#remaining-work).
 
 ## Development
 
-Install the Python project in an isolated environment, then install the locked frontend dependencies:
-
-```powershell
-python -m venv .venv
-.venv/Scripts/python.exe -m pip install -e ".[test]"
-pnpm --dir desktop install --frozen-lockfile
-pnpm --dir desktop tauri dev
-```
-
-The Tauri development host currently uses this checkout's `.venv/Scripts/python.exe`. Rust/MSVC, WebView2 and the Node/pnpm versions recorded in the project are required. The development application can perform real operations after review; use an isolated test setup.
-
-For repeatable disposable checks that do not launch GTA:
-
-```powershell
-.venv/Scripts/python.exe tools/react_release_harness.py --product launcher
-.venv/Scripts/python.exe tools/documentation_audit.py
-```
-
-The [developer guide](docs/development.md) explains coverage, cross-repository tests and native prerequisites. A green targeted harness is not a full coverage gate or release approval.
+Use the [developer guide](docs/development.md) for canonical setup, prerequisites
+and validation commands. Automated write tests use disposable fixtures, never
+real game data. A targeted harness pass is not release approval.
 
 ## Documentation and support
 
-- [Launcher manual](docs/launcher-guide.md): installation modes, all workspaces, recovery and troubleshooting.
-- [Configuration reference](docs/configuration-reference.md): every source-default field.
-- [CLI reference](docs/cli-reference.md): generated command and parameter inventory.
-- [Content extension API](docs/content-extension-api.md): package ownership and typed settings.
-- [Release notes](RELEASE_NOTES.md): current unreleased changes and historical releases.
-- [ALLIN1 SDK](https://github.com/MinionEnjoyer/ALLIN1-SDK): independently usable authoring tools.
+- [Documentation index](docs/README.md): user guides, developer references and historical evidence.
+- [Configuration](docs/configuration-reference.md), [CLI](docs/cli-reference.md) and [content-extension API](docs/content-extension-api.md).
 - [Project support](https://buymeacoffee.com/minionenjoyer).
 
 GPL-3.0-or-later; see [LICENSE](LICENSE).

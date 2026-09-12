@@ -36,6 +36,7 @@ addopts = "--strict-markers --strict-config"
 testpaths = ["tests"]
 markers = [
     "windows_integration: requires Windows and the real preview packaging tools",
+    "packaged_integration: requires explicitly supplied packaged release/archive artifacts",
 ]
 
 [tool.coverage.run]

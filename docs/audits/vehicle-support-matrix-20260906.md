@@ -1,5 +1,10 @@
 # ALLIN1: complete vehicle model comparison
 
+> **Historical snapshot — September 6, 2026.** These rows preserve the audited
+> model comparison and do not state the current vehicle-catalog policy. See the
+> [current complete vehicle catalog policy](../complete-vehicle-catalog.md) for
+> the later browse-only expansion.
+
 935 unique model identifiers; audit date September 6, 2026. See [audit](vehicle-support-20260906.md) for findings and evidence limits. Both fresh local archive scans contain every model below; that is metadata presence, **not** active mounting or Legacy/Enhanced runtime support.
 
 Route = source-level storage route, still subject to model availability, map, size, capacity and purchase checks. Hangar = listed but no GBAY delivery destination. Missing = no built-in listing, not universal engine/subsystem incompatibility. Ground = previous stable placement measurement only. Source pack does not determine Story/Online exclusivity.

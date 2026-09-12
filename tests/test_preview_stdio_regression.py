@@ -10,7 +10,11 @@ from threading import Thread
 import pytest
 
 
-@pytest.mark.parametrize('mode',['isolated','inherited-negative-control','frozen'])
+@pytest.mark.parametrize('mode', [
+    'isolated',
+    'inherited-negative-control',
+    pytest.param('frozen', marks=pytest.mark.packaged_integration),
+])
 def test_preview_workers_do_not_inherit_active_launcher_input(tmp_path,mode):
     if mode=='inherited-negative-control' and os.name!='nt':
         pytest.skip('Windows synchronous inherited-pipe startup regression')

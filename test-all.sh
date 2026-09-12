@@ -2,9 +2,5 @@
 set -eu
 
 cd "$(dirname "$0")"
-python3 -m pip install -e '.[test]'
-python3 -m pytest --cov=allin1 --cov-report=term-missing --cov-report=html
-dotnet restore script/tests/ALLIN1.Tests.csproj
-dotnet test script/tests/ALLIN1.Tests.csproj -c Release --no-restore
-
-echo "All available automated test layers passed."
+python3 tools/hardening_harness.py --python python3
+echo "Off-game hardening checks passed. Packaged and live-game checks were not run."

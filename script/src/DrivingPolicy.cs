@@ -48,6 +48,23 @@ namespace ALLIN1
             => provider != "builtin" ? "provider_" + provider
                 : characterWheel || characterSwitch ? "character_switch"
                 : phoneTask || phoneCall || phoneCamera ? "phone" : "driving";
+        // Phone and character-selector probes are visual-only. A missing or
+        // incompatible native must not disable telemetry or transmission
+        // handling for the rest of the session.
+        internal static string HudReason(string provider, Func<bool> phoneTask,
+            Func<bool> phoneCall, Func<bool> phoneCamera,
+            Func<bool> characterWheel, Func<bool> characterSwitch)
+        {
+            if (provider != "builtin") return "provider_" + provider;
+            return HudReason(provider, Probe(phoneTask), Probe(phoneCall),
+                Probe(phoneCamera), Probe(characterWheel),
+                Probe(characterSwitch));
+        }
+        private static bool Probe(Func<bool> read)
+        {
+            try { return read != null && read(); }
+            catch (Exception) { return false; }
+        }
         internal static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
         internal static object Number(float value) => Finite(value) ? (object)value : null;
         internal static float DisplaySpeed(float metresPerSecond, string units) => Finite(metresPerSecond)

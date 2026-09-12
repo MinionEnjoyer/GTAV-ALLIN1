@@ -1,60 +1,50 @@
 # ALLIN1 Launcher React/Tauri development shell
 
-Target **0.6.5**, Tauri **v2**. Standalone development candidates are available;
-native installer/lifecycle acceptance is not complete.
-`manager.bat` / `allin1-gui` now forward to the native desktop. For source use,
-set `ALLIN1_LAUNCHER_EXECUTABLE` to a complete candidate's shell, or place
-`allin1-launcher-desktop.exe` on PATH. Missing native desktop produces an error,
-not a fallback interface. Reinstall the editable Python package after upgrading.
-
-From the repository root, install the editable Python project into `.venv`,
-install the locked frontend dependencies and run `pnpm --dir desktop tauri dev`.
-See [development setup](../docs/development.md) for prerequisites and commands.
+Target **0.6.5**, Tauri **v2**. `manager.bat` / `allin1-gui` forward to the
+native desktop. For source use, set `ALLIN1_LAUNCHER_EXECUTABLE` to a complete
+candidate shell or put `allin1-launcher-desktop.exe` on PATH; missing native
+desktop errors rather than falling back. Reinstall the editable Python package
+after upgrading. Setup, checks, and native prerequisites are canonical in the
+[development guide](../docs/development.md).
 
 The native broker owns the persistent Python service, explicit native dialogs,
-single-instance handoff and close guards. The WebView cannot choose arbitrary
-processes or acquire raw shell/file-system authority. The current debug host
-uses `.venv/Scripts/python.exe`. The candidate builder bundles pinned official
-CPython and the shared service/preview modules without Tkinter/Tcl/Tk, stages
-hash-bound resources, and builds the native shell:
+single-instance handoff, and close guards. The WebView cannot choose arbitrary
+processes or gain raw shell/file-system authority. The debug host uses
+`.venv/Scripts/python.exe`. Build a development candidate with:
 
 ```powershell
 .venv/Scripts/python.exe tools/launcher_desktop_candidate.py
 ```
 
-Use `--pnpm <path>` / `--cargo <path>` if those tools are not on PATH. Node must
-be on PATH and frontend dependencies must already be installed. `--service-only`
-builds/tests only the shared runtime. `--sdk <path>` selects the renderer source
-checkout (defaults to the sibling ALLIN1-SDK). PyInstaller is not used by this
-build path; end users do not need Python. Outputs go into a new
-`build/launcher-candidates/<build-id>/app/` directory on each run. Never distribute
-the shell alone: it requires the sibling `runtime/` and `resources/` directories.
-Full builds also produce a complete, checksum-verified candidate portable ZIP.
-The shell must compile with `tauri/custom-protocol`; its read-only
-`--verify-embedded-frontend` probe checks embedded HTML/JavaScript/CSS and the
-compiled build ID without creating a WebView. The report compares its asset
-inventory to the production frontend. This is not native-window acceptance.
+Use `--pnpm <path>` / `--cargo <path>` if needed; Node must be on PATH and
+frontend dependencies installed. `--service-only` builds/tests only the shared
+runtime; `--sdk <path>` selects the renderer checkout (default: sibling
+`ALLIN1-SDK`). The builder uses pinned
+official CPython (not PyInstaller), shared service/preview modules without
+Tkinter/Tcl/Tk, and hash-bound resources. Each build writes a complete,
+checksum-verified portable candidate to
+`build/launcher-candidates/<build-id>/app/`; never distribute its shell without
+the sibling `runtime/` and `resources/` directories. The shell compiles with
+`tauri/custom-protocol`; its read-only `--verify-embedded-frontend` probe checks
+embedded assets/build ID against the production frontend without a WebView. It
+is not native-window acceptance.
 
-The executable smoke relocates the application into a disposable path with
-spaces, with fresh preferences, an unrelated working directory, a system-only
-PATH and no game-write/launch authority. It tests every
-workspace, imports previous preferences without overwriting conflicts, saves
-preinstall content and independent assistant preferences, inspects package/example
-catalogs, reads structured action history, verifies restart preservation and rejects
-invalid requests. It does **not** launch the GUI or GTA. The embedded resource
-inventory rejects missing/extra/changed payloads before service startup (also
-tested against the real packaged service and runtime modules); the shell
-also supplies its build ID so a service from another build is rejected.
+The executable smoke uses a disposable spaced path, fresh preferences, an
+unrelated working directory, system-only PATH, and no game-write/launch
+authority. It exercises workspaces, conflict-preserving preference import,
+saved preferences, catalog/history reads, restart preservation, and invalid
+requests. It does **not** launch the GUI or GTA. Resource inventory rejects
+missing/extra/changed payloads before startup, and the shell build ID rejects a
+service from another build.
 
-These unsigned local candidates are **not release-qualified**. Reports keep
-service smoke/resource integrity separate from untested native dialogs,
-installer lifecycle and live acceptance. They may be built from a dirty checkout
-for development; final release still requires reviewed, clean source and the
-full [milestone gates](../docs/release-0.6.5.md#mandatory-065-full-release-milestone).
+Unsigned local candidates are **not release-qualified**: service/resource
+evidence is separate from native dialogs, installer lifecycle, and live
+acceptance. They may use dirty development source; release requires reviewed,
+clean source and the [milestone gates](../docs/release-0.6.5.md#mandatory-065-full-release-milestone).
 
-Use the [migration harness](../docs/react-release-harness.md) for disposable
-real-service tests. An interactive development session is not a sandbox and can
-apply reviewed operations to selected real paths. Do not use real GTA files in
+Use the [React harness](../docs/react-release-harness.md) for disposable
+real-service tests. An interactive development session is not a sandbox; it can
+apply reviewed operations to selected real paths. Never use real GTA files in
 automated write tests.
 
 See [release scope](../docs/release-0.6.5.md) and

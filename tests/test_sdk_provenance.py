@@ -1,4 +1,6 @@
 import json
+from pathlib import PurePosixPath
+from types import SimpleNamespace
 
 import pytest
 
@@ -66,3 +68,47 @@ def test_ordinary_packages_do_not_acquire_invented_sdk_lineage(tmp_path):
     service = ModIntegrationService(_game(tmp_path))
     service.install(ModManifest.load(root/"mod.toml"))
     assert "sdk_provenance" not in service._read_receipt("ordinary-package")
+
+
+def test_lineage_rejects_incomplete_or_mismatched_install_evidence():
+    loose = SimpleNamespace(source=PurePosixPath("payload.bin"), destination=PurePosixPath("scripts/owned.ini"))
+    member = SimpleNamespace(source=PurePosixPath("inside.bin"), archive=PurePosixPath("update/update.rpf"), entry=PurePosixPath("data/inside.bin"))
+    artifact = {"outputs": {"payload.bin": "a" * 64, "inside.bin": "b" * 64}}
+    manifest = SimpleNamespace(files=(loose,), rpf_entries=(member,))
+
+    with pytest.raises(ValueError, match="incomplete"):
+        provenance.installed({"artifact": artifact}, manifest, [], [])
+    with pytest.raises(ValueError, match="Installed file differs"):
+        provenance.installed({"artifact": artifact}, manifest,
+                             [{"sha256": "wrong", "destination": "scripts/owned.ini"}],
+                             [{"sha256": "b" * 64, "archive": "update/update.rpf", "entry": "data/inside.bin"}])
+    with pytest.raises(ValueError, match="Installed RPF member differs"):
+        provenance.installed({"artifact": artifact}, manifest,
+                             [{"sha256": "a" * 64, "destination": "scripts/owned.ini"}],
+                             [{"sha256": "wrong", "archive": "update/update.rpf", "entry": "data/inside.bin"}])
+
+
+def test_lineage_handles_absent_envelopes_and_records_reviewed_rpf_members(tmp_path):
+    assert provenance.read(SimpleNamespace(package_root=tmp_path, files=(), rpf_entries=()), "Enhanced") is None
+
+    member = SimpleNamespace(source=PurePosixPath("inside.bin"), archive=PurePosixPath("update/update.rpf"), entry=PurePosixPath("data/inside.bin"))
+    artifact = {"artifact_id": "artifact", "build": {"build_fingerprint": "fingerprint"},
+                "outputs": {"inside.bin": "b" * 64}}
+    lineage = provenance.installed({"artifact": artifact}, SimpleNamespace(files=(), rpf_entries=(member,)), [],
+                                   [{"sha256": "b" * 64, "archive": "update/update.rpf", "entry": "data/inside.bin"}])
+    assert lineage["rpf_members"] == [{"source": "inside.bin", "archive": "update/update.rpf",
+                                        "entry": "data/inside.bin", "sha256": "b" * 64,
+                                        "verification": "extracted_member_bytes"}]
+
+
+def test_lineage_rejects_oversized_envelopes_and_unreviewed_sources(tmp_path):
+    oversized = tmp_path / provenance.ARTIFACT_FILE
+    oversized.write_bytes(b"x" * (4 * 1024**2 + 1))
+    with pytest.raises(ValueError, match="exceeds 4 MiB"):
+        provenance.read(SimpleNamespace(package_root=tmp_path, files=(), rpf_entries=()), "Enhanced")
+
+    root, _ = traced(tmp_path / "traced")
+    unreviewed = SimpleNamespace(package_root=root,
+                                 files=(SimpleNamespace(source=PurePosixPath("not-in-artifact.bin")),), rpf_entries=())
+    with pytest.raises(ValueError, match="outside the SDK artifact inventory"):
+        provenance.read(unreviewed, "Enhanced")

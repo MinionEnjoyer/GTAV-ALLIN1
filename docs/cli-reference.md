@@ -25,13 +25,13 @@ Listing a command here does not authorize execution, imply React UI parity, or q
 | `allin1 content` | Validate and manage versioned ALLIN1 content extensions. |  |
 | `allin1 content disable` | Disable an installed content package. | extension_id, --yes, --gta-path |
 | `allin1 content enable` | Enable an installed content package. | extension_id, --yes, --gta-path |
-| `allin1 content install-package` | Install a validated mod.toml, package folder, or bounded ZIP package. | source, --gta-path, --yes, --repair-managed |
+| `allin1 content install-package` | Install a validated mod.toml, package folder, or bounded ZIP package. | source, --gta-path, --yes, --component, --repair-managed |
 | `allin1 content list` | List bundled descriptors and, when available, installed package state. | --gta-path, --json-output |
 | `allin1 content set` | Set a typed package setting (VALUE accepts JSON or plain text). | extension_id, key, value, --gta-path, --yes |
 | `allin1 content settings-apply` | Explicitly apply an exact previewed proposal through the launcher writer. | proposal, --gta-path, --confirm-proposal-id, --yes |
 | `allin1 content settings-catalog` | Print the compact typed catalog and live package-state hashes. | extension_id, --gta-path |
 | `allin1 content settings-preview` | Preview a typed proposal without writing package settings. | proposal, --gta-path |
-| `allin1 content validate` | Validate a content descriptor, mod.toml, package folder, or ZIP. | manifest |
+| `allin1 content validate` | Validate a content descriptor, mod.toml, package folder, or ZIP. | manifest, --edition |
 | `allin1 diagnostics` | Create a redacted troubleshooting bundle for bug reports. | --output / -o, --scripts-dir |
 | `allin1 export-catalog` | Export vehicle database as JSON for the web catalog. | --output / -o |
 | `allin1 generate-vehiclelist` | Regenerate VehicleList.cs with display names and prices. | --output / -o |

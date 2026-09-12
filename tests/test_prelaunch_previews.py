@@ -4,6 +4,7 @@ import io
 import json
 from pathlib import Path
 import subprocess
+import os
 import shutil
 from types import SimpleNamespace
 
@@ -441,6 +442,37 @@ def test_cache_capacity_evicts_only_intact_unprotected_pairs(fixture,monkeypatch
     with pytest.raises(ValueError,match='full'):p.reserve_cache_slot(cache,{key})
     p.reserve_cache_slot(cache,set())
     assert not (cache/(key+'.png')).exists()
+
+
+def test_cache_rejects_a_valid_image_with_a_replayed_cache_receipt(fixture):
+    f = fixture
+    cache = f.cache / 'replay'
+    cache.mkdir(parents=True)
+    first, second = 'a' * 64, 'b' * 64
+    digest = hashlib.sha256(f.data).hexdigest()
+    p.atomic(cache / (first + '.png'), f.data)
+    # The data is valid, but the receipt belongs to a different source key.
+    p.atomic(cache / (first + '.json'), json.dumps({'key': second,
+        'sha256': digest}).encode())
+
+    assert p.cached(cache, first) is None
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows extended-path regression')
+def test_atomic_publishes_a_generated_filename_beyond_legacy_windows_path_limit(tmp_path):
+    folder = tmp_path
+    # Keep the parent below MAX_PATH so this creates on legacy Windows; only
+    # the generated filename pushes the final atomic destination past it.
+    for segment in ('a' * 75, 'b' * 55):
+        folder /= segment
+        folder.mkdir()
+    target = folder / ('weapon_test.' + 'c' * 64 + '.png')
+    assert len(str(target.resolve())) > 260
+
+    p.atomic(target, b'preview')
+
+    from allin1.release_paths import filesystem_path
+    assert filesystem_path(target).read_bytes() == b'preview'
 
 
 def test_disabling_package_prunes_only_unmodified_published_cache(fixture):

@@ -1,28 +1,25 @@
 # ALLIN1 Launcher documentation
 
-**0.6.5 — unsigned portable release; broader qualification remains incomplete.** Start with the [release guide](release-0.6.5.md) and [Launcher manual](launcher-guide.md).
-
-Current manuals describe implemented behavior and explicit limits. Reference contracts and architecture proposals do not prove native/live acceptance. Historical evidence applies only to its named source/session. Independent mods retain separate release ownership.
+**0.6.5 — unsigned portable release; broader qualification remains incomplete.**
+This is a curated reading path; the [catalog](catalog.json) lists and classifies
+all maintained project documents. Historical evidence qualifies only its named
+source/session, not current binaries; architecture proposals are not acceptance results.
 
 ## Current guides
 
-- [Product overview and quick start](../README.md)
-- [Release notes](../RELEASE_NOTES.md)
-- [React/Tauri desktop setup](../desktop/README.md)
-- [Development and validation](development.md)
-- [Launcher manual](launcher-guide.md)
-- [0.6.5 release guide and known limits](release-0.6.5.md)
+- [Launcher manual](launcher-guide.md): install, configure, launch and recover.
+- [GBAY preview downloads and caching](gbay-default-previews.md).
+- [0.6.5 release guide](release-0.6.5.md): qualification limits and upgrades; [changelog](../RELEASE_NOTES.md).
+- [Development and validation](development.md): canonical setup and checks; [desktop internals](../desktop/README.md).
 
 ## Contracts and references
 
-- [CLI command reference](cli-reference.md)
-- [Configuration defaults](configuration-reference.md)
-- [Content-extension API](content-extension-api.md)
-- [GBAY weapon catalogs](gbay-weapon-catalogs.md)
-- [GTA IV-style NPC physics experiment](gtaiv-npc-physics-experiment.md)
-- [Optional assistant](optional-assistant.md)
-- [React release and Tkinter-retirement harness](react-release-harness.md)
-- [RPF authoring safety](rpf-authoring-safety.md)
+- Interfaces: [CLI](cli-reference.md), [configuration](configuration-reference.md), [content-extension API](content-extension-api.md).
+- Packaging: [format/examples](../mods/README.md), [edition-aware bundles](edition-bundles.md), [RPF safety](rpf-authoring-safety.md).
+- Catalogs: [vehicles and purchase policy](complete-vehicle-catalog.md), [weapons](gbay-weapon-catalogs.md).
+- Driving: [speedometer/telemetry](driving-telemetry.md), [trailer hitches](trailer-hitches.md).
+- Validation: [off-game hardening](hardening-harness.md), [React release/Tkinter retirement](react-release-harness.md).
+- [Optional assistant](optional-assistant.md).
 
 ## Architecture and proposals
 
@@ -31,26 +28,24 @@ Current manuals describe implemented behavior and explicit limits. Reference con
 
 ## Separate-product references
 
-- [Suppressors Enhanced](realistic-suppressors.md)
-- [Suppressor JSON profiles](suppressor-json-profiles.md)
-- [Suppressor sleeve tracking](suppressor-sleeve-tracking.md)
-- [Vector suppressor integration](vector-suppressor-integration.md)
+Integration references retain separate release ownership:
+[Suppressors Enhanced](realistic-suppressors.md), [JSON profiles](suppressor-json-profiles.md),
+[sleeve tracking](suppressor-sleeve-tracking.md), [Vector integration](vector-suppressor-integration.md).
 
 ## Historical evidence — not current instructions
 
-- [Earlier release notes](archive/release-notes-before-0.6.4.md)
+- [0.6.4 release guide](release-0.6.4.md) and [earlier release notes](archive/release-notes-before-0.6.4.md)
+- September 6 vehicle [audit](audits/vehicle-support-20260906.md) and [model matrix](audits/vehicle-support-matrix-20260906.md)
 - [0.6.4 React architecture-review checkpoint](architecture-review-react-0.6.4.md)
 - [Enhanced smoke RPF port](enhanced-smoke-rpf-port.md)
 - [Test-tool capability review](test-tools-capability-review.md)
 
 ## Documentation maintenance
 
-Additional source references:
+Checkout-only references: `tests/IN_GAME_CHECKLIST.md` (live acceptance) and
+`native/map-host/README.md` (disabled native architecture).
 
-- Current acceptance checklist and historical cases: `tests/IN_GAME_CHECKLIST.md` (developer checkout only, not shipped tests).
-- [Package format and examples](../mods/README.md).
-- Disabled native map-host architecture: `native/map-host/README.md` (developer checkout only; excluded from release inputs).
-
-The versioned [catalog](catalog.json) classifies every project manual in this index. Source-derived CLI and configuration references must match code. The offline audit checks local links/headings and uncategorized documents; it does not fetch external websites or certify historical claims.
-
-See [development checks](development.md#documentation-checks). The old ignored local `documentation.md` is now a pointer; its previous contents and the former Launcher README are retained in `.work/documentation-archive/` and excluded from release payloads.
+Run the [documentation checks](development.md#documentation-checks) for inventory,
+local links/anchors and source-derived CLI/configuration agreement. External
+URLs and historical claims are not verified. Old local manuals remain in
+`.work/documentation-archive/`, outside release payloads.

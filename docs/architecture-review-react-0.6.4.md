@@ -1,8 +1,8 @@
 # Launcher and SDK architecture review — 0.6.4
 
 > Historical checkpoint: results, commands and artifact identities below apply
-> only to the described source/session. They do not qualify current 0.6.4.
-> See the [current release guide](release-0.6.4.md) before using this as guidance.
+> only to the described source/session. They do not qualify current 0.6.5.
+> See the [current release guide](release-0.6.5.md) before using this as guidance.
 
 ## Decision: FAIL / not release-qualified
 

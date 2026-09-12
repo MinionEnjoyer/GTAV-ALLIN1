@@ -1,11 +1,12 @@
 # GTA runtime smoke checklist
 
-## Current 0.6.4 acceptance
+## Current 0.6.5 acceptance
 
-0.6.4 is unreleased. Live tests require explicit approval, a newly identified
-candidate and an isolated/recoverable test setup. This document does not launch
-GTA or approve writes. Run Legacy and Enhanced separately against the final
-core/bridge/dependency bytes, not merely an app version string.
+0.6.5 is an owner-approved unsigned portable release, but final-build live
+acceptance remains unverified. Live tests require explicit approval, a newly
+identified candidate and an isolated/recoverable test setup. This document does
+not launch GTA or approve writes. Run Legacy and Enhanced separately against the
+final core/bridge/dependency bytes, not merely an app version string.
 
 The versioned schema in `src/allin1/release_acceptance.py` is authoritative.
 Record a unique session, independent authority, start/end timestamps, exact

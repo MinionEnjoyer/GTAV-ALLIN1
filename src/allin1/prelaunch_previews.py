@@ -18,7 +18,7 @@ import time
 from xml.etree import ElementTree as ET
 
 from PIL import Image
-from allin1.release_paths import no_links, strict_json, contained
+from allin1.release_paths import filesystem_path, no_links, strict_json, contained
 from allin1.vehicle_catalog import vehicle_model_hash
 from allin1.processes import hidden_process_options
 from allin1.weapon_catalog import WeaponCatalog
@@ -52,11 +52,16 @@ def document(path, limit=4 * 1024 * 1024):
 
 def atomic(path, data):
     path = no_links(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=path.parent, suffix='.tmp', delete=False) as stream:
+    # Generated filenames include a 64-character content key. Use the
+    # extended Windows form at the final I/O boundary so a legitimate deep
+    # game install cannot turn an otherwise atomic publication into a missing
+    # index or partial cache entry.
+    destination = filesystem_path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=destination.parent, suffix='.tmp', delete=False) as stream:
         temporary = Path(stream.name)
         stream.write(data)
-    try: os.replace(temporary, path)
+    try: os.replace(temporary, destination)
     finally: temporary.unlink(missing_ok=True)
 
 def png(data):
@@ -179,7 +184,11 @@ def cached(cache, key):
     try:
         metadata = document(cache/(key+'.json'))
         data = png(no_links(cache/(key+'.png')).read_bytes())
-        if metadata['sha256'] != hashlib.sha256(data).hexdigest(): return None
+        # A cache pair is keyed by the renderer/source identity, not merely by
+        # pixel bytes. Reject a stale or copied receipt even when its image
+        # digest is otherwise valid, so one weapon's thumbnail cannot be
+        # published for another item.
+        if metadata.get('key') != key or metadata.get('sha256') != hashlib.sha256(data).hexdigest(): return None
         return data
     except (OSError, ValueError, KeyError): return None
 

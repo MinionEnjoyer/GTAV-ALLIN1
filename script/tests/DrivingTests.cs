@@ -52,6 +52,35 @@ namespace ALLIN1.Tests
             Assert.Equal("provider_" + provider, DrivingPolicy.HudReason(provider, true, true, true));
             Assert.Equal("provider_" + provider, DrivingPolicy.HudReason(provider, false, false, false));
         }
+
+        [Fact]
+        public void FailedOptionalHudProbeFallsBackWithoutFaultingDrivingPolicy()
+        {
+            int calls = 0;
+            Assert.Equal("driving", DrivingPolicy.HudReason("builtin",
+                () => { calls++; throw new InvalidOperationException(); },
+                () => false, () => false, () => false, () => false));
+            Assert.Equal(1, calls);
+        }
+
+        [Fact]
+        public void FailedPhoneProbeDoesNotOverrideAnAvailableCharacterWheelProbe()
+        {
+            Assert.Equal("character_switch", DrivingPolicy.HudReason("builtin",
+                () => throw new InvalidOperationException(),
+                () => false, () => false, () => true, () => false));
+        }
+
+        [Fact]
+        public void ExternalProviderNeverInvokesBuiltinHudProbes()
+        {
+            Assert.Equal("provider_rex", DrivingPolicy.HudReason("rex",
+                () => throw new InvalidOperationException(),
+                () => throw new InvalidOperationException(),
+                () => throw new InvalidOperationException(),
+                () => throw new InvalidOperationException(),
+                () => throw new InvalidOperationException()));
+        }
         [Theory]
         [InlineData(false, false, false, "driving")]
         [InlineData(true, false, false, "character_switch")]

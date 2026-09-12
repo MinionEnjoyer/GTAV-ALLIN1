@@ -171,11 +171,11 @@ namespace ALLIN1
             // Use live phone activity, not the key that opens it (calls can be scripted).
             // CAN_PHONE_BE_SEEN_ON_SCREEN is not usable: it always returns true.
             string hudReason = DrivingPolicy.HudReason(_provider,
-                _provider == "builtin" && Function.Call<bool>(Hash.IS_PED_RUNNING_MOBILE_PHONE_TASK, ped.Handle),
-                _provider == "builtin" && Function.Call<bool>(Hash.IS_MOBILE_PHONE_CALL_ONGOING),
-                _provider == "builtin" && Function.Call<bool>(Hash.IS_IN_VEHICLE_MOBILE_PHONE_CAMERA_RENDERING),
-                _provider == "builtin" && CharacterWheelHeld(),
-                _provider == "builtin" && Function.Call<bool>(Hash.IS_PLAYER_SWITCH_IN_PROGRESS));
+                () => Function.Call<bool>(Hash.IS_PED_RUNNING_MOBILE_PHONE_TASK, ped.Handle),
+                () => Function.Call<bool>(Hash.IS_MOBILE_PHONE_CALL_ONGOING),
+                () => Function.Call<bool>(Hash.IS_IN_VEHICLE_MOBILE_PHONE_CAMERA_RENDERING),
+                CharacterWheelHeld,
+                () => Function.Call<bool>(Hash.IS_PLAYER_SWITCH_IN_PROGRESS));
             PublishHud(hudReason == "driving", speed, vehicle.CurrentGear, gears, hudReason);
             if (_log != null && (now >= _nextSample || now < _nextSample - 200))
             {

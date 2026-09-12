@@ -16,6 +16,7 @@ import pytest
 from allin1 import reactor_dependency as dep
 
 
+@pytest.mark.packaged_integration
 @pytest.mark.parametrize("enhanced", [False, True])
 def test_published_archive_install_repair_and_uninstall(tmp_path, monkeypatch, enhanced):
     directory = os.environ.get("REACTOR_RELEASE_TEST_DIR")

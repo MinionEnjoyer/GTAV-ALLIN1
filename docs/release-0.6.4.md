@@ -1,5 +1,9 @@
 # ALLIN1 0.6.4 release guide
 
+> **Historical release record — superseded by 0.6.5.** Status, architecture and
+> test observations below describe the 0.6.4 release, not current qualification.
+> Use the [0.6.5 release guide](release-0.6.5.md) for current instructions and limits.
+
 **Status: owner-approved unsigned Launcher portable release.** Native packaged
 startup and preference persistence have passed. Full installer lifecycle and
 fresh in-game acceptance remain untested. The SDK is independently released.

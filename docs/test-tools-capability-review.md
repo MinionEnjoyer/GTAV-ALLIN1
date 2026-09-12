@@ -1,8 +1,8 @@
 # Test tools capability review
 
 > Historical checkpoint: results, commands and artifact identities below apply
-> only to the described source/session. They do not qualify current 0.6.4.
-> See the [current release guide](release-0.6.4.md) before using this as guidance.
+> only to the described source/session. They do not qualify current 0.6.5.
+> See the [current release guide](release-0.6.5.md) before using this as guidance.
 
 Reviewed from a local test-tools collection on 2026-08-18.
 The review was read-only: archive inventories, authored documentation, PE headers,

@@ -703,7 +703,10 @@ def test_gbay_weapons_restore_without_clobbering_story_loadouts():
     assert "inventory.equipped_gear.Count == 0 && !hasSavedWeapons" in inventory
     apply_start = inventory.index("private void Apply(string character)")
     grant = inventory.index("RestoreWeapons(ped, inventory, inventory.weapons)", apply_start)
-    weapon_loop = inventory.index("foreach (var entry in WeaponHashes)", apply_start)
+    # Persistence can now load off-game without eagerly invoking ScriptHookV.
+    # Keep the same restore-before-removal assertion on the lazy hash table.
+    assert "Lazy<Dictionary<string, int>> WeaponHashes" in inventory
+    weapon_loop = inventory.index("foreach (var entry in WeaponHashes.Value)", apply_start)
     managed_remove = inventory.index("if (!owned.Contains(entry.Key) && inventory.managed)", weapon_loop)
     remove = inventory.index("REMOVE_WEAPON_FROM_PED", managed_remove)
     assert grant < weapon_loop < managed_remove < remove
@@ -803,7 +806,9 @@ def test_character_death_consumes_gear_without_bypassing_story_save():
     assert "GET_TIME_SINCE_LAST_DEATH" in post_load
     assert "ShouldPreserveDeathAcrossLoading(" in post_load
     assert '"death_state_preserved_across_respawn_load"' in post_load
-    assert "Reload();" in post_load
+    # A real Story load deliberately discards staged purchases, unlike an
+    # ordinary watcher reload whose missing/corrupt primary must retain them.
+    assert "Reload(discardStaged: true);" in post_load
     assert "ResetDeathTracking();" in post_load
 
 

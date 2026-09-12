@@ -20,15 +20,20 @@ def test_real_preview_toolchain_builds_nonempty_artifacts(tmp_path):
     tools = root / "tools"
     rpf_patcher = tools / "RpfPatcher" / "RpfPatcher.exe"
     if not rpf_patcher.exists():
-        pytest.skip("RpfPatcher.exe has not been built")
+        pytest.fail("Opt-in toolchain check requires a built RpfPatcher.exe")
 
     previews = tmp_path / "previews"
     previews.mkdir()
-    # Use a real source image so the test verifies the BC3 payload visually,
-    # not merely the resource and archive headers.
-    bundled = root / "script" / "dist" / "previews"
-    source = next(bundled.glob("*.png"))
-    (previews / "alpha.png").write_bytes(source.read_bytes())
+    # An asymmetric deterministic pixel fixture catches corrupt scanlines and
+    # channel swaps without depending on the retired bundled artwork folder or
+    # downloading the optional default-preview pack.
+    source = previews / "alpha.png"
+    fixture = Image.new("RGB", (128, 64))
+    fixture.putdata([
+        (x * 2, y * 4, 220 if x < 48 and y > 24 else 30)
+        for y in range(64) for x in range(128)
+    ])
+    fixture.save(source)
     built = ytd_builder.build_ytd_files(
         previews, None, tmp_path / "ytd", tools, ["alpha"]
     )
@@ -60,3 +65,4 @@ def test_real_preview_toolchain_builds_nonempty_artifacts(tmp_path):
     ], capture_output=True, text=True, timeout=300)
     assert result.returncode == 0, result.stderr
     assert output.stat().st_size > 0
+    assert struct.unpack("<I", output.read_bytes()[:4])[0] == 0x52504637

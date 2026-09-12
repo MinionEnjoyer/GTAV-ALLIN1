@@ -11,8 +11,10 @@ from click.testing import CliRunner
 
 from allin1.desktop_host import serve
 from allin1.desktop_service import GAME_ACTIONS, LOCAL_ACTIONS, LauncherService, digest
-from allin1.launcher_api import ACTION_FIELDS, LauncherAPI, contract
+from allin1.launcher_api import ACTION_FIELDS, LauncherAPI, contract, schema
+from allin1.preview_render_pool import MAX_PREVIEW_WORKERS
 from allin1.launcher_cli import launcher
+from tests.test_component_bundles import write_bundle, zip_bundle
 from tests.test_desktop_service import service, PROJECT
 from tests.test_extensions import _content_package
 
@@ -40,6 +42,60 @@ def test_preview_choices_available_to_cli_and_agents():
         LauncherAPI.validate({'quick_launch': 'yes'}, ACTION_FIELDS['launch'])
     with pytest.raises(ValueError):
         LauncherAPI.validate({'quick_launch': True}, ACTION_FIELDS['prepare_previews'])
+
+
+@pytest.mark.parametrize("payload", [
+    {"categories": []}, {"categories": ["weapons", "weapons"]}, {"categories": ["unknown"]},
+    {"workers": 0}, {"workers": MAX_PREVIEW_WORKERS + 1}, {"workers": True},
+])
+def test_api_enforces_published_preview_selection_and_worker_bounds(payload):
+    with pytest.raises(ValueError):
+        LauncherAPI.validate(payload, list(payload))
+
+    # The documented ceiling and a non-empty explicit download selection are
+    # valid transport values, not merely schema declarations.
+    LauncherAPI.validate({"categories": ["weapons"], "workers": MAX_PREVIEW_WORKERS}, ["categories", "workers"])
+    workers = schema(["workers"])["properties"]["workers"]
+    assert workers["minimum"] == 1
+    assert workers["maximum"] == MAX_PREVIEW_WORKERS
+    assert schema(["categories"])["properties"]["categories"]["minItems"] == 1
+
+
+def test_api_rejects_unknown_review_actions_before_service_dispatch(service, monkeypatch):
+    api = LauncherAPI(service)
+    monkeypatch.setattr(service, "review", lambda _payload: pytest.fail("unknown action reached service"))
+    with pytest.raises(ValueError, match="Unknown Launcher API action"):
+        api.review({"action": "erase_game"})
+
+
+def test_sdk_release_plans_refresh_at_review_and_apply_boundaries(service, monkeypatch):
+    """A stale SDK-release cache must be refreshed before either reviewed boundary."""
+    api = LauncherAPI(service, allow_writes=True)
+    refreshed = []
+    monkeypatch.setattr(api, "read", lambda operation, payload: refreshed.append((operation, payload)) or {})
+    monkeypatch.setattr(api, "review", lambda payload: {"review_id": "review", "review_sha256": "digest"})
+    monkeypatch.setattr(api, "apply", lambda payload: {"executed": True, "payload": payload})
+
+    from allin1.desktop_service import serializable
+    request = {"action": "sdk_install_release", "config": serializable(service.config())}
+    plan = api.plan(request)
+    assert refreshed == [("check_sdk_update", {})]
+    assert plan["request"] == request
+
+    refreshed.clear()
+    approval = plan["approval_sha256"]
+    result = api.apply_plan(plan, approval, confirmed=True)
+    assert refreshed == [("check_sdk_update", {})]
+    assert result["executed"] is True
+
+
+def test_agent_api_can_review_the_explicit_component_selected_by_desktop(service, tmp_path):
+    source = zip_bundle(write_bundle(tmp_path / "components"), tmp_path / "components.zip")
+    review = LauncherAPI(service).review({
+        "action": "package_install", "source": str(source), "component_id": "enhanced.part0",
+    })
+    assert "component_id" in ACTION_FIELDS["package_install"]
+    assert review["package"]["id"] == "enhanced.part0"
 
 
 def test_catalog_covers_every_desktop_action_and_fails_closed(monkeypatch):

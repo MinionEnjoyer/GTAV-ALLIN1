@@ -9,6 +9,7 @@ import copy
 import time
 
 from allin1.desktop_service import GAME_ACTIONS, LOCAL_ACTIONS, LauncherService, digest
+from allin1.preview_render_pool import MAX_PREVIEW_WORKERS
 
 READS = {
     "catalog": [], "inspect": ["module", "config", "source", "profile"],
@@ -22,7 +23,11 @@ ACTION_FIELDS = {
     "save_config": [], "sync_config": [], "install": ["reactor_consent", "rpf_loader_consent"],
     "uninstall": [], "launch": ["skip_previews", "skip_preview_categories", "quick_launch", "missing_previews_only"], "prepare_previews": ["skip_previews", "skip_preview_categories", "missing_previews_only"], "save_profile": ["name"], "delete_profile": ["name"],
     "export_profile": ["name", "destination"], "import_preferences": ["source"],
-    "package_install": ["source", "settings", "expected_state_sha256"],
+    # Collections require an explicit component selection.  The desktop uses
+    # this for schema-v6 package bundles, so agents must be able to review the
+    # exact same component instead of being rejected before the shared review
+    # boundary sees the request.
+    "package_install": ["source", "settings", "component_id", "expected_state_sha256"],
     "package_enable": ["id"], "package_disable": ["id"], "package_uninstall": ["id"],
     "content_enable": ["id"], "content_disable": ["id"], "content_settings": ["id", "settings"],
     "save_content_preferences": ["id", "settings"],
@@ -40,8 +45,9 @@ def schema(fields, required=()):
              "confirmed": "boolean", "reactor_consent": "boolean", "rpf_loader_consent": "boolean", "skip_previews": "boolean", "quick_launch": "boolean", "missing_previews_only": "boolean", "workers": "integer"}
     from allin1.preview_policy import PREVIEW_CATEGORIES
     return {"type": "object", "additionalProperties": False,
-            "properties": {field: ({"type": "array", "items": {"type": "string", "enum": list(PREVIEW_CATEGORIES)}, "uniqueItems": True, "maxItems": 3}
-                                   if field in {"skip_preview_categories", "categories"} else {"type": "integer", "minimum": 1, "maximum": 4}
+            "properties": {field: ({"type": "array", "items": {"type": "string", "enum": list(PREVIEW_CATEGORIES)}, "uniqueItems": True, "maxItems": 3,
+                                    **({"minItems": 1} if field == "categories" else {})}
+                                   if field in {"skip_preview_categories", "categories"} else {"type": "integer", "minimum": 1, "maximum": MAX_PREVIEW_WORKERS}
                                    if field == "workers" else {"type": types.get(field, "string")}) for field in fields}, "required": list(required)}
 
 
@@ -117,9 +123,15 @@ class LauncherAPI:
             cls = {"string": str, "object": dict, "boolean": bool, "array": list, "integer": int}[expected]
             if type(value) is not cls:
                 raise ValueError(f"Invalid type for {key}; expected {expected}")
-            if key == "skip_preview_categories":
+            if key in {"skip_preview_categories", "categories"}:
                 from allin1.preview_policy import validate_skip_categories
                 validate_skip_categories(value)
+                # Omit download categories to choose all packs.  An explicit
+                # empty list is not a meaningful or reviewable download.
+                if key == "categories" and not value:
+                    raise ValueError("categories must select at least one preview category")
+            if key == "workers" and not 1 <= value <= MAX_PREVIEW_WORKERS:
+                raise ValueError(f"workers must be an integer from 1 to {MAX_PREVIEW_WORKERS}")
 
     def read(self, operation, payload):
         if operation not in READS and operation not in EXTERNAL:

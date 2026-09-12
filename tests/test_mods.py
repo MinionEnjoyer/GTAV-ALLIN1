@@ -961,6 +961,40 @@ def test_runtime_tree_install_rejects_occupied_legacy_temporary_file(
     assert not (service.state_root / "runtime-temp-file.json").exists()
 
 
+def test_mod_service_rejects_redirected_receipt_root_before_install(tmp_path: Path):
+    game = _game(tmp_path)
+    outside = tmp_path / "outside-receipts"
+    outside.mkdir()
+    scripts = game / "scripts"
+    try:
+        scripts.symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"symlink creation is unavailable: {exc}")
+
+    with pytest.raises(ValueError, match="Symlink/junction/reparse"):
+        ModIntegrationService(game)
+    assert list(outside.iterdir()) == []
+
+
+def test_receipt_writer_does_not_use_predictable_redirectable_temporary(tmp_path: Path):
+    game = _game(tmp_path)
+    service = ModIntegrationService(game)
+    service.state_root.mkdir(parents=True)
+    outside = tmp_path / "outside-receipt.json"
+    outside.write_text("preserve")
+    old_temporary = service.state_root / "safe.json.tmp"
+    try:
+        old_temporary.symlink_to(outside)
+    except OSError as exc:
+        pytest.skip(f"symlink creation is unavailable: {exc}")
+
+    service._write_receipt({"id": "safe", "files": []})
+
+    assert outside.read_text() == "preserve"
+    assert old_temporary.is_symlink()
+    assert (service.state_root / "safe.json").is_file()
+
+
 def test_edition_missing_receipt_and_corrupt_receipt_errors(tmp_path: Path):
     game = _game(tmp_path, enhanced=False)
     service = ModIntegrationService(game)

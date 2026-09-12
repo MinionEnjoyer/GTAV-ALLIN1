@@ -918,7 +918,10 @@ class ModIntegrationService:
     """Installs optional mod packages with receipts, backups, and rollback."""
 
     def __init__(self, gta_path: str | Path, *, rpf_progress=None) -> None:
-        candidate = Path(gta_path).expanduser().resolve()
+        # Preserve the lexical path while checking it.  Resolving before the
+        # check would erase the evidence that a game root (or its managed
+        # receipt/backup roots) is a junction and let package writes escape.
+        candidate = no_links(Path(gta_path).expanduser())
         if not candidate.is_dir() or not (
             (candidate / "GTA5.exe").is_file()
             or (candidate / "GTA5_Enhanced.exe").is_file()
@@ -929,6 +932,11 @@ class ModIntegrationService:
         self.gta_path = candidate
         self.state_root = self.gta_path / "scripts" / ".allin1" / "mods"
         self.backup_root = self.gta_path / "ALLIN1_Backups" / "Mods"
+        # These roots receive receipts, payload copies, and rollback backups
+        # through a few raw mkdir/replace calls below, so validate them once
+        # before an install can create or follow a redirected managed tree.
+        no_links(self.state_root)
+        no_links(self.backup_root)
         self.rpf_progress = rpf_progress
         self._rpf_phase = None
 
@@ -985,10 +993,25 @@ class ModIntegrationService:
 
     def _write_receipt(self, receipt: dict[str, Any]) -> None:
         self.state_root.mkdir(parents=True, exist_ok=True)
-        receipt_path = self._receipt_path(str(receipt["id"]))
-        temporary = receipt_path.with_suffix(".json.tmp")
-        temporary.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
-        temporary.replace(receipt_path)
+        receipt_path = no_links(self._receipt_path(str(receipt["id"])))
+        # The old fixed ``<id>.json.tmp`` name could be prepared as a symlink
+        # by another local process.  ``write_text`` follows that link before
+        # replace, overwriting data outside the game directory.  Use a private
+        # exclusive temporary and validate both paths before publication.
+        temporary = no_links(receipt_path.with_name(
+            f".{receipt_path.name}.{uuid.uuid4().hex}.tmp"
+        ))
+        encoded = json.dumps(receipt, indent=2)
+        created = False
+        try:
+            with temporary.open("x", encoding="utf-8") as stream:
+                created = True
+                stream.write(encoded)
+            no_links(receipt_path)
+            temporary.replace(receipt_path)
+        finally:
+            if created and temporary.exists():
+                temporary.unlink(missing_ok=True)
 
     def _set_dlc_registration(self, pack: str, enabled: bool) -> bool:
         if not _DLC_PACK_PATTERN.fullmatch(pack):

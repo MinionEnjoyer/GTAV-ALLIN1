@@ -1,4 +1,10 @@
 # ALLIN1 vehicle coverage audit
+
+> **Historical snapshot — September 6, 2026.** The findings, counts, source
+> identity, and raw evidence below describe that audit only; they are not the
+> current vehicle-catalog policy. See the [current complete vehicle catalog
+> policy](../complete-vehicle-catalog.md) for the later browse-only expansion.
+
 Date: 2026-09-06 (America/Los_Angeles). Read-only implementation audit; report artifacts only.
 
 ## Verdict

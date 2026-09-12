@@ -10,15 +10,23 @@ namespace ALLIN1
 {
     public class CharacterInventory : Script
     {
-        private static readonly string PathName = Path.Combine(
+        private static readonly string DefaultPathName = Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory, "ALLIN1_characters.json");
+        private static string _pathNameOverride;
+        private static string PathName => _pathNameOverride ?? DefaultPathName;
         private static readonly object Sync = new object();
         private static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
         private static Dictionary<string, Inventory> _state = EmptyState();
-        private static readonly int MichaelHash = Game.GenerateHash("player_zero");
-        private static readonly int FranklinHash = Game.GenerateHash("player_one");
-        private static readonly int TrevorHash = Game.GenerateHash("player_two");
-        private static readonly Dictionary<string, int> WeaponHashes = BuildWeaponHashes();
+        // Keep off-game persistence tests independent of ScriptHookV. Hashes
+        // are first needed only when a live Ped is inspected.
+        private static readonly Lazy<int> MichaelHash =
+            new Lazy<int>(() => Game.GenerateHash("player_zero"));
+        private static readonly Lazy<int> FranklinHash =
+            new Lazy<int>(() => Game.GenerateHash("player_one"));
+        private static readonly Lazy<int> TrevorHash =
+            new Lazy<int>(() => Game.GenerateHash("player_two"));
+        private static readonly Lazy<Dictionary<string, int>> WeaponHashes =
+            new Lazy<Dictionary<string, int>>(BuildWeaponHashes);
         private static DateTime _lastWrite;
         private static bool _stateDirty;
         private static int _lastSmokeWeaponAvailability = -1;
@@ -126,9 +134,9 @@ namespace ALLIN1
         {
             if (player == null || !player.Exists()) return "";
             int model = Function.Call<int>(Hash.GET_ENTITY_MODEL, player.Handle);
-            if (model == MichaelHash) return "michael";
-            if (model == FranklinHash) return "franklin";
-            if (model == TrevorHash) return "trevor";
+            if (model == MichaelHash.Value) return "michael";
+            if (model == FranklinHash.Value) return "franklin";
+            if (model == TrevorHash.Value) return "trevor";
             return "";
         }
 
@@ -139,7 +147,7 @@ namespace ALLIN1
             return result;
         }
 
-        internal static int GetWeaponHash(string weapon) => WeaponHashes.TryGetValue(
+        internal static int GetWeaponHash(string weapon) => WeaponHashes.Value.TryGetValue(
             weapon, out int hash) ? hash : Game.GenerateHash(weapon);
 
         internal static bool IsOwned(string item, bool gear)
@@ -189,16 +197,48 @@ namespace ALLIN1
             }
         }
 
-        private static void Reload()
+        private static void Reload(bool discardStaged = false)
         {
             lock (Sync)
             {
-                try
+                // Decode into a candidate before replacing the live ledger. A
+                // damaged file can otherwise turn an in-session purchase into
+                // an empty inventory which a later Story save would persist.
+                // The only exception is GTA's explicit Story-load path: it
+                // deliberately discards in-session state before loading the
+                // persisted ledger (or its recovery copy).
+                if (discardStaged)
                 {
                     _state = EmptyState();
                     _stateDirty = false;
+                    _lastWrite = DateTime.MinValue;
+                }
+                bool candidateInstalled = false;
+                try
+                {
                     if (!File.Exists(PathName))
                     {
+                        // A watcher reload may observe the primary between
+                        // File.Replace/File.Move operations. Keep a purchase
+                        // staged in memory unless this is the deliberate
+                        // Story-load discard path below.
+                        if (_stateDirty && !discardStaged)
+                        {
+                            ClientLog.Warn("Character",
+                                "loadouts_missing_reload_retained_staged_state");
+                            return;
+                        }
+                        // A clean process can still recover from the last
+                        // known-good copy when a primary was removed or a
+                        // replacement was interrupted. Do not initialize an
+                        // empty ledger while that source exists.
+                        if (File.Exists(PathName + ".bak"))
+                        {
+                            TryRecoverFromBackup();
+                            return;
+                        }
+                        _state = EmptyState();
+                        _stateDirty = false;
                         _lastWrite = DateTime.MinValue;
                         return;
                     }
@@ -206,21 +246,176 @@ namespace ALLIN1
                     if (!EarlyStartupSnapshot.TryGetText(
                             "characters", out inventoryJson))
                         inventoryJson = File.ReadAllText(PathName);
-                    var loaded = Json.Deserialize<Dictionary<string, Inventory>>(
-                        inventoryJson);
-                    if (loaded != null)
-                    {
-                        _state = loaded;
-                        EnsureCharacterKeys(_state);
-                        bool migrated = false;
-                        foreach (Inventory inventory in _state.Values)
-                            migrated |= NormalizeInventory(inventory);
-                        if (migrated) SaveStateLocked();
-                    }
+                    Dictionary<string, Inventory> loaded = DecodeState(
+                        inventoryJson, out bool migrated);
+                    _state = loaded;
+                    _stateDirty = false;
+                    candidateInstalled = true;
+                    if (migrated) SaveStateLocked();
                     _lastWrite = File.GetLastWriteTimeUtc(PathName);
                     ClientLog.Info("Character", "loadouts_loaded");
                 }
-                catch (Exception ex) { ClientLog.Error("Character", "loadouts_load_failed", ex); }
+                catch (Exception ex)
+                {
+                    ClientLog.Error("Character", candidateInstalled
+                        ? "loadouts_post_load_failed" : "loadouts_load_failed", ex);
+                    // Do not replace an already accepted ledger with an older
+                    // backup merely because a migration write or timestamp
+                    // read failed after it was installed.
+                    if (!candidateInstalled)
+                    {
+                        // A file watcher reload can race a pending GBAY
+                        // purchase. The in-memory staged ledger is newer than
+                        // every persisted copy until Story Mode saves it, so a
+                        // corrupt primary must not replace it from .bak.
+                        if (_stateDirty)
+                            ClientLog.Warn("Character",
+                                "loadouts_invalid_reload_retained_staged_state");
+                        else
+                            TryRecoverFromBackup();
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Deserialize and normalize a complete inventory document without
+        /// touching the active ledger. Keeping this transactional is important
+        /// because reloads also occur while the player has unsaved purchases.
+        /// </summary>
+        internal static Dictionary<string, Inventory> DecodeState(
+            string inventoryJson, out bool migrated)
+        {
+            if (string.IsNullOrWhiteSpace(inventoryJson))
+                throw new InvalidDataException("Character inventory is empty.");
+
+            Dictionary<string, Inventory> decoded;
+            try
+            {
+                // Keep decode usable in the off-game test harness too: the
+                // shared serializer lives on CharacterInventory alongside
+                // GTA-native static initialization.
+                var serializer = new JavaScriptSerializer
+                {
+                    MaxJsonLength = 2 * 1024 * 1024,
+                    RecursionLimit = 32,
+                };
+                decoded = serializer.Deserialize<Dictionary<string, Inventory>>(
+                    inventoryJson);
+            }
+            catch (Exception ex) when (ex is ArgumentException ||
+                ex is InvalidOperationException)
+            {
+                throw new InvalidDataException(
+                    "Character inventory is not valid JSON.", ex);
+            }
+            if (decoded == null)
+                throw new InvalidDataException(
+                    "Character inventory root must be a JSON object.");
+
+            var canonical = EmptyState();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, Inventory> entry in decoded)
+            {
+                if (!canonical.ContainsKey(entry.Key)) continue;
+                if (!seen.Add(entry.Key))
+                    throw new InvalidDataException(
+                        "Character inventory contains a duplicate character key.");
+                if (entry.Value == null)
+                    throw new InvalidDataException(
+                        "Character inventory contains a null character record.");
+                canonical[entry.Key] = entry.Value;
+            }
+
+            if (seen.Count == 0)
+                throw new InvalidDataException(
+                    "Character inventory contains no recognized character records.");
+
+            // Unknown root entries are not part of the per-protagonist
+            // ledger. Mark them for rewrite even when their count happens to
+            // equal the three canonical character records.
+            migrated = decoded.Count != seen.Count ||
+                seen.Count != canonical.Count;
+            foreach (Inventory inventory in canonical.Values)
+                migrated |= NormalizeInventory(inventory);
+            return canonical;
+        }
+
+        private static void TryRecoverFromBackup()
+        {
+            string backup = PathName + ".bak";
+            if (!File.Exists(backup)) return;
+            try
+            {
+                Dictionary<string, Inventory> recovered = DecodeState(
+                    File.ReadAllText(backup), out bool migrated);
+                _state = recovered;
+                _stateDirty = false;
+                // Keep the known-good backup intact until the replacement has
+                // succeeded. SaveStateLocked's normal path intentionally
+                // refreshes .bak, which would overwrite our recovery source.
+                SaveStateLocked(preserveBackup: true);
+                if (migrated)
+                    ClientLog.Info("Character", "loadouts_backup_migrated");
+                ClientLog.Warn("Character", "loadouts_recovered_from_backup");
+            }
+            catch (Exception backupEx)
+            {
+                ClientLog.Error("Character", "loadouts_backup_load_failed",
+                    backupEx);
+            }
+        }
+
+        // Persistence-only hooks keep malformed-save regression coverage out
+        // of GTA. They do not construct a Script or access a native hash.
+        internal static IDisposable UsePersistenceForTests(
+            string path, Dictionary<string, Inventory> state, bool dirty)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("A persistence path is required.",
+                    nameof(path));
+            lock (Sync)
+            {
+                string previousPath = _pathNameOverride;
+                Dictionary<string, Inventory> previousState = _state;
+                bool previousDirty = _stateDirty;
+                DateTime previousWrite = _lastWrite;
+                _pathNameOverride = path;
+                _state = state ?? EmptyState();
+                _stateDirty = dirty;
+                _lastWrite = DateTime.MinValue;
+                return new PersistenceTestScope(() =>
+                {
+                    lock (Sync)
+                    {
+                        _pathNameOverride = previousPath;
+                        _state = previousState;
+                        _stateDirty = previousDirty;
+                        _lastWrite = previousWrite;
+                    }
+                });
+            }
+        }
+
+        internal static void ReloadForTests(bool discardStaged = false) =>
+            Reload(discardStaged);
+
+        internal static Dictionary<string, Inventory> StateForTests()
+        {
+            lock (Sync) return _state;
+        }
+
+        private sealed class PersistenceTestScope : IDisposable
+        {
+            private Action _dispose;
+
+            internal PersistenceTestScope(Action dispose) { _dispose = dispose; }
+
+            public void Dispose()
+            {
+                Action dispose = _dispose;
+                _dispose = null;
+                dispose?.Invoke();
             }
         }
 
@@ -281,7 +476,10 @@ namespace ALLIN1
                 {
                     GbayShop.DiscardStagedRuntimeGear(
                         Game.Player.Character);
-                    Reload();
+                    // Story loading intentionally discards staged changes;
+                    // pass that intent through so a transiently missing
+                    // primary cannot retain the discarded purchase.
+                    Reload(discardStaged: true);
                     GbayPreferences.DiscardStaged();
                     ResetDeathTracking();
                     ClientLog.Info("Character",
@@ -445,7 +643,7 @@ namespace ALLIN1
             _nextWeaponRestoreUtc = DateTime.UtcNow.AddSeconds(2);
             // Preserve the existing managed-stock removal policy. Add-on grants
             // come from saved ownership and the current receipt-authorized catalog.
-            foreach (var entry in WeaponHashes)
+            foreach (var entry in WeaponHashes.Value)
             {
                 Hash hash = (Hash)entry.Value;
                 if (!owned.Contains(entry.Key) && inventory.managed)
@@ -1871,14 +2069,6 @@ namespace ALLIN1
             return true;
         }
 
-        private static void EnsureCharacterKeys(
-            Dictionary<string, Inventory> state)
-        {
-            foreach (string character in new[] { "michael", "franklin", "trevor" })
-                if (!state.ContainsKey(character))
-                    state[character] = new Inventory();
-        }
-
         private static void StageStateLocked(
             string character, string action, string item)
         {
@@ -1890,12 +2080,14 @@ namespace ALLIN1
                 });
         }
 
-        private static void SaveStateLocked()
+        private static void SaveStateLocked(bool preserveBackup = false)
         {
             string temporary = PathName + ".tmp";
             File.WriteAllText(temporary, Json.Serialize(_state));
-            if (File.Exists(PathName)) File.Copy(PathName, PathName + ".bak", true);
-            if (File.Exists(PathName)) File.Replace(temporary, PathName, null);
+            if (File.Exists(PathName) && !preserveBackup)
+                File.Copy(PathName, PathName + ".bak", true);
+            if (File.Exists(PathName))
+                File.Replace(temporary, PathName, null);
             else File.Move(temporary, PathName);
             _lastWrite = File.GetLastWriteTimeUtc(PathName);
             _stateDirty = false;

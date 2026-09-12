@@ -1,28 +1,25 @@
 # GBAY trailer hitches
 
-Open GBAY > Vehicles > Trailer hitches while in the driver's seat in Story Mode
-free roam. The list updates automatically and offers compatible nearby trailers
-for the current vehicle's configured front/rear slots. Only one live connection
-per towing vehicle is supported; trailer chains are not supported.
+Open GBAY > Vehicles > Trailer hitches from the driver's seat in Story Mode free
+roam. The live list offers compatible nearby trailers for configured front/rear
+slots. One connection per towing vehicle is supported; trailer chains are not.
 
-Both vehicles must be stopped (at most 0.15 m/s), the trailer must be unoccupied,
-and the selected hitch/coupler must be within the profile's coupling distance.
-Already-connected vehicles, missing bones, expired selections and mission/
-online/loading states are rejected. Connections and disconnections require
-confirmation and repeat the live checks when applied, not just when listed.
-No vehicle is spawned and no scripted position/teleport correction is used.
+Both vehicles must be stopped (at most 0.15 m/s), the trailer unoccupied, and the
+selected hitch/coupler inside the profile distance. Already-connected vehicles,
+missing bones, expired selections, and mission/online/loading states are rejected.
+Connect/disconnect require confirmation and recheck live state at apply time. No
+vehicle is spawned or position/teleport correction scripted.
 
-SDK Vehicle Workbench hitch profiles arrive through the receipt-authorized
-vehicle catalog. There is no second in-game profile format or offset editor.
-Without a profile, an existing `attach_female` bone enables native detection
-with a bounded list of stock trailer models. An explicit empty profile disables
-this fallback. Detection does not guarantee the engine supports every pair.
+SDK Vehicle Workbench profiles arrive through the receipt-authorized vehicle
+catalog; there is no second in-game format or offset editor. Without a profile,
+`attach_female` enables native detection for a bounded stock-trailer list; an
+explicit empty profile disables that fallback. Detection does not guarantee an
+engine-supported pair.
 
-Native mode uses GTA's authored towing system. Custom/front physical joints are
-experimental and explicitly labeled. They preserve collisions and use a joint
-instead of a per-frame attachment retry loop. SDK previews are offset schematics,
-not collision or physics validation. Script shutdown releases only physical
-joints created by this system; existing native towing connections are left alone.
+Native mode uses GTA towing. Custom/front physical joints are experimental,
+preserve collisions, and use a joint rather than a per-frame attachment retry.
+SDK previews are offset schematics, not physics/collision validation. Shutdown
+releases only this system's physical joints; existing native towing remains.
 
 ## Acceptance checks before release
 

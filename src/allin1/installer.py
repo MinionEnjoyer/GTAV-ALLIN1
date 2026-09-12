@@ -56,7 +56,7 @@ from allin1.rpf_loader import (
 )
 from allin1.vehicles.database import VehicleDatabase
 from allin1.versioning import VERSION_FILE, write_installed_version
-from allin1.release_paths import no_links, tree_files
+from allin1.release_paths import filesystem_path, no_links, tree_files
 
 try:
     import tomllib
@@ -150,29 +150,34 @@ def _copy_atomic(source: Path, destination: Path) -> None:
     """Replace a deployed file without exposing a partial destination."""
     source, destination = no_links(source), no_links(destination)
     backup = no_links(destination.with_name(destination.name + ".bak"))
-    if not source.is_file():
+    if not filesystem_path(source).is_file():
         raise FileNotFoundError(source)
     for path in (destination, backup):
-        if path.exists() and not path.is_file():
+        disk_path = filesystem_path(path)
+        if disk_path.exists() and not disk_path.is_file():
             raise ValueError(f"Expected a regular deployment file: {path}")
-    existed = destination.exists()
+    existed = filesystem_path(destination).exists()
     original_hash = _map_file_sha256(destination) if existed else None
     temporary = destination.with_name(destination.name + "." + uuid.uuid4().hex + ".tmp")
     backup_stage = temporary.with_name(temporary.name + ".backup")
     try:
-        shutil.copy2(source, temporary)
+        # Keep lexical paths for every trust/reparse check, but pass the
+        # extended Windows form at the final filesystem boundary.  The random
+        # transaction suffix can otherwise push an already-deep game path
+        # beyond MAX_PATH before the atomic publication is reached.
+        shutil.copy2(filesystem_path(source), filesystem_path(temporary))
         if existed:
-            shutil.copy2(no_links(destination), backup_stage)
+            shutil.copy2(filesystem_path(no_links(destination)), filesystem_path(backup_stage))
             if _map_file_sha256(backup_stage) != original_hash:
                 raise ValueError("Deployment destination changed during staging")
-        if destination.exists() != existed or (existed and _map_file_sha256(no_links(destination)) != original_hash):
+        if filesystem_path(destination).exists() != existed or (existed and _map_file_sha256(no_links(destination)) != original_hash):
             raise ValueError("Deployment destination changed during staging")
         if existed:
-            backup_stage.replace(no_links(backup))
-        temporary.replace(no_links(destination))
+            filesystem_path(backup_stage).replace(filesystem_path(no_links(backup)))
+        filesystem_path(temporary).replace(filesystem_path(no_links(destination)))
     finally:
-        temporary.unlink(missing_ok=True)
-        backup_stage.unlink(missing_ok=True)
+        filesystem_path(temporary).unlink(missing_ok=True)
+        filesystem_path(backup_stage).unlink(missing_ok=True)
 
 
 def _remove_retired_lemonui_dependency(scripts_dir: Path) -> Path | None:
@@ -1112,7 +1117,7 @@ def _map_patcher_command(
 
 def _map_file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
+    with filesystem_path(path).open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest().upper()

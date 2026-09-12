@@ -1,14 +1,26 @@
 # Driving HUD, shifting and hitch telemetry
 
-The built-in speedometer is a small non-interactive **React HUD rendered by Reactor V**, not a resized GBAY window and not LemonUI/native text. It uses Reactor's new passive-HUD contract, separate from menu/input ownership. The HUD shows speed, KMH/MPH, AUTO or MANUAL (sequential hold), and the current native gear. GTA gear zero is labelled `R`, never invented neutral. Unsupported readings display `?`.
+The built-in speedometer is a small non-interactive **React HUD rendered by
+Reactor V**, not GBAY, LemonUI, or native text. It uses the passive-HUD contract,
+separate from menu/input ownership, and shows speed, KMH/MPH, AUTO or MANUAL
+(sequential hold), and native gear. Gear zero is `R`, never invented neutral;
+unsupported readings are `?`.
 
-This candidate requires the coordinated Reactor V build with `PassiveHudContract` v1 (Core, Script, Runtime/Preloader and browser assets). An older installed Reactor still supports GBAY but cannot show this HUD: ALLIN1 logs `passive_hud_unavailable_update_reactor_v`, without falling back to native drawing or forcing a menu open. Telemetry/shifting remain independent. Candidate components are built locally; installation and in-game validation are separate steps.
+It needs the coordinated Reactor V `PassiveHudContract` v1 build (Core, Script,
+Runtime/Preloader, browser assets). Older Reactor still supports GBAY but cannot
+draw this HUD: ALLIN1 logs `passive_hud_unavailable_update_reactor_v`, with no
+native fallback or forced menu. Telemetry/shifting continue independently.
+Candidates are built locally; installation and in-game validation remain separate.
+Updates are capped at 10 Hz and stale data clears after one second. Menus supersede
+the HUD; it never owns pointer/keyboard input. The dependency is a generic
+speedometer prefab/protocol, not ALLIN1 content.
 
-HUD updates are bounded to 10 Hz. Both native host and React readout revoke stale data, and the React readout clears after one second without updates. Menu presentation supersedes the HUD; it never acquires pointer/keyboard ownership. The dependency contains only a generic speedometer prefab/protocol, no ALLIN1-specific content.
-
-The built-in HUD hides while the player uses the phone, during a phone call, or while the in-vehicle phone camera is active. It returns automatically when phone use ends and the normal driving visibility checks permit it. Phone use does not change the saved provider/units, reset gear hold, or interrupt telemetry. Visibility transitions are logged as `hud_visibility` with reason `phone`; external speedometer mods control their own displays.
-
-Holding the character-wheel control (Alt by default, or its remapped/controller binding) also hides the built-in HUD. It stays hidden during an actual character switch and returns after cancelling or completing selection, once normal driving visibility checks permit it. This uses GTA's input state, including disabled controls while the selector owns input, and logs reason `character_switch`; it does not change saved display preferences.
+The built-in HUD hides for phone use/calls/in-vehicle camera and while the
+character wheel is held (Alt by default or remapped/controller binding), including
+an actual character switch. It returns when that state ends and normal driving
+visibility permits it. These transitions log `hud_visibility` with `phone` or
+`character_switch`; they do not alter saved provider/units, gear hold, or
+telemetry. External mods manage their own displays.
 
 ## Configuration and controls
 
@@ -26,15 +38,28 @@ shift_controls_enabled = true
 - Numpad `*`: opt into experimental sequential **forward-gear hold**; press again to return to automatic. Every session/vehicle starts automatic. Enter while GTA reports a valid forward gear and the engine is running.
 - Numpad `+` / `−`: shift up/down while holding gears. Each press is one shift, with a 250 ms minimum interval. High-RPM downshifts are conservatively rejected; this is not a calculated gear-ratio/redline model.
 
-This is **not** a full manual-transmission simulation: no clutch, neutral, reverse selector, torque model, or handling/gear-ratio edits. Return to automatic for reverse. It uses SHVDN CurrentGear/NextGear properties and verifies readback; road behaviour still requires in-game testing on each edition.
+This is **not** a manual-transmission simulation: no clutch, neutral, reverse
+selector, torque model, or handling/gear-ratio edits. Return to automatic for
+reverse. It only uses SHVDN CurrentGear/NextGear and verifies readback; each
+edition still needs road testing.
 
-Gear writes stop on safe/recovery mode, menus, pause, loss of game focus, missions, cutscenes/loading, garage transitions, death, leaving the driver's seat, vehicle identity changes, invalid gear/RPM readings, or a detected competing transmission module. Gear control is restricted to cars/bikes. It must be explicitly re-enabled after suspension; held keys are not replayed. No Online operation.
+Gear writes stop in safe/recovery mode; menus, pause, lost focus, missions,
+cutscenes/loading, garage transitions, death, leaving the driver's seat, vehicle
+changes, invalid gear/RPM, or a competing transmission module. They are limited
+to cars/bikes and require explicit re-enable after suspension; held keys never
+replay. No Online operation.
 
 ## External speedometers
 
-`auto` chooses a loaded Rex FSS assembly first, then a loaded LeFixSpeedo ASI, otherwise the ALLIN1 HUD. `rex`/`lefix` select that provider, falling back to ALLIN1 if it is not detected. `off` hides the built-in HUD without disabling telemetry or configured shift controls. To ensure ALLIN1 never draws alongside an external display with an unrecognised filename/assembly name, select `off`.
+`auto` chooses a loaded Rex FSS assembly, then LeFixSpeedo ASI, otherwise ALLIN1.
+`rex`/`lefix` choose that provider but fall back to ALLIN1 if absent. `off` hides
+the built-in HUD without disabling telemetry or shift controls; use it to ensure
+ALLIN1 never draws beside an unrecognised external display.
 
-This is **coexistence support**, not a private telemetry injection API. Both external mods read the game's vehicle state independently. Detection proves a module/assembly was loaded, not that its HUD is enabled or drawing. Nothing is downloaded, bundled, launched, or written to third-party configuration.
+This is **coexistence support**, not a private telemetry API. Both mods read game
+state independently; detection means only that a module/assembly loaded, not that
+its HUD draws. Nothing is downloaded, bundled, launched, or written to third-party
+configuration.
 
 - [Rex Forza Styled Speedometer documentation](https://rexmods-dev.github.io/rexmods/FSSDocs.html): install the correct edition separately; use its native GTA gear source with ALLIN1. Its Numpad 1–3 controls remain untouched. Units and assist settings stay in FSS. Disable overlapping car/manual-reverse controls before testing ALLIN1 gear hold.
 - [LeFix Speedometer](https://www.gta5-mods.com/scripts/lefix-speedometer): install a version compatible with your game edition; configure its units/display in its own menu. [Maintainer's source](https://github.com/ikt32/gta5-speedometer) is separate; none of its GPL code is incorporated here.
@@ -46,13 +71,28 @@ External-mod coexistence and native gear-hold behaviour are **not yet game-verif
 
 `scripts/ALLIN1_driving.jsonl` receives local JSONL events and samples at up to **5 Hz** while driving in free roam. Default `towing` records samples only with a currently observed native or ALLIN1 physical connection. `all` also records solo driving. `off` disables this log entirely. No upload or location tracking.
 
-Each row has schema version, session ID, UTC timestamp, kind and dropped-sample count. Samples contain game time, vehicle/model identity, speed in m/s, signed longitudinal speed, speed-magnitude acceleration in m/s², sample interval, current/next/high gear, requested held gear, normalized RPM (not engine RPM), steering angle, throttle/brake inputs, roll/pitch and collision flag. Frame timing includes the **worst observed frame since the previous sample**, to help spot hitches in rendering/frame delivery.
+Each row has schema version, session ID, UTC timestamp, kind, and dropped-sample
+count. Samples include game time; vehicle/model identity; speed and signed
+longitudinal speed in m/s, speed-magnitude acceleration in m/s², and sample
+interval; current/next/high/requested held gear; normalized
+RPM (not engine RPM); steering, throttle/brake, roll/pitch, and collision. Frame
+timing includes the **worst observed frame since the previous sample** to reveal
+render/frame-delivery hitches.
 
 The `joints` array records both front/rear connections: trailer identity/speed/roll/pitch/collision, attachment mode, known hitch ID, coupler gap in metres and wrapped relative yaw in degrees. Configured physical break force is metadata, **not measured joint force**. Missing bone/profile data is `null`, not zero. Native towing outside an authored profile may have unknown hitch/gap values.
 
-Events include connect attempts/results, disconnects, failed actions, observed/lost couplings, observation suspension, shifts, display provider and runtime failures. `coupling_no_longer_observed` does **not** establish a break-force failure: despawning or another script can also remove a connection. Leaving the seat or suspending sampling emits `observation_ended` instead.
+Events include connection attempts/results, disconnects, failed actions,
+observed/lost couplings, observation suspension, shifts, provider, and runtime
+failures. `coupling_no_longer_observed` does **not** prove break-force failure:
+despawning or another script can remove a connection. Leaving the seat or
+suspending sampling emits `observation_ended` instead.
 
-All native reads occur on the game thread. Detached data enters a bounded 512-row queue; a single background writer handles disk I/O. Overflow drops samples rather than blocking gameplay. Logs rotate at 8 MiB to `.1`, `.2`, `.3` (about 32 MiB total). Disk failure stops logging with a warning. Shutdown drains for at most 500 ms; a crash/slow disk can lose the last buffered rows. Acceleration is invalidated across observation/vehicle changes and long sample gaps.
+Native reads stay on the game thread. Detached rows enter a bounded 512-row queue
+for one background writer; overflow drops samples rather than blocking gameplay.
+Logs rotate at 8 MiB to `.1`, `.2`, `.3` (about 32 MiB total). Disk failure warns
+and stops logging; shutdown drains at most 500 ms, so a crash/slow disk can lose
+the last buffered rows. Acceleration is invalid across observation/vehicle changes
+and long sample gaps.
 
 ## Next in-game validation
 
