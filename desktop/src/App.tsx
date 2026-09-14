@@ -34,6 +34,26 @@ const inputField = (key: string) =>
   ].includes(key);
 
 export default function App({ client = nativeClient }: { client?: Client }) {
+const dependencyStatus = (value: unknown, inspected: boolean) => {
+  if (!inspected || value === undefined || value === null) return "Not checked";
+  if (value === true) return "Installed";
+  return value === false ? "Missing" : "Not checked";
+};
+
+const dependencyStatusClass = (status: string) =>
+  status === "Installed" ? "success" : status === "Missing" ? "warning" : "neutral";
+
+const installationIdentity = (config: RecordData | null | undefined) => {
+  const general = config?.general as RecordData | undefined;
+  if (!general) return null;
+  return JSON.stringify([
+    general.gta_path,
+    general.gta_legacy_path,
+    general.gta_enhanced_path,
+    general.target_edition,
+  ]);
+};
+
   const [catalog, setCatalog] = useState<RecordData>({}),
     [module, setModule] = useState("setup"),
     [session, setSession] = useState<RecordData>({});
@@ -465,6 +485,9 @@ export default function App({ client = nativeClient }: { client?: Client }) {
       />
     </fieldset>
   );
+  const currentInstallation = installationIdentity(config);
+  const inspectionMatchesDraft = currentInstallation !== null &&
+    currentInstallation === installationIdentity(session.config as RecordData | undefined);
   return (
     <div className={`launcher ${collapsed ? "collapsed" : ""}`}>
       <header>
@@ -686,30 +709,29 @@ export default function App({ client = nativeClient }: { client?: Client }) {
           <>
             <section className="readiness">
               <h2>
-                {session.status?.valid_game
+                {inspectionMatchesDraft && session.status?.valid_game
                   ? `GTA V ${session.status.edition}`
                   : "Select your game installation"}
               </h2>
-              <p>{session.status?.valid_game ? "Dependency availability for the selected installation. This is not an in-game runtime check." : "Choose a Legacy or Enhanced folder below, then refresh to inspect it. Nothing will be installed without your review."}</p>
-              <div className="status-grid">
-                <div>
-                  <span>Reactor V · Required</span>
-                  <strong>{session.reactor?.available ? "Available" : "Needs attention"}</strong>
+              <p>{inspectionMatchesDraft && session.status?.valid_game ? "Dependency availability for the selected installation. This is not an in-game runtime check." : "Choose a Legacy or Enhanced folder below, then refresh to inspect it. Nothing will be installed without your review."}</p>
+              <section className="dependency-group" aria-labelledby="installation-dependencies-heading">
+                <h3 id="installation-dependencies-heading">Installation dependencies</h3>
+                <div className="status-grid">
+                  {[
+                    ["reactor", "Reactor V", session.reactor?.available],
+                    ["mod_installed", "ALLIN1 client", session.status?.mod_installed],
+                    ["scripthookv_installed", "ScriptHookV", session.status?.scripthookv_installed],
+                    ["shvdn_installed", "ScriptHookVDotNet", session.status?.shvdn_installed],
+                    ["openrpf_installed", "OpenRPF", session.status?.openrpf_installed],
+                  ].map(([key, label, available]) => {
+                    const status = dependencyStatus(available, inspectionMatchesDraft && session.status?.valid_game === true);
+                    return <div key={key} className="dependency-card">
+                      <span>{label}</span>
+                      <strong className={`status-pill ${dependencyStatusClass(status)}`}>{status}</strong>
+                    </div>;
+                  })}
                 </div>
-                {[
-                  ["mod_installed", "ALLIN1 client"],
-                  ["scripthookv_installed", "ScriptHookV"],
-                  ["shvdn_installed", "ScriptHookVDotNet"],
-                  ["openrpf_installed", "OpenRPF"],
-                ].map(([key, label]) => (
-                  <div key={key}>
-                    <span>{label}</span>
-                    <strong className={`status-pill ${session.status?.[key] ? "success" : "warning"}`}>
-                      {!session.status?.valid_game ? "Not checked" : session.status?.[key] ? "Installed" : "Missing"}
-                    </strong>
-                  </div>
-                ))}
-              </div>
+              </section>
             </section>
             {configSection("general")}
             <div className="toolbar">
@@ -799,8 +821,8 @@ export default function App({ client = nativeClient }: { client?: Client }) {
             </fieldset>
             <fieldset>
               <legend>Installation options</legend>
-              {!session.reactor?.available && <p>
-                {session.reactor?.reason} GBAY requires Reactor V; use Install / Repair below.
+              {inspectionMatchesDraft && session.status?.valid_game === true && session.reactor?.available === false && <p>
+                {session.reactor.reason ? `${session.reactor.reason} ` : ""}GBAY requires Reactor V; use Install / Repair below.
               </p>}
               <Field
                 name="download_reactor_dependency"

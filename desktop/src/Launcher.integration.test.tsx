@@ -149,7 +149,11 @@ describe("Launcher React workspaces use the real Python boundary", () => {
   it("requires Reactor and hides retired backend and preview controls", async () => {
     await screen.findByRole("heading", { name: "Setup", level: 1 });
     await idle();
-    expect(screen.getByText("Reactor V · Required")).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("region", { name: "Installation dependencies" }),
+      ).getByText("Reactor V"),
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText("Enable RPF Previews")).not.toBeInTheDocument();
     await navigate("Gameplay");
     expect(screen.queryByLabelText("GBAY Ui Backend")).not.toBeInTheDocument();

@@ -503,12 +503,16 @@ input[type="range"] { padding: 0; border: 0; accent-color: #319f69; background: 
 .number-field > label { line-height: 1.4; }
 .settings-search { max-width: 460px; margin-bottom: 20px; }
 .readiness { padding: 22px; }
+.dependency-group { margin-top: 18px; }
+.dependency-group h3 { margin: 0 0 10px; font-size: 13px; font-weight: 650; }
+.dependency-group .status-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .status-grid { gap: 10px; }
 .status-grid > div { padding: 12px; background: var(--raised); border: 1px solid var(--line); border-radius: 4px; font-size: 12px; }
 .status-grid strong.status-pill { display: table; margin-top: 10px; }
 .status-pill { padding: 3px 7px; border: 1px solid var(--line); border-radius: 4px; font-size: 12px; }
 .status-pill.success { color: var(--success); }
 .status-pill.warning { color: var(--warning); }
+.status-pill.neutral { color: var(--muted); }
 .notice { align-items: flex-start; margin: 12px 0; border-radius: 4px; flex-wrap: wrap; }
 .notice > div:first-child { flex: 1; min-width: 220px; }
 .notice p { margin: 6px 0 0; white-space: pre-wrap; font-size: 13px; }

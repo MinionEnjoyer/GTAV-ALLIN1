@@ -20,6 +20,13 @@ Launch once readiness permits. Python need not be installed separately.
 
 While the reviewed launch is preparing, **Cancel launch** stops the remaining
 preparation before GTA is started. During preview generation it stops the owned
+Setup groups Reactor V with the ALLIN1 client, ScriptHookV, ScriptHookVDotNet,
+and OpenRPF under **Installation dependencies**. Each card uses **Installed**,
+**Missing**, or **Not checked**. These are installation checks, not confirmation
+that the component has loaded in-game. For Reactor V, follow any reported
+validation reason and use **Review Install / Repair** when needed.
+After changing the edition or game paths, use **Refresh** to check that selection.
+
 renderer and retains completed cached previews. The panel stays locked until
 cleanup finishes; cancellation does not undo already-completed settings saves.
 Once launch is handed to Steam/Rockstar, cancellation is disabled. It never
