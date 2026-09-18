@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "profile": "allin1-composition",
-  "reactor_release": "v0.2.0-preview.3",
+  "reactor_release": "v0.2.5",
   "source_repository": "https://github.com/MinionEnjoyer/GTAV-REACTOR-V",
   "source_commit": "64b98166e782d0393f24561daf3b603333522e94",
   "files": {
@@ -19,7 +19,7 @@
     "ragewebui.js": "081d74e98e9bdcc7495604bd01750c47783d08b88f4ec919aeb1476b31d45151",
     "react-dom-LICENSE.txt": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
     "react-LICENSE.txt": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
-    "reactor-ui.json": "5905259502c2108de9eae2726cfb14ba08e233afd97f3c3619be3f3fe4148481",
+    "reactor-ui.json": "34a22051cea56e4bd1ab3e2c9fa9ce531936f90d59c93fa7719c5eb68c748443",
     "scheduler-LICENSE.txt": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
     "THIRD_PARTY_NOTICES.txt": "0b289e8beeaa7e9841d797e11987a2d7d54e35b30766731194399dbe8200b533"
   },

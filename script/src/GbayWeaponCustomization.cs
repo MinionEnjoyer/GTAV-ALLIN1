@@ -105,12 +105,26 @@ namespace ALLIN1
         private bool _workbenchCameraFocusInitialized;
         private bool _workbenchCameraPositionInitialized;
         private int _workbenchPreviewComponent;
+        // Confirmation is deliberately separate from preview restoration. A
+        // successfully attached component may already have been present on the
+        // dummy, in which case there is nothing temporary to remove, but it is
+        // still safe to commit after its model has streamed.
+        private int _workbenchPreviewConfirmedComponent;
         private int _workbenchPreviewRestoreComponent;
         private int _workbenchPreviewTint = -1;
         private int _workbenchPreviewRestoreTint = -1;
         private int _workbenchPreviewComponentTintComponent;
         private int _workbenchPreviewComponentTint = -1;
         private int _workbenchPreviewRestoreComponentTint = -1;
+        // A focused Reactor option can be delivered more than once. Keep its
+        // temporary dummy state stable, and keep a bad streamed component out
+        // of the focus/retry loop for the remainder of this workbench session.
+        private readonly HashSet<int> _workbenchPreviewRejectedComponents =
+            new HashSet<int>();
+        private int _workbenchPreviewPendingComponent;
+        private int _workbenchPreviewPendingAttachmentPoint;
+        private int _workbenchPreviewPendingModel;
+        private int _workbenchPreviewModelDeadline;
         private int _workbenchWeaponMismatchSince;
         private bool _workbenchWeaponRecoveryAttempted;
         // Reactor owns the visible menu and input while this mode is active.
@@ -119,6 +133,7 @@ namespace ALLIN1
         private bool _reactorVisualWeaponPreview;
         private const int WORKBENCH_VISIBLE_ROWS = 7;
         private const int WORKBENCH_WEAPON_RECOVERY_DELAY_MS = 350;
+        private const int WORKBENCH_COMPONENT_MODEL_LOAD_TIMEOUT_MS = 1500;
         private const int WORKBENCH_LIVERY_TINT_COUNT = 32;
 
         private bool CanUseWeaponWorkbenchHere(bool notify)
@@ -201,12 +216,6 @@ namespace ALLIN1
                     StringComparison.OrdinalIgnoreCase))
                 return false;
 
-            // Drop the previous temporary option, then synchronize purchases
-            // and equipped state before staging the newly focused option.
-            RestoreWorkbenchPreview();
-            if (_workbenchDummy != null && _workbenchDummy.Exists())
-                CharacterInventory.ApplyWeaponCustomizationNow(
-                    _workbenchDummy, _workbenchWeapon);
             int index = _workbenchRows.FindIndex(row =>
                 WorkbenchRowMatchesPreview(
                     row, kind, componentHash, attachmentPoint, tint));
@@ -223,7 +232,7 @@ namespace ALLIN1
             _workbenchScroll = Math.Max(0,
                 Math.Min(index, Math.Max(0,
                     _workbenchRows.Count - WORKBENCH_VISIBLE_ROWS)));
-            ApplyWorkbenchPreviewForSelection();
+            if (!ApplyWorkbenchPreviewForSelection()) return false;
             SetWeaponCameraFocusTarget();
             return true;
         }
@@ -238,6 +247,7 @@ namespace ALLIN1
                 EndWeaponCustomization();
                 return;
             }
+            TickWorkbenchPreviewModelLoad();
             UpdateWeaponCameraFocus();
         }
 
@@ -245,6 +255,26 @@ namespace ALLIN1
         {
             if (_reactorVisualWeaponPreview)
                 EndWeaponCustomization();
+        }
+
+        /// <summary>
+        /// Reactor purchases may proceed only from an attached, streamed
+        /// preview. This keeps a failed DLC model from changing the live
+        /// weapon or persisted customization state.
+        /// </summary>
+        internal GbayWeaponComponentPurchaseReadiness
+            GetWorkbenchComponentPurchaseReadiness(
+                string weaponName, int componentHash)
+        {
+            bool matchingPreview = _workbenchPedFrozen &&
+                !string.IsNullOrWhiteSpace(_workbenchWeapon) &&
+                string.Equals(_workbenchWeapon, weaponName,
+                    StringComparison.OrdinalIgnoreCase);
+            return GbayWeaponPreviewPolicy.GetComponentPurchaseReadiness(
+                matchingPreview, componentHash,
+                _workbenchPreviewConfirmedComponent,
+                _workbenchPreviewPendingComponent,
+                _workbenchPreviewRejectedComponents.Contains(componentHash));
         }
 
         private static bool WorkbenchRowMatchesPreview(
@@ -537,6 +567,14 @@ namespace ALLIN1
                 weaponHash, seen, false) + AddRuntimeDlcComponents(
                 weaponHash, seen, true);
 
+            // The SDK and DLC lists are discovery sources, not an authority
+            // that a receipt-installed known can is absent. Probe each exact
+            // profile binding against the live game before generic hashes can
+            // claim a synthetic slot. A binding only adds a row when both
+            // native gates accept the expected model.
+            int knownCanComponents = AddKnownCanWorkbenchCandidates(
+                weaponHash, seen);
+
             // Also validate every component hash exposed by SHVDN's live native
             // memory catalog. Unlike Enum.GetValues, this is not limited to the
             // enum members present in the SDK used to compile ALLIN1.
@@ -587,6 +625,7 @@ namespace ALLIN1
                     { "sdk_components", mappedComponents },
                     { "runtime_dlc_components", runtimeComponents },
                     { "compatibility_components", compatibilityComponents },
+                    { "known_can_components", knownCanComponents },
                     { "tints", tintCount },
                     { "livery_tints", liveryTints },
                     { "rows", _workbenchRows.Count }
@@ -649,7 +688,8 @@ namespace ALLIN1
                     Hash.DOES_WEAPON_TAKE_WEAPON_COMPONENT,
                     weaponHash, componentHash)) return false;
             seen.Add(componentHash);
-            label = LocalizeComponentLabel(label, componentHash);
+            label = LocalizeComponentLabel(SuppressorComponentLabels.Resolve(
+                weaponHash, componentHash, label), componentHash);
             string detail = FriendlyAttachmentPoint(pointName, label);
             if (WeaponCustomizationPolicy.IsOpaqueComponentLabel(label))
                 label = WeaponCustomizationPolicy.FallbackComponentLabel(detail);
@@ -1187,6 +1227,7 @@ namespace ALLIN1
                     3500);
                 return;
             }
+            TickWorkbenchPreviewModelLoad();
             UpdateWeaponCameraFocus();
             if (input.CategoryPrev) UpdateWeaponCamera(ped, -7f);
             if (input.CategoryNext) UpdateWeaponCamera(ped, 7f);
@@ -1454,6 +1495,17 @@ namespace ALLIN1
             bool accepted = input.Accept || (input.MouseClick && _workbenchHover >= 0);
             if (!accepted) return;
             WorkbenchRow row = _workbenchRows[_workbenchSelected];
+            GbayWeaponComponentPurchaseReadiness componentReadiness =
+                GbayWeaponComponentPurchaseReadiness.Ready;
+            if (row.Kind == WorkbenchRowKind.Component &&
+                (componentReadiness = GetWorkbenchComponentPurchaseReadiness(
+                    _workbenchWeapon, row.ComponentHash)) !=
+                    GbayWeaponComponentPurchaseReadiness.Ready)
+            {
+                GbayRenderer.PlayError();
+                ApplyWorkbenchPreviewForSelection();
+                return;
+            }
             RestoreWorkbenchPreview();
             bool success;
             if (row.Kind == WorkbenchRowKind.Ammo)
@@ -1463,8 +1515,10 @@ namespace ALLIN1
                     refillResult == GbayShop.AmmoNotApplicable;
             }
             else if (row.Kind == WorkbenchRowKind.Component)
-                success = _shop.ExecuteWeaponComponentPurchase(_workbenchWeapon,
-                    row.ComponentHash, row.AttachmentPoint, row.Price);
+                success = GbayWeaponPreviewPolicy.RunComponentPurchaseTransaction(
+                    componentReadiness,
+                    () => _shop.ExecuteWeaponComponentPurchase(_workbenchWeapon,
+                        row.ComponentHash, row.AttachmentPoint, row.Price));
             else if (row.Kind == WorkbenchRowKind.ComponentRemove)
                 success = _shop.ExecuteWeaponComponentRemoval(_workbenchWeapon,
                     row.ComponentHash, row.AttachmentPoint);
@@ -1678,16 +1732,45 @@ namespace ALLIN1
                 });
         }
 
-        private void ApplyWorkbenchPreviewForSelection()
+        private bool ApplyWorkbenchPreviewForSelection()
         {
-            RestoreWorkbenchPreview();
             if (_workbenchRows.Count == 0 ||
                 _workbenchSelected < 0 ||
-                _workbenchSelected >= _workbenchRows.Count) return;
+                _workbenchSelected >= _workbenchRows.Count) return false;
             Ped ped = _workbenchDummy;
-            if (ped == null || !ped.Exists()) return;
+            if (ped == null || !ped.Exists()) return false;
             WorkbenchRow row = _workbenchRows[_workbenchSelected];
             int weaponHash = CharacterInventory.GetWeaponHash(_workbenchWeapon);
+            if (row.Kind != WorkbenchRowKind.Component ||
+                _workbenchPreviewConfirmedComponent != row.ComponentHash)
+                _workbenchPreviewConfirmedComponent = 0;
+            if (row.Kind != WorkbenchRowKind.Component)
+                ClearWorkbenchPreviewModelLoad();
+            if (row.Kind == WorkbenchRowKind.Component)
+            {
+                if (_workbenchPreviewPendingComponent != 0 &&
+                    _workbenchPreviewPendingComponent != row.ComponentHash)
+                    ClearWorkbenchPreviewModelLoad();
+                if (GbayWeaponPreviewPolicy.IsCurrentComponentPreview(
+                        _workbenchPreviewComponent, row.ComponentHash))
+                    return true;
+                if (_workbenchPreviewRejectedComponents.Contains(
+                        row.ComponentHash))
+                    return false;
+                // Focus notifications can repeat while the UI is stable. The
+                // first request owns the deadline; never restart it here.
+                if (GbayWeaponPreviewPolicy.ShouldKeepPendingComponent(
+                        _workbenchPreviewPendingComponent,
+                        row.ComponentHash))
+                    return true;
+                if (!PrepareWorkbenchComponentPreview(row)) return false;
+                // The request is now streaming asynchronously. Preserve the
+                // existing dummy selection until the bounded request resolves.
+                if (_workbenchPreviewPendingComponent == row.ComponentHash)
+                    return true;
+            }
+            RestoreWorkbenchPreview();
+            CharacterInventory.ApplyWeaponCustomizationNow(ped, _workbenchWeapon);
             if (row.Kind == WorkbenchRowKind.ComponentRemove)
             {
                 if (HasLiveWorkbenchComponent(ped, weaponHash, row.ComponentHash))
@@ -1703,20 +1786,44 @@ namespace ALLIN1
             {
                 int active = GetActiveWorkbenchComponent(
                     row, ped, weaponHash);
-                if (active == row.ComponentHash) return;
+                if (active == row.ComponentHash)
+                {
+                    _workbenchPreviewConfirmedComponent = row.ComponentHash;
+                    return true;
+                }
                 if (active != 0)
                     Function.Call(Hash.REMOVE_WEAPON_COMPONENT_FROM_PED,
                         ped.Handle, weaponHash, active);
                 Function.Call(Hash.GIVE_WEAPON_COMPONENT_TO_PED,
                     ped.Handle, weaponHash, row.ComponentHash);
+                bool attached = Function.Call<bool>(
+                    Hash.HAS_PED_GOT_WEAPON_COMPONENT,
+                    ped.Handle, weaponHash, row.ComponentHash);
+                LogWorkbenchComponentPreviewApply(row, attached);
+                if (!attached)
+                {
+                    if (active != 0)
+                        Function.Call(Hash.GIVE_WEAPON_COMPONENT_TO_PED,
+                            ped.Handle, weaponHash, active);
+                    _workbenchPreviewRejectedComponents.Add(row.ComponentHash);
+                    ClientLog.Warn("GBAY", "weapon_component_preview_rejected",
+                        new Dictionary<string, object> {
+                            { "weapon", _workbenchWeapon },
+                            { "component_hash", row.ComponentHash },
+                            { "reason", "native_attachment_unconfirmed" },
+                            { "restore_component", active }
+                        });
+                    return false;
+                }
                 _workbenchPreviewComponent = row.ComponentHash;
+                _workbenchPreviewConfirmedComponent = row.ComponentHash;
                 _workbenchPreviewRestoreComponent = active;
             }
             else if (row.Kind == WorkbenchRowKind.Tint)
             {
                 int activeTint = CharacterInventory.GetActiveWeaponTint(
                     _workbenchWeapon);
-                if (activeTint == row.Tint) return;
+                if (activeTint == row.Tint) return true;
                 Function.Call(Hash.SET_PED_WEAPON_TINT_INDEX,
                     ped.Handle, weaponHash, row.Tint);
                 _workbenchPreviewTint = row.Tint;
@@ -1726,13 +1833,166 @@ namespace ALLIN1
             {
                 int activeTint = CharacterInventory.GetActiveWeaponComponentTint(
                     _workbenchWeapon, row.ComponentHash);
-                if (activeTint == row.Tint) return;
+                if (activeTint == row.Tint) return true;
                 Function.Call(Hash.SET_PED_WEAPON_COMPONENT_TINT_INDEX,
                     ped.Handle, weaponHash, row.ComponentHash, row.Tint);
                 _workbenchPreviewComponentTintComponent = row.ComponentHash;
                 _workbenchPreviewComponentTint = row.Tint;
                 _workbenchPreviewRestoreComponentTint = activeTint;
             }
+            return true;
+        }
+
+        private int AddKnownCanWorkbenchCandidates(int weaponHash,
+            HashSet<int> seen)
+        {
+            int added = 0;
+            foreach (SuppressorComponentLabels.KnownCanBinding binding in
+                SuppressorComponentLabels.GetBindingsForWeapon(weaponHash))
+            {
+                bool weaponTakesComponent = Function.Call<bool>(
+                    Hash.DOES_WEAPON_TAKE_WEAPON_COMPONENT, weaponHash,
+                    binding.ComponentHash);
+                int nativeComponentModel = Function.Call<int>(
+                    (Hash)0x0DB57B41EC1DB083, binding.ComponentHash);
+                bool accepted = SuppressorComponentLabels.AcceptsExpectedComponentModel(
+                    weaponTakesComponent, binding.ExpectedComponentModelHash,
+                    nativeComponentModel);
+                ClientLog.Info("GBAY", "weapon_workbench_known_can_probe",
+                    new Dictionary<string, object> {
+                        { "weapon", binding.Weapon },
+                        { "weapon_hash", binding.WeaponHash },
+                        { "component", binding.Component },
+                        { "component_hash", binding.ComponentHash },
+                        { "display_name", binding.DisplayName },
+                        { "expected_component_model", binding.ExpectedComponentModel },
+                        { "expected_component_model_hash", binding.ExpectedComponentModelHash },
+                        { "native_component_model_hash", nativeComponentModel },
+                        { "native_weapon_takes_component", weaponTakesComponent },
+                        { "accepted", accepted }, { "already_seen", seen.Contains(binding.ComponentHash) }
+                    });
+                if (accepted && AddWorkbenchComponent(seen, weaponHash,
+                        binding.ComponentHash,
+                        (int)WeaponAttachmentPoint.Supp,
+                        WeaponAttachmentPoint.Supp.ToString(),
+                        binding.DisplayName))
+                    added++;
+            }
+            return added;
+        }
+
+        private bool PrepareWorkbenchComponentPreview(WorkbenchRow row)
+        {
+            int model = Function.Call<int>((Hash)0x0DB57B41EC1DB083,
+                row.ComponentHash); // GET_WEAPON_COMPONENT_TYPE_MODEL
+            bool inCdImage = model != 0 && Function.Call<bool>(
+                Hash.IS_MODEL_IN_CDIMAGE, model);
+            bool valid = model != 0 && Function.Call<bool>(
+                Hash.IS_MODEL_VALID, model);
+            bool loaded = model != 0 && inCdImage && valid &&
+                Function.Call<bool>(Hash.HAS_MODEL_LOADED, model);
+            ClientLog.Info("GBAY", "weapon_component_preview_model",
+                new Dictionary<string, object> {
+                    { "weapon", _workbenchWeapon },
+                    { "component_hash", row.ComponentHash },
+                    { "model", model }, { "model_in_cdimage", inCdImage },
+                    { "model_valid", valid }, { "model_loaded", loaded }
+                });
+            if (GbayWeaponPreviewPolicy.ShouldRejectModel(
+                    model, inCdImage, valid))
+            {
+                _workbenchPreviewRejectedComponents.Add(row.ComponentHash);
+                ClientLog.Warn("GBAY", "weapon_component_preview_rejected",
+                    new Dictionary<string, object> {
+                        { "weapon", _workbenchWeapon },
+                        { "component_hash", row.ComponentHash },
+                        { "model", model },
+                        { "reason", "component_model_unavailable" }
+                    });
+                return false;
+            }
+            if (!GbayWeaponPreviewPolicy.ShouldWaitForModel(model, loaded))
+                return true;
+
+            Function.Call(Hash.REQUEST_MODEL, model);
+            _workbenchPreviewPendingComponent = row.ComponentHash;
+            _workbenchPreviewPendingAttachmentPoint = row.AttachmentPoint;
+            _workbenchPreviewPendingModel = model;
+            _workbenchPreviewModelDeadline = unchecked(Game.GameTime +
+                WORKBENCH_COMPONENT_MODEL_LOAD_TIMEOUT_MS);
+            return true;
+        }
+
+        private void TickWorkbenchPreviewModelLoad()
+        {
+            if (_workbenchPreviewPendingComponent == 0) return;
+            int component = _workbenchPreviewPendingComponent;
+            int attachmentPoint = _workbenchPreviewPendingAttachmentPoint;
+            int model = _workbenchPreviewPendingModel;
+            if (Function.Call<bool>(Hash.HAS_MODEL_LOADED, model))
+            {
+                // Keep our stream reference until after the attachment native
+                // consumes it; only the component's own streaming ownership
+                // remains after this request is released.
+                _workbenchPreviewPendingComponent = 0;
+                _workbenchPreviewPendingAttachmentPoint = 0;
+                _workbenchPreviewModelDeadline = 0;
+                int index = _workbenchRows.FindIndex(row =>
+                    row.Kind == WorkbenchRowKind.Component &&
+                    row.ComponentHash == component &&
+                    row.AttachmentPoint == attachmentPoint);
+                if (index >= 0)
+                {
+                    _workbenchSelected = index;
+                    ApplyWorkbenchPreviewForSelection();
+                    SetWeaponCameraFocusTarget();
+                }
+                ClearWorkbenchPreviewModelLoad();
+                return;
+            }
+            if (!GbayWeaponPreviewPolicy.HasStreamDeadlineElapsed(
+                    Game.GameTime, _workbenchPreviewModelDeadline)) return;
+            _workbenchPreviewRejectedComponents.Add(component);
+            if (_workbenchPreviewConfirmedComponent == component)
+                _workbenchPreviewConfirmedComponent = 0;
+            ClientLog.Warn("GBAY", "weapon_component_preview_rejected",
+                new Dictionary<string, object> {
+                    { "weapon", _workbenchWeapon },
+                    { "component_hash", component }, { "model", model },
+                    { "reason", "component_model_load_timeout" }
+                });
+            ClearWorkbenchPreviewModelLoad();
+        }
+
+        private void LogWorkbenchComponentPreviewApply(
+            WorkbenchRow row, bool attached)
+        {
+            int model = Function.Call<int>((Hash)0x0DB57B41EC1DB083,
+                row.ComponentHash); // GET_WEAPON_COMPONENT_TYPE_MODEL
+            bool inCdImage = model != 0 && Function.Call<bool>(
+                Hash.IS_MODEL_IN_CDIMAGE, model);
+            bool valid = model != 0 && Function.Call<bool>(
+                Hash.IS_MODEL_VALID, model);
+            bool loaded = model != 0 && inCdImage && valid &&
+                Function.Call<bool>(Hash.HAS_MODEL_LOADED, model);
+            ClientLog.Info("GBAY", "weapon_component_preview_apply",
+                new Dictionary<string, object> {
+                    { "weapon", _workbenchWeapon },
+                    { "component_hash", row.ComponentHash }, { "model", model },
+                    { "model_in_cdimage", inCdImage }, { "model_valid", valid },
+                    { "model_loaded", loaded }, { "native_has_component", attached }
+                });
+        }
+
+        private void ClearWorkbenchPreviewModelLoad()
+        {
+            if (_workbenchPreviewPendingModel != 0)
+                Function.Call(Hash.SET_MODEL_AS_NO_LONGER_NEEDED,
+                    _workbenchPreviewPendingModel);
+            _workbenchPreviewPendingComponent = 0;
+            _workbenchPreviewPendingAttachmentPoint = 0;
+            _workbenchPreviewPendingModel = 0;
+            _workbenchPreviewModelDeadline = 0;
         }
 
         private void RestoreWorkbenchPreview()
@@ -1768,6 +2028,7 @@ namespace ALLIN1
                         _workbenchPreviewRestoreComponentTint);
             }
             _workbenchPreviewComponent = 0;
+            _workbenchPreviewConfirmedComponent = 0;
             _workbenchPreviewRemovedComponent = 0;
             _workbenchPreviewRestoreComponent = 0;
             _workbenchPreviewTint = -1;
@@ -1785,6 +2046,8 @@ namespace ALLIN1
                 (_workbenchDummy != null && _workbenchDummy.Exists()) ||
                 (_weaponCamera != null && _weaponCamera.Exists());
             RestoreWorkbenchPreview();
+            _workbenchPreviewRejectedComponents.Clear();
+            ClearWorkbenchPreviewModelLoad();
             if (wasActive)
                 World.RenderingCamera = null;
             if (_weaponCamera != null && _weaponCamera.Exists())

@@ -411,15 +411,15 @@ describe("Launcher React workspaces use the real Python boundary", () => {
   });
   it("keeps the selected content draft and error visible after failed application", async () => {
     await navigate("Content");
-    await user().click(screen.getByRole("button", { name: /ALLIN1 Experimental Gameplay/ }));
-    await user().click(screen.getByRole("checkbox", { name: "GTA IV-style NPC physics" }));
+    await user().click(screen.getByRole("button", { name: /Synthetic Content Fixture/ }));
+    await user().click(screen.getByRole("checkbox", { name: "Fixture enabled" }));
     await user().click(screen.getByRole("button", { name: "Review content settings" }));
     const review = await screen.findByRole("region", { name: "Review changes" });
     await writeFile(path.join(root, "Synthetic game with spaces/scripts/ALLIN1.toml"), "# changed after review\n");
     await user().click(within(review).getByRole("checkbox", { name: "I reviewed these changes" }));
     await user().click(within(review).getByRole("button", { name: "Apply reviewed changes" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Files changed");
-    expect(screen.getByRole("checkbox", { name: "GTA IV-style NPC physics" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Fixture enabled" })).toBeChecked();
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
     await expect(access(path.join(root, "state/config.toml"))).rejects.toThrow();
   });
@@ -583,25 +583,25 @@ describe("Launcher React workspaces use the real Python boundary", () => {
   it("saves content-owned settings and adopts their persisted configuration bindings", async () => {
     await navigate("Content");
     await user().click(
-      screen.getByRole("button", { name: /ALLIN1 Experimental Gameplay/ }),
+      screen.getByRole("button", { name: /Synthetic Content Fixture/ }),
     );
     await user().click(
-      screen.getByRole("checkbox", { name: "GTA IV-style NPC physics" }),
+      screen.getByRole("checkbox", { name: "Fixture enabled" }),
     );
     await user().click(
       screen.getByRole("button", { name: "Review content settings" }),
     );
     await approve();
     const saved = await readFile(path.join(root, "state/config.toml"), "utf8");
-    expect(saved).toContain("gta_iv_npc_physics = true");
+    expect(saved).toContain("enable_logging = true");
     await navigate("Gameplay");
     expect(
-      screen.getByRole("checkbox", { name: "GTA Iv Npc Physics" }),
+      screen.getByRole("checkbox", { name: "Enable Logging" }),
     ).toBeChecked();
     await navigate("Content");
     for (const action of ["disable", "enable"]) {
       await user().click(
-        screen.getByRole("button", { name: /ALLIN1 Experimental Gameplay/ }),
+        screen.getByRole("button", { name: /Synthetic Content Fixture/ }),
       );
       await user().click(
         screen.getByRole("button", { name: `Review ${action}` }),

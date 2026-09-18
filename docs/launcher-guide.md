@@ -11,15 +11,15 @@ directory. Close the game before installing, repairing, updating, disabling or
 removing packages. Keep save files, authored content and recovery receipts.
 Do not use the modded launch configuration in GTA Online.
 
+For the Content page’s pedestrian, traffic and weapon population editors, see
+[Content injectors](content-injectors.md). They configure authorized installed
+content through reviewed policies without overwriting original game assets.
+
 For the portable release, verify and extract the complete download into a fresh
 folder. Keep `runtime/` and `resources/` beside `allin1-launcher-desktop.exe`;
 run that executable, select your edition/path, then review **Install / Repair**.
 Launch once readiness permits. Python need not be installed separately.
 
-### Cancelling a launch
-
-While the reviewed launch is preparing, **Cancel launch** stops the remaining
-preparation before GTA is started. During preview generation it stops the owned
 Setup groups Reactor V with the ALLIN1 client, ScriptHookV, ScriptHookVDotNet,
 and OpenRPF under **Installation dependencies**. Each card uses **Installed**,
 **Missing**, or **Not checked**. These are installation checks, not confirmation
@@ -27,6 +27,10 @@ that the component has loaded in-game. For Reactor V, follow any reported
 validation reason and use **Review Install / Repair** when needed.
 After changing the edition or game paths, use **Refresh** to check that selection.
 
+### Cancelling a launch
+
+While the reviewed launch is preparing, **Cancel launch** stops the remaining
+preparation before GTA is started. During preview generation it stops the owned
 renderer and retains completed cached previews. The panel stays locked until
 cleanup finishes; cancellation does not undo already-completed settings saves.
 Once launch is handed to Steam/Rockstar, cancellation is disabled. It never
@@ -235,6 +239,16 @@ contained roots and retain uniquely named backups. Rollback receipts bind the
 target and before/after bytes. A stale, wrong-target or tampered receipt is
 rejected; this prevents restoring arbitrary files over a different installation.
 Keep the original receipt and backup when investigating a failed update.
+
+Do not overlay a Launcher ZIP onto an older application folder: retired hashed
+UI assets can fail the exact resource check. Use a fresh folder, or, from a
+matching source checkout with the Launcher closed, run
+`python tools/install_launcher_candidate.py --archive <portable.zip> --destination <launcher-folder>`.
+This Launcher-only installer retains the previous application as a sibling
+backup, replaces its complete owned tree, and verifies the result before
+returning. It preserves nonconflicting user files outside the runtime/resource
+trees and refuses ambiguous ownership. The generic `apply-update` overlay is
+for payload updates, not complete Launcher installations.
 
 Repair revalidates package identity and owned payloads; user content is not
 discardable just because it lives near a managed installation. A failed or

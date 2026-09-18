@@ -58,7 +58,7 @@ def catalog(api):
 
 
 @launcher.command("inspect")
-@click.option("--module", default="setup", type=click.Choice(["setup", "gameplay", "input", "content", "mods", "package", "characters", "sdk", "activity", "help", "assistant_hardware"]))
+@click.option("--module", default="setup", type=click.Choice(["setup", "gameplay", "input", "content", "ped_manager", "weapon_manager", "vehicle_manager", "mods", "package", "characters", "sdk", "activity", "help", "assistant_hardware"]))
 @click.option("--source", type=click.Path(path_type=Path))
 @click.option("--config-json", type=click.Path(exists=True, path_type=Path))
 @click.pass_obj

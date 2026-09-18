@@ -89,13 +89,6 @@ hold_duration_ms = 350
 gbay_free_mode = false
 # Default false: wanted players cannot enter, while garage exits stay usable.
 garages_always_accessible = false
-# Experimental features are opt-in for the public release.
-# Coordinate open-world police into bounded stack/rush or firing-line tactics.
-enhanced_police_ai = false
-# Experimental runtime-only NaturalMotion preset for ambient human NPCs.
-# Mission characters, persistent peds, occupants, and the player are excluded.
-gta_iv_npc_physics = false
-gta_iv_npc_physics_debug = false
 # Port the audited BZ-gas smoke records into mods/update/update.rpf.
 # Player colour: white, red, orange, yellow, green, blue, or purple.
 # CASEVAC smoke always uses its dedicated orange signal.

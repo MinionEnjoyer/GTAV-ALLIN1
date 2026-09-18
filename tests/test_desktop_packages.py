@@ -124,8 +124,9 @@ def test_included_content_and_sdk_examples_are_discoverable_without_writes(servi
     shutil.copytree(PROJECT / "sdk/examples", service.project / "sdk/examples")
     before = service.tree_identity(tmp_path)
     inspection = service.inspect({"module": "mods"})
-    assert len(inspection["builtin_packages"]) == 2
-    assert all(not item["installed"] for item in inspection["builtin_packages"])
+    builtins = inspection["builtin_packages"]
+    assert [item["id"] for item in builtins] == ["allin1.online-content"]
+    assert not builtins[0]["installed"]
     assert any(item["name"] == "ALLIN1 Colored Smoke Grenades" for item in inspection["sdk_examples"])
     assert service.tree_identity(tmp_path) == before
 

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Runtime.Serialization;
 using Xunit;
 
@@ -8,7 +9,7 @@ namespace ALLIN1.Tests
     public sealed class ExtensionRuntimeTests
     {
         [Fact]
-        public void MissingRegistryKeepsOnlyOfficialLegacyPackagesEnabled()
+        public void MissingRegistryKeepsOnlyOnlineContentEnabled()
         {
             RuntimeExtensionRegistry registry =
                 RuntimeExtensionRegistry.Legacy(Path.GetTempPath());
@@ -16,9 +17,41 @@ namespace ALLIN1.Tests
             Assert.False(registry.Present);
             Assert.True(registry.IsEnabled(
                 Allin1ExtensionApi.OnlineContentPackageId));
-            Assert.True(registry.IsEnabled(
+            Assert.False(registry.IsEnabled(
                 Allin1ExtensionApi.ExperimentalGameplayPackageId));
             Assert.False(registry.IsEnabled("third.party"));
+        }
+
+        [Fact]
+        public void RetiredExperimentCannotBeReactivatedByAnOldRegistryOrFlags()
+        {
+            string json = @"{
+              ""schema_version"": 1, ""api_version"": 1,
+              ""extensions"": [{
+                ""schema_version"": 1, ""api_version"": 1,
+                ""id"": ""allin1.experimental-gameplay"",
+                ""name"": ""ALLIN1 Experimental Gameplay"",
+                ""version"": ""0.6.5"", ""source"": ""built-in"",
+                ""enabled"": true,
+                ""capabilities"": [""launcher.settings""],
+                ""settings"": {
+                  ""gta_iv_npc_physics"": true,
+                  ""gta_iv_npc_physics_debug"": true,
+                  ""enhanced_police_ai"": true
+                },
+                ""gbay"": {""sections"": [], ""catalogs"": []},
+                ""runtime_files"": [], ""catalog_files"": []
+              }]
+            }";
+            RuntimeExtensionRegistry registry = RuntimeExtensionRegistry.Parse(
+                json, Path.Combine(Path.GetTempPath(), "allin1-retired", "scripts"));
+
+            Assert.False(registry.IsEnabled(
+                Allin1ExtensionApi.ExperimentalGameplayPackageId));
+            Assert.Null(typeof(Allin1ExtensionApi).Assembly.GetType(
+                "ALLIN1.NpcPhysicsExperiment", false));
+            Assert.Null(typeof(Allin1ExtensionApi).Assembly.GetType(
+                "ALLIN1.PoliceTacticsCoordinator", false));
         }
 
         [Fact]
@@ -460,6 +493,39 @@ namespace ALLIN1.Tests
         }
 
         [Fact]
+        public void BulkRuntimeCatalogDiscoveryMatchesCapabilityScopedAuthorities()
+        {
+            string root = Path.Combine(Path.GetTempPath(),
+                "allin1-runtime-catalogs-" + Guid.NewGuid().ToString("N"));
+            string scripts = Path.Combine(root, "scripts");
+            try
+            {
+                Directory.CreateDirectory(scripts);
+                string weapon = WriteRuntimeCatalog(scripts, "weapons.json");
+                string ped = WriteRuntimeCatalog(scripts, "peds.json");
+                string disabled = WriteRuntimeCatalog(scripts, "disabled.json");
+                RuntimeExtensionRegistry registry = RuntimeExtensionRegistry.Parse(
+                    RuntimeCatalogRegistryJson(weapon, ped, disabled), scripts);
+
+                GbayCatalogDeclaration[] weapons = Allin1ExtensionApi
+                    .GetRuntimeCatalogs(registry, "weapon").ToArray();
+                GbayCatalogDeclaration[] peds = Allin1ExtensionApi
+                    .GetRuntimeCatalogs(registry, "ped").ToArray();
+
+                Assert.Equal(new[] { "gbay.weapon" },
+                    weapons.Select(value => value.PackageId));
+                Assert.Equal(new[] { "ped.population" },
+                    peds.Select(value => value.PackageId));
+                Assert.Equal("weapon", Assert.Single(weapons).Kind);
+                Assert.Equal("ped", Assert.Single(peds).Kind);
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+        }
+
+        [Fact]
         public void GbayActionCallbackFailureIsReturnedInsteadOfReportedAsSuccess()
         {
             Allin1ExtensionApi.ResetCallbacksForTests();
@@ -756,6 +822,38 @@ namespace ALLIN1.Tests
               }]
             }".Replace("__SOURCE__", source)
                 .Replace("__CATALOG_FILES__", catalogFiles);
+        }
+
+        private static string WriteRuntimeCatalog(string scripts, string name)
+        {
+            string path = Path.Combine(scripts, name);
+            File.WriteAllText(path, "{\"items\":[]}");
+            return RuntimeExtensionRegistry.Sha256(path);
+        }
+
+        private static string RuntimeCatalogRegistryJson(string weapon, string ped,
+            string disabled)
+        {
+            return "{\"schema_version\":1,\"api_version\":1,\"extensions\":[" +
+                RuntimeCatalogPackage("gbay.weapon", true, "gbay.catalogs",
+                    "weapon", "weapons.json", weapon) + "," +
+                RuntimeCatalogPackage("ped.population", true, "ped.population",
+                    "ped", "peds.json", ped) + "," +
+                RuntimeCatalogPackage("disabled.weapon", false, "gbay.catalogs",
+                    "weapon", "disabled.json", disabled) + "]}";
+        }
+
+        private static string RuntimeCatalogPackage(string id, bool enabled,
+            string capability, string kind, string filename, string sha256)
+        {
+            return "{\"schema_version\":1,\"api_version\":1,\"id\":\"" + id +
+                "\",\"source\":\"package\",\"enabled\":" +
+                (enabled ? "true" : "false") + ",\"capabilities\":[\"" +
+                capability + "\"],\"settings\":{},\"gbay\":{\"sections\":[]," +
+                "\"catalogs\":[{\"id\":\"catalog\",\"kind\":\"" + kind +
+                "\",\"source\":\"scripts/" + filename + "\"}]}," +
+                "\"runtime_files\":[],\"catalog_files\":[{\"path\":\"scripts/" +
+                filename + "\",\"sha256\":\"" + sha256 + "\"}]}";
         }
 
         private static string MapRegistryJson(string path, string sha256)

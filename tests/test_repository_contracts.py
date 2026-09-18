@@ -359,7 +359,6 @@ def test_temporary_f11_axle_harness_is_retired():
             "config.example.toml",
             "src/allin1/config.py",
             "desktop/src/App.tsx",
-            "content/allin1-experimental-gameplay/allin1.content.json",
         )
     )
     assert "axle_test_harness" not in current_surfaces
@@ -1356,49 +1355,36 @@ def test_gbay_catalog_is_readable_and_every_listing_is_reachable():
     assert "private const float CARD_GAP_Y     = 0.018f" in browser
 
 
-def test_physics_live_hits_balance_without_standing_ground_writhe():
-    physics = (ROOT / "script/src/NpcPhysicsExperiment.cs").read_text()
-    assert "uprightValue <= 0.55f" in physics
-    assert "relax.Relaxation = relaxation" in physics
-    assert "private const int ScanIntervalMs = 50" in physics
-    assert "private const float LiveBodyRelaxation = 25f" in physics
-    assert "LiveBalanceReinforcementDelayMs = 90" in physics
-    assert '"delayed_live_balance"' in physics
-    assert "balance.LegStiffness = 12f" in physics
-    assert "balance.MaxSteps = 32" in physics
-    assert "balance.MaxBalanceTime = 6.2f" in physics
+def test_retired_physics_runtime_is_not_compiled_or_shipped():
+    project = (ROOT / "script/ALLIN1.csproj").read_text(encoding="utf-8")
+    for source in (
+        "NpcPhysicsExperiment.cs",
+        "PhysicsExperimentLog.cs",
+        "PoliceTacticsCoordinator.cs",
+    ):
+        assert not (ROOT / "script/src" / source).exists()
+        assert source not in project
 
 
-def test_experimental_systems_are_independent_opt_in_launcher_options():
+def test_retired_builtin_experiment_is_absent_from_shipping_surfaces():
     config = (ROOT / "src/allin1/config.py").read_text()
-    gui = (ROOT / "src/allin1/desktop_content.py").read_text()
     example = (ROOT / "config.example.toml").read_text()
-    coordinator = (ROOT / "script/src/PoliceTacticsCoordinator.cs").read_text()
-    physics = (ROOT / "script/src/NpcPhysicsExperiment.cs").read_text()
-    smoke = (ROOT / "script/src/EnhancedSmokeController.cs").read_text()
-    experiment_content = (
-        ROOT / "content/allin1-experimental-gameplay/allin1.content.json"
-    ).read_text()
+    workspace = (ROOT / "allin1.workspace.json").read_text()
+    release = (ROOT / "src/allin1/release.py").read_text()
 
-    assert "enhanced_police_ai: bool = False" in config
-    assert "gta_iv_npc_physics: bool = False" in config
-    assert "gta_iv_npc_physics_debug: bool = False" in config
-    assert "enhanced_smoke_effects: bool = False" in config
-    assert 'f"{boolean(self.script.enhanced_police_ai)}\\n"' in config
-    assert '"label": "Enhanced Police AI"' in experiment_content
-    assert '"default": false' in experiment_content
-    assert "config_key" in gui
-    assert "settings" in gui
-    assert "enhanced_police_ai = false" in example
-    assert "gta_iv_npc_physics = false" in example
-    assert "gta_iv_npc_physics_debug = false" in example
-    assert "enhanced_smoke_effects = false" in example
-    assert '"enhanced_police_ai", false' in coordinator
-    assert '"gta_iv_npc_physics_debug", false' in physics
-    assert '"enhanced_smoke_effects", false' in smoke
-    constructor = coordinator[coordinator.index("public PoliceTacticsCoordinator()"):
-                              coordinator.index("private void OnTick")]
-    assert '"gta_iv_npc_physics", false' not in constructor
+    assert not (
+        ROOT / "content/allin1-experimental-gameplay/allin1.content.json"
+    ).exists()
+    assert (ROOT / "archive/experimental-gameplay/allin1.content.json").is_file()
+    for retired_key in (
+        "enhanced_police_ai",
+        "gta_iv_npc_physics",
+        "gta_iv_npc_physics_debug",
+    ):
+        assert retired_key not in config
+        assert retired_key not in example
+    assert "allin1.experimental-gameplay" not in workspace
+    assert "allin1-experimental-gameplay" not in release
 
 
 def test_offline_launch_experiment_is_culled_from_release_surfaces():
@@ -2145,27 +2131,18 @@ def test_reactor_gbay_automatically_synchronizes_game_state_without_refresh_cont
         assert player_refresh_action not in bridge
 
 
-def test_physics_experiment_has_observable_runtime_and_safe_archive_tooling():
-    physics = (ROOT / "script/src/NpcPhysicsExperiment.cs").read_text()
+def test_active_workbench_and_smoke_tooling_remain_independently_covered():
     workbench = (ROOT / "script/src/GbayWeaponCustomization.cs").read_text()
-    diagnostics = (ROOT / "script/src/PhysicsExperimentLog.cs").read_text()
+    settings = (ROOT / "script/src/RuntimeScriptSettings.cs").read_text()
+    diagnostics = (ROOT / "script/src/ClientLog.cs").read_text()
     patcher = (ROOT / "tools/RpfPatcher/Program.cs").read_text()
-    assert "PhysicsExperimentLog.Step" in physics
-    assert '"reaction_observation"' in physics
-    assert '"heartbeat"' in physics
-    assert "IS_ENTITY_TOUCHING_ENTITY" in physics
-    assert "ShouldForceVehicleImpactRagdoll" in physics
-    assert '"vehicle_push_vanilla_preserved"' in physics
-    assert '"vehicle_native_reaction_observed"' in physics
-    assert 'fields["natural_motion_dispatched"] = false' in physics
     assert "private Ped _workbenchDummy" in workbench
     assert "player.Clone(_workbenchPreviousHeading)" in workbench
     assert "SET_LOCAL_PLAYER_INVISIBLE_LOCALLY" in workbench
     assert "DeleteWeaponWorkbenchDummy" in workbench
-    assert "state.WasAlive = true;" in physics
-    assert "Enum.GetValues(typeof(ExplosionType))" in physics
-    assert "ScriptDirectory =\n            AppDomain.CurrentDomain.BaseDirectory" in physics
-    assert "PhysicsExperimentLog.Configure(_debug)" in physics
+    assert "ReadBoolean(string requestedKey, bool defaultValue)" in settings
+    assert "MaximumConfigurationBytes" in settings
+    assert "ClientLog.Error(\"RuntimeSettings\", \"read_boolean_failed\"" in settings
     assert "Assembly.Location" not in diagnostics
     assert "MaxBytes" in diagnostics and "RotateIfNeeded" in diagnostics
     assert 'command == "validate-euphoria"' in patcher

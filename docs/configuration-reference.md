@@ -66,9 +66,6 @@ There is no legacy menu fallback. Native character/camera previews remain availa
 | `hold_duration_ms` | `int` | `350` |
 | `gbay_free_mode` | `bool` | `false` |
 | `garages_always_accessible` | `bool` | `false` |
-| `enhanced_police_ai` | `bool` | `false` |
-| `gta_iv_npc_physics` | `bool` | `false` |
-| `gta_iv_npc_physics_debug` | `bool` | `false` |
 | `enhanced_smoke_effects` | `bool` | `false` |
 | `controller_enabled` | `bool` | `true` |
 | `controller_open_gbay` | `str` | `"FrontendRdown"` |

@@ -225,3 +225,11 @@ def test_native_release_build_embeds_frontend_and_probes_actual_shell():
     assert '"--features", "tauri/custom-protocol"' in source
     assert '"--verify-embedded-frontend"' in source
     assert '!tauri_build::is_dev()' in guard
+
+
+def test_frozen_smoke_requires_exact_current_builtin_content_catalog():
+    source = (ROOT / "tools/launcher_desktop_candidate.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'builtin_ids != ["allin1.online-content"]' in source
+    assert 'len(library["builtin_packages"]) != 2' not in source

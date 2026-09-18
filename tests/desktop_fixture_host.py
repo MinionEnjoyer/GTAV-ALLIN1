@@ -1,6 +1,7 @@
 """Isolated native-service fixture for React tests. Never uses real game paths."""
 from pathlib import Path
 import importlib.abc
+import json
 import os
 import socket
 import shutil
@@ -44,9 +45,35 @@ def main():
     (game / "GTA5_Enhanced.exe").write_bytes(b"nonexecutable test fixture")
     config = Config.default(); config.general.gta_enhanced_path = str(game); config.general.target_edition = "enhanced"
     config.save(project / "config.toml")
-    descriptor = project / "content/allin1-experimental-gameplay/allin1.content.json"
+    # This test-only built-in preserves generic Content settings coverage after
+    # the retired Experimental Gameplay package left the shipped catalog.
+    descriptor = project / "content/test-fixture/allin1.content.json"
     descriptor.parent.mkdir(parents=True)
-    shutil.copy2(project_source / "content/allin1-experimental-gameplay/allin1.content.json", descriptor)
+    descriptor.write_text(json.dumps({
+        "schema_version": 1,
+        "api_version": 1,
+        "id": "test.fixture-content",
+        "name": "Synthetic Content Fixture",
+        "version": "1.0.0",
+        "description": "Non-shipping React content-settings fixture.",
+        "capabilities": ["launcher.settings"],
+        "systems": [{
+            "id": "fixture-settings",
+            "name": "Fixture Settings",
+            "category": "Testing",
+            "experimental": False,
+            "enabled_by_default": False,
+            "settings": [{
+                "key": "enabled",
+                "label": "Fixture enabled",
+                "type": "boolean",
+                "default": True,
+                "config_key": "script.enable_logging",
+            }],
+        }],
+        "gbay": {"sections": [], "catalogs": []},
+        "runtime": {"assemblies": []},
+    }, indent=2) + "\n", encoding="utf-8")
     ExtensionRegistry(game).register_builtin(ExtensionManifest.load(descriptor))
     online = project / "content/allin1-online-content/allin1.content.json"
     online.parent.mkdir(parents=True)

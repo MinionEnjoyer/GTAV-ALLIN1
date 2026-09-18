@@ -62,6 +62,26 @@ namespace ALLIN1.Tests
             Assert.DoesNotContain(Weapon, WeaponList.All);
         }
 
+        [Fact]
+        public void Population_authorization_is_bound_to_the_catalog_package()
+        {
+            var snapshot = RuntimeWeaponCatalog.Merge(new[] { Parse() });
+            Assert.True(snapshot.PopulationEntries.ContainsKey(
+                RuntimeWeaponCatalog.PopulationKey("test.weapon", Weapon)));
+            Assert.False(snapshot.PopulationEntries.ContainsKey(
+                RuntimeWeaponCatalog.PopulationKey("other.package", Weapon)));
+        }
+
+        [Fact]
+        public void Population_catalog_requires_its_declaration_dlc_snapshot()
+        {
+            Assert.Single(RuntimeWeaponCatalog.ParseForTests(Json,
+                "test.weapon", "test-weapons", new[] { "a1_krissvector" }).Weapons);
+            Assert.Throws<InvalidDataException>(() =>
+                RuntimeWeaponCatalog.ParseForTests(Json, "test.weapon",
+                    "test-weapons", Array.Empty<string>()));
+        }
+
         [Theory]
         [InlineData("7500", "true")]
         [InlineData("7500", "-1")]
@@ -131,14 +151,51 @@ namespace ALLIN1.Tests
                 File.WriteAllText(path, Json, new UTF8Encoding(false));
                 string digest = RuntimeExtensionRegistry.Sha256(path);
                 var declaration = new GbayCatalogDeclaration("test.weapon", "test-weapons",
-                    "weapon", "scripts/Test/weapons.json", path, digest);
+                    "weapon", "scripts/Test/weapons.json", path, digest,
+                    new[] { "a1_krissvector" });
                 Assert.Equal(Weapon, Assert.Single(RuntimeWeaponCatalog.Load(declaration).Weapons).Weapon);
+                Assert.Throws<InvalidDataException>(() => RuntimeWeaponCatalog.Load(
+                    new GbayCatalogDeclaration("test.weapon", "test-weapons", "weapon",
+                        "scripts/Test/weapons.json", path, digest,
+                        Array.Empty<string>())));
                 File.WriteAllText(path, Json.Replace("7500", "0"), new UTF8Encoding(false));
                 Assert.Throws<InvalidDataException>(() => RuntimeWeaponCatalog.Load(declaration));
                 Assert.Throws<InvalidDataException>(() => RuntimeWeaponCatalog.Load(
                     new GbayCatalogDeclaration("test.weapon", "test-weapons", "weapon", "scripts/Test/weapons.json", path)));
                 File.Delete(path);
                 Assert.Throws<InvalidDataException>(() => RuntimeWeaponCatalog.Load(declaration));
+            }
+            finally { Directory.Delete(root, true); }
+        }
+
+        [Fact]
+        public void Authorization_fingerprint_includes_contained_source_and_declared_packs()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "allin1-weapon-fingerprint-" +
+                Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            string firstPath = Path.Combine(root, "one.json");
+            string secondPath = Path.Combine(root, "two.json");
+            try
+            {
+                File.WriteAllText(firstPath, Json, new UTF8Encoding(false));
+                File.WriteAllText(secondPath, Json, new UTF8Encoding(false));
+                string digest = RuntimeExtensionRegistry.Sha256(firstPath);
+                var first = new GbayCatalogDeclaration("test.weapon", "test-weapons",
+                    "weapon", "scripts/Test/one.json", firstPath, digest,
+                    new[] { "a1_krissvector" });
+                var revokedPack = new GbayCatalogDeclaration("test.weapon", "test-weapons",
+                    "weapon", "scripts/Test/one.json", firstPath, digest,
+                    Array.Empty<string>());
+                var relocated = new GbayCatalogDeclaration("test.weapon", "test-weapons",
+                    "weapon", "scripts/Test/two.json", secondPath, digest,
+                    new[] { "a1_krissvector" });
+                string baseline = RuntimeWeaponCatalog.AuthorizationFingerprintForTests(
+                    new[] { first });
+                Assert.NotEqual(baseline,
+                    RuntimeWeaponCatalog.AuthorizationFingerprintForTests(new[] { revokedPack }));
+                Assert.NotEqual(baseline,
+                    RuntimeWeaponCatalog.AuthorizationFingerprintForTests(new[] { relocated }));
             }
             finally { Directory.Delete(root, true); }
         }

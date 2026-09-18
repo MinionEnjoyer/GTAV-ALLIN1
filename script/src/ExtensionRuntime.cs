@@ -132,7 +132,8 @@ namespace ALLIN1
     {
         internal GbayCatalogDeclaration(
             string packageId, string id, string kind,
-            string source, string sourcePath, string expectedSha256 = null)
+            string source, string sourcePath, string expectedSha256 = null,
+            IEnumerable<string> declaredDlcPacks = null)
         {
             PackageId = packageId;
             Id = id;
@@ -140,6 +141,8 @@ namespace ALLIN1
             Source = source;
             SourcePath = sourcePath;
             ExpectedSha256 = expectedSha256;
+            DeclaredDlcPacks = new HashSet<string>(declaredDlcPacks ??
+                Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
         }
 
         public string PackageId { get; }
@@ -148,6 +151,7 @@ namespace ALLIN1
         public string Source { get; }
         public string SourcePath { get; }
         internal string ExpectedSha256 { get; }
+        internal IReadOnlyCollection<string> DeclaredDlcPacks { get; }
         public bool Exists => File.Exists(SourcePath);
     }
 
@@ -176,8 +180,12 @@ namespace ALLIN1
     public static class Allin1ExtensionApi
     {
         private const long ShutdownSlowThresholdMilliseconds = 50;
+        private const long MaximumRegistryBytes = 4L * 1024L * 1024L;
         public const int ApiVersion = 1;
         public const string OnlineContentPackageId = "allin1.online-content";
+        // Compatibility identifier for clients compiled against API v1. The
+        // corresponding built-in package was retired; it can never authorize
+        // runtime behavior, including from an old or missing registry.
         public const string ExperimentalGameplayPackageId =
             "allin1.experimental-gameplay";
 
@@ -188,8 +196,7 @@ namespace ALLIN1
         private static readonly string RegistryPath = Path.Combine(
             ScriptsDirectory, ".allin1", "extensions", "registry.json");
         private static RuntimeExtensionRegistry _registry;
-        private static DateTime _registryWriteUtc = DateTime.MinValue;
-        private static long _registryLength = -1;
+        private static string _registryFingerprint = "";
         private static int _registryGeneration;
         private static readonly Dictionary<string, GbayAddonAction> GbayActions =
             new Dictionary<string, GbayAddonAction>(StringComparer.OrdinalIgnoreCase);
@@ -340,7 +347,87 @@ namespace ALLIN1
                     !registry.IsEnabled(packageId) ||
                     !package.Capabilities.Contains("gbay.catalogs"))
                     return new GbayCatalogDeclaration[0];
-                return CurrentGbayCatalogs(package);
+                return CurrentGbayCatalogs(package)
+                    .Where(value => !string.Equals(value.Kind, "ped",
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+            }
+        }
+
+        /// <summary>
+        /// Return receipt-authorized population catalogs.  Although the
+        /// registry stores these beside catalog metadata for common hash and
+        /// containment handling, ped records are never exposed to GBAY.
+        /// </summary>
+        public static IReadOnlyList<GbayCatalogDeclaration> GetPedCatalogs(
+            string packageId)
+        {
+            if (!RuntimeExtensionRegistry.IsSafeId(packageId))
+                return new GbayCatalogDeclaration[0];
+            lock (Sync)
+            {
+                RuntimeExtensionRegistry registry = RegistryLocked();
+                RuntimeExtensionPackage package;
+                if (!registry.Packages.TryGetValue(packageId, out package) ||
+                    !registry.IsEnabled(packageId) ||
+                    !package.Capabilities.Contains("ped.population"))
+                    return new GbayCatalogDeclaration[0];
+                return CurrentGbayCatalogs(package)
+                    .Where(value => string.Equals(value.Kind, "ped",
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+            }
+        }
+
+        /// <summary>
+        /// Return one detached, receipt-current catalog snapshot for a runtime
+        /// catalog kind across every enabled package. Ped population catalogs
+        /// deliberately use their own capability; all other catalog kinds
+        /// retain the GBAY catalog capability gate.
+        /// </summary>
+        internal static IReadOnlyList<GbayCatalogDeclaration> GetRuntimeCatalogs(
+            string kind)
+        {
+            if (string.IsNullOrWhiteSpace(kind))
+                return new GbayCatalogDeclaration[0];
+            lock (Sync)
+            {
+                return GetRuntimeCatalogs(RegistryLocked(), kind);
+            }
+        }
+
+        // Kept separate so authorization-equivalence tests can exercise a
+        // parsed registry without mutating this process-wide runtime state.
+        internal static IReadOnlyList<GbayCatalogDeclaration> GetRuntimeCatalogs(
+            RuntimeExtensionRegistry registry, string kind)
+        {
+            if (registry == null || string.IsNullOrWhiteSpace(kind))
+                return new GbayCatalogDeclaration[0];
+            bool ped = string.Equals(kind, "ped",
+                StringComparison.OrdinalIgnoreCase);
+            string capability = ped ? "ped.population" : "gbay.catalogs";
+            return registry.Packages.Values
+                .Where(package => registry.IsEnabled(package.Id) &&
+                    package.Capabilities.Contains(capability))
+                .OrderBy(package => package.Id, StringComparer.OrdinalIgnoreCase)
+                .SelectMany(CurrentGbayCatalogs)
+                .Where(declaration => string.Equals(declaration.Kind, kind,
+                    StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+        }
+
+        public static bool DeclaresDlcPack(string packageId, string sourcePack)
+        {
+            if (!RuntimeExtensionRegistry.IsSafeId(packageId) ||
+                !RuntimeExtensionRegistry.IsSafeId(sourcePack))
+                return false;
+            lock (Sync)
+            {
+                RuntimeExtensionRegistry registry = RegistryLocked();
+                RuntimeExtensionPackage package;
+                return registry.Packages.TryGetValue(packageId, out package) &&
+                    registry.IsEnabled(packageId) &&
+                    package.DlcPacks.Contains(sourcePack.Trim());
             }
         }
 
@@ -353,7 +440,8 @@ namespace ALLIN1
                 .Where(value => value.IsCurrent())
                 .Select(value => new GbayCatalogDeclaration(
                     package.Id, value.Id, value.Kind,
-                    value.Source, value.SourcePath, value.Sha256))
+                    value.Source, value.SourcePath, value.Sha256,
+                    package.DlcPacks.ToArray()))
                 .ToArray();
         }
 
@@ -556,8 +644,7 @@ namespace ALLIN1
             lock (Sync)
             {
                 _registry = null;
-                _registryWriteUtc = DateTime.MinValue;
-                _registryLength = -1;
+                _registryFingerprint = "";
             }
         }
 
@@ -608,8 +695,7 @@ namespace ALLIN1
                 WeaponComponentParticipants.Clear();
                 _lastNotifiedSaveUtc = DateTime.MinValue;
                 _registry = null;
-                _registryWriteUtc = DateTime.MinValue;
-                _registryLength = -1;
+                _registryFingerprint = "";
                 _registryGeneration = 0;
             }
         }
@@ -1050,16 +1136,26 @@ namespace ALLIN1
 
         private static RuntimeExtensionRegistry RegistryLocked()
         {
-            FileInfo info = new FileInfo(RegistryPath);
-            DateTime writeUtc = info.Exists ? info.LastWriteTimeUtc : DateTime.MinValue;
-            long length = info.Exists ? info.Length : -1;
-            if (_registry != null && writeUtc == _registryWriteUtc &&
-                length == _registryLength)
+            string fingerprint;
+            try { fingerprint = RegistryFingerprint(); }
+            catch (Exception primary) when (primary is IOException ||
+                primary is UnauthorizedAccessException ||
+                primary is CryptographicException ||
+                primary is InvalidDataException)
+            {
+                fingerprint = "unreadable:" + primary.GetType().Name + ":" +
+                    primary.Message;
+            }
+            if (_registry != null && string.Equals(fingerprint,
+                    _registryFingerprint, StringComparison.Ordinal))
                 return _registry;
             try
             {
                 string registryJson;
-                _registry = EarlyStartupSnapshot.TryGetText(
+                // The startup snapshot is only a bootstrap optimization. Once
+                // the on-disk fingerprint changes, parse the current launcher
+                // registry so package removal cannot retain authorization.
+                _registry = _registry == null && EarlyStartupSnapshot.TryGetText(
                         "extension-registry", out registryJson)
                     ? RuntimeExtensionRegistry.Parse(
                         registryJson, ScriptsDirectory)
@@ -1075,10 +1171,19 @@ namespace ALLIN1
                     ScriptsDirectory, primary.Message);
                 ClientLog.Error("Extensions", "registry_invalid", primary);
             }
-            _registryWriteUtc = writeUtc;
-            _registryLength = length;
+            _registryFingerprint = fingerprint;
             unchecked { _registryGeneration++; }
             return _registry;
+        }
+
+        private static string RegistryFingerprint()
+        {
+            var info = new FileInfo(RegistryPath);
+            if (!info.Exists) return "missing";
+            if (info.Length < 0 || info.Length > MaximumRegistryBytes)
+                throw new InvalidDataException("Extension registry exceeds its byte limit");
+            return info.Length.ToString(CultureInfo.InvariantCulture) + ":" +
+                RuntimeExtensionRegistry.Sha256(RegistryPath);
         }
 
         private sealed class StorySaveParticipant
@@ -1363,6 +1468,8 @@ namespace ALLIN1
             new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         internal Dictionary<string, object> Settings =
             new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        internal HashSet<string> DlcPacks =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         internal List<RuntimeGbaySection> Sections = new List<RuntimeGbaySection>();
         internal List<RuntimeGbayCatalog> Catalogs = new List<RuntimeGbayCatalog>();
         internal List<RuntimeMapDescriptor> MapFiles =
@@ -1416,7 +1523,7 @@ namespace ALLIN1
             "^[a-z][a-z0-9_-]{0,63}$", RegexOptions.CultureInvariant);
         private static readonly HashSet<string> CatalogKinds =
             new HashSet<string>(new[] {
-                "vehicle", "weapon", "gear", "service", "property"
+                "vehicle", "weapon", "gear", "service", "property", "ped"
             }, StringComparer.OrdinalIgnoreCase);
 
         internal bool Present;
@@ -1434,6 +1541,10 @@ namespace ALLIN1
 
         internal bool IsEnabled(string packageId)
         {
+            if (string.Equals(packageId,
+                    Allin1ExtensionApi.ExperimentalGameplayPackageId,
+                    StringComparison.OrdinalIgnoreCase))
+                return false;
             RuntimeExtensionPackage package;
             if (!Packages.TryGetValue(packageId, out package) || !package.Enabled)
                 return false;
@@ -1520,6 +1631,15 @@ namespace ALLIN1
                         throw new InvalidDataException("Invalid extension setting key");
                     package.Settings[setting.Key] = setting.Value;
                 }
+                var dlcPacks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (object packValue in AsOptionalArray(extension, "dlc_packs"))
+                {
+                    string pack = Convert.ToString(packValue,
+                        CultureInfo.InvariantCulture)?.Trim().ToLowerInvariant();
+                    if (!IsSafeId(pack) || !dlcPacks.Add(pack))
+                        throw new InvalidDataException("Invalid or duplicate DLC pack");
+                    package.DlcPacks.Add(pack);
+                }
                 Dictionary<string, object> gbay = AsOptionalObject(extension, "gbay");
                 var sectionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var sectionRoutes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1557,6 +1677,14 @@ namespace ALLIN1
                         !CatalogKinds.Contains(kind) ||
                         sourcePath == null)
                         throw new InvalidDataException("Invalid GBAY catalog: " + catalogId);
+                    if (kind == "ped" && !package.Capabilities.Contains(
+                            "ped.population"))
+                        throw new InvalidDataException(
+                            "Ped catalog requires the ped.population capability");
+                    if (kind != "ped" && !package.Capabilities.Contains(
+                            "gbay.catalogs"))
+                        throw new InvalidDataException(
+                            "GBAY catalog requires the gbay.catalogs capability");
                     package.Catalogs.Add(new RuntimeGbayCatalog {
                         Id = catalogId,
                         Kind = kind,
@@ -1671,13 +1799,6 @@ namespace ALLIN1
                 new RuntimeExtensionPackage {
                     Id = Allin1ExtensionApi.OnlineContentPackageId,
                     Name = "ALLIN1 Online Content", Version = "legacy",
-                    Source = "legacy", Enabled = true,
-                });
-            registry.Packages.Add(
-                Allin1ExtensionApi.ExperimentalGameplayPackageId,
-                new RuntimeExtensionPackage {
-                    Id = Allin1ExtensionApi.ExperimentalGameplayPackageId,
-                    Name = "ALLIN1 Experimental Gameplay", Version = "legacy",
                     Source = "legacy", Enabled = true,
                 });
             return registry;

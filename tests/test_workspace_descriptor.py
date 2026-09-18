@@ -44,7 +44,6 @@ def test_workspace_descriptor_maps_core_components_and_relationships() -> None:
         "launcher.host": "launcher_host",
         "runtime.shared": "story_runtime",
         "content.online": "official_content_pack",
-        "content.experimental": "official_content_pack",
         "tool.rpfpatcher": "build_tool",
         "example.colored-smokes": "sdk_example",
         "package.realistic-suppressors": "optional_package",
@@ -52,15 +51,12 @@ def test_workspace_descriptor_maps_core_components_and_relationships() -> None:
         "evidence.docs": "documentation_evidence",
     }
     assert components["content.online"]["package_id"] == "allin1.online-content"
-    assert components["content.experimental"]["package_id"] == (
-        "allin1.experimental-gameplay"
-    )
+    assert "content.experimental" not in components
     assert components["runtime.shared"]["runtime_artifact"] == "scripts/ALLIN1.dll"
     assert components["runtime.shared"]["api_contract"] == (
         "data/runtime_api_contract.json"
     )
     assert components["content.online"]["package_discovery"] is False
-    assert components["content.experimental"]["package_discovery"] is False
     assert components["example.colored-smokes"]["role"] == "sdk_example"
     assert components["package.realistic-suppressors"]["role"] == "optional_package"
     assert components["package.realistic-suppressors"]["package_discovery"] is True
@@ -88,20 +84,12 @@ def test_workspace_descriptor_maps_core_components_and_relationships() -> None:
     )
     assert ("content.online", "runtime.shared", "uses_shared_runtime") in relationships
     assert (
-        "content.experimental", "runtime.shared", "uses_shared_runtime"
-    ) in relationships
-    assert (
         "example.colored-smokes", "content.online", "documents_system"
     ) in relationships
 
     manifests = {
         "content.online": json.loads(
             (ROOT / components["content.online"]["manifest"]).read_text(
-                encoding="utf-8"
-            )
-        )["id"],
-        "content.experimental": json.loads(
-            (ROOT / components["content.experimental"]["manifest"]).read_text(
                 encoding="utf-8"
             )
         )["id"],
@@ -225,34 +213,13 @@ def test_workspace_descriptor_is_data_only_and_uses_tracked_relative_allowlists(
     assert_data_only(data)
 
 
-def test_workspace_descriptor_preserves_experimental_opt_in_defaults() -> None:
+def test_workspace_descriptor_keeps_generic_experimental_examples_opt_in() -> None:
     data = _data()
     components = {item["id"]: item for item in data["components"]}
-    experimental = components["content.experimental"]
     smoke = components["example.colored-smokes"]
-    assert experimental["experimental"] is True
-    assert experimental["defaults"] == {
-        "systems_enabled": False,
-        "diagnostics_enabled": False,
-    }
+    assert "content.experimental" not in components
     assert smoke["experimental"] is True
     assert smoke["defaults"]["enabled"] is False
-
-    manifest = json.loads(
-        (ROOT / experimental["manifest"]).read_text(encoding="utf-8")
-    )
-    assert manifest["id"] == experimental["package_id"]
-    assert manifest["systems"]
-    assert all(system["experimental"] is True for system in manifest["systems"])
-    assert all(
-        system["enabled_by_default"] is False
-        for system in manifest["systems"]
-    )
-    assert all(
-        setting["default"] is False
-        for system in manifest["systems"]
-        for setting in system.get("settings", [])
-    )
 
     online = components["content.online"]
     online_manifest = json.loads(

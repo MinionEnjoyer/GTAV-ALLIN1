@@ -143,9 +143,9 @@ def test_default_config():
     assert config.script.ui_scale == 1.0
     assert config.script.seat_selector_key == "L"
     assert config.script.garages_always_accessible is False
-    assert config.script.enhanced_police_ai is False
-    assert config.script.gta_iv_npc_physics is False
-    assert config.script.gta_iv_npc_physics_debug is False
+    assert not hasattr(config.script, "enhanced_police_ai")
+    assert not hasattr(config.script, "gta_iv_npc_physics")
+    assert not hasattr(config.script, "gta_iv_npc_physics_debug")
     assert config.script.enhanced_smoke_effects is False
     assert not hasattr(config.script, "gbay_menu_enabled")
     assert not hasattr(config.script, "gbay_ui_backend")
@@ -174,9 +174,6 @@ def test_save_round_trip_preserves_all_fields(tmp_path):
     config.script.seat_selector_key = "G"
     config.script.gbay_free_mode = True
     config.script.garages_always_accessible = True
-    config.script.enhanced_police_ai = True
-    config.script.gta_iv_npc_physics = True
-    config.script.gta_iv_npc_physics_debug = False
     config.script.enhanced_smoke_effects = True
     path = tmp_path / "nested" / "config.toml"
 
@@ -220,15 +217,46 @@ def test_legacy_gbay_config_migrates_to_reactor_only(tmp_path, backend):
     assert "gbay_menu_enabled" not in path.read_text()
 
 
+def test_retired_experimental_settings_are_inert_and_removed_on_save(tmp_path):
+    path = _write_toml(tmp_path, """
+[script]
+enhanced_police_ai = true
+gta_iv_npc_physics = true
+gta_iv_npc_physics_debug = true
+enhanced_smoke_effects = true
+""")
+
+    config = Config.load(path)
+
+    assert not hasattr(config.script, "enhanced_police_ai")
+    assert not hasattr(config.script, "gta_iv_npc_physics")
+    assert not hasattr(config.script, "gta_iv_npc_physics_debug")
+    assert config.script.enhanced_smoke_effects is True
+    config.save(path)
+    saved = path.read_text(encoding="utf-8")
+    assert "enhanced_police_ai" not in saved
+    assert "gta_iv_npc_physics" not in saved
+    assert "enhanced_smoke_effects = true" in saved
+
+
 def test_api_migrates_retired_fields_without_mutating_request():
     from dataclasses import asdict
     from allin1.desktop_service import configuration
     request = asdict(Config.default())
     request['general']['enable_rpf_previews'] = True
-    request['script'].update(gbay_menu_enabled=True, gbay_ui_backend='legacy')
+    request['script'].update(
+        gbay_menu_enabled=True,
+        gbay_ui_backend='legacy',
+        enhanced_police_ai=True,
+        gta_iv_npc_physics=True,
+        gta_iv_npc_physics_debug=True,
+    )
     migrated = configuration(request)
     assert not hasattr(migrated.script, 'gbay_ui_backend')
     assert not hasattr(migrated.general, 'enable_rpf_previews')
+    assert not hasattr(migrated.script, 'enhanced_police_ai')
+    assert not hasattr(migrated.script, 'gta_iv_npc_physics')
+    assert not hasattr(migrated.script, 'gta_iv_npc_physics_debug')
     assert request['script']['gbay_ui_backend'] == 'legacy'
 
 

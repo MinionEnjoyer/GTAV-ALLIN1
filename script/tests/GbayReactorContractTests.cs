@@ -477,6 +477,21 @@ namespace ALLIN1.Tests
                 Assert.Equal(1, storefront.GearBrowseCount);
                 Assert.Equal(1, storefront.GarageBrowseCount);
 
+                JObject populationDiagnostics = DescribeMenu(core, "diagnostics");
+                Assert.Contains(populationDiagnostics.Descendants().OfType<JObject>(),
+                    node => node.Value<string>("id") == "ped-spawner" &&
+                        node.Value<string>("label") == "Ped spawner" &&
+                        node.Value<string>("value") ==
+                            "2/20 managed, 105 FPS (paused: wanted level active)" &&
+                        node.Value<string>("description") ==
+                            "1 model • 21 spawned this session");
+                Assert.Contains(populationDiagnostics.Descendants().OfType<JObject>(),
+                    node => node.Value<string>("id") == "weapon-spawner" &&
+                        node.Value<string>("label") == "Weapon spawner" &&
+                        node.Value<string>("value") == "0 swaps, 105 FPS" &&
+                        node.Value<string>("description") ==
+                            "15 weapons • 50% replacement chance");
+
                 JObject addons = DescribeMenu(core, "addons");
                 JObject addon = addons.Descendants().OfType<JObject>().Single(
                     node => node.Value<string>("actionId") == "addon.invoke");
@@ -1668,6 +1683,10 @@ namespace ALLIN1.Tests
                     SessionSeconds = 41 + DescribeCount,
                     GarageLocation = "Outside",
                     TrafficStatus = "0 managed, 60 FPS",
+                    PedSpawnerStatus = "2/20 managed, 105 FPS (paused: wanted level active)",
+                    PedSpawnerDetails = "1 model • 21 spawned this session",
+                    WeaponSpawnerStatus = "0 swaps, 105 FPS",
+                    WeaponSpawnerDetails = "15 weapons • 50% replacement chance",
                     MapContentStatus = "Quarantined for startup stability",
                     ArtworkStatus = "ready",
                     RpfStatus = "ready",

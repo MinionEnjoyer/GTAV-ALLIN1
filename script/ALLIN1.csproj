@@ -30,6 +30,8 @@
     <Compile Remove="tools\**" />
     <Compile Remove="tests\**" />
     <Compile Remove="reactor-bridge\**" />
+    <!-- Retained standalone experiment source is intentionally not shipped. -->
+    <Compile Remove="..\archive\experimental-gameplay\native\**" />
   </ItemGroup>
 
   <ItemGroup>

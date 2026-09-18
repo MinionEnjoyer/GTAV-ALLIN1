@@ -352,16 +352,14 @@ def _content_package(
     return package
 
 
-def test_bundled_content_catalog_is_valid_and_experiments_default_off() -> None:
+def test_bundled_content_catalog_excludes_retired_experimental_builtin() -> None:
     manifests = ExtensionCatalog(ROOT / "content").discover()
     assert [manifest.extension_id for manifest in manifests] == [
-        "allin1.experimental-gameplay",
         "allin1.online-content",
     ]
-    experiments = manifests[0]
-    assert all(system.experimental for system in experiments.systems)
-    assert all(not system.enabled_by_default for system in experiments.systems)
-    assert all(setting.default is False for setting in experiments.settings)
+    assert "allin1.experimental-gameplay" not in {
+        manifest.extension_id for manifest in manifests
+    }
 
 
 def test_bound_settings_round_trip_through_core_config() -> None:
@@ -386,8 +384,8 @@ def test_registry_inspection_is_pure_and_matches_published_authorization(tmp_pat
     before = LauncherService.tree_identity(game)
     assert registry.inspect()["extensions"] == []
     assert LauncherService.tree_identity(game) == before
-    manifest = ExtensionManifest.load(ROOT / "content/allin1-experimental-gameplay/allin1.content.json")
-    registry.register_builtin(manifest, settings={"npc_physics": True})
+    manifest = ExtensionManifest.from_dict(_descriptor())
+    registry.register_builtin(manifest, settings={"strength": 3})
     before = LauncherService.tree_identity(game)
     viewed = registry.inspect()
     assert registry.installed_manifest(manifest.extension_id).to_dict() == manifest.to_dict()
@@ -401,20 +399,18 @@ def test_registry_inspection_is_pure_and_matches_published_authorization(tmp_pat
 
 def test_builtin_registry_preserves_state_and_namespaced_settings(tmp_path: Path) -> None:
     game = _game(tmp_path)
-    manifest = ExtensionManifest.load(
-        ROOT / "content" / "allin1-experimental-gameplay" / "allin1.content.json"
-    )
+    manifest = ExtensionManifest.from_dict(_descriptor())
     registry = ExtensionRegistry(game)
-    registry.register_builtin(manifest, settings={"npc_physics": False})
+    registry.register_builtin(manifest, settings={"strength": 2})
     registry.set_builtin_enabled(manifest.extension_id, False)
-    registry.set_setting(manifest.extension_id, "npc_physics", True)
+    registry.set_setting(manifest.extension_id, "strength", 3)
     registry.register_builtin(manifest, enabled=None)
 
     entry = registry.installed()[0]
     assert entry["id"] == manifest.extension_id
     assert entry["source"] == "built-in"
     assert entry["enabled"] is False
-    assert entry["settings"]["npc_physics"] is True
+    assert entry["settings"]["strength"] == 3
 
 
 @pytest.mark.parametrize("drift", ("missing", "tampered"))
@@ -680,11 +676,9 @@ def test_registry_mutations_roll_back_when_rebuild_fails(
     tmp_path: Path, monkeypatch,
 ) -> None:
     game = _game(tmp_path)
-    manifest = ExtensionManifest.load(
-        ROOT / "content" / "allin1-experimental-gameplay" / "allin1.content.json"
-    )
+    manifest = ExtensionManifest.from_dict(_descriptor())
     registry = ExtensionRegistry(game)
-    registry.register_builtin(manifest, settings={"npc_physics": False})
+    registry.register_builtin(manifest, settings={"strength": 2})
     target = registry.builtin_root / f"{manifest.extension_id}.json"
     target_before = target.read_bytes()
     settings_before = registry.settings.path.read_bytes()
@@ -696,7 +690,7 @@ def test_registry_mutations_roll_back_when_rebuild_fails(
 
     with pytest.raises(RuntimeError, match="forced registry rebuild failure"):
         registry.register_builtin(
-            manifest, enabled=False, settings={"npc_physics": True},
+            manifest, enabled=False, settings={"strength": 3},
         )
     assert target.read_bytes() == target_before
     assert registry.settings.path.read_bytes() == settings_before
@@ -710,8 +704,77 @@ def test_registry_mutations_roll_back_when_rebuild_fails(
     assert target.read_bytes() == target_before
 
     with pytest.raises(RuntimeError, match="forced registry rebuild failure"):
-        registry.set_setting(manifest.extension_id, "npc_physics", True)
+        registry.set_setting(manifest.extension_id, "strength", 3)
     assert registry.settings.path.read_bytes() == settings_before
+
+
+def test_retired_builtin_upgrade_removes_only_exact_old_record_and_rolls_back(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    game = _game(tmp_path)
+    registry = ExtensionRegistry(game)
+    retired = _descriptor()
+    retired["id"] = "allin1.experimental-gameplay"
+    retired_manifest = ExtensionManifest.from_dict(retired)
+    custom = _descriptor()
+    custom["id"] = "acme.private-builtin"
+    custom_manifest = ExtensionManifest.from_dict(custom)
+    registry.register_builtin(retired_manifest, enabled=False)
+    registry.register_builtin(custom_manifest)
+    package = _content_package(tmp_path / "package", "acme.private-ped", runtime=False)
+    ModIntegrationService(game).install(ModManifest.load(package))
+    private_receipt = registry.receipt_root / "acme.private-ped.json"
+    private_receipt_before = private_receipt.read_bytes()
+
+    assert registry.retire_builtin(retired_manifest.extension_id) is True
+    assert not (registry.builtin_root / "allin1.experimental-gameplay.json").exists()
+    entries = {entry["id"] for entry in registry.installed()}
+    assert entries == {"acme.private-builtin", "acme.private-ped"}
+    assert private_receipt.read_bytes() == private_receipt_before
+    assert registry.retire_builtin(retired_manifest.extension_id) is False
+    with pytest.raises(ValueError, match="Not a retired ALLIN1 built-in"):
+        registry.retire_builtin("acme.private-ped")
+    assert private_receipt.read_bytes() == private_receipt_before
+
+    registry.register_builtin(retired_manifest, enabled=False)
+    retired_path = registry.builtin_root / "allin1.experimental-gameplay.json"
+    retired_before = retired_path.read_bytes()
+
+    def fail_rebuild():
+        raise RuntimeError("forced registry rebuild failure")
+
+    monkeypatch.setattr(registry, "rebuild", fail_rebuild)
+    with pytest.raises(RuntimeError, match="forced registry rebuild failure"):
+        registry.retire_builtin(retired_manifest.extension_id)
+    assert retired_path.read_bytes() == retired_before
+    assert private_receipt.read_bytes() == private_receipt_before
+
+
+def test_retired_builtin_refuses_non_regular_target(tmp_path: Path) -> None:
+    game = _game(tmp_path)
+    registry = ExtensionRegistry(game)
+    target = registry.builtin_root / "allin1.experimental-gameplay.json"
+    target.mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="not a regular file"):
+        registry.retire_builtin("allin1.experimental-gameplay")
+
+
+def test_retired_builtin_refuses_linked_target(tmp_path: Path) -> None:
+    game = _game(tmp_path)
+    registry = ExtensionRegistry(game)
+    target = registry.builtin_root / "allin1.experimental-gameplay.json"
+    target.parent.mkdir(parents=True)
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"outside": true}\n', encoding="utf-8")
+    try:
+        target.symlink_to(outside)
+    except OSError as error:
+        pytest.skip(f"symlink creation unavailable: {error}")
+
+    with pytest.raises(ValueError, match="Symlink/junction/reparse path is forbidden"):
+        registry.retire_builtin("allin1.experimental-gameplay")
+    assert outside.read_text(encoding="utf-8") == '{"outside": true}\n'
 
 
 @pytest.mark.parametrize("drift", ("missing", "tampered"))

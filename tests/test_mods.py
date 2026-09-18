@@ -111,12 +111,51 @@ def _rpf_entry_package(
     return package
 
 
+def _schema2_exact_rpf_package(
+    tmp_path: Path, mod_id: str, *, original: bytes = b"stock",
+    payload: bytes = b"replacement entry",
+) -> Path:
+    """A schema-2 extension package with an exact RPF member precondition."""
+    package = tmp_path / mod_id
+    package.mkdir(parents=True)
+    (package / "entry.bin").write_bytes(payload)
+    (package / "allin1.content.json").write_text(json.dumps({
+        "schema_version": 1, "api_version": 1, "id": mod_id,
+        "name": "Schema two exact patch", "version": "1.0.0",
+        "capabilities": [], "systems": [{"id": "schema2-exact", "name": "Exact member patch"}],
+    }), encoding="utf-8")
+    (package / "mod.toml").write_text(
+        "schema_version = 2\n"
+        f'id = "{mod_id}"\n'
+        'name = "Schema two exact patch"\n'
+        'version = "1.0.0"\n'
+        'type = "rpf"\n'
+        'editions = ["enhanced"]\n'
+        'dependencies = ["openrpf"]\n'
+        '[allin1]\n'
+        'api_version = 1\n'
+        'content = "allin1.content.json"\n'
+        'requires = ["suppressors-enhanced-known-cans>=0.1.4"]\n'
+        '[[rpf_entries]]\n'
+        'source = "entry.bin"\n'
+        'archive = "mods/x64h.rpf"\n'
+        'entry = "levels/gta5/test.bin"\n'
+        f'sha256 = "{hashlib.sha256(payload).hexdigest()}"\n'
+        f'original_sha256 = "{hashlib.sha256(original).hexdigest()}"\n',
+        encoding="utf-8",
+    )
+    return package
+
+
 def _fake_rpf_service(
     service: ModIntegrationService,
     monkeypatch,
     entries: dict[tuple[str, str], bytes],
+    *,
+    skip_dependencies: bool = True,
 ) -> None:
-    monkeypatch.setattr(service, "_check_dependencies", lambda _manifest: None)
+    if skip_dependencies:
+        monkeypatch.setattr(service, "_check_dependencies", lambda _manifest: None)
 
     def key(archive: Path, entry: str) -> tuple[str, str]:
         return (str(Path(archive).resolve()).casefold(), entry.casefold())
@@ -140,6 +179,40 @@ def _fake_rpf_service(
     monkeypatch.setattr(service, "_extract_rpf_entry", extract)
     monkeypatch.setattr(service, "_replace_rpf_entry", replace)
     monkeypatch.setattr(service, "_delete_rpf_entry", delete)
+
+
+def _schema2_content_dependency(tmp_path: Path) -> Path:
+    """A minimal installed content package satisfying the host patch requirement."""
+    package = tmp_path / "suppressors-enhanced-known-cans"
+    package.mkdir()
+    payload = b"known can runtime marker"
+    (package / "payload.bin").write_bytes(payload)
+    (package / "allin1.content.json").write_text(json.dumps({
+        "schema_version": 1, "api_version": 1,
+        "id": "suppressors-enhanced-known-cans",
+        "name": "Known cans", "version": "0.1.4",
+        "capabilities": [],
+        "systems": [{"id": "known-cans", "name": "Known cans"}],
+    }), encoding="utf-8")
+    (package / "mod.toml").write_text(
+        'schema_version = 2\n'
+        'id = "suppressors-enhanced-known-cans"\n'
+        'name = "Known cans"\n'
+        'version = "0.1.4"\n'
+        'type = "config"\n'
+        'editions = ["enhanced"]\n'
+        'dependencies = []\n'
+        '[allin1]\n'
+        'api_version = 1\n'
+        'content = "allin1.content.json"\n'
+        'requires = []\n'
+        '[[files]]\n'
+        'source = "payload.bin"\n'
+        'destination = "scripts/known-cans/marker.bin"\n'
+        f'sha256 = "{hashlib.sha256(payload).hexdigest()}"\n',
+        encoding="utf-8",
+    )
+    return package
 
 
 @pytest.mark.parametrize(
@@ -1225,6 +1298,76 @@ def test_rpf_entry_install_toggle_and_uninstall_restore_exact_entry(
     service.uninstall("entry-lifecycle")
     assert entries[(str(archive.resolve()).casefold(), entry.casefold())] == b"stock"
     assert not (service.state_root / ".payloads" / "entry-lifecycle").exists()
+
+
+def test_schema2_rpf_precondition_is_parsed_and_blocks_changed_member_before_write(
+    tmp_path: Path, monkeypatch,
+):
+    game = _game(tmp_path)
+    (game / "x64h.rpf").write_bytes(b"synthetic base archive")
+    service = ModIntegrationService(game)
+    archive = game / "x64h.rpf"
+    entry = "levels/gta5/test.bin"
+    entries = {(str(archive.resolve()).casefold(), entry.casefold()): b"externally changed"}
+    _fake_rpf_service(service, monkeypatch, entries)
+    package = _schema2_exact_rpf_package(tmp_path, "schema2-exact")
+    manifest = ModManifest.load(package)
+    assert manifest.schema_version == 2
+    assert manifest.rpf_entries[0].original_sha256 == hashlib.sha256(b"stock").hexdigest()
+    with pytest.raises(ValueError, match="Original RPF member checksum mismatch"):
+        service.install(manifest)
+    assert entries[(str(archive.resolve()).casefold(), entry.casefold())] == b"externally changed"
+    assert not (service.state_root / "schema2-exact.json").exists()
+
+
+def test_schema2_exact_host_patch_observes_content_dependency_and_restores_bytes(
+    tmp_path: Path, monkeypatch,
+):
+    """The schema-2 extension envelope retains exact-member lifecycle safety."""
+    from allin1 import installer
+
+    game = _game(tmp_path)
+    (game / "x64h.rpf").write_bytes(b"synthetic base archive")
+    service = ModIntegrationService(game)
+    entry = "levels/gta5/test.bin"
+    base_archive = game / "x64h.rpf"
+    mods_archive = game / "mods" / "x64h.rpf"
+    key = lambda archive: (str(archive.resolve()).casefold(), entry.casefold())
+    entries = {key(base_archive): b"stock bytes", key(mods_archive): b"stock bytes"}
+    _fake_rpf_service(service, monkeypatch, entries, skip_dependencies=False)
+    monkeypatch.setattr(installer, "_check_openrpf", lambda *_args: True)
+
+    dependency = ModManifest.load(_schema2_content_dependency(tmp_path))
+    host = ModManifest.load(_schema2_exact_rpf_package(
+        tmp_path, "schema2-host", original=b"stock bytes",
+    ))
+    service.install(dependency)
+    service.install(host)
+    assert entries[key(mods_archive)] == b"replacement entry"
+
+    with pytest.raises(ValueError, match="is required by"):
+        service.uninstall(dependency.mod_id)
+
+    service.uninstall(host.mod_id)
+    assert entries[key(mods_archive)] == b"stock bytes"
+    service.uninstall(dependency.mod_id)
+
+
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    [
+        (lambda text: text.replace('original_sha256 = "', 'original_sha256 = "bad'), "Invalid original SHA-256"),
+        (lambda text: "\n".join(line for line in text.splitlines() if not line.startswith("sha256 =")), "require a replacement SHA-256"),
+    ],
+)
+def test_schema2_original_checksum_requires_valid_hash_bound_output(
+    tmp_path: Path, edit, message: str,
+):
+    package = _schema2_exact_rpf_package(tmp_path, "schema2-contract")
+    manifest = package / "mod.toml"
+    manifest.write_text(edit(manifest.read_text(encoding="utf-8")), encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
+        ModManifest.load(package)
 
 
 def test_schema_one_rpf_entry_records_stable_canonical_roundtrip(

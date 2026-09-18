@@ -1,5 +1,5 @@
 """Content parity uses real registry state, without a Tk presentation layer."""
-import shutil
+import json
 
 import pytest
 
@@ -11,9 +11,33 @@ from tests.test_extensions import _content_package
 
 
 def builtin(service):
-    target = service.project / "content/allin1-experimental-gameplay/allin1.content.json"
+    target = service.project / "content/test-fixture/allin1.content.json"
     target.parent.mkdir(parents=True)
-    shutil.copy2(PROJECT / "content/allin1-experimental-gameplay/allin1.content.json", target)
+    target.write_text(json.dumps({
+        "schema_version": 1,
+        "api_version": 1,
+        "id": "test.fixture-content",
+        "name": "Synthetic Content Fixture",
+        "version": "1.0.0",
+        "description": "Non-shipping desktop content-settings fixture.",
+        "capabilities": ["launcher.settings"],
+        "systems": [{
+            "id": "fixture-settings",
+            "name": "Fixture Settings",
+            "category": "Testing",
+            "experimental": False,
+            "enabled_by_default": False,
+            "settings": [{
+                "key": "enabled",
+                "label": "Fixture enabled",
+                "type": "boolean",
+                "default": True,
+                "config_key": "script.enable_logging",
+            }],
+        }],
+        "gbay": {"sections": [], "catalogs": []},
+        "runtime": {"assemblies": []},
+    }, indent=2) + "\n", encoding="utf-8")
     return target
 
 
@@ -27,26 +51,26 @@ def test_preinstall_preferences_are_available_without_game_write_authority(servi
     content = service.inspect({"module": "content", "config": config})["content"]
     assert content[0]["installed"] is False
     assert content[0]["schema_settings"][0]["label"]
-    result = apply(service, "save_content_preferences", id=content[0]["id"], settings={"npc_physics": True}, config=config)
+    result = apply(service, "save_content_preferences", id=content[0]["id"], settings={"enabled": False}, config=config)
     assert not result["result"]["game_write"]
-    assert result["saved_config"]["script"]["gta_iv_npc_physics"] is True
+    assert result["saved_config"]["script"]["enable_logging"] is False
     assert service.tree_identity(service.project) == before
     assert not (service.project.parent / "Disposable Enhanced game/scripts").exists()
 
 
-@pytest.mark.parametrize("values", [None, [], {}, {"npc_physics": 1}, {"unknown": True}])
+@pytest.mark.parametrize("values", [None, [], {}, {"enabled": 1}, {"unknown": True}])
 def test_preinstall_invalid_values_cannot_create_preferences(service, values):
     builtin(service)
     before = service.tree_identity(service.project.parent)
     with pytest.raises((ValueError, KeyError)):
-        service.review({"action": "save_content_preferences", "id": "allin1.experimental-gameplay", "settings": values})
+        service.review({"action": "save_content_preferences", "id": "test.fixture-content", "settings": values})
     assert service.tree_identity(service.project.parent) == before
 
 
 def test_preinstall_review_detects_manifest_drift(service):
     source = builtin(service)
-    review = service.review({"action": "save_content_preferences", "id": "allin1.experimental-gameplay", "settings": {"npc_physics": True}})
-    source.write_text(source.read_text().replace("GTA IV-style NPC physics", "Changed after review"))
+    review = service.review({"action": "save_content_preferences", "id": "test.fixture-content", "settings": {"enabled": False}})
+    source.write_text(source.read_text().replace("Fixture enabled", "Changed after review"))
     with pytest.raises(ValueError, match="changed"):
         service.apply({"confirmed": True, "review_id": review["review_id"], "review_sha256": review["review_sha256"]})
     assert not service.state.exists()
@@ -120,7 +144,7 @@ def test_unsaved_bound_config_wins_over_installed_registry_value(service):
     registry = ExtensionRegistry(service.game(service.config()))
     registry.register_builtin(ExtensionManifest.load(source))
     config = serializable(service.config())
-    config["script"]["gta_iv_npc_physics"] = True
+    config["script"]["enable_logging"] = False
     before = service.tree_identity(service.project.parent)
-    assert service.inspect({"module": "content", "config": config})["content"][0]["settings"]["npc_physics"] is True
+    assert service.inspect({"module": "content", "config": config})["content"][0]["settings"]["enabled"] is False
     assert service.tree_identity(service.project.parent) == before

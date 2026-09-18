@@ -16,7 +16,10 @@ The Launcher manages installation and launch workflows; gameplay comes from
 installed content packages. The optional [ALLIN1 SDK](https://github.com/MinionEnjoyer/ALLIN1-SDK)
 authors and inspects packages independently. Reactor V is a separately
 provisioned in-game renderer. Package support does not imply bundled content;
-check each release's contents and dependencies.
+check each release's contents and dependencies. The former built-in Experimental
+Gameplay package is retired. Independently installed user-authored experimental
+weapon and pedestrian packages remain separate receipt-owned content, subject
+to their own compatibility and safety checks.
 
 ## What is available
 

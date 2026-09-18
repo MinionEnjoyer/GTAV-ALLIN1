@@ -13,7 +13,7 @@ namespace ALLIN1
 {
     internal sealed class RuntimeWeaponEntry
     {
-        internal string Weapon, Name, Category, SourcePack;
+        internal string PackageId, Weapon, Name, Category, SourcePack;
         internal int Price, AmmoCostPerRound;
     }
 
@@ -28,16 +28,18 @@ namespace ALLIN1
         internal readonly IReadOnlyDictionary<string, string> DisplayNames, CategoryNames;
         internal readonly IReadOnlyDictionary<string, int> Prices, PurchaseQuantities, AmmoCostPerRound;
         internal readonly string[] All;
+        internal readonly IReadOnlyDictionary<string, RuntimeWeaponEntry> PopulationEntries;
 
         internal RuntimeWeaponSnapshot(IEnumerable<RuntimeWeaponEntry> entries)
         {
+            RuntimeWeaponEntry[] populationEntries = entries.ToArray();
             var names = new Dictionary<string, string>(WeaponList.DisplayNames, StringComparer.OrdinalIgnoreCase);
             var categories = new Dictionary<string, string>(WeaponList.CategoryNames, StringComparer.OrdinalIgnoreCase);
             var prices = new Dictionary<string, int>(WeaponList.Prices, StringComparer.OrdinalIgnoreCase);
             var quantities = new Dictionary<string, int>(WeaponList.PurchaseQuantities, StringComparer.OrdinalIgnoreCase);
             var ammo = new Dictionary<string, int>(WeaponList.AmmoCostPerRound, StringComparer.OrdinalIgnoreCase);
             var all = WeaponList.All.ToList();
-            foreach (RuntimeWeaponEntry entry in entries)
+            foreach (RuntimeWeaponEntry entry in populationEntries)
             {
                 names.Add(entry.Weapon, entry.Name);
                 categories.Add(entry.Weapon, RuntimeWeaponCatalog.CategoryLabels[entry.Category]);
@@ -52,6 +54,10 @@ namespace ALLIN1
             PurchaseQuantities = new ReadOnlyDictionary<string, int>(quantities);
             AmmoCostPerRound = new ReadOnlyDictionary<string, int>(ammo);
             All = RuntimeWeaponCatalog.Sort(all, categories, names);
+            PopulationEntries = new ReadOnlyDictionary<string, RuntimeWeaponEntry>(
+                populationEntries.ToDictionary(item => RuntimeWeaponCatalog.PopulationKey(
+                    item.PackageId, item.Weapon), item => item,
+                    StringComparer.OrdinalIgnoreCase));
         }
 
         internal string[] Category(string label) =>
@@ -76,6 +82,7 @@ namespace ALLIN1
         private static readonly Regex PackId = new Regex(@"\A[a-z0-9][a-z0-9_-]{0,63}\z");
         private static volatile RuntimeWeaponSnapshot _snapshot =
             new RuntimeWeaponSnapshot(Array.Empty<RuntimeWeaponEntry>());
+        private static string _authorizationFingerprint = "";
 
         internal static string[] All => (string[])_snapshot.All.Clone();
         internal static string[] Pistols => _snapshot.Category("Pistols");
@@ -95,6 +102,13 @@ namespace ALLIN1
         internal static IReadOnlyDictionary<string, int> AmmoCostPerRound => _snapshot.AmmoCostPerRound;
         // v1 add-ons use the existing no-artwork fallback; never borrow a stock gun's image.
         internal static IReadOnlyDictionary<string, string> PreviewDict => WeaponList.PreviewDict;
+
+        // Population policy needs exact package ownership.  A catalog name
+        // alone is not authorization: only the current receipt-hashed runtime
+        // snapshot may supply a replacement firearm.
+        internal static bool TryGetPopulationEntry(string packageId, string weapon,
+            out RuntimeWeaponEntry entry) => _snapshot.PopulationEntries.TryGetValue(
+                PopulationKey(packageId, weapon), out entry);
 
         internal static bool TryGetPrice(string weapon, out int price) =>
             _snapshot.Prices.TryGetValue(weapon ?? "", out price);
@@ -130,29 +144,85 @@ namespace ALLIN1
 
         internal static void Refresh()
         {
+            _authorizationFingerprint = "";
+            RefreshIfChanged();
+        }
+
+        internal static bool RefreshIfChanged()
+        {
             var documents = new List<RuntimeWeaponDocument>();
+            var declarations = new List<GbayCatalogDeclaration>();
             try
             {
-                foreach (string package in Allin1ExtensionApi.GetEnabledPackageIds())
-                    foreach (GbayCatalogDeclaration declaration in Allin1ExtensionApi.GetGbayCatalogs(package)
-                        .Where(item => item.Kind == "weapon"))
-                    {
-                        try { documents.Add(Load(declaration)); }
-                        catch (Exception ex)
-                        {
-                            ClientLog.Error("WeaponCatalog", "catalog_rejected", ex,
-                                new Dictionary<string, object> {
-                                    { "package", package }, { "catalog", declaration.Id },
-                                });
-                        }
-                    }
+                declarations.AddRange(Allin1ExtensionApi.GetRuntimeCatalogs("weapon"));
             }
             catch (Exception ex)
             {
                 ClientLog.Error("WeaponCatalog", "catalog_discovery_failed", ex);
             }
+            string fingerprint = AuthorizationFingerprint(declarations);
+            if (string.Equals(fingerprint, _authorizationFingerprint,
+                    StringComparison.Ordinal)) return false;
+            foreach (GbayCatalogDeclaration declaration in declarations)
+            {
+                try { documents.Add(Load(declaration)); }
+                catch (Exception ex)
+                {
+                    ClientLog.Error("WeaponCatalog", "catalog_rejected", ex,
+                        new Dictionary<string, object> {
+                            { "package", declaration.PackageId },
+                            { "catalog", declaration.Id },
+                        });
+                }
+            }
             // Rebuild, don't append: disabled/tampered/missing catalogs lose purchase authority.
             _snapshot = Merge(documents);
+            _authorizationFingerprint = fingerprint;
+            return true;
+        }
+
+        private static string AuthorizationFingerprint(
+            IEnumerable<GbayCatalogDeclaration> declarations)
+        {
+            var values = new List<string>();
+            foreach (GbayCatalogDeclaration declaration in declarations
+                .OrderBy(value => value.PackageId, StringComparer.Ordinal)
+                .ThenBy(value => value.Id, StringComparer.Ordinal))
+            {
+                try
+                {
+                    var info = new FileInfo(declaration.SourcePath);
+                    if (!info.Exists || info.Length < 2 ||
+                        info.Length > MaximumBytes)
+                    {
+                        values.Add(declaration.PackageId + "/" + declaration.Id +
+                            ":invalid");
+                        continue;
+                    }
+                    values.Add(declaration.PackageId + "/" + declaration.Id + ":" +
+                        declaration.ExpectedSha256 + ":" +
+                        RuntimeExtensionRegistry.Sha256(declaration.SourcePath) + ":" +
+                        declaration.SourcePath + ":" + string.Join(",",
+                            declaration.DeclaredDlcPacks.OrderBy(value => value,
+                                StringComparer.OrdinalIgnoreCase)));
+                }
+                catch (Exception ex) when (ex is IOException ||
+                    ex is UnauthorizedAccessException ||
+                    ex is CryptographicException)
+                {
+                    values.Add(declaration.PackageId + "/" + declaration.Id +
+                        ":unreadable");
+                }
+            }
+            return string.Join("|", values);
+        }
+
+        // A test seam for the identity fields which deliberately include
+        // receipt-authorized pack scope and the resolved contained source.
+        internal static string AuthorizationFingerprintForTests(
+            IEnumerable<GbayCatalogDeclaration> declarations)
+        {
+            return AuthorizationFingerprint(declarations);
         }
 
         internal static RuntimeWeaponDocument Load(GbayCatalogDeclaration declaration)
@@ -179,10 +249,28 @@ namespace ALLIN1
                 if (!string.Equals(digest, declaration.ExpectedSha256, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("Weapon catalog bytes are not receipt-authorized");
             }
-            return Parse(new UTF8Encoding(false, true).GetString(bytes), declaration.PackageId, declaration.Id);
+            return Parse(new UTF8Encoding(false, true).GetString(bytes),
+                declaration.PackageId, declaration.Id, new HashSet<string>(
+                    declaration.DeclaredDlcPacks,
+                    StringComparer.OrdinalIgnoreCase));
         }
 
         internal static RuntimeWeaponDocument Parse(string json, string packageId, string catalogId)
+        {
+            return Parse(json, packageId, catalogId, null);
+        }
+
+        internal static RuntimeWeaponDocument ParseForTests(string json,
+            string packageId, string catalogId,
+            IEnumerable<string> declaredDlcPacks)
+        {
+            return Parse(json, packageId, catalogId, new HashSet<string>(
+                declaredDlcPacks ?? Array.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase));
+        }
+
+        private static RuntimeWeaponDocument Parse(string json, string packageId,
+            string catalogId, HashSet<string> declaredDlcPacks)
         {
             if (!Identifier.IsMatch(packageId ?? "") || !Identifier.IsMatch(catalogId ?? "") ||
                 json == null || Encoding.UTF8.GetByteCount(json) > MaximumBytes)
@@ -203,10 +291,12 @@ namespace ALLIN1
                 string category = Text(item["category"]);
                 string pack = Text(item["source_pack"]);
                 if (!WeaponId.IsMatch(weapon) || !PackId.IsMatch(pack) || pack == "base" ||
-                    !CategoryLabels.ContainsKey(category) || !hashes.Add(WeaponHash(weapon)))
+                    !CategoryLabels.ContainsKey(category) ||
+                    (declaredDlcPacks != null && !declaredDlcPacks.Contains(pack)) ||
+                    !hashes.Add(WeaponHash(weapon)))
                     throw new InvalidDataException("Invalid or duplicate add-on firearm identity/category");
                 weapons.Add(new RuntimeWeaponEntry {
-                    Weapon = weapon, Name = Text(item["name"]), Category = category,
+                    PackageId = packageId, Weapon = weapon, Name = Text(item["name"]), Category = category,
                     SourcePack = pack, Price = Integer(item["price"], 2000000000),
                     AmmoCostPerRound = Integer(item["ammo_cost_per_round"], 1000000),
                 });
@@ -247,6 +337,12 @@ namespace ALLIN1
                 hash += hash << 3; hash ^= hash >> 11; hash += hash << 15;
             }
             return hash;
+        }
+
+        internal static string PopulationKey(string packageId, string weapon)
+        {
+            return (packageId ?? "").Trim().ToLowerInvariant() + "/" +
+                (weapon ?? "").Trim().ToUpperInvariant();
         }
 
         private static Dictionary<string, object> Object(object value, params string[] fields)

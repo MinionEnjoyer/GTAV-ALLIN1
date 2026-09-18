@@ -8,6 +8,7 @@ source/session, not current binaries; architecture proposals are not acceptance 
 ## Current guides
 
 - [Launcher manual](launcher-guide.md): install, configure, launch and recover.
+- [Content injectors](content-injectors.md): configurable pedestrian, traffic and same-tier weapon population.
 - [GBAY preview downloads and caching](gbay-default-previews.md).
 - [0.6.5 release guide](release-0.6.5.md): qualification limits and upgrades; [changelog](../RELEASE_NOTES.md).
 - [Development and validation](development.md): canonical setup and checks; [desktop internals](../desktop/README.md).

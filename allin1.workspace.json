@@ -130,23 +130,6 @@
       }
     },
     {
-      "id": "content.experimental",
-      "name": "ALLIN1 Experimental Gameplay",
-      "role": "official_content_pack",
-      "package_id": "allin1.experimental-gameplay",
-      "manifest": "content/allin1-experimental-gameplay/allin1.content.json",
-      "package_discovery": false,
-      "paths": [
-        "content/allin1-experimental-gameplay/allin1.content.json",
-        "docs/gtaiv-npc-physics-experiment.md"
-      ],
-      "experimental": true,
-      "defaults": {
-        "systems_enabled": false,
-        "diagnostics_enabled": false
-      }
-    },
-    {
       "id": "tool.rpfpatcher",
       "name": "RPF Patcher Toolchain",
       "role": "build_tool",
@@ -229,17 +212,7 @@
       "type": "registers"
     },
     {
-      "source": "launcher.host",
-      "target": "content.experimental",
-      "type": "registers"
-    },
-    {
       "source": "content.online",
-      "target": "runtime.shared",
-      "type": "uses_shared_runtime"
-    },
-    {
-      "source": "content.experimental",
       "target": "runtime.shared",
       "type": "uses_shared_runtime"
     },
@@ -271,11 +244,6 @@
     {
       "source": "evidence.tests",
       "target": "content.online",
-      "type": "verifies"
-    },
-    {
-      "source": "evidence.tests",
-      "target": "content.experimental",
       "type": "verifies"
     },
     {

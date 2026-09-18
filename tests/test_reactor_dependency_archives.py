@@ -23,7 +23,7 @@ def test_published_archive_install_repair_and_uninstall(tmp_path, monkeypatch, e
     if not directory:
         pytest.skip("Set REACTOR_RELEASE_TEST_DIR for the real-release lifecycle test")
     pinned = dep.RELEASES[enhanced]
-    archive = Path(directory) / f"ReactorV-0.2.0-{pinned.edition}-live-test.zip"
+    archive = Path(directory) / f"ReactorV-{dep.VERSION}-{pinned.edition}-live-test.zip"
     assert archive.is_file()
     assert dep._sha(archive) == pinned.sha256
     assert archive.stat().st_size == pinned.size

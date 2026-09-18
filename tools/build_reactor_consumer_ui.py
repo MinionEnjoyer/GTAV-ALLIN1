@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 
 SOURCE_COMMIT = "d324faf299119f4d7d3570e64fb63f0a284a7a92"
-RELEASE = "v0.2.0-preview.3"
+RELEASE = "v0.2.5"
 
 
 def build(root: Path, output: Path, *, development: bool = False) -> None:
@@ -23,7 +23,7 @@ def build(root: Path, output: Path, *, development: bool = False) -> None:
 
     source_commit = run("git", "rev-parse", "HEAD")
     if not development and (source_commit != SOURCE_COMMIT or run("git", "status", "--porcelain", "--untracked-files=no")):
-        raise ValueError("Reactor source must be the clean pinned Preview 3 commit")
+        raise ValueError("Reactor source must be the clean pinned release commit")
     def source_digest():
         files = sorted(p for p in (root / 'web/src').rglob('*') if p.is_file())
         files += sorted(p for p in (root / 'web').iterdir() if p.is_file())

@@ -343,7 +343,10 @@ def smoke(sidecar: Path, resources: Path, expected: dict) -> dict:
                 raise ValueError("Frozen package inspection returned the wrong package")
             checks.append("package_inspection_without_installation")
             library = host.request("inspect", {"module": "mods"})
-            if not library["sdk_examples"] or len(library["builtin_packages"]) != 2:
+            builtin_ids = [
+                package.get("id") for package in library["builtin_packages"]
+            ]
+            if not library["sdk_examples"] or builtin_ids != ["allin1.online-content"]:
                 raise ValueError("Frozen package examples or included content are missing")
             checks.append("included_content_and_sdk_example_catalog")
             journal = host.request("inspect", {"module": "activity"})["activity"]

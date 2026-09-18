@@ -17,6 +17,18 @@ class HelpTopic:
 
 HELP_TOPICS: tuple[HelpTopic, ...] = (
     HelpTopic(
+        "content-injectors", "Configuration", "Pedestrian, traffic and weapon injectors",
+        "Choose authorized custom content for ambient Story Mode population.",
+        """Open Content, choose Pedestrians, Traffic or Weapons, then load the authorized catalog. Enable the policy, choose entries and review before saving with GTA closed. Policies apply on the next game/script start; installing models remains a separate Packages action.
+
+Pedestrians can be added (up to 20 tracked additions) or replace explicit vanilla civilian targets. Weapon injection replaces an armed ambient NPC's pistol, SMG, shotgun or rifle only within the same category. Both default off and protect player/mission/scripted entities.
+
+Traffic reuses the protected traffic spawner. Gameplay traffic enabled remains an additional master gate; the curated stock pool is retained. Custom entries need package and catalog traffic opt-in. Per-model weights change relative frequency, not compatibility. An empty list means no compatible receipt-authorized catalog is installed.
+
+Original game assets, player purchases and saved loadouts are not rewritten. Changed catalogs/policies invalidate pending reviews. See docs/content-injectors.md for the package and CLI/API contracts.""",
+        ("ped", "traffic", "weapon", "injector", "population", "replacement"),
+    ),
+    HelpTopic(
         "getting-started", "Start here", "Getting started",
         "Connect a game installation, check readiness, and launch safely.",
         """1. Open the Setup workspace and select your GTA V Legacy and/or Enhanced folders.
@@ -60,7 +72,9 @@ Gameplay supplied by a package belongs in Content. This keeps the launcher usabl
     HelpTopic(
         "content", "Configuration", "Content packages and systems",
         "Review installed systems and configure package-owned settings.",
-        """Content is generated from versioned descriptors. ALLIN1 Online Content supplies the official GBAY, vehicle, weapon, gear, garage, property, traffic, and character systems. ALLIN1 Experimental Gameplay contains opt-in police and NPC-physics work.
+        """Content is generated from versioned descriptors. ALLIN1 Online Content supplies the official GBAY, vehicle, weapon, gear, garage, property, traffic, and character systems. The former built-in Experimental Gameplay package has been retired and is not installed or configured by the launcher.
+
+Independently installed user-authored experimental weapon and pedestrian packages remain available as their own receipt-owned content. Their capability, safety checks, and settings come from each current package descriptor rather than the retired built-in experiment.
 
 Select a package to review its version, status, capabilities, and owner. Select one of its systems to change typed settings. Apply settings writes only that package's namespace; built-in compatibility settings are also synchronized to the current runtime configuration.
 

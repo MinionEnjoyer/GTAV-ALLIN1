@@ -70,7 +70,6 @@ def _release_tree(tmp_path: Path) -> Path:
         "content/allin1-content.schema.json": b'{"schema_version":1}',
         "content/allin1-vehicle-catalog.schema.json": b'{"schema_version":1}',
         "content/allin1-online-content/allin1.content.json": b'{"schema_version":1,"version":"0.6.5"}',
-        "content/allin1-experimental-gameplay/allin1.content.json": b'{"schema_version":1,"version":"0.6.5"}',
         "data/story_vehicles.json": b'{"vehicles":[]}',
         "data/vehicles.toml": b"data",
         "data/vehicle_grounding.json": b'{"Entries":{}}',
@@ -119,7 +118,6 @@ def test_public_file_collection_is_explicit_and_excludes_sources(tmp_path):
     assert "script/dist/ALLIN1.ReactorBridge.contract.json" in names
     assert "content/allin1-online-content/allin1.content.json" in names
     assert "content/allin1-vehicle-catalog.schema.json" in names
-    assert "content/allin1-experimental-gameplay/allin1.content.json" in names
     assert "data/story_vehicles.json" in names
     assert "data/vehicle_grounding.json" in names
     assert "tools/RpfPatcher/RpfPatcher.exe" in names
@@ -128,7 +126,8 @@ def test_public_file_collection_is_explicit_and_excludes_sources(tmp_path):
     assert "mods/README.md" in names
     assert not any(name.startswith("mods/realistic-suppressors/") for name in names)
     assert "docs/content-extension-api.md" in names
-    assert "docs/gtaiv-npc-physics-experiment.md" in names
+    assert "archive/experimental-gameplay/allin1.content.json" not in names
+    assert "archive/experimental-gameplay/gtaiv-npc-physics-experiment.md" not in names
     assert "docs/optional-assistant.md" in names
     assert "docs/realistic-suppressors.md" in names
     assert "sdk/examples/colored_smokes/addon.json" in names
@@ -208,7 +207,8 @@ def test_public_release_round_trip_and_tamper_detection(tmp_path):
         assert "checksums.json" in bundle.namelist()
         assert "script/dist/ALLIN1.ReactorBridge.plugin" in bundle.namelist()
         assert "script/dist/ALLIN1.ReactorBridge.contract.json" in bundle.namelist()
-        assert "docs/gtaiv-npc-physics-experiment.md" in bundle.namelist()
+        assert "archive/experimental-gameplay/allin1.content.json" not in bundle.namelist()
+        assert "archive/experimental-gameplay/gtaiv-npc-physics-experiment.md" not in bundle.namelist()
         assert "docs/optional-assistant.md" in bundle.namelist()
         assert "docs/realistic-suppressors.md" in bundle.namelist()
         assert not any(
@@ -247,15 +247,9 @@ def test_release_build_rejects_mixed_core_and_bridge_binaries(tmp_path):
         build_public_release(root, tmp_path / "mixed.zip")
 
 
-@pytest.mark.parametrize("package", [
-    "allin1-online-content",
-    "allin1-experimental-gameplay",
-])
-def test_release_rejects_official_content_manifest_version_drift(
-    tmp_path, package
-):
+def test_release_rejects_official_content_manifest_version_drift(tmp_path):
     root = _release_tree(tmp_path)
-    manifest = root / "content" / package / "allin1.content.json"
+    manifest = root / "content" / "allin1-online-content" / "allin1.content.json"
     manifest.write_text(
         '{"schema_version":1,"version":"9.9.9"}', encoding="utf-8"
     )

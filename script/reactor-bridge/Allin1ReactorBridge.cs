@@ -2932,6 +2932,16 @@ namespace ALLIN1.ReactorBridge
                     new ReactorStatusNode(
                         "traffic", "Traffic", snapshot.TrafficStatus, "neutral"),
                     new ReactorStatusNode(
+                        "ped-spawner", "Ped spawner",
+                        BoundText(snapshot.PedSpawnerStatus, 256),
+                        snapshot.PedSpawnerTone,
+                        BoundText(snapshot.PedSpawnerDetails, 512)),
+                    new ReactorStatusNode(
+                        "weapon-spawner", "Weapon spawner",
+                        BoundText(snapshot.WeaponSpawnerStatus, 256),
+                        snapshot.WeaponSpawnerTone,
+                        BoundText(snapshot.WeaponSpawnerDetails, 512)),
+                    new ReactorStatusNode(
                         "map-content", "Garage map content",
                         string.IsNullOrWhiteSpace(snapshot.MapContentStatus)
                             ? "Unknown" : snapshot.MapContentStatus,
