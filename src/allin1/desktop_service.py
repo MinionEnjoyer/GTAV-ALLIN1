@@ -30,6 +30,9 @@ NAVIGATION = [("setup", "Setup"), ("gameplay", "Gameplay"), ("content", "Content
               ("sdk", "SDK Manager"), ("activity", "Activity"), ("help", "Help Center")]
 GAME_ACTIONS = {"sync_config", "install", "uninstall", "package_install", "package_enable", "package_disable", "package_uninstall",
                 "content_settings", "content_enable", "content_disable", "characters_save", "garages_save", "garages_repair", "launch", "prepare_previews", "download_previews"}
+POPULATION_MODULES = {"vehicle_manager": "traffic"}
+POPULATION_ACTIONS = {kind + "_population_save": kind for kind in POPULATION_MODULES.values()}
+GAME_ACTIONS.update(POPULATION_ACTIONS)
 LOCAL_ACTIONS = {"save_config", "save_profile", "delete_profile", "export_profile", "import_preferences", "save_content_preferences", "diagnostics", "sdk_install", "sdk_install_release", "sdk_uninstall", "sdk_open", "garages_export"}
 LOCAL_ACTIONS |= {"assistant_save", "assistant_install_archive", "assistant_install_qwen", "assistant_uninstall"}
 GEAR = {"ARMOR_SUPER_LIGHT", "ARMOR_LIGHT", "ARMOR_STANDARD", "ARMOR_HEAVY", "ARMOR_SUPER_HEAVY", "ARMOR_JUGGERNAUT",
@@ -61,6 +64,15 @@ def fingerprint(path):
     return sha.hexdigest()
 
 
+def population_backend(kind):
+    # Keep the public action surface closed and frozen builds aware of the
+    # single supported ambient-population policy.
+    from allin1 import traffic_population
+    if kind != "traffic":
+        raise ValueError("Unknown population policy")
+    return traffic_population
+
+
 def configuration(document):
     types = {"general": GeneralConfig, "traffic": TrafficConfig, "vehicles": VehiclesConfig, "script": ScriptConfig}
     if not isinstance(document, dict) or set(document) != set(types): raise ValueError("Invalid configuration sections")
@@ -70,10 +82,16 @@ def configuration(document):
         if section == "general" and isinstance(values, dict):
             values = {k: v for k, v in values.items() if k != "enable_rpf_previews"}
         if section == "script" and isinstance(values, dict):
-            # Accept saved v0.6.4 API documents while retiring UI selection.
+            # Accept saved API documents while retiring obsolete UI selections.
             # Copy rather than mutate the caller's request/review evidence.
             values = {k: v for k, v in values.items()
-                      if k not in {"gbay_menu_enabled", "gbay_ui_backend"}}
+                      if k not in {
+                          "gbay_menu_enabled",
+                          "gbay_ui_backend",
+                          "enhanced_police_ai",
+                          "gta_iv_npc_physics",
+                          "gta_iv_npc_physics_debug",
+                      }}
         defaults = asdict(cls())
         if not isinstance(values, dict) or set(values) != set(defaults): raise ValueError(f"Invalid {section} configuration fields")
         for key, value in values.items():
@@ -156,6 +174,11 @@ class LauncherService:
             state["owned"] = {str(p): fingerprint(p) for p in owned}
             registry = game / "scripts" / ".allin1"
             if registry.is_dir(): state["registry"] = self.tree_identity(registry)
+            population = POPULATION_ACTIONS.get(request.get("action")) or POPULATION_MODULES.get(request.get("module"))
+            if population:
+                # Bind installed catalog authorization as well as the policy.
+                # Catalog payloads can live outside scripts/.allin1.
+                state["population"] = population_backend(population).inspect_population(game)
         if request.get("source"):
             source = self.input_path(request["source"])
             if request.get("action") == "import_preferences":
@@ -225,6 +248,11 @@ class LauncherService:
         elif module == "content":
             from allin1.desktop_content import catalog
             result["content"] = catalog(self.manager, game, config)
+        elif module in POPULATION_MODULES:
+            kind = POPULATION_MODULES[module]
+            result[kind + "_population"] = population_backend(kind).inspect_population(self.game(config))
+            if self.snapshot(request) != result["state_sha256"]:
+                raise ValueError("Population policy or installed catalogs changed during inspection; reload")
         elif module == "mods":
             from allin1.mods import ModIntegrationService, ModCatalog
             from allin1.addon_sdk import AddonSdkCatalog
@@ -361,6 +389,18 @@ class LauncherService:
             raise ValueError("quick_launch must be a boolean")
         evidence = {"action": action, "target": str(game or self.state), "game_write": action in GAME_ACTIONS,
                     "state_sha256": self.snapshot(request), "request": copy.deepcopy(request)}
+        if action in POPULATION_ACTIONS:
+            kind = POPULATION_ACTIONS[action]
+            backend = population_backend(kind)
+            before = backend.inspect_population(game)
+            if request.get("expected_document_sha256") != before["document_sha256"]:
+                raise ValueError("Population policy changed; reload before reviewing")
+            document = backend.validate_document(game, request.get("document"))
+            evidence[kind + "_population"] = {"before": before["document"], "after": document}
+            evidence["request"]["document"] = document
+            evidence["preservation"] = "Changes ambient population policy only. Original game assets, player inventory and saves are preserved. Takes effect on the next game/script start."
+            if self.snapshot(request) != evidence["state_sha256"]:
+                raise ValueError("Population policy or catalogs changed during review; reload")
         if action in {"launch", "prepare_previews"}:
             from allin1.preview_inventory import preview_counts
             evidence["preview_counts"] = preview_counts(self.project, game)
@@ -564,6 +604,9 @@ class LauncherService:
 
     def perform(self, request, config):
         action = request["action"]
+        if action in POPULATION_ACTIONS:
+            return population_backend(POPULATION_ACTIONS[action]).save_population(
+                self.game(config), request["document"], request["expected_document_sha256"])
         if action.startswith("assistant_"):
             from allin1 import assistant_manager
             from allin1.desktop_assistant import configuration as assistant_config

@@ -1,6 +1,6 @@
 # Shared Python runtime packaging (developer-only)
 
-The successful prototype is now the standard packaging path for Launcher 0.6.5.
+The successful prototype is now the standard packaging path for Launcher 0.6.6.
 The builder creates candidates only; publishing remains an explicit owner action.
 
 Build on Windows with `.venv/Scripts/python.exe tools/launcher_desktop_candidate.py`.

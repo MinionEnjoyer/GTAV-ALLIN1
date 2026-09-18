@@ -32,6 +32,14 @@ function fixture(edition = "legacy") {
         nextInspect = undefined;
         return result;
       }
+      if (payload.module === "vehicle_manager") return {
+        ...snapshot(payload.config ?? config, "vehicle_manager"), state_sha256: "a".repeat(64),
+        traffic_population: {
+          document_sha256: "b".repeat(64),
+          document: { schema_version: 1, enabled: false, replacement_chance: 0, entries: [] },
+          models: [{ package_id: "demo.traffic", model: "demo_car", name: "Demo traffic" }], warnings: [],
+        },
+      };
       return snapshot(payload.config ?? config, payload.module);
     }),
     selectPath: vi.fn(async () => null),
@@ -50,6 +58,20 @@ const entry = (module: string, edition: string) => screen.queryByRole("button", 
 });
 
 describe("Reset draft inspection", () => {
+  it("clears a loaded injector and visibly guards Content tabs while its draft is pending", async () => {
+    const test = fixture(), user = userEvent.setup();
+    render(<App client={test.client} />);
+    await screen.findByRole("combobox", { name: "Target Edition" });
+    await user.click(screen.getByRole("button", { name: "Content" }));
+    await user.click(screen.getByRole("tab", { name: "Traffic" }));
+    await user.click(screen.getByRole("button", { name: "Load authorized catalog" }));
+    await screen.findByRole("checkbox", { name: "Enable traffic injector" });
+    await user.click(screen.getByRole("checkbox", { name: "Enable traffic injector" }));
+    expect(screen.getByRole("tab", { name: "Existing content" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Reset draft" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Load authorized catalog" })).toBeEnabled());
+    expect(screen.queryByRole("checkbox", { name: "Enable traffic injector" })).not.toBeInTheDocument();
+  });
   for (const { name, module } of workspaces) {
     for (const edition of ["legacy", "enhanced"]) {
       it(`restores ${edition} ${name} without exposing the previous edition while inspecting`, async () => {

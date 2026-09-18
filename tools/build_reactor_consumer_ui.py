@@ -13,8 +13,8 @@ import shutil
 import subprocess
 import tempfile
 
-SOURCE_COMMIT = "d324faf299119f4d7d3570e64fb63f0a284a7a92"
-RELEASE = "v0.2.0-preview.3"
+SOURCE_COMMIT = "0fc810b25eac9ba25ef4366baf58333dff70688a"
+RELEASE = "v0.2.6"
 
 
 def build(root: Path, output: Path, *, development: bool = False) -> None:
@@ -23,7 +23,7 @@ def build(root: Path, output: Path, *, development: bool = False) -> None:
 
     source_commit = run("git", "rev-parse", "HEAD")
     if not development and (source_commit != SOURCE_COMMIT or run("git", "status", "--porcelain", "--untracked-files=no")):
-        raise ValueError("Reactor source must be the clean pinned Preview 3 commit")
+        raise ValueError("Reactor source must be the clean pinned release commit")
     def source_digest():
         files = sorted(p for p in (root / 'web/src').rglob('*') if p.is_file())
         files += sorted(p for p in (root / 'web').iterdir() if p.is_file())
@@ -53,6 +53,15 @@ def build(root: Path, output: Path, *, development: bool = False) -> None:
         packages = json.loads(run("node", "-e", js, cwd=web))
         for package in packages:
             shutil.copyfile(Path(package["root"]) / "LICENSE", stage / (package["name"] + "-LICENSE.txt"))
+        # Git may materialize upstream text with CRLF on Windows. Normalize the
+        # redistributed text before hashing so identical source commits produce
+        # identical consumer assets on every release host.
+        def normalize_text_tree() -> None:
+            for file in stage.rglob("*"):
+                if file.is_file() and (file.name == "LICENSE" or file.suffix.lower() in {".html", ".js", ".css", ".json", ".txt"}):
+                    data = file.read_bytes().replace(b"\r\n", b"\n")
+                    file.write_bytes(b"\n".join(line.rstrip(b" \t\r") for line in data.split(b"\n")))
+        normalize_text_tree()
         (stage / "THIRD_PARTY_NOTICES.txt").write_text(
             "ALLIN1 presentation composition, built from GTAV-REACTOR-V " + source_commit + (" (local development candidate)" if development else "") + ".\n"
             "Original Reactor V code: MIT, copyright (c) 2026 MinionEnjoyer; see LICENSE.\n"
@@ -63,6 +72,7 @@ def build(root: Path, output: Path, *, development: bool = False) -> None:
             "schema_version": 1, "profile": "allin1-composition", "owner": "allin1",
             "contains_consumer_content": True, "reactor_release": RELEASE,
         }, indent=2) + "\n", encoding="utf-8")
+        normalize_text_tree()
         files = {path.relative_to(stage).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
                  for path in sorted(stage.rglob("*")) if path.is_file()}
         manifest = dict(schema_version=1, profile="allin1-composition", reactor_release=RELEASE,
@@ -72,6 +82,7 @@ def build(root: Path, output: Path, *, development: bool = False) -> None:
             manifest.update(development_build=True, source_sha256=source_sha256)
         if source_digest() != source_sha256: raise ValueError('Reactor source changed during build')
         (stage / "allin1-ui.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        normalize_text_tree()
         # Remove only previously generated files; refuse to clobber untracked extras.
         if output.exists():
             previous = json.loads((output / "allin1-ui.json").read_text(encoding="utf-8"))

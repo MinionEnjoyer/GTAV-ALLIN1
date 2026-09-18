@@ -1,5 +1,8 @@
 # ALLIN1 0.6.5 release guide
 
+> **Historical release record — superseded by 0.6.6.** Use the
+> [0.6.6 release guide](release-0.6.6.md) for current instructions and limits.
+
 0.6.5 is an owner-approved **unsigned manual-download portable release**, approved
 September 7, 2026. It supersedes v0.6.4. The SDK is independently distributed.
 Exact artifact checksums and build reports accompany the release; publication

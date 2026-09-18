@@ -4,7 +4,7 @@ The package-weapon catalog runtime update adds receipt-authorized firearms to
 both native GBAY and the Reactor storefront. The generated stock WeaponList is
 not edited. These are data catalogs, not scripts or spawn commands.
 
-The current release target is **0.6.5, unreleased**. Earlier local experiments
+The current release target is **0.6.6**. Earlier local experiments
 reused 0.6.1, so that number alone cannot establish catalog support. Ship/apply
 only the verified matching core and Reactor bridge pair; importing a weapon ZIP
 does not upgrade the core. Historical fixture requirements used

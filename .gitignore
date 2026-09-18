@@ -20,11 +20,19 @@ Thumbs.db
 # Project
 .pytest_cache/
 .claude/
+.env*
+!.env.example
 config.toml
 allin1.log
 ScriptHookV.log
+*.log
+!logs/.gitkeep
 .gta_path
 .gh_token
+*.pem
+*.key
+*.pfx
+*.p12
 sdk/imported_packages.json
 .coverage
 htmlcov/
@@ -46,6 +54,10 @@ mods/realistic-suppressors/.release-build/
 
 # Generated output files
 output/
+release/
+releases/
+*.tmp
+*.temp
 
 # Locally built external preview tools
 tools/YTDToolio.exe
@@ -79,3 +91,6 @@ desktop/dist/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
 desktop/src-tauri/resources/
+
+# Optional sibling/nested SDK checkout used by CI and local integration tests
+/ALLIN1-SDK/

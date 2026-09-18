@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/MinionEnjoyer/GTAV-ALLIN1/tree/main/docs
+    about: Read setup, launcher, configuration and troubleshooting guidance.
+  - name: Sensitive security report
+    url: https://github.com/MinionEnjoyer/GTAV-ALLIN1/security
+    about: Use GitHub's private vulnerability reporting when available.
+

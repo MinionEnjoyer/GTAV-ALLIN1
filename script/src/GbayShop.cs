@@ -15,7 +15,7 @@ using GTA.Native;
 
 namespace ALLIN1
 {
-    public class GbayShop : Script
+    public partial class GbayShop : Script
     {
         private const long ShutdownSlowThresholdMilliseconds = 50;
         private static GbayShop _current;
@@ -49,12 +49,14 @@ namespace ALLIN1
         internal static bool NightVisionOwned;
         private static bool _nightVisionActive;
 
-        // Juggernaut armor state
-        internal static bool JuggernautActive;
-        private static int _savedMaxHealth;
-        private static int[] _savedComponents; // 12 components: drawable per slot
-        private static int[] _savedTextures;   // 12 components: texture per slot
-        private static PedHash _lastCharacter; // track character switches
+        // Juggernaut owns a staged operation; no money or wardrobe changes while loading.
+        private static readonly JuggernautEquipTransaction JuggernautTransaction =
+            new JuggernautEquipTransaction();
+        private static readonly System.Diagnostics.Stopwatch GearClock =
+            System.Diagnostics.Stopwatch.StartNew();
+        private static JuggernautNativeTarget _juggernautTarget;
+        internal static bool JuggernautActive => JuggernautTransaction.Active;
+        internal static bool JuggernautPending => JuggernautTransaction.Pending;
 
         // --- Browser UI ---
         private GbayBrowser _browser;
@@ -93,6 +95,8 @@ namespace ALLIN1
 
         private void OnAborted(object sender, EventArgs args)
         {
+            JuggernautTransaction.Remove();
+            _juggernautTarget = null;
             TrailerHitchRuntime.Shutdown();
             DrivingRuntime.Shutdown();
             using (ClientLog.Time("GBAY", "shutdown_on_aborted",
@@ -457,6 +461,17 @@ namespace ALLIN1
             return _vehicleStorefront.TryGetCachedWeaponCustomizationCatalog(
                 weapon, out rows);
         }
+
+        // Keep the purchase boundary on the shop surface used by both Reactor
+        // and the classic workbench. The browser owns the streamed preview
+        // state; a missing browser fails closed before any native mutation.
+        internal GbayWeaponComponentPurchaseReadiness
+            GetWorkbenchComponentPurchaseReadiness(
+                string weaponName, int componentHash) =>
+            _browser == null
+                ? GbayWeaponComponentPurchaseReadiness.PreviewNotActive
+                : _browser.GetWorkbenchComponentPurchaseReadiness(
+                    weaponName, componentHash);
 
         internal bool TryOpenReactorWeaponWorkbench(
             string weaponName, string displayName)
@@ -1704,142 +1719,12 @@ namespace ALLIN1
                 CharacterInventory.IsGearEquipped(gearId);
         }
 
-        internal void ExecuteGiveGear(string gearId, int price)
-        {
-            Ped player = Game.Player.Character;
+        internal void ExecuteGiveGear(string gearId, int price) =>
+            GiveGearValidated(gearId, price);
 
-            // Ownership is enforced at execution time as well as in the UI so
-            // a double click can never result in two deductions.
-            if (IsGearOwned(gearId))
-            {
-                GTA.UI.Screen.ShowSubtitle("~y~Already owned.", 3000);
-                Log($"GiveGear: duplicate purchase blocked for {gearId}");
-                return;
-            }
+        internal void ExecuteEquipGear(string gearId) => EquipGearValidated(gearId);
 
-            // Check funds
-            if (!_freeMode && price > 0 && Game.Player.Money < price)
-            {
-                GTA.UI.Screen.ShowSubtitle("~r~Insufficient funds.", 3000);
-                return;
-            }
-
-            if (gearId == GearList.ARMOR_JUGGERNAUT)
-            {
-                ApplyJuggernaut(player);
-                if (!_freeMode && price > 0)
-                    Game.Player.Money -= price;
-                GTA.UI.Screen.ShowSubtitle(
-                    _freeMode || price <= 0
-                        ? "~g~Juggernaut Armor~w~ equipped. Heavy movement is active."
-                        : $"~g~Juggernaut Armor~w~ purchased for ~g~${price:N0}~w~. Heavy movement is active.",
-                    4000);
-                Log($"GiveGear: {gearId}, price=${price}");
-                CharacterInventory.RecordOwned(gearId, true);
-                return;
-            }
-            else if (GearList.IsArmor(gearId))
-            {
-                // Remove juggernaut if equipping a lower armor tier
-                if (JuggernautActive)
-                    RemoveJuggernaut(player);
-                player.Armor = GearList.ArmorValues[gearId];
-            }
-            else if (gearId == "WEAPON_NIGHTVISION")
-            {
-                NightVisionOwned = true;
-                GTA.UI.Screen.ShowSubtitle(
-                    _freeMode || price <= 0
-                        ? "~g~Night Vision~w~ acquired. Press ~y~N~w~ to toggle it."
-                        : $"~g~Night Vision~w~ purchased for ~g~${price:N0}~w~. Press ~y~N~w~ to toggle it.",
-                    4000);
-                if (!_freeMode && price > 0)
-                    Game.Player.Money -= price;
-                Log($"GiveGear: {gearId}, price=${price}");
-                CharacterInventory.RecordOwned(gearId, true);
-                return;
-            }
-            else
-            {
-                WeaponHash itemHash = (WeaponHash)Game.GenerateHash(gearId);
-                player.Weapons.Give(itemHash, 1, false, true);
-            }
-
-            if (!_freeMode && price > 0)
-                Game.Player.Money -= price;
-
-            string displayName = GearList.DisplayNames.ContainsKey(gearId)
-                ? GearList.DisplayNames[gearId] : gearId;
-            string msg = _freeMode || price <= 0
-                ? $"~g~{displayName}~w~ acquired."
-                : $"~g~{displayName}~w~ purchased for ~g~${price:N0}~w~.";
-            GTA.UI.Screen.ShowSubtitle(msg, 3000);
-
-            Log($"GiveGear: {gearId}, price=${price}");
-            CharacterInventory.RecordOwned(gearId, true);
-        }
-
-        internal void ExecuteEquipGear(string gearId)
-        {
-            if (!IsGearOwned(gearId))
-            {
-                GTA.UI.Screen.ShowSubtitle("~r~Purchase this item before equipping it.", 3000);
-                return;
-            }
-            if (IsGearEquipped(gearId))
-            {
-                GTA.UI.Screen.ShowSubtitle("~g~Already equipped.", 2500);
-                return;
-            }
-
-            Ped player = Game.Player.Character;
-            if (gearId == GearList.ARMOR_JUGGERNAUT)
-                ApplyJuggernaut(player);
-            else if (GearList.IsArmor(gearId))
-            {
-                if (JuggernautActive) RemoveJuggernaut(player);
-                player.Armor = GearList.ArmorValues[gearId];
-            }
-            else if (gearId == "WEAPON_NIGHTVISION")
-                NightVisionOwned = true;
-            else
-                player.Weapons.Give(
-                    (WeaponHash)Game.GenerateHash(gearId), 1, false, true);
-
-            CharacterInventory.SetGearEquipped(gearId, true);
-            string displayName = GearList.DisplayNames.TryGetValue(
-                gearId, out string name) ? name : gearId;
-            GTA.UI.Screen.ShowSubtitle($"~g~{displayName}~w~ equipped.", 3000);
-            Log($"EquipGear: {gearId}");
-        }
-
-        internal void ExecuteUnequipGear(string gearId)
-        {
-            if (!CharacterInventory.IsGearEquipped(gearId))
-            {
-                GTA.UI.Screen.ShowSubtitle("~y~That item is not equipped.", 2500);
-                return;
-            }
-
-            Ped player = Game.Player.Character;
-            if (GearList.IsArmor(gearId))
-                ExecuteRemoveArmor(gearId);
-            else if (gearId == "WEAPON_NIGHTVISION")
-                ExecuteRemoveNightVision();
-            else
-            {
-                Function.Call(Hash.REMOVE_WEAPON_FROM_PED,
-                    player.Handle, Game.GenerateHash(gearId));
-                Log($"UnequipGear: {gearId}");
-            }
-            CharacterInventory.RemoveOwnedGear(gearId);
-            string removedName = GearList.DisplayNames.TryGetValue(
-                gearId, out string removedDisplay) ? removedDisplay : gearId;
-            GTA.UI.Screen.ShowSubtitle(
-                $"~y~{removedName}~w~ removed. Repurchase it to equip it again.",
-                3500);
-            Log($"UnequipGear: ownership removed for {gearId}");
-        }
+        internal void ExecuteUnequipGear(string gearId) => UnequipGearValidated(gearId);
 
         // ------------------------------------------------------------------ //
         //  Vehicle Sell (called by GbayBrowser garage tab)                     //
@@ -2055,327 +1940,89 @@ namespace ALLIN1
         //  Armor Removal (called by GbayBrowser gear tab)                     //
         // ------------------------------------------------------------------ //
 
-        internal void ExecuteRemoveArmor(string gearId)
-        {
-            Ped player = Game.Player.Character;
+        internal void ExecuteRemoveArmor(string gearId) => UnequipGearValidated(gearId);
 
-            if (gearId == GearList.ARMOR_JUGGERNAUT)
-            {
-                RemoveJuggernaut(player);
-                Log("RemoveArmor: juggernaut removed");
-            }
-            else
-            {
-                player.Armor = 0;
-                Log($"RemoveArmor: {gearId} removed (armor set to 0)");
-            }
-        }
-
-        internal void ExecuteRemoveNightVision()
-        {
-            NightVisionOwned = false;
-            if (_nightVisionActive)
-            {
-                _nightVisionActive = false;
-                Function.Call(Hash.SET_NIGHTVISION, false);
-            }
-            Log("RemoveNightVision: removed");
-        }
+        internal void ExecuteRemoveNightVision() => UnequipGearValidated("WEAPON_NIGHTVISION");
 
         // ------------------------------------------------------------------ //
         //  Juggernaut Armor                                                   //
         // ------------------------------------------------------------------ //
 
-        private const string BALLISTIC_CLIPSET = "ANIM_GROUP_MOVE_BALLISTIC";
-        private const int JUGGERNAUT_MAX_HEALTH = 1000;
-        private static int _lastKnownHealth;
-        private static int _savedPropDrawable;
-        private static int _savedPropTexture;
-        private static int _savedEarPropDrawable;
-        private static int _savedEarPropTexture;
+        internal static bool BeginJuggernaut(Ped player, string operation,
+            Func<bool> canCommit, Action commit)
+        {
+            if (JuggernautActive || JuggernautPending || !IsGearPlayerReady(player))
+                return false;
+            try
+            {
+                var target = new JuggernautNativeTarget(player, operation, canCommit, commit);
+                if (!JuggernautTransaction.Begin(target, GearClock.ElapsedMilliseconds))
+                    return false;
+                _juggernautTarget = target;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ClientLog.Warn("GBAY", "juggernaut_begin_rejected",
+                    new Dictionary<string, object> { { "reason", ex.Message } });
+                return false;
+            }
+        }
 
         internal static void ApplyJuggernaut(Ped player)
         {
-            if (!TryGetCurrentCharacter(out PedHash ch))
-            {
-                ClientLog.Warn("GBAY", "juggernaut_rejected_for_unsupported_player_model");
-                return;
-            }
-
-            // Save current outfit so we can restore later
-            _savedComponents = new int[12];
-            _savedTextures = new int[12];
-            for (int i = 0; i < 12; i++)
-            {
-                _savedComponents[i] = Function.Call<int>(
-                    Hash.GET_PED_DRAWABLE_VARIATION, player, i);
-                _savedTextures[i] = Function.Call<int>(
-                    Hash.GET_PED_TEXTURE_VARIATION, player, i);
-            }
-
-            // Save helmet/hat prop and ear prop
-            _savedPropDrawable = Function.Call<int>(
-                Hash.GET_PED_PROP_INDEX, player, 0);
-            _savedPropTexture = Function.Call<int>(
-                Hash.GET_PED_PROP_TEXTURE_INDEX, player, 0);
-            _savedEarPropDrawable = Function.Call<int>(
-                Hash.GET_PED_PROP_INDEX, player, 2);
-            _savedEarPropTexture = Function.Call<int>(
-                Hash.GET_PED_PROP_TEXTURE_INDEX, player, 2);
-
-            // Apply Paleto Score ballistic outfit
-            ApplyBallisticOutfit(player, ch);
-
-            // Health boost to 1000 (matches Paleto Score mission values)
-            _savedMaxHealth = player.MaxHealth;
-            player.MaxHealth = JUGGERNAUT_MAX_HEALTH;
-            player.Health = JUGGERNAUT_MAX_HEALTH;
-            player.Armor = 0; // armor value isn't what makes it tanky
-            _lastKnownHealth = JUGGERNAUT_MAX_HEALTH;
-
-            // Disable headshot bonus damage
-            player.CanSufferCriticalHits = false;
-
-            // Heavy movement clipset
-            Function.Call(Hash.REQUEST_ANIM_SET, BALLISTIC_CLIPSET);
-            int timeout = 1000;
-            while (!Function.Call<bool>(Hash.HAS_ANIM_SET_LOADED, BALLISTIC_CLIPSET)
-                   && timeout > 0)
-            {
-                Script.Wait(0);
-                timeout -= 16;
-            }
-            Function.Call(Hash.SET_PED_MOVEMENT_CLIPSET, player,
-                BALLISTIC_CLIPSET, 0.25f);
-
-            JuggernautActive = true;
-            ClientLog.Info("GBAY", "Juggernaut armor applied");
+            // Saved loadouts use the same staged validation, but never purchase again.
+            BeginJuggernaut(player, "restore", () =>
+                CharacterInventory.IsGearEquipped(GearList.ARMOR_JUGGERNAUT), null);
         }
 
-        internal static void RemoveJuggernaut(Ped player)
+        internal static bool RemoveJuggernaut(Ped player)
         {
-            if (!JuggernautActive) return;
-
-            // Restore outfit
-            if (_savedComponents != null && _savedTextures != null)
-            {
-                for (int i = 0; i < 12; i++)
-                {
-                    Function.Call(Hash.SET_PED_COMPONENT_VARIATION,
-                        player, i, _savedComponents[i], _savedTextures[i], 0);
-                }
-            }
-
-            // Restore helmet/hat prop
-            if (_savedPropDrawable >= 0)
-                Function.Call(Hash.SET_PED_PROP_INDEX, player, 0,
-                    _savedPropDrawable, _savedPropTexture, true);
-            else
-                Function.Call(Hash.CLEAR_PED_PROP, player, 0);
-
-            // Restore ear prop
-            if (_savedEarPropDrawable >= 0)
-                Function.Call(Hash.SET_PED_PROP_INDEX, player, 2,
-                    _savedEarPropDrawable, _savedEarPropTexture, true);
-            else
-                Function.Call(Hash.CLEAR_PED_PROP, player, 2);
-
-            // Restore health
-            player.MaxHealth = _savedMaxHealth > 0 ? _savedMaxHealth : 200;
-            if (player.Health > player.MaxHealth)
-                player.Health = player.MaxHealth;
-
-            // Re-enable critical hits
-            player.CanSufferCriticalHits = true;
-
-            // Reset movement clipset
-            Function.Call(Hash.RESET_PED_MOVEMENT_CLIPSET, player, 0.25f);
-
-            JuggernautActive = false;
+            // The retained adapter, not a supplied/replacement ped, owns restoration.
+            bool removed = JuggernautTransaction.Remove();
+            if (!JuggernautActive && !JuggernautPending) _juggernautTarget = null;
+            return removed;
         }
 
         internal static void DiscardStagedRuntimeGear(Ped player)
         {
-            if (player != null && player.Exists() && JuggernautActive)
-                RemoveJuggernaut(player);
-            else
-                JuggernautActive = false;
-
+            RemoveJuggernaut(player);
             NightVisionOwned = false;
-            if (_nightVisionActive)
-                Function.Call(Hash.SET_NIGHTVISION, false);
+            if (_nightVisionActive) Function.Call(Hash.SET_NIGHTVISION, false);
             _nightVisionActive = false;
         }
 
         internal static bool ClearRuntimeGearAfterDeath()
         {
-            // The dying ped is no longer a safe target for outfit restoration.
-            // Clear transient effects now; CharacterInventory removes the
-            // consumed items from the replacement ped after hospital respawn.
-            bool juggernautWasActive = JuggernautActive;
-            JuggernautActive = false;
+            bool wasActive = JuggernautActive;
+            JuggernautTransaction.Clear("player_death");
+            _juggernautTarget = null;
             NightVisionOwned = false;
-            if (_nightVisionActive)
-                Function.Call(Hash.SET_NIGHTVISION, false);
+            if (_nightVisionActive) Function.Call(Hash.SET_NIGHTVISION, false);
             _nightVisionActive = false;
-            return juggernautWasActive;
+            return wasActive;
         }
 
         internal static void CompleteRuntimeGearCleanupAfterDeath(
             Ped player, bool juggernautWasLost)
         {
+            // Never replay a dead ped's saved wardrobe on its replacement.
+            // CharacterInventory separately consumes/removes lost gear.
             ClearRuntimeGearAfterDeath();
-            if (juggernautWasLost && player != null && player.Exists())
-            {
-                // RemoveJuggernaut normally refuses after the death tick has
-                // cleared its active flag. Temporarily restore that flag so
-                // the replacement ped receives the saved health, outfit, and
-                // movement settings instead of inheriting ballistic effects.
-                JuggernautActive = true;
-                RemoveJuggernaut(player);
-            }
-            _savedComponents = null;
-            _savedTextures = null;
-            _savedMaxHealth = 0;
-            _lastKnownHealth = 0;
         }
 
-        internal static void ApplyBallisticOutfit(Ped player, PedHash ch)
-        {
-            // Paleto Score juggernaut suit — confirmed in-game on Enhanced Edition
-            // during the heist mission.
-            //
-            // The suit is built from multiple component slots + helmet prop.
-            // Each character has different drawable IDs.
-            // Uses SafeSetComponent to validate drawable/texture are in range
-            // before applying (mission context may have different ranges than free-roam).
-
-            if (ch == PedHash.Michael)
-            {
-                // Michael — captured during Paleto Score (Enhanced)
-                SafeSetComponent(player, 3,  5, 1); // torso
-                SafeSetComponent(player, 4,  5, 1); // legs
-                SafeSetComponent(player, 5,  1, 1); // hands
-                SafeSetComponent(player, 6,  1, 1); // shoes
-                SafeSetComponent(player, 8,  5, 2); // shirt/accessory
-                SafeSetComponent(player, 9,  1, 2); // body armor
-                SafeSetComponent(player, 11, 0, 1); // aux/torso2
-                SafeSetProp(player, 0, 26, 1);      // helmet
-                SafeSetProp(player, 2,  0, 1);      // ears
-            }
-            else if (ch == PedHash.Trevor)
-            {
-                // Trevor — captured during Paleto Score (Enhanced)
-                SafeSetComponent(player, 3,  2, 1); // torso
-                SafeSetComponent(player, 4,  2, 1); // legs
-                SafeSetComponent(player, 5,  1, 1); // hands
-                SafeSetComponent(player, 6,  1, 1); // shoes
-                SafeSetComponent(player, 8,  2, 1); // shirt/accessory
-                SafeSetComponent(player, 9,  1, 4); // body armor
-                SafeSetComponent(player, 11, 0, 0); // aux/torso2
-                SafeSetProp(player, 0, 24, 1);      // helmet
-            }
-            else if (ch == PedHash.Franklin)
-            {
-                // Franklin — no juggernaut torso or helmet in his model.
-                // Slots 3 (torso) and prop 0 (helmet) left unchanged.
-                SafeSetComponent(player, 4,  4, 0); // legs — confirmed D4/T0
-                SafeSetComponent(player, 5,  4, 0); // hands — confirmed D4/T0
-                SafeSetComponent(player, 9,  3, 0); // body armor — confirmed D3/T0
-            }
-        }
-
-        /// <summary>
-        /// Set a component variation only if the drawable and texture are valid.
-        /// Falls back to texture 0 if the requested texture is out of range.
-        /// Skips entirely if the drawable is out of range.
-        /// </summary>
-        private static void SafeSetComponent(Ped player, int slot, int drawable, int texture)
-        {
-            int maxDrawable = Function.Call<int>(
-                Hash.GET_NUMBER_OF_PED_DRAWABLE_VARIATIONS, player, slot);
-            if (drawable >= maxDrawable)
-                return; // drawable doesn't exist for this ped in free-roam
-
-            int maxTexture = Function.Call<int>(
-                Hash.GET_NUMBER_OF_PED_TEXTURE_VARIATIONS, player, slot, drawable);
-            if (texture >= maxTexture)
-                texture = 0; // fall back to texture 0
-
-            Function.Call(Hash.SET_PED_COMPONENT_VARIATION, player, slot, drawable, texture, 0);
-        }
-
-        /// <summary>
-        /// Set a prop only if the drawable and texture are valid.
-        /// </summary>
-        private static void SafeSetProp(Ped player, int slot, int drawable, int texture)
-        {
-            int maxDrawable = Function.Call<int>(
-                Hash.GET_NUMBER_OF_PED_PROP_DRAWABLE_VARIATIONS, player, slot);
-            if (drawable >= maxDrawable)
-                return;
-
-            int maxTexture = Function.Call<int>(
-                Hash.GET_NUMBER_OF_PED_PROP_TEXTURE_VARIATIONS, player, slot, drawable);
-            if (texture >= maxTexture)
-                texture = 0;
-
-            Function.Call(Hash.SET_PED_PROP_INDEX, player, slot, drawable, texture, true);
-        }
-
-        /// <summary>
-        /// Called every tick to apply damage reduction, check death, and
-        /// detect character switches (which invalidate the juggernaut state).
-        /// </summary>
         private void JuggernautTick()
         {
-            Ped player = Game.Player.Character;
-            if (player == null)
-                return;
-
-            // Detect character switch — reset juggernaut state
-            PedHash currentChar = GetCurrentCharacter();
-            if (currentChar != _lastCharacter)
+            bool wasPending = JuggernautPending;
+            JuggernautTransaction.Tick(GearClock.ElapsedMilliseconds);
+            if (JuggernautActive) _juggernautTarget?.TickDamageReduction();
+            else if (!JuggernautPending)
             {
-                if (JuggernautActive)
-                {
-                    // Character changed while juggernaut was active — just clear the flag.
-                    // The old character's outfit is already gone, and the new character
-                    // shouldn't inherit the juggernaut state.
-                    JuggernautActive = false;
-                    _savedComponents = null;
-                    _savedTextures = null;
-                    player.CanSufferCriticalHits = true;
-                    Function.Call(Hash.RESET_PED_MOVEMENT_CLIPSET, player, 0.25f);
-                    Log("Juggernaut cleared: character switch detected");
-                }
-                _lastCharacter = currentChar;
+                if (wasPending && IsGearPlayerReady(Game.Player.Character))
+                    GTA.UI.Screen.ShowSubtitle(
+                        "~r~Juggernaut could not be equipped.~w~ No purchase was completed; see diagnostics.", 4500);
+                _juggernautTarget = null;
             }
-
-            if (!JuggernautActive) return;
-
-            if (player.IsDead)
-            {
-                JuggernautActive = false;
-                _savedComponents = null;
-                _savedTextures = null;
-                return;
-            }
-
-            // Damage reduction: heal back 80% of damage taken each tick
-            int currentHealth = player.Health;
-            if (currentHealth < _lastKnownHealth && currentHealth > 0)
-            {
-                int damageTaken = _lastKnownHealth - currentHealth;
-                int healBack = (int)(damageTaken * 0.80f);
-                if (healBack > 0)
-                {
-                    int newHealth = Math.Min(currentHealth + healBack, player.MaxHealth);
-                    player.Health = newHealth;
-                    currentHealth = newHealth;
-                }
-            }
-            _lastKnownHealth = currentHealth;
         }
 
         // ------------------------------------------------------------------ //
@@ -2992,8 +2639,22 @@ namespace ALLIN1
 
         private static void ToggleNightVision()
         {
-            _nightVisionActive = !_nightVisionActive;
-            Function.Call(Hash.SET_NIGHTVISION, _nightVisionActive);
+            if (!NightVisionOwned || !IsGearPlayerReady(Game.Player.Character)) return;
+            bool previous = _nightVisionActive;
+            try
+            {
+                Function.Call(Hash.SET_NIGHTVISION, !previous);
+                if (Function.Call<bool>(Hash.GET_USINGNIGHTVISION) != !previous)
+                    throw new InvalidOperationException("night_vision_toggle_not_confirmed");
+                _nightVisionActive = !previous;
+                Trace("night_vision_toggled", _nightVisionActive.ToString());
+            }
+            catch (Exception ex)
+            {
+                _nightVisionActive = previous;
+                try { Function.Call(Hash.SET_NIGHTVISION, previous); } catch { }
+                Trace("night_vision_toggle_failed", ex.Message);
+            }
         }
     }
 }

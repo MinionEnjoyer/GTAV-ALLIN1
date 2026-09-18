@@ -31,7 +31,7 @@ def archive_fixture(tmp_path, enhanced=False, *, extra=None):
         "scripts/ReactorV/RageWebUI.Core.dll": b"core",
         "plugins/ReactorV/RageWebUI.Core.dll": b"core",
         "plugins/ReactorV/legal/LICENSE": b"MIT",
-        "scripts/ReactorV/ReactorV.contract.json": json.dumps({"product": "reactor-v", "runtime_version": "0.2.0", "extension_api_version": 1}).encode(),
+        "scripts/ReactorV/ReactorV.contract.json": json.dumps({"product": "reactor-v", "runtime_version": dep.VERSION, "extension_api_version": 1}).encode(),
         dep.UI_ROOT + "index.html": b"neutral-ui",
         dep.UI_ROOT + "reactor-ui.json": b'{"profile":"reactor-runtime"}',
         dep.UI_ROOT + "assets/neutral.js": b"generic-menus",
@@ -119,6 +119,49 @@ def test_repair_retires_receipted_art_but_preserves_separate_preview_stores(setu
     dep.remove_consumer(setup.root)
     for name in stores:
         assert (setup.root / name).read_text() == "keep preview"
+
+
+def test_release_upgrade_refreshes_only_the_receipt_proven_neutral_ui_backup(
+    setup, tmp_path, monkeypatch,
+):
+    dep.install_dependency(setup.root, False)
+    neutral_name = dep.UI_ROOT + "index.html"
+    backup = setup.root / (dep.BACKUP_ROOT + "index.html")
+    old_hash = dep._sha(backup)
+
+    upgrade_dir = tmp_path / "upgrade"
+    upgrade_dir.mkdir()
+    archive, release, _ = archive_fixture(
+        upgrade_dir, extra={neutral_name: b"new-neutral-ui"},
+    )
+    monkeypatch.setitem(dep.RELEASES, False, release)
+    monkeypatch.setattr(dep, "_download", lambda *_a, **_kw: archive)
+
+    dep.install_dependency(setup.root, False)
+
+    assert dep._sha(backup) != old_hash
+    assert backup.read_bytes() == b"new-neutral-ui"
+    receipt = json.loads((setup.root / dep.RECEIPT).read_text())
+    assert receipt["files"][neutral_name] == dep._sha(backup)
+
+
+def test_release_upgrade_refuses_an_edited_neutral_ui_backup(setup, tmp_path, monkeypatch):
+    dep.install_dependency(setup.root, False)
+    backup = setup.root / (dep.BACKUP_ROOT + "index.html")
+    backup.write_bytes(b"user-edit")
+    before = snapshot(setup.root)
+
+    upgrade_dir = tmp_path / "upgrade-edited"
+    upgrade_dir.mkdir()
+    archive, release, _ = archive_fixture(
+        upgrade_dir, extra={dep.UI_ROOT + "index.html": b"new-neutral-ui"},
+    )
+    monkeypatch.setitem(dep.RELEASES, False, release)
+    monkeypatch.setattr(dep, "_download", lambda *_a, **_kw: archive)
+
+    with pytest.raises(dep.ReactorInstallError, match="Neutral Reactor UI backup was modified"):
+        dep.install_dependency(setup.root, False)
+    assert snapshot(setup.root) == before
 
 
 @pytest.mark.parametrize("name", ["ReactorV.RenderHook.asi", dep.UI_ROOT + "index.html"])

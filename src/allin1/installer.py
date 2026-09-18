@@ -37,6 +37,7 @@ from allin1.detector import detect_gta_path, validate_gta_path
 from allin1.extensions import (
     ExtensionCatalog,
     ExtensionRegistry,
+    RETIRED_BUILTIN_EXTENSION_IDS,
     settings_from_config,
 )
 from allin1.health import inspect_windows_binary, is_shvdn_runtime_ready
@@ -629,6 +630,7 @@ def uninstall(config: Config) -> list[Path]:
     # configuration owned by the user.
     try:
         registry = ExtensionRegistry(gta_path)
+        _retire_builtin_extensions(registry)
         for manifest in ExtensionCatalog(_PROJECT_ROOT / "content").discover():
             registry.unregister_builtin(manifest.extension_id, force=True)
             for catalog in manifest.gbay_catalogs:
@@ -919,10 +921,11 @@ def _deploy_content_registry(gta_path: Path, config: Config) -> None:
     """Install/update official declarative packs without resetting user choices."""
     catalog = ExtensionCatalog(_PROJECT_ROOT / "content")
     manifests = catalog.discover()
+    registry = ExtensionRegistry(gta_path)
+    _retire_builtin_extensions(registry)
     if not manifests:
         log.warning("No official ALLIN1 content descriptors were found")
         return
-    registry = ExtensionRegistry(gta_path)
     for manifest in manifests:
         for catalog in manifest.gbay_catalogs:
             source = _BUILTIN_CATALOG_PAYLOADS.get(
@@ -987,6 +990,18 @@ def _deploy_content_registry(gta_path: Path, config: Config) -> None:
         )
     registry.rebuild()
     log.info("Registered %d official ALLIN1 content package(s)", len(manifests))
+
+
+def _retire_builtin_extensions(registry: ExtensionRegistry) -> None:
+    """Retire product-owned built-ins before registering the current catalog.
+
+    ``retire_builtin`` is constrained to the product allowlist and is
+    transactional, so this cannot unregister private weapon, ped, or other
+    package receipts during an upgrade or uninstall.
+    """
+    for extension_id in sorted(RETIRED_BUILTIN_EXTENSION_IDS):
+        if registry.retire_builtin(extension_id):
+            log.info("Retired obsolete built-in content package: %s", extension_id)
 
 
 def _deploy_grounding_catalog(scripts_dir: Path) -> None:

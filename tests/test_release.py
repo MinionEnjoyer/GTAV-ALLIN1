@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _reactor_pair_contract(
-    core: bytes, bridge: bytes, version: str = "0.6.5",
+    core: bytes, bridge: bytes, version: str = "0.6.6",
 ) -> bytes:
     return json.dumps({
         "schema_version": 1,
@@ -52,25 +52,24 @@ def _release_tree(tmp_path: Path) -> Path:
         path.write_text(f"fixture {relative}\n", encoding="utf-8")
 
     (root / "pyproject.toml").write_text(
-        '[project]\nname = "gta-v-allin1"\nversion = "0.6.5"\n',
+        '[project]\nname = "gta-v-allin1"\nversion = "0.6.6"\n',
         encoding="utf-8",
     )
     (root / "uv.lock").write_text(
-        '[[package]]\nname = "gta-v-allin1"\nversion = "0.6.5"\n',
+        '[[package]]\nname = "gta-v-allin1"\nversion = "0.6.6"\n',
         encoding="utf-8",
     )
-    (root / "README.md").write_text("Current public release: **0.6.5**\n")
-    (root / "RELEASE_NOTES.md").write_text("# Release 0.6.5\n")
+    (root / "README.md").write_text("Current public release: **0.6.6**\n")
+    (root / "RELEASE_NOTES.md").write_text("# Release 0.6.6\n")
 
     core = b"client"
     bridge = b"reactor-bridge"
     files = {
-        "src/allin1/__init__.py": b'__version__ = "0.6.5"\n',
+        "src/allin1/__init__.py": b'__version__ = "0.6.6"\n',
         "src/allin1/assets/logo.png": b"png",
         "content/allin1-content.schema.json": b'{"schema_version":1}',
         "content/allin1-vehicle-catalog.schema.json": b'{"schema_version":1}',
-        "content/allin1-online-content/allin1.content.json": b'{"schema_version":1,"version":"0.6.5"}',
-        "content/allin1-experimental-gameplay/allin1.content.json": b'{"schema_version":1,"version":"0.6.5"}',
+        "content/allin1-online-content/allin1.content.json": b'{"schema_version":1,"version":"0.6.6"}',
         "data/story_vehicles.json": b'{"vehicles":[]}',
         "data/vehicles.toml": b"data",
         "data/vehicle_grounding.json": b'{"Entries":{}}',
@@ -92,23 +91,23 @@ def _release_tree(tmp_path: Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content)
     (root / "script/ALLIN1.csproj").write_text(
-        "<Project><PropertyGroup><Version>0.6.5</Version>"
-        "<AssemblyVersion>0.6.5.0</AssemblyVersion>"
-        "<FileVersion>0.6.5.0</FileVersion></PropertyGroup></Project>"
+        "<Project><PropertyGroup><Version>0.6.6</Version>"
+        "<AssemblyVersion>0.6.6.0</AssemblyVersion>"
+        "<FileVersion>0.6.6.0</FileVersion></PropertyGroup></Project>"
     )
     bridge_project = root / "script/reactor-bridge/ALLIN1.ReactorBridge.csproj"
     bridge_project.parent.mkdir(parents=True, exist_ok=True)
     bridge_project.write_text(
-        "<Project><PropertyGroup><Version>0.6.5</Version>"
-        "<AssemblyVersion>0.6.5.0</AssemblyVersion>"
-        "<FileVersion>0.6.5.0</FileVersion></PropertyGroup></Project>"
+        "<Project><PropertyGroup><Version>0.6.6</Version>"
+        "<AssemblyVersion>0.6.6.0</AssemblyVersion>"
+        "<FileVersion>0.6.6.0</FileVersion></PropertyGroup></Project>"
     )
     return root
 
 
 def test_repository_release_versions_and_tool_surface_are_consistent():
     report = validate_version_consistency(ROOT)
-    assert report.version == "0.6.5"
+    assert report.version == "0.6.6"
 
 
 def test_public_file_collection_is_explicit_and_excludes_sources(tmp_path):
@@ -119,7 +118,6 @@ def test_public_file_collection_is_explicit_and_excludes_sources(tmp_path):
     assert "script/dist/ALLIN1.ReactorBridge.contract.json" in names
     assert "content/allin1-online-content/allin1.content.json" in names
     assert "content/allin1-vehicle-catalog.schema.json" in names
-    assert "content/allin1-experimental-gameplay/allin1.content.json" in names
     assert "data/story_vehicles.json" in names
     assert "data/vehicle_grounding.json" in names
     assert "tools/RpfPatcher/RpfPatcher.exe" in names
@@ -128,7 +126,8 @@ def test_public_file_collection_is_explicit_and_excludes_sources(tmp_path):
     assert "mods/README.md" in names
     assert not any(name.startswith("mods/realistic-suppressors/") for name in names)
     assert "docs/content-extension-api.md" in names
-    assert "docs/gtaiv-npc-physics-experiment.md" in names
+    assert "archive/experimental-gameplay/allin1.content.json" not in names
+    assert "archive/experimental-gameplay/gtaiv-npc-physics-experiment.md" not in names
     assert "docs/optional-assistant.md" in names
     assert "docs/realistic-suppressors.md" in names
     assert "sdk/examples/colored_smokes/addon.json" in names
@@ -200,7 +199,7 @@ def test_public_release_round_trip_and_tamper_detection(tmp_path):
     root = _release_tree(tmp_path)
     archive = tmp_path / "ALLIN1.zip"
     report = build_public_release(root, archive)
-    assert report.version == "0.6.5"
+    assert report.version == "0.6.6"
     assert report.file_count > len(PUBLIC_ROOT_FILES)
 
     with zipfile.ZipFile(archive) as bundle:
@@ -208,7 +207,8 @@ def test_public_release_round_trip_and_tamper_detection(tmp_path):
         assert "checksums.json" in bundle.namelist()
         assert "script/dist/ALLIN1.ReactorBridge.plugin" in bundle.namelist()
         assert "script/dist/ALLIN1.ReactorBridge.contract.json" in bundle.namelist()
-        assert "docs/gtaiv-npc-physics-experiment.md" in bundle.namelist()
+        assert "archive/experimental-gameplay/allin1.content.json" not in bundle.namelist()
+        assert "archive/experimental-gameplay/gtaiv-npc-physics-experiment.md" not in bundle.namelist()
         assert "docs/optional-assistant.md" in bundle.namelist()
         assert "docs/realistic-suppressors.md" in bundle.namelist()
         assert not any(
@@ -247,15 +247,9 @@ def test_release_build_rejects_mixed_core_and_bridge_binaries(tmp_path):
         build_public_release(root, tmp_path / "mixed.zip")
 
 
-@pytest.mark.parametrize("package", [
-    "allin1-online-content",
-    "allin1-experimental-gameplay",
-])
-def test_release_rejects_official_content_manifest_version_drift(
-    tmp_path, package
-):
+def test_release_rejects_official_content_manifest_version_drift(tmp_path):
     root = _release_tree(tmp_path)
-    manifest = root / "content" / package / "allin1.content.json"
+    manifest = root / "content" / "allin1-online-content" / "allin1.content.json"
     manifest.write_text(
         '{"schema_version":1,"version":"9.9.9"}', encoding="utf-8"
     )
@@ -397,7 +391,7 @@ def test_release_verifier_rejects_structural_manifest_errors(tmp_path):
         verify_public_release(wrong_version)
 
     incomplete = tmp_path / "incomplete.zip"
-    _write_manifest_archive(incomplete, {"release.json": b'{"version":"0.6.5"}'})
+    _write_manifest_archive(incomplete, {"release.json": b'{"version":"0.6.6"}'})
     with pytest.raises(ValueError, match="missing required files"):
         verify_public_release(incomplete)
 

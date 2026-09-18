@@ -1,8 +1,8 @@
 """Pinned, shared Reactor V installation; ALLIN1 owns only its presentation.
 
-Preview 3 has one host UI, not a dynamic skin loader. The ALLIN1 composition
-also renders other extensions' typed menus. Its receipt and neutral-UI backup
-are separate from the shared runtime, which ALLIN1 uninstall never removes.
+The ALLIN1 composition also renders other extensions' typed menus. Its receipt
+and neutral-UI backup are separate from the shared runtime, which ALLIN1
+uninstall never removes.
 """
 from __future__ import annotations
 
@@ -20,7 +20,8 @@ import urllib.request
 import zipfile
 
 
-TAG = "v0.2.0-preview.3"
+VERSION = "0.2.6"
+TAG = f"v{VERSION}"
 RELEASE_PAGE = f"https://github.com/MinionEnjoyer/GTAV-REACTOR-V/releases/tag/{TAG}"
 UI_ROOT = "plugins/ReactorV/ui/"
 RECEIPT = "scripts/.reactorv/dependencies/reactor-v.json"
@@ -54,16 +55,16 @@ class ReactorRelease:
     @property
     def url(self) -> str:
         return (f"https://github.com/MinionEnjoyer/GTAV-REACTOR-V/releases/download/{TAG}/"
-                f"ReactorV-0.2.0-{self.edition}-live-test.zip")
+                f"ReactorV-{VERSION}-{self.edition}-live-test.zip")
 
 
 RELEASES = {
-    False: ReactorRelease("legacy", 179868791,
-        "d7d23fb665087a000dbde780cccf1c7e6b7cb12c2613a13cfa63082a1b35206b",
+    False: ReactorRelease("legacy", 179909955,
+        "f4655cbe1b563eb497d69baa7aec7d3a15cceff09e58e7f4437892316a4e3099",
         "GTA5.exe", "1.0.3889.0", "677e4e355cfbdb13273b1d992407e3c261b3a108dc4dd5c8a0c4c1da651802e5"),
-    True: ReactorRelease("enhanced", 179868466,
-        "f792ef8f4e097bed550c9e43e754740d6ff9bc93c79a08eb740e1f84c2164d50",
-        "GTA5_Enhanced.exe", "1.0.1158.13", "0c52864d4521d9c9d441348aa1156958792dde8825d0297c851753f167336401"),
+    True: ReactorRelease("enhanced", 179909635,
+        "23ab2e454775c4333219cc03c8b4050f4420a47a908a63e5331f286265370421",
+        "GTA5_Enhanced.exe", "1.0.1158.16", "69da07ff67d05e9ded11289e597e8b8dc5855b0a429c085f37d148dc267cb2c5"),
 }
 
 
@@ -270,7 +271,7 @@ def _extract(archive: Path, stage: Path, release: ReactorRelease) -> dict[str, P
         if _sha(files[core]) != _sha(files["plugins/ReactorV/RageWebUI.Core.dll"]):
             raise ReactorInstallError("Reactor Core copies disagree")
         contract = _json(files["scripts/ReactorV/ReactorV.contract.json"])
-        if (contract.get("product"), contract.get("runtime_version"), contract.get("extension_api_version")) != ("reactor-v", "0.2.0", 1):
+        if (contract.get("product"), contract.get("runtime_version"), contract.get("extension_api_version")) != ("reactor-v", VERSION, 1):
             raise ReactorInstallError("Unsupported Reactor extension API contract")
         marker = "plugins/ReactorV/ReactorV.LegacyCpuFrames.enabled"
         if (marker in files) != (release.edition == "legacy"):
@@ -426,11 +427,16 @@ def install_dependency(root: Path, enhanced: bool, *, progress: Callable[[str], 
             if name.startswith(UI_ROOT):
                 backup_name = BACKUP_ROOT + name.removeprefix(UI_ROOT)
                 backup = _path(root, backup_name)
-                if backup.exists() and _sha(backup) != hashes[name]:
-                    raise ReactorInstallError(f"Neutral Reactor UI backup was modified: {backup_name}")
-                if not backup.exists():
-                    writes[backup_name] = source
-        shared = dict(schema_version=1, product="reactor-v", version="0.2.0", release=TAG,
+                observed[backup_name] = _sha(backup) if backup.exists() else None
+                if backup.exists():
+                    actual = observed[backup_name]
+                    if actual == hashes[name]:
+                        continue
+                    previous = old.get("files", {}).get(name)
+                    if previous is None or actual != previous:
+                        raise ReactorInstallError(f"Neutral Reactor UI backup was modified: {backup_name}")
+                writes[backup_name] = source
+        shared = dict(schema_version=1, product="reactor-v", version=VERSION, release=TAG,
                       edition=release.edition, archive_sha256=release.sha256, release_page=RELEASE_PAGE,
                       shared=True, files=hashes, mutable_files=sorted(CONFIGS))
         owned = dict(schema_version=1, product="allin1-ui", reactor_release=TAG, files=ui_hashes)
@@ -442,7 +448,7 @@ def install_dependency(root: Path, enhanced: bool, *, progress: Callable[[str], 
         progress("Installing verified shared Reactor V and ALLIN1 presentation")
         _transaction(root, writes, deletes, expected_targets=observed,
                      expected_sources={**hashes, **ui_hashes})
-    return f"Reactor V 0.2.0 Preview 3 ({release.edition.title()})"
+    return f"Reactor V {VERSION} ({release.edition.title()})"
 
 
 def remove_consumer(root: Path) -> list[Path]:

@@ -1,4 +1,4 @@
-ALLIN1 presentation composition, built from GTAV-REACTOR-V 64b98166e782d0393f24561daf3b603333522e94 (local development candidate).
+ALLIN1 presentation composition, built from GTAV-REACTOR-V 0fc810b25eac9ba25ef4366baf58333dff70688a.
 Original Reactor V code: MIT, copyright (c) 2026 MinionEnjoyer; see LICENSE.
 React, React DOM and Scheduler retain their included MIT notices.
 Bebas Neue and Oswald retain their SIL Open Font License notices in fonts/.

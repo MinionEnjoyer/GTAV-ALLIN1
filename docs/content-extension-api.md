@@ -13,6 +13,9 @@ The current API can declare:
 - game-runtime DLLs installed below `scripts/`; and
 - descriptive capability identifiers for discovery and auditing.
 
+The [traffic population editor](content-injectors.md) consumes authorized
+vehicle catalogs with explicit traffic opt-in.
+
 It does **not** let a package inject arbitrary launcher pages, widgets, buttons,
 Python modules, or shell commands. The launcher renders supported declarations
 with its own controls and owns the install, enable, disable, update, uninstall,
@@ -360,6 +363,16 @@ must not write a GBAY purchase directly to permanent storage. Launcher settings,
 package receipts, and package enable/disable state are launcher configuration,
 not Story Mode purchases, so they are persisted when the user applies the
 corresponding launcher action.
+
+GBAY gear operations validate the current protagonist and game state before
+native changes, then confirm application before charging or staging ownership.
+The same checks apply to saved-loadout restoration. Juggernaut equip is staged
+across ticks while its movement animation loads; `gear.apply` returns the
+non-success `gear_pending` result during preparation rather than claiming a
+completed purchase. Consumers should refresh the gear snapshot to observe
+completion. Timeouts and character changes cancel preparation without a charge.
+`GBAY` client logs record gear operation stages and per-slot Juggernaut validation
+and application, allowing a native crash to be traced to the last logged step.
 
 ## Runtime assemblies
 

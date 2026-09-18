@@ -20,11 +20,16 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: MinionEnjoyer/ALLIN1-SDK
+          ref: aaafb7de4f53182c157687dbd51e6ec86da99dca
+          path: ALLIN1-SDK
       - uses: actions/setup-python@v5
         id: python
         with:
           python-version: "3.12"
-      - run: python -m pip install -e ".[test]"
+      - run: python -m pip install -e ".[test]" -e "ALLIN1-SDK"
       - uses: pnpm/action-setup@v4
         with:
           version: 11.19.0
@@ -54,11 +59,16 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: MinionEnjoyer/ALLIN1-SDK
+          ref: aaafb7de4f53182c157687dbd51e6ec86da99dca
+          path: ALLIN1-SDK
       - uses: actions/setup-python@v5
         id: python
         with:
           python-version: "3.12"
-      - run: python -m pip install -e ".[test]"
+      - run: python -m pip install -e ".[test]" -e "ALLIN1-SDK"
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
@@ -94,11 +104,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: MinionEnjoyer/ALLIN1-SDK
+          ref: aaafb7de4f53182c157687dbd51e6ec86da99dca
+          path: ALLIN1-SDK
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-      - run: python -m pip install -e ".[test]"
+      - run: python -m pip install -e ".[test]" -e "ALLIN1-SDK"
       - run: python -m pytest --cov=allin1 --cov-report=term-missing
 
   script-build:
@@ -120,6 +135,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      - uses: actions/checkout@v4
+        with:
+          repository: MinionEnjoyer/ALLIN1-SDK
+          ref: aaafb7de4f53182c157687dbd51e6ec86da99dca
+          path: ALLIN1-SDK
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -127,7 +147,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
-      - run: python -m pip install -e ".[test]"
+      - run: python -m pip install -e ".[test]" -e "ALLIN1-SDK"
       - name: Restore real toolchain cache
         uses: actions/cache@v4
         with:

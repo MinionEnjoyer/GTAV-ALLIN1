@@ -235,7 +235,7 @@ namespace ALLIN1
             _current = this;
             _enabled = Allin1ExtensionApi.IsPackageEnabled(
                     Allin1ExtensionApi.OnlineContentPackageId) &&
-                NpcPhysicsExperiment.ReadBooleanSetting(
+                RuntimeScriptSettings.ReadBoolean(
                     "enhanced_smoke_effects", false);
             string marker = Path.Combine(
                 AppDomain.CurrentDomain.BaseDirectory,
@@ -263,7 +263,7 @@ namespace ALLIN1
             Interval = _enabled ? 0 : 1000;
             Tick += OnTick;
             Aborted += OnAborted;
-            PhysicsExperimentLog.Info(
+            ClientLog.Info("ENHANCED-SMOKE",
                 "enhanced_smoke_configuration_loaded",
                 new Dictionary<string, object>
                 {
@@ -326,7 +326,7 @@ namespace ALLIN1
                 Reason = reason ?? "scripted_throw",
                 ExpiresAt = unchecked(now + 10000),
             };
-            PhysicsExperimentLog.Info("enhanced_smoke_throw_expected",
+            ClientLog.Info("ENHANCED-SMOKE", "enhanced_smoke_throw_expected",
                 new Dictionary<string, object>
                 {
                     { "thrower", throwerHandle },
@@ -371,7 +371,7 @@ namespace ALLIN1
             catch (Exception ex)
             {
                 _exceptions++;
-                PhysicsExperimentLog.Error(
+                ClientLog.Error("ENHANCED-SMOKE",
                     "enhanced_smoke_tick_failed", ex);
                 ClientLog.Error("ENHANCED-SMOKE", "OnTick", ex);
             }
@@ -453,7 +453,7 @@ namespace ALLIN1
                     }
                     _projectiles.Add(handle, tracked);
                     _projectilesTracked++;
-                    PhysicsExperimentLog.Info(
+                    ClientLog.Info("ENHANCED-SMOKE",
                         "enhanced_smoke_projectile_tracked",
                         ProjectileFields(handle, tracked, now,
                             new Dictionary<string, object>
@@ -501,7 +501,7 @@ namespace ALLIN1
                     ProjectileMotionLogIntervalMs)
                 {
                     tracked.LastMotionLogAt = now;
-                    PhysicsExperimentLog.Info(
+                    ClientLog.Info("ENHANCED-SMOKE",
                         "enhanced_smoke_projectile_motion",
                         ProjectileFields(handle, tracked, now,
                             MotionFields(tracked, null)));
@@ -543,7 +543,7 @@ namespace ALLIN1
             if (!fieldAlreadyRegistered)
             {
                 _projectilesExpiredUnsettled++;
-                PhysicsExperimentLog.Info(
+                ClientLog.Info("ENHANCED-SMOKE",
                     "enhanced_smoke_projectile_expired_unsettled",
                     ProjectileFields(handle, tracked, now,
                         MotionFields(tracked,
@@ -553,7 +553,7 @@ namespace ALLIN1
                                 { "field_registered", false },
                             })));
             }
-            PhysicsExperimentLog.Info("enhanced_smoke_projectile_consumed",
+            ClientLog.Info("ENHANCED-SMOKE", "enhanced_smoke_projectile_consumed",
                 ProjectileFields(handle, tracked, now,
                     new Dictionary<string, object>
                     {
@@ -572,7 +572,7 @@ namespace ALLIN1
                     out TrackedProjectile tracked) ||
                 tracked.FieldRegistered) return;
             _projectilesSettled++;
-            PhysicsExperimentLog.Info(
+            ClientLog.Info("ENHANCED-SMOKE",
                 "enhanced_smoke_projectile_settled",
                 ProjectileFields(handle, tracked, now,
                     MotionFields(tracked,
@@ -587,7 +587,7 @@ namespace ALLIN1
             _projectiles.Remove(handle);
             _consumedProjectiles[handle] = unchecked(now +
                 ProjectileForgetMs);
-            PhysicsExperimentLog.Info(
+            ClientLog.Info("ENHANCED-SMOKE",
                 "enhanced_smoke_projectile_field_activated",
                 ProjectileFields(handle, tracked, now,
                     new Dictionary<string, object>
@@ -616,7 +616,7 @@ namespace ALLIN1
             }
             catch (Exception ex)
             {
-                PhysicsExperimentLog.Error(
+                ClientLog.Error("ENHANCED-SMOKE",
                     "enhanced_smoke_canister_retire_failed", ex);
                 ClientLog.Error("ENHANCED-SMOKE",
                     "RetireSettledCanister", ex);
@@ -653,7 +653,7 @@ namespace ALLIN1
                 if (!sameColor && !upgradedToCasevac)
                 {
                     _colorOverlaps++;
-                    PhysicsExperimentLog.Info(
+                    ClientLog.Info("ENHANCED-SMOKE",
                         "enhanced_smoke_color_overlap",
                         new Dictionary<string, object>
                         {
@@ -673,7 +673,7 @@ namespace ALLIN1
                     existing.ParticleStartAttempted = true;
                 }
                 _fieldsDeduplicated++;
-                PhysicsExperimentLog.Info(
+                ClientLog.Info("ENHANCED-SMOKE",
                     "enhanced_smoke_field_deduplicated",
                     new Dictionary<string, object>
                     {
@@ -687,7 +687,7 @@ namespace ALLIN1
             if (_fields.Count >= MaximumActiveFields)
             {
                 _fieldsRejected++;
-                PhysicsExperimentLog.Info(
+                ClientLog.Info("ENHANCED-SMOKE",
                     "enhanced_smoke_field_rejected",
                     new Dictionary<string, object>
                     {
@@ -710,7 +710,7 @@ namespace ALLIN1
             };
             _fields.Add(field);
             _fieldsStarted++;
-            PhysicsExperimentLog.Info("enhanced_smoke_field_started",
+            ClientLog.Info("ENHANCED-SMOKE", "enhanced_smoke_field_started",
                 SmokeFieldFields(field, now,
                     new Dictionary<string, object>
                     {
@@ -743,7 +743,7 @@ namespace ALLIN1
                     StopFieldParticles(field);
                     _fields.RemoveAt(index);
                     _fieldsCompleted++;
-                    PhysicsExperimentLog.Info(
+                    ClientLog.Info("ENHANCED-SMOKE",
                         "enhanced_smoke_field_completed",
                         SmokeFieldFields(field, now, null));
                     continue;
@@ -761,7 +761,7 @@ namespace ALLIN1
                         ? StartFieldParticles(field) : 0;
                     field.PulseIndex++;
                     _pulses++;
-                    PhysicsExperimentLog.Info(
+                    ClientLog.Info("ENHANCED-SMOKE",
                         "enhanced_smoke_loop_started",
                         SmokeFieldFields(field, now,
                             new Dictionary<string, object>
@@ -807,7 +807,7 @@ namespace ALLIN1
                     unchecked(now - field.ActivateAt) >= 1000)
                 {
                     field.BackendUnavailableReported = true;
-                    PhysicsExperimentLog.Info(
+                    ClientLog.Info("ENHANCED-SMOKE",
                         "enhanced_smoke_color_backend_unavailable",
                         SmokeFieldFields(field, now,
                             new Dictionary<string, object>
@@ -906,7 +906,7 @@ namespace ALLIN1
             if (!EnhancedSmokePolicy.ShouldLogSupplementalPulse(
                     field.SupplementalPulseIndex))
                 return;
-            PhysicsExperimentLog.Info(
+            ClientLog.Info("ENHANCED-SMOKE",
                 "enhanced_smoke_supplemental_pulse",
                 SmokeFieldFields(field, now,
                     new Dictionary<string, object>
@@ -956,7 +956,7 @@ namespace ALLIN1
             EmitSmokeExplosion(field.Center + secondOffset);
             field.PulseIndex++;
             _pulses++;
-            PhysicsExperimentLog.Info("enhanced_smoke_fallback_pulse",
+            ClientLog.Info("ENHANCED-SMOKE", "enhanced_smoke_fallback_pulse",
                 SmokeFieldFields(field, now,
                     new Dictionary<string, object>
                     {
@@ -1051,7 +1051,7 @@ namespace ALLIN1
             {
                 ExpectedSmoke expected = _expectedSmokes[owner];
                 _expectedSmokes.Remove(owner);
-                PhysicsExperimentLog.Info(
+                ClientLog.Info("ENHANCED-SMOKE",
                     "enhanced_smoke_throw_expectation_expired",
                     new Dictionary<string, object>
                     {
@@ -1116,7 +1116,7 @@ namespace ALLIN1
 
         private void WriteHeartbeat(int now)
         {
-            PhysicsExperimentLog.Info("enhanced_smoke_heartbeat",
+            ClientLog.Info("ENHANCED-SMOKE", "enhanced_smoke_heartbeat",
                 new Dictionary<string, object>
                 {
                     { "game_time_ms", now },

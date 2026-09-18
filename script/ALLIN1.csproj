@@ -3,9 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
     <AssemblyName>ALLIN1</AssemblyName>
-    <Version>0.6.5</Version>
-    <AssemblyVersion>0.6.5.0</AssemblyVersion>
-    <FileVersion>0.6.5.0</FileVersion>
+    <Version>0.6.6</Version>
+    <AssemblyVersion>0.6.6.0</AssemblyVersion>
+    <FileVersion>0.6.6.0</FileVersion>
     <RootNamespace>ALLIN1</RootNamespace>
     <OutputType>Library</OutputType>
     <PlatformTarget>x64</PlatformTarget>
@@ -30,9 +30,12 @@
     <Compile Remove="tools\**" />
     <Compile Remove="tests\**" />
     <Compile Remove="reactor-bridge\**" />
+    <!-- Retained standalone experiment source is intentionally not shipped. -->
+    <Compile Remove="..\archive\experimental-gameplay\native\**" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
     <PackageReference Include="ScriptHookVDotNet3" Version="3.6.0" />
   </ItemGroup>
 

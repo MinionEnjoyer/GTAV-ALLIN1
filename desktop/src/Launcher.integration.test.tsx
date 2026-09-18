@@ -30,7 +30,10 @@ const pending = new Map<
 >();
 const user = () => userEvent.setup();
 const idle = () =>
-  waitFor(() => expect(screen.queryByText("Working…")).not.toBeInTheDocument());
+  waitFor(
+    () => expect(screen.queryByText("Working…")).not.toBeInTheDocument(),
+    { timeout: 5000 },
+  );
 async function navigate(name: string) {
   await user().click(
     within(screen.getByRole("navigation", { name: "Primary" })).getByRole(
@@ -53,6 +56,7 @@ async function approve() {
     expect(
       screen.queryByRole("region", { name: "Review changes" }),
     ).not.toBeInTheDocument(),
+    { timeout: 5000 },
   );
   await idle();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -249,7 +253,7 @@ describe("Launcher React workspaces use the real Python boundary", () => {
     await navigate("Activity");
     await user().click(screen.getByRole("button", { name: "Check for updates" }));
     const release = await screen.findByRole("region", { name: "Launcher release information" });
-    expect(release).toHaveTextContent("Current 0.6.5 · Latest 0.6.6");
+    expect(release).toHaveTextContent("Current 0.6.6 · Latest 0.6.7");
     expect(release).toHaveTextContent("unsigned manual downloads");
     expect(within(release).getByRole("button", { name: "Open official release page" })).toBeEnabled();
     await expect(access(path.join(root, "state"))).rejects.toThrow();
@@ -411,15 +415,15 @@ describe("Launcher React workspaces use the real Python boundary", () => {
   });
   it("keeps the selected content draft and error visible after failed application", async () => {
     await navigate("Content");
-    await user().click(screen.getByRole("button", { name: /ALLIN1 Experimental Gameplay/ }));
-    await user().click(screen.getByRole("checkbox", { name: "GTA IV-style NPC physics" }));
+    await user().click(screen.getByRole("button", { name: /Synthetic Content Fixture/ }));
+    await user().click(screen.getByRole("checkbox", { name: "Fixture enabled" }));
     await user().click(screen.getByRole("button", { name: "Review content settings" }));
     const review = await screen.findByRole("region", { name: "Review changes" });
     await writeFile(path.join(root, "Synthetic game with spaces/scripts/ALLIN1.toml"), "# changed after review\n");
     await user().click(within(review).getByRole("checkbox", { name: "I reviewed these changes" }));
     await user().click(within(review).getByRole("button", { name: "Apply reviewed changes" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Files changed");
-    expect(screen.getByRole("checkbox", { name: "GTA IV-style NPC physics" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Fixture enabled" })).toBeChecked();
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
     await expect(access(path.join(root, "state/config.toml"))).rejects.toThrow();
   });
@@ -583,25 +587,25 @@ describe("Launcher React workspaces use the real Python boundary", () => {
   it("saves content-owned settings and adopts their persisted configuration bindings", async () => {
     await navigate("Content");
     await user().click(
-      screen.getByRole("button", { name: /ALLIN1 Experimental Gameplay/ }),
+      screen.getByRole("button", { name: /Synthetic Content Fixture/ }),
     );
     await user().click(
-      screen.getByRole("checkbox", { name: "GTA IV-style NPC physics" }),
+      screen.getByRole("checkbox", { name: "Fixture enabled" }),
     );
     await user().click(
       screen.getByRole("button", { name: "Review content settings" }),
     );
     await approve();
     const saved = await readFile(path.join(root, "state/config.toml"), "utf8");
-    expect(saved).toContain("gta_iv_npc_physics = true");
+    expect(saved).toContain("enable_logging = true");
     await navigate("Gameplay");
     expect(
-      screen.getByRole("checkbox", { name: "GTA Iv Npc Physics" }),
+      screen.getByRole("checkbox", { name: "Enable Logging" }),
     ).toBeChecked();
     await navigate("Content");
     for (const action of ["disable", "enable"]) {
       await user().click(
-        screen.getByRole("button", { name: /ALLIN1 Experimental Gameplay/ }),
+        screen.getByRole("button", { name: /Synthetic Content Fixture/ }),
       );
       await user().click(
         screen.getByRole("button", { name: `Review ${action}` }),

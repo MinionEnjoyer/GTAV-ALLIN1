@@ -1,6 +1,6 @@
 # ALLIN1 Launcher React/Tauri development shell
 
-Target **0.6.5**, Tauri **v2**. `manager.bat` / `allin1-gui` forward to the
+Target **0.6.6**, Tauri **v2**. `manager.bat` / `allin1-gui` forward to the
 native desktop. For source use, set `ALLIN1_LAUNCHER_EXECUTABLE` to a complete
 candidate shell or put `allin1-launcher-desktop.exe` on PATH; missing native
 desktop errors rather than falling back. Reinstall the editable Python package
@@ -40,12 +40,12 @@ service from another build.
 Unsigned local candidates are **not release-qualified**: service/resource
 evidence is separate from native dialogs, installer lifecycle, and live
 acceptance. They may use dirty development source; release requires reviewed,
-clean source and the [milestone gates](../docs/release-0.6.5.md#mandatory-065-full-release-milestone).
+clean source and the [milestone gates](../docs/release-0.6.6.md#mandatory-066-full-release-milestone).
 
 Use the [React harness](../docs/react-release-harness.md) for disposable
 real-service tests. An interactive development session is not a sandbox; it can
 apply reviewed operations to selected real paths. Never use real GTA files in
 automated write tests.
 
-See [release scope](../docs/release-0.6.5.md) and
+See [release scope](../docs/release-0.6.6.md) and
 [Launcher manual](../docs/launcher-guide.md) for current workspace limits.

@@ -1,6 +1,6 @@
 # React release and Tkinter-retirement harness
 
-The release targets are Launcher/SDK **0.6.5**. Other products are outside this
+The release targets are Launcher/SDK **0.6.6**. Other products are outside this
 harness. It neither installs into a real game directory nor launches GTA.
 
 Run from the Launcher checkout after installing locked desktop dependencies:
@@ -41,7 +41,7 @@ run is not a full-suite-coverage or full-release PASS.
 
 Full release requires verified source/entrypoint removal and packaged
 replacement; a targeted pass does not meet the [full-release
-milestone](release-0.6.5.md#mandatory-065-full-release-milestone). Shared
+milestone](release-0.6.6.md#mandatory-066-full-release-milestone). Shared
 nonvisual behavior must be UI-independent; source process/React fixtures forbid
 Tk imports, network access, and non-isolated user state. Every replacement
 workflow needs behavioral preservation/error tests, not merely page navigation.

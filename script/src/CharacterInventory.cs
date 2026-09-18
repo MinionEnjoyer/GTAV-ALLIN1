@@ -130,6 +130,16 @@ namespace ALLIN1
             return CharacterForPed(Game.Player.Character);
         }
 
+        // Small, character-bound snapshot used by a single GBAY gear
+        // transaction. It intentionally covers only the two mutable gear
+        // lists and uses the existing staged-save path on restore.
+        internal sealed class GearInventorySnapshot
+        {
+            internal string Character { get; set; } = "";
+            internal List<string> Gear { get; set; } = new List<string>();
+            internal List<string> Equipped { get; set; } = new List<string>();
+        }
+
         private static string CharacterForPed(Ped player)
         {
             if (player == null || !player.Exists()) return "";
@@ -663,20 +673,11 @@ namespace ALLIN1
                     ApplyWeaponCustomization(ped, entry.Key,
                         (Hash)weaponHash, inventory);
             }
-            foreach (string gear in inventory.equipped_gear)
-            {
-                if (gear == GearList.ARMOR_JUGGERNAUT)
-                {
-                    if (!GbayShop.JuggernautActive) GbayShop.ApplyJuggernaut(ped);
-                }
-                else if (GearList.IsArmor(gear))
-                    ped.Armor = GearList.ArmorValues[gear];
-                else if (gear == "WEAPON_NIGHTVISION")
-                    GbayShop.NightVisionOwned = true;
-                else
-                    ped.Weapons.Give((WeaponHash)Game.GenerateHash(gear), 1, false, false);
-            }
             if (inventory.outfit?.managed ?? false) ApplyOutfit(ped, inventory.outfit);
+            // Shop actions and saved loadouts share validation. Apply the saved
+            // appearance first so staged ballistic armor captures that outfit.
+            foreach (string gear in inventory.equipped_gear)
+                GbayShop.RestoreGearValidated(ped, gear);
             if (inventory.progress?.managed ?? false) ApplyProgress(character, inventory.progress);
             ClientLog.Info("Character", "loadout_applied", new Dictionary<string, object> {
                 { "character", character }, { "weapons", restored.Restored.Count },
@@ -1210,6 +1211,43 @@ namespace ALLIN1
                 return inventory.weapon_customizations.TryGetValue(
                     weapon, out WeaponCustomization customization) &&
                     customization.owned_components.Contains(componentHash);
+            }
+        }
+
+        internal static GearInventorySnapshot CaptureGearSnapshot()
+        {
+            string character = CurrentCharacter();
+            if (character.Length == 0) return null;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(character, out Inventory inventory))
+                    return null;
+                NormalizeInventory(inventory);
+                return new GearInventorySnapshot
+                {
+                    Character = character,
+                    Gear = new List<string>(inventory.gear),
+                    Equipped = new List<string>(inventory.equipped_gear),
+                };
+            }
+        }
+
+        internal static bool RestoreGearSnapshot(GearInventorySnapshot snapshot)
+        {
+            if (snapshot == null || string.IsNullOrWhiteSpace(snapshot.Character) ||
+                !string.Equals(CurrentCharacter(), snapshot.Character,
+                    StringComparison.OrdinalIgnoreCase)) return false;
+            lock (Sync)
+            {
+                if (!_state.TryGetValue(snapshot.Character, out Inventory inventory))
+                    return false;
+                inventory.gear = new List<string>(snapshot.Gear ??
+                    new List<string>());
+                inventory.equipped_gear = new List<string>(snapshot.Equipped ??
+                    new List<string>());
+                NormalizeInventory(inventory);
+                StageStateLocked(snapshot.Character, "gear_operation_rollback", "");
+                return true;
             }
         }
 

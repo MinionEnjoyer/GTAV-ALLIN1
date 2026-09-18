@@ -45,11 +45,11 @@ PUBLIC_DOCUMENTATION_FILES = (
     "docs/cli-reference.md",
     "docs/configuration-reference.md",
     "docs/content-extension-api.md",
+    "docs/content-injectors.md",
     "docs/development.md",
     "docs/edition-bundles.md",
     "docs/enhanced-smoke-rpf-port.md",
     "docs/gbay-weapon-catalogs.md",
-    "docs/gtaiv-npc-physics-experiment.md",
     "docs/launcher-guide.md",
     "docs/mpclothes-compatibility-architecture.md",
     "docs/optional-assistant.md",
@@ -57,6 +57,7 @@ PUBLIC_DOCUMENTATION_FILES = (
     "docs/realistic-suppressors.md",
     "docs/release-0.6.4.md",
     "docs/release-0.6.5.md",
+    "docs/release-0.6.6.md",
     "docs/gbay-default-previews.md",
     "docs/hardening-harness.md",
     "docs/rpf-authoring-safety.md",
@@ -247,10 +248,6 @@ def validate_version_consistency(root: Path, version: str = __version__) -> Rele
         (root / "content" / "allin1-online-content" / "allin1.content.json")
         .read_text(encoding="utf-8")
     )
-    experimental_content = json.loads(
-        (root / "content" / "allin1-experimental-gameplay" / "allin1.content.json")
-        .read_text(encoding="utf-8")
-    )
     readme = (root / "README.md").read_text(encoding="utf-8")
     notes = (root / "RELEASE_NOTES.md").read_text(encoding="utf-8")
     observed = {
@@ -270,9 +267,6 @@ def validate_version_consistency(root: Path, version: str = __version__) -> Rele
             if bridge_file_version else "missing"
         ),
         "Online content manifest": str(online_content.get("version", "missing")),
-        "Experimental content manifest": str(
-            experimental_content.get("version", "missing")
-        ),
     }
     mismatches = [f"{name}={value}" for name, value in observed.items() if value != version]
     if mismatches:

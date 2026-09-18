@@ -69,9 +69,6 @@ class ScriptConfig:
     hold_duration_ms: int = 350
     gbay_free_mode: bool = False
     garages_always_accessible: bool = False
-    enhanced_police_ai: bool = False
-    gta_iv_npc_physics: bool = False
-    gta_iv_npc_physics_debug: bool = False
     enhanced_smoke_effects: bool = False
     controller_enabled: bool = True
     controller_open_gbay: str = "FrontendRdown"
@@ -200,11 +197,6 @@ class Config:
             f"gbay_free_mode = {boolean(self.script.gbay_free_mode)}\n"
             "garages_always_accessible = "
             f"{boolean(self.script.garages_always_accessible)}\n"
-            "enhanced_police_ai = "
-            f"{boolean(self.script.enhanced_police_ai)}\n"
-            f"gta_iv_npc_physics = {boolean(self.script.gta_iv_npc_physics)}\n"
-            "gta_iv_npc_physics_debug = "
-            f"{boolean(self.script.gta_iv_npc_physics_debug)}\n"
             "enhanced_smoke_effects = "
             f"{boolean(self.script.enhanced_smoke_effects)}\n"
             f"controller_enabled = {boolean(self.script.controller_enabled)}\n"

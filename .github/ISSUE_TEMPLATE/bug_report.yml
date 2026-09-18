@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a reproducible ALLIN1 problem without sensitive or proprietary files.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach GTA files, third-party mod payloads, credentials, private paths, or unredacted logs.
+  - type: input
+    id: version
+    attributes:
+      label: ALLIN1 version
+      placeholder: 0.6.6
+    validations:
+      required: true
+  - type: dropdown
+    id: edition
+    attributes:
+      label: GTA V edition
+      options:
+        - Enhanced
+        - Legacy
+        - Not applicable
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include the exact error and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Open...
+        2. Select...
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics
+      description: Paste only the relevant excerpt after removing usernames, paths, tokens and proprietary data.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I am using Story Mode, not GTA Online.
+          required: true
+        - label: I removed personal paths, credentials and proprietary files from this report.
+          required: true
+

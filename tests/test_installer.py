@@ -10,6 +10,7 @@ from unittest.mock import Mock, call
 import pytest
 
 from allin1.config import Config
+from allin1.extensions import ExtensionManifest, ExtensionRegistry
 from allin1 import asi_loader, installer
 
 
@@ -97,6 +98,35 @@ def test_content_registry_deploys_trusted_story_vehicle_catalog(tmp_path):
         "kind": "vehicle",
         "source": "scripts/ALLIN1/Catalogs/story-vehicles.json",
     }]
+
+
+def test_content_registry_upgrade_retires_only_disabled_legacy_builtin(tmp_path):
+    game = _game(tmp_path)
+    (game / "scripts").mkdir()
+    registry = ExtensionRegistry(game)
+    old_descriptor = {
+        "schema_version": 1,
+        "api_version": 1,
+        "id": "allin1.experimental-gameplay",
+        "name": "Retired built-in fixture",
+        "version": "1.0.0",
+        "description": "upgrade fixture",
+        "capabilities": [],
+        "systems": [{"id": "retired", "name": "Retired"}],
+        "gbay": {"sections": [], "catalogs": []},
+        "runtime": {"assemblies": []},
+    }
+    private_descriptor = {**old_descriptor, "id": "acme.private-content"}
+    registry.register_builtin(ExtensionManifest.from_dict(old_descriptor), enabled=False)
+    registry.register_builtin(ExtensionManifest.from_dict(private_descriptor))
+
+    installer._deploy_content_registry(game, Config.default())
+
+    installed = {entry["id"]: entry for entry in ExtensionRegistry(game).installed()}
+    assert "allin1.experimental-gameplay" not in installed
+    assert installed["acme.private-content"]["source"] == "built-in"
+    assert installed["acme.private-content"]["enabled"] is True
+    assert "allin1.online-content" in installed
 
 
 def test_content_registry_deploys_and_authorizes_all_trusted_map_descriptors(

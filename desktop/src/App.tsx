@@ -7,6 +7,7 @@ import PackageDraft from "./PackageDraft";
 import AssistantSettings from "./AssistantSettings";
 import OperationProgress from "./OperationProgress";
 import PreviewControls from "./PreviewControls";
+import RuntimeInjectors from "./RuntimeInjectors";
 import { RenderWorkerControls } from "./RenderWorkerControls";
 import StartupStatus from "./StartupStatus";
 import logo from "../../src/allin1/assets/ALLIN1.png";
@@ -33,7 +34,6 @@ const inputField = (key: string) =>
     "colorblind_mode",
   ].includes(key);
 
-export default function App({ client = nativeClient }: { client?: Client }) {
 const dependencyStatus = (value: unknown, inspected: boolean) => {
   if (!inspected || value === undefined || value === null) return "Not checked";
   if (value === true) return "Installed";
@@ -54,6 +54,7 @@ const installationIdentity = (config: RecordData | null | undefined) => {
   ]);
 };
 
+export default function App({ client = nativeClient }: { client?: Client }) {
   const [catalog, setCatalog] = useState<RecordData>({}),
     [module, setModule] = useState("setup"),
     [session, setSession] = useState<RecordData>({});
@@ -92,6 +93,9 @@ const installationIdentity = (config: RecordData | null | undefined) => {
   const needsAttention = !!error || !!warning || startupAttention;
   const [handoff, setHandoff] = useState<RecordData | null>(null);
   const [settingsSearch, setSettingsSearch] = useState("");
+  const [contentTab, setContentTab] = useState<"existing" | "traffic">("existing");
+  const [injectorDraft, setInjectorDraft] = useState<RecordData | null>(null);
+  const [injectorRevision, setInjectorRevision] = useState(0);
   const [skipPreviewCategories, setSkipPreviewCategories] = useState<string[]>([]);
   const [operationProgress, setOperationProgress] = useState<RecordData | null>(null);
   const [cancellingLaunch, setCancellingLaunch] = useState(false);
@@ -100,7 +104,7 @@ const installationIdentity = (config: RecordData | null | undefined) => {
   const backgroundFlight = useRef<Promise<void> | null>(null);
   const dirty =
     (!!config && JSON.stringify(config) !== baseline) ||
-    Object.keys(draft).length > 0;
+    Object.keys(draft).length > 0 || !!injectorDraft;
   const locked = busy || !!review;
   const live = useRef({ dirty, locked });
   live.current = { dirty, locked };
@@ -286,7 +290,7 @@ const installationIdentity = (config: RecordData | null | undefined) => {
     return () => { disposed = true; window.clearInterval(timer); };
   }, [startup?.active, client]);
   const navigate = (target: string) => {
-    if (locked || Object.keys(draft).length) {
+    if (locked || Object.keys(draft).length || injectorDraft) {
       setError(
         "Finish or reset the current workspace draft before navigating.",
       );
@@ -390,6 +394,7 @@ const installationIdentity = (config: RecordData | null | undefined) => {
             garages_repair: "garages",
             content_settings: "settings",
             save_content_preferences: "settings",
+            traffic_population_save: "injector",
             package_install: "package",
             assistant_save: "assistant",
           } as Record<string, string>
@@ -401,6 +406,7 @@ const installationIdentity = (config: RecordData | null | undefined) => {
             delete next[savedDraft + "_base"];
             return next;
           });
+        if (result.action === "traffic_population_save") { setInjectorDraft(null); setInjectorRevision(value => value + 1); }
       },
     );
     activeAction.current = "";
@@ -460,6 +466,8 @@ const installationIdentity = (config: RecordData | null | undefined) => {
     if (locked || flight.current || !baseline) return;
     const restoredConfig = JSON.parse(baseline);
     setDraft({});
+    setInjectorDraft(null);
+    setInjectorRevision((value) => value + 1);
     setConfig(restoredConfig);
     // Inspection data belongs to the previous draft's installation. Drop it
     // before reloading so stale lifecycle actions stay hidden even on failure.
@@ -474,6 +482,9 @@ const installationIdentity = (config: RecordData | null | undefined) => {
   );
   const selectedTopic =
     topics.find((topic: RecordData) => topic.key === selected) ?? topics[0];
+  const currentInstallation = installationIdentity(config);
+  const inspectionMatchesDraft = currentInstallation !== null &&
+    currentInstallation === installationIdentity(session.config as RecordData | undefined);
   const configSection = (name: string, filter?: (key: string) => boolean) => (
     <fieldset key={name}>
       <legend>{title(name)}</legend>
@@ -485,9 +496,6 @@ const installationIdentity = (config: RecordData | null | undefined) => {
       />
     </fieldset>
   );
-  const currentInstallation = installationIdentity(config);
-  const inspectionMatchesDraft = currentInstallation !== null &&
-    currentInstallation === installationIdentity(session.config as RecordData | undefined);
   return (
     <div className={`launcher ${collapsed ? "collapsed" : ""}`}>
       <header>
@@ -496,7 +504,7 @@ const installationIdentity = (config: RecordData | null | undefined) => {
           <div>
             <strong>ALLIN1</strong>
             <small>
-              Story Mode Launcher · {catalog.desktop_version ?? "0.6.5"}
+              Story Mode Launcher · {catalog.desktop_version ?? "0.6.6"}
             </small>
           </div>
         </div>
@@ -532,7 +540,7 @@ const installationIdentity = (config: RecordData | null | undefined) => {
             <button
               onClick={() => navigate(key)}
               aria-label={label}
-              disabled={locked || Object.keys(draft).length > 0}
+              disabled={locked || Object.keys(draft).length > 0 || !!injectorDraft}
               aria-current={module === key ? "page" : undefined}
               title={`${label} (Ctrl+${index + 1})`}
             >
@@ -557,7 +565,7 @@ const installationIdentity = (config: RecordData | null | undefined) => {
             <p className="page-description">{descriptions[module]}</p>
           </div>
           <div className="toolbar">
-            <button disabled={locked || Object.keys(draft).length > 0} onClick={() => void inspect()}>
+            <button disabled={locked || Object.keys(draft).length > 0 || !!injectorDraft} onClick={() => void inspect()}>
               Refresh
             </button>
             {dirty && (
@@ -886,7 +894,29 @@ const installationIdentity = (config: RecordData | null | undefined) => {
         )}
         {module === "input" && config && configSection("script", inputField)}
         {module === "content" && (
-          <div className="split">
+          <>
+            <div className="content-tabs" role="tablist" aria-label="Content sections">
+              {(["existing", "traffic"] as const).map((tab) => {
+                const labels = { existing: "Existing content", traffic: "Traffic" };
+                return <button
+                  key={tab}
+                  type="button"
+                  role="tab"
+                  aria-selected={contentTab === tab}
+                  disabled={locked || !!injectorDraft || Object.keys(draft).length > 0}
+                  onClick={() => setContentTab(tab)}
+                >{labels[tab]}</button>;
+              })}
+            </div>
+            {contentTab === "traffic" ? <RuntimeInjectors
+              key={injectorRevision}
+              client={client}
+              config={config}
+              draft={injectorDraft}
+              change={setInjectorDraft}
+              locked={locked}
+              review={(action, values) => beginReview(action, values)}
+            /> : <div className="split">
             <div className="list" aria-label="Content packages">
               {content.map((item) => (
                 <button
@@ -957,7 +987,8 @@ const installationIdentity = (config: RecordData | null | undefined) => {
                   </div>
                 ))}
             </section>
-          </div>
+            </div>}
+          </>
         )}
         {module === "mods" && (
           <>
@@ -1200,7 +1231,7 @@ const installationIdentity = (config: RecordData | null | undefined) => {
               <h2>{launcherRelease.update_available ? "Update available" : "No newer Launcher release"}</h2>
               <p>Current {catalog.desktop_version} · Latest {launcherRelease.version}</p>
               <p>{launcherRelease.name}</p>
-              <p>0.6.5 uses unsigned manual downloads. Review the release notes, build identity and checksums before installing. This action opens the official release page; it does not install or roll back anything.</p>
+              <p>0.6.6 uses unsigned manual downloads. Review the release notes, build identity and checksums before installing. This action opens the official release page; it does not install or roll back anything.</p>
               <button disabled={locked} onClick={() => void run("open_launcher_release", {}, () => setNotice("Official Launcher release page opened"))}>Open official release page</button>
             </section>}
             <pre className="activity" aria-label="Activity log">

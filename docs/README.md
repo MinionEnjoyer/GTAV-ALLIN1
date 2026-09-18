@@ -1,6 +1,6 @@
 # ALLIN1 Launcher documentation
 
-**0.6.5 — unsigned portable release; broader qualification remains incomplete.**
+**0.6.6 — unsigned portable release; broader qualification remains incomplete.**
 This is a curated reading path; the [catalog](catalog.json) lists and classifies
 all maintained project documents. Historical evidence qualifies only its named
 source/session, not current binaries; architecture proposals are not acceptance results.
@@ -8,8 +8,9 @@ source/session, not current binaries; architecture proposals are not acceptance 
 ## Current guides
 
 - [Launcher manual](launcher-guide.md): install, configure, launch and recover.
+- [Traffic population editor](content-injectors.md): configurable authorized vehicle population.
 - [GBAY preview downloads and caching](gbay-default-previews.md).
-- [0.6.5 release guide](release-0.6.5.md): qualification limits and upgrades; [changelog](../RELEASE_NOTES.md).
+- [0.6.6 release guide](release-0.6.6.md): qualification limits and upgrades; [changelog](../RELEASE_NOTES.md).
 - [Development and validation](development.md): canonical setup and checks; [desktop internals](../desktop/README.md).
 
 ## Contracts and references
@@ -34,7 +35,7 @@ Integration references retain separate release ownership:
 
 ## Historical evidence — not current instructions
 
-- [0.6.4 release guide](release-0.6.4.md) and [earlier release notes](archive/release-notes-before-0.6.4.md)
+- [0.6.4](release-0.6.4.md) and [0.6.5](release-0.6.5.md) release guides, plus [earlier release notes](archive/release-notes-before-0.6.4.md)
 - September 6 vehicle [audit](audits/vehicle-support-20260906.md) and [model matrix](audits/vehicle-support-matrix-20260906.md)
 - [0.6.4 React architecture-review checkpoint](architecture-review-react-0.6.4.md)
 - [Enhanced smoke RPF port](enhanced-smoke-rpf-port.md)

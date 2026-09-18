@@ -1599,9 +1599,17 @@ namespace ALLIN1
                     rounds == 0;
             }
             else if (kind == "component")
-                applied = _shop.ExecuteWeaponComponentPurchase(
-                    weapon, option.ComponentHash,
-                    option.AttachmentPoint, option.Price);
+            {
+                GbayWeaponComponentPurchaseReadiness readiness = _shop
+                    .GetWorkbenchComponentPurchaseReadiness(
+                        weapon, option.ComponentHash);
+                if (readiness != GbayWeaponComponentPurchaseReadiness.Ready)
+                    return ComponentPurchasePreviewFailure(readiness);
+                applied = GbayWeaponPreviewPolicy.RunComponentPurchaseTransaction(
+                    readiness, () => _shop.ExecuteWeaponComponentPurchase(
+                        weapon, option.ComponentHash,
+                        option.AttachmentPoint, option.Price));
+            }
             else if (kind == "component_remove")
                 applied = _shop.ExecuteWeaponComponentRemoval(
                     weapon, option.ComponentHash, option.AttachmentPoint);
@@ -1632,7 +1640,23 @@ namespace ALLIN1
                     : kind == "component_remove" ? "Attachment unequipped; ownership retained."
                     : IsCustomizationOptionOwned(weapon, option)
                         ? "Weapon option equipped."
-                    : "Weapon option purchased and equipped.");
+                        : "Weapon option purchased and equipped.");
+        }
+
+        private static Allin1GbayActionResult ComponentPurchasePreviewFailure(
+            GbayWeaponComponentPurchaseReadiness readiness)
+        {
+            if (readiness == GbayWeaponComponentPurchaseReadiness.PreviewPending)
+                return Allin1GbayActionResult.Failure("preview_pending",
+                    "The attachment model is still loading. Select it again when its preview appears.");
+            if (readiness == GbayWeaponComponentPurchaseReadiness.PreviewRejected)
+                return Allin1GbayActionResult.Failure("preview_rejected",
+                    "GTA could not load that attachment model, so it was not purchased or equipped.");
+            if (readiness == GbayWeaponComponentPurchaseReadiness.PreviewNotActive)
+                return Allin1GbayActionResult.Failure("preview_unavailable",
+                    "Open the weapon workbench before purchasing an attachment.");
+            return Allin1GbayActionResult.Failure("preview_unconfirmed",
+                "Preview this attachment before purchasing it.");
         }
 
         public Allin1GearCatalogPage BrowseGear(Allin1CatalogRequest request)
@@ -1690,6 +1714,9 @@ namespace ALLIN1
             if (!StoryReady(out string storyFailure))
                 return Allin1GbayActionResult.Failure(
                     "story_unavailable", storyFailure);
+            if (!GbayShop.IsGearPlayerReady(Game.Player.Character))
+                return Allin1GbayActionResult.Failure("gear_unavailable",
+                    "Gear is unavailable while the player is changing.");
             if (!_shop.OnlineContentEnabled)
                 return Allin1GbayActionResult.Failure(
                     "content_unavailable",
@@ -1719,12 +1746,21 @@ namespace ALLIN1
                     return Allin1GbayActionResult.Failure(
                         "insufficient_funds",
                         "You no longer have enough money.");
-                _shop.ExecuteGiveGear(gearId, price);
-                return _shop.IsGearOwned(gearId)
-                    ? Allin1GbayActionResult.Success(
-                        "gear_purchased", "Gear purchase completed.")
+                bool completed = _shop.GiveGearValidated(gearId, price);
+                if (gearId == GearList.ARMOR_JUGGERNAUT &&
+                    GbayShop.JuggernautPending &&
+                    _shop.GearActionCode == "gear_pending")
+                    return Allin1GbayActionResult.Failure("gear_pending",
+                        "Preparing armor; no charge until equipped.");
+                return completed
+                    ? Allin1GbayActionResult.Success(_shop.GearActionCode,
+                        _shop.GearActionMessage)
                     : Allin1GbayActionResult.Failure(
-                        "purchase_rejected", "GTA did not confirm the gear purchase.");
+                        string.IsNullOrWhiteSpace(_shop.GearActionCode)
+                            ? "purchase_rejected" : _shop.GearActionCode,
+                        string.IsNullOrWhiteSpace(_shop.GearActionMessage)
+                            ? "GTA did not confirm the gear purchase."
+                            : _shop.GearActionMessage);
             }
             if (operation == "equip")
             {
@@ -1734,24 +1770,42 @@ namespace ALLIN1
                 if (equipped)
                     return Allin1GbayActionResult.Failure(
                         "already_equipped", "That gear is already equipped.");
-                _shop.ExecuteEquipGear(gearId);
-                return _shop.IsGearEquipped(gearId)
-                    ? Allin1GbayActionResult.Success(
-                        "gear_equipped", "Gear equipped.")
+                bool completed = _shop.EquipGearValidated(gearId);
+                if (gearId == GearList.ARMOR_JUGGERNAUT &&
+                    GbayShop.JuggernautPending &&
+                    _shop.GearActionCode == "gear_pending")
+                    return Allin1GbayActionResult.Failure("gear_pending",
+                        "Preparing armor; no charge until equipped.");
+                return completed
+                    ? Allin1GbayActionResult.Success(_shop.GearActionCode,
+                        _shop.GearActionMessage)
                     : Allin1GbayActionResult.Failure(
-                        "equip_rejected", "GTA did not confirm the gear change.");
+                        string.IsNullOrWhiteSpace(_shop.GearActionCode)
+                            ? "equip_rejected" : _shop.GearActionCode,
+                        string.IsNullOrWhiteSpace(_shop.GearActionMessage)
+                            ? "GTA did not confirm the gear change."
+                            : _shop.GearActionMessage);
             }
             if (operation == "unequip")
             {
                 if (!equipped)
                     return Allin1GbayActionResult.Failure(
                         "not_equipped", "That gear is not equipped.");
-                _shop.ExecuteUnequipGear(gearId);
-                return !_shop.IsGearEquipped(gearId)
-                    ? Allin1GbayActionResult.Success(
-                        "gear_unequipped", "Gear unequipped.")
+                bool completed = _shop.UnequipGearValidated(gearId);
+                if (gearId == GearList.ARMOR_JUGGERNAUT &&
+                    GbayShop.JuggernautPending &&
+                    _shop.GearActionCode == "gear_pending")
+                    return Allin1GbayActionResult.Failure("gear_pending",
+                        "Preparing armor; no charge until equipped.");
+                return completed
+                    ? Allin1GbayActionResult.Success(_shop.GearActionCode,
+                        _shop.GearActionMessage)
                     : Allin1GbayActionResult.Failure(
-                        "unequip_rejected", "GTA did not confirm the gear change.");
+                        string.IsNullOrWhiteSpace(_shop.GearActionCode)
+                            ? "unequip_rejected" : _shop.GearActionCode,
+                        string.IsNullOrWhiteSpace(_shop.GearActionMessage)
+                            ? "GTA did not confirm the gear change."
+                            : _shop.GearActionMessage);
             }
             return Allin1GbayActionResult.Failure(
                 "invalid_operation", "Unknown gear operation.");

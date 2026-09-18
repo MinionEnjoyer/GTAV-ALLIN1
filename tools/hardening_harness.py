@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 import xml.etree.ElementTree as ET
@@ -341,7 +342,11 @@ def run(options, *, execute=run_command) -> tuple[int, Path, dict]:
     parent = no_links(ROOT / "build" / "hh"); parent.mkdir(parents=True, exist_ok=True); no_links(parent)
     output = no_links(parent / run_id)
     output.mkdir(exist_ok=False)
-    scratch = no_links(ROOT / "build" / "hp" / run_id)
+    # Keep the pytest base path genuinely short on Windows. Deep checkout names
+    # plus receipt-owned backup paths can otherwise exceed the legacy Win32
+    # path limit and turn a valid filesystem test into a harness-only failure.
+    checkout_id = hashlib.sha256(str(ROOT.resolve()).encode("utf-8")).hexdigest()[:8]
+    scratch = no_links(Path(tempfile.gettempdir()) / "a1hp" / f"{checkout_id}-{run_id}")
     try:
         scratch.mkdir(parents=True, exist_ok=False)
         scratch_error = None

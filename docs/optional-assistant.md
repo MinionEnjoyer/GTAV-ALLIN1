@@ -1,6 +1,6 @@
 # Optional SDK assistant
 
-> Interface scope for unreleased 0.6.5: the React Launcher's SDK Manager includes
+> Interface scope for 0.6.6: the React Launcher's SDK Manager includes
 > independent assistant configuration, hardware assessment, reviewed model
 > download, pack import and removal. The standalone SDK separately configures an
 > existing runtime/model or API. Neither configuration nor installation starts

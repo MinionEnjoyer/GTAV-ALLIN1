@@ -163,14 +163,14 @@ the weapon candidate is in the SDK's
 ### Enhanced installation — September 4, 2026
 
 Installed hosted Suppressors Enhanced 1.3.0 and Vector 0.5.0 into
-`D:/Programs/Steam/steamapps/common/Grand Theft Auto V Enhanced` with GTA closed.
+`<GTA Enhanced root>` with GTA closed.
 The narrow update replaced the suppressor DLL/content manifest and Vector
 content manifest/profile, refreshed their receipts while preserving uninstall
 backups, and rebuilt the derived registry. Existing Vector DLC, GBAY catalog,
 heat assets, settings and saves were not rewritten.
 
 Backup, complete repair packages and verification evidence:
-`D:/ALLIN1-SDK-Backups/suppressor-json-discovery/20260904_100121_078680`.
+`<backup root>/suppressor-json-discovery/20260904_100121_078680`.
 Local installation record: `.work/suppressor-json-config-20260904/installed.json`.
 The actual installed DLL's discovery loader was invoked read-only against the
 installed receipts and enabled registry: **one custom profile, zero diagnostics**,

@@ -13,6 +13,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using GTA;
 using GTA.Math;
@@ -137,6 +138,7 @@ namespace ALLIN1
         {
             Eligible,
             TrafficDisabled,
+            PopulationConfigDisabled,
             MissingModel,
             UnsupportedCategory,
             ModelUnavailable,
@@ -184,12 +186,18 @@ namespace ALLIN1
         private int _sourceChangeSkipCount;
         private int _lastTrafficWorkTime;
         private int _lastActivityDiagnosticTime;
+        private int _lastPopulationConfigurationRefresh = int.MinValue;
         private int _drivenAttemptsSinceDiagnostic;
         private int _drivenSuccessesSinceDiagnostic;
         private int _replacementScansSinceDiagnostic;
         private bool _preferReplacementWork;
         private bool _initialized;
         private bool _enabled = true;
+        private bool _populationDocumentPresent;
+        private bool _populationDocumentValid = true;
+        private TrafficPopulationConfiguration _populationConfiguration;
+        private string _populationConfigurationFingerprint = "";
+        private float _legacyReplacementChance;
         private string _lastSuppressionReason = "";
         private const int PLAYER_INTERACTION_PROTECTION_MS = 120000;
         private const int MAX_SCAN_CANDIDATES = 24;
@@ -207,6 +215,7 @@ namespace ALLIN1
         private const int TRAFFIC_WORK_INTERVAL_MS = 15000;
         private const int THROTTLED_TRAFFIC_WORK_INTERVAL_MS = 30000;
         private const int ACTIVITY_DIAGNOSTIC_INTERVAL_MS = 60000;
+        private const int POPULATION_CONFIGURATION_REFRESH_MS = 5000;
 
         internal enum TrafficWorkKind
         {
@@ -277,6 +286,8 @@ namespace ALLIN1
                 return;
             }
             LoadSettings();
+            _legacyReplacementChance = _replaceChance;
+            RefreshPopulationConfiguration();
             if (!ShouldAttachRuntimeHandlers(packageEnabled, _enabled))
             {
                 PauseReason = "traffic disabled in settings";
@@ -295,6 +306,12 @@ namespace ALLIN1
             bool packageEnabled, bool trafficEnabled)
         {
             return packageEnabled && trafficEnabled;
+        }
+
+        internal static bool ShouldPauseForPopulationConfiguration(
+            bool present, bool valid, bool enabled)
+        {
+            return present && (!valid || !enabled);
         }
 
         private void LoadSettings()
@@ -333,6 +350,69 @@ namespace ALLIN1
             catch (Exception ex) { ClientLog.Error("Traffic", "settings_load_failed", ex); }
         }
 
+        private bool RefreshPopulationConfiguration()
+        {
+            bool previousPresent = _populationDocumentPresent;
+            bool previousValid = _populationDocumentValid;
+            string previousFingerprint = _populationConfigurationFingerprint;
+            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                ".allin1", "traffic-population.json");
+            TrafficPopulationConfiguration configuration;
+            string error;
+            _populationDocumentValid = true;
+            _populationDocumentPresent = false;
+            _populationConfiguration = null;
+            _replaceChance = _legacyReplacementChance;
+            if (!TrafficPopulationPolicy.TryLoad(path, out configuration,
+                    out _populationDocumentPresent, out error))
+            {
+                _populationDocumentValid = false;
+                _populationConfigurationFingerprint = "invalid:" + error;
+            }
+            else if (_populationDocumentPresent)
+            {
+                _populationConfiguration = configuration;
+                _populationConfigurationFingerprint = PopulationConfigurationFingerprint(
+                    configuration);
+                if (configuration.Enabled)
+                    _replaceChance = (float)configuration.ReplacementChance;
+            }
+            else _populationConfigurationFingerprint = "absent";
+            bool changed = previousPresent != _populationDocumentPresent ||
+                previousValid != _populationDocumentValid ||
+                !string.Equals(previousFingerprint,
+                    _populationConfigurationFingerprint, StringComparison.Ordinal);
+            if (!changed) return false;
+            if (!_populationDocumentValid)
+                ClientLog.Warn("Traffic", "population_configuration_rejected",
+                    new Dictionary<string, object> { { "reason", error } });
+            else if (!_populationDocumentPresent)
+                ClientLog.Info("Traffic", "population_configuration_absent");
+            else if (!_populationConfiguration.Enabled)
+                ClientLog.Info("Traffic", "population_configuration_disabled");
+            else ClientLog.Info("Traffic", "population_configuration_loaded",
+                new Dictionary<string, object> {
+                    { "replacement_chance", _replaceChance },
+                    { "package_entries", _populationConfiguration.Entries.Count },
+                });
+            return true;
+        }
+
+        private static string PopulationConfigurationFingerprint(
+            TrafficPopulationConfiguration configuration)
+        {
+            var fields = new List<string> {
+                configuration.Enabled ? "1" : "0",
+                configuration.ReplacementChance.ToString(
+                    CultureInfo.InvariantCulture),
+            };
+            foreach (TrafficPopulationSelection entry in configuration.Entries)
+                fields.Add(entry.PackageId + "/" + entry.Model + "/" +
+                    (entry.Enabled ? "1" : "0") + "/" + entry.Weight.ToString(
+                        CultureInfo.InvariantCulture));
+            return string.Join("|", fields);
+        }
+
         // ------------------------------------------------------------------ //
         //  Logging                                                            //
         // ------------------------------------------------------------------ //
@@ -351,9 +431,28 @@ namespace ALLIN1
             UpdatePerformanceSample();
             ManagedVehicleCount = _spawned.Count;
 
+            int configurationNow = Game.GameTime;
+            if (unchecked((uint)(configurationNow -
+                    _lastPopulationConfigurationRefresh)) >=
+                (uint)POPULATION_CONFIGURATION_REFRESH_MS)
+            {
+                _lastPopulationConfigurationRefresh = configurationNow;
+                if (RefreshPopulationConfiguration()) _initialized = false;
+            }
+
             if (!_enabled)
             {
                 PauseReason = "disabled in settings";
+                return;
+            }
+            if (ShouldPauseForPopulationConfiguration(
+                    _populationDocumentPresent, _populationDocumentValid,
+                    _populationConfiguration != null && _populationConfiguration.Enabled))
+            {
+                PauseReason = !_populationDocumentValid
+                    ? "traffic population configuration invalid"
+                    : "traffic population disabled";
+                if (_spawned.Count > 0) Cleanup(true);
                 return;
             }
             if (ClientWatchdog.SafeMode)
@@ -604,6 +703,8 @@ namespace ALLIN1
             {
                 case PackageTrafficCandidateDecision.TrafficDisabled:
                     return "traffic_disabled";
+                case PackageTrafficCandidateDecision.PopulationConfigDisabled:
+                    return "population_configuration_disabled";
                 case PackageTrafficCandidateDecision.MissingModel:
                     return "missing_model";
                 case PackageTrafficCandidateDecision.UnsupportedCategory:
@@ -716,6 +817,18 @@ namespace ALLIN1
                             PackageTrafficCandidateDecision.TrafficDisabled);
                         continue;
                     }
+                    double configuredWeight = 0d;
+                    if (_populationDocumentPresent &&
+                        !_populationConfiguration.TryGetEnabledWeight(
+                            entry.PackageId, modelName, out configuredWeight))
+                    {
+                        // A launcher-side document narrows already-authorized
+                        // package entries; it cannot promote a new record.
+                        LogPackageTrafficRejection(
+                            entry, modelName,
+                            PackageTrafficCandidateDecision.PopulationConfigDisabled);
+                        continue;
+                    }
                     if (string.IsNullOrWhiteSpace(modelName))
                     {
                         LogPackageTrafficRejection(
@@ -766,8 +879,9 @@ namespace ALLIN1
                         continue;
                     }
 
-                    double weight = GetPackageTrafficWeight(
-                        entry.TrafficWeight);
+                    double weight = _populationDocumentPresent
+                        ? configuredWeight : GetPackageTrafficWeight(
+                            entry.TrafficWeight);
                     List<string> classPool = _classPools[declaredClass];
                     classPool.Add(modelName);
                     _validModels.Add(modelName);

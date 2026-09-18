@@ -450,8 +450,19 @@ class ModManifest:
                 if not _SHA256_PATTERN.fullmatch(checksum):
                     raise ValueError(f"Invalid SHA-256 for {source}")
             original_checksum = raw_entry.get("original_sha256")
-            if original_checksum is not None and schema_version not in (3, 4):
-                raise ValueError("Original RPF checksums require schema_version = 3 or 4")
+            if original_checksum is not None:
+                # Schema 2 packages may carry extension dependencies, so allow
+                # them to opt into the same exact-member precondition as the
+                # replacement-only schemas.  The pair is indivisible: an
+                # original hash without a hash-bound replacement would leave
+                # receipt ownership ambiguous.
+                if schema_version not in (2, 3, 4):
+                    raise ValueError("Original RPF checksums require schema_version = 2, 3, or 4")
+                original_checksum = str(original_checksum).strip().lower()
+                if not _SHA256_PATTERN.fullmatch(original_checksum):
+                    raise ValueError(f"Invalid original SHA-256 for {source}")
+                if checksum is None:
+                    raise ValueError("Original RPF checksums require a replacement SHA-256")
             if "!" in entry.as_posix() and schema_version != 4:
                 raise ValueError("Nested RPF targets require schema_version = 4")
             rpf_entries.append(RpfEntryPatch(source, archive, entry, checksum, original_checksum))

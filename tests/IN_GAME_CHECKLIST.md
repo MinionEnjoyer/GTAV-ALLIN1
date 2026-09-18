@@ -1,8 +1,8 @@
 # GTA runtime smoke checklist
 
-## Current 0.6.5 acceptance
+## Current 0.6.6 acceptance
 
-0.6.5 is an owner-approved unsigned portable release, but final-build live
+0.6.6 is an owner-approved unsigned portable release, but final-build live
 acceptance remains unverified. Live tests require explicit approval, a newly
 identified candidate and an isolated/recoverable test setup. This document does
 not launch GTA or approve writes. Run Legacy and Enhanced separately against the

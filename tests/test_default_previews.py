@@ -129,9 +129,10 @@ def test_changed_manifest_requires_new_review(service, pack):
 
 
 def test_bundled_manifest_is_packaged_resource():
-    from tools.launcher_desktop_candidate import resource_inputs
+    from allin1.release import collect_public_files
     root = Path(__file__).resolve().parents[1]
-    assert "data/default_previews.json" in resource_inputs(root)
+    public = {path.relative_to(root).as_posix() for path in collect_public_files(root, require_toolchain=False)}
+    assert "data/default_previews.json" in public
     assert p.plan(root)["count"] == 1056
 
 

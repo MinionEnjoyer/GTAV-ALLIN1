@@ -527,6 +527,13 @@ input[type="range"] { padding: 0; border: 0; accent-color: #319f69; background: 
 .empty-state strong { color: var(--text); font-size: 14px; }
 .empty-state p { margin: 8px 0 0; font-size: 13px; }
 .split { overflow: hidden; grid-template-columns: minmax(235px,.8fr) minmax(300px,1.2fr); }
+.content-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.content-tabs button[aria-selected="true"] { border-color: #319f69; background: var(--accent-soft); }
+.injector { max-width: 980px; }
+.injector-boundary { color: var(--muted); font-size: 13px; }
+.injector-entry { display: grid; gap: 8px; padding: 12px 0; border-top: 1px solid var(--line); }
+.injector-entry:first-of-type { border-top: 0; }
+.injector-entry small { color: var(--muted); }
 .split > .list { max-height: 70vh; overflow: auto; }
 .list button { padding: 12px; }
 .inventory-row { font-size: 13px; }
