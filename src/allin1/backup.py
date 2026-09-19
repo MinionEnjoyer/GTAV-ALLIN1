@@ -139,7 +139,6 @@ def restore_backup(gta_path: Path, backup_dir: Path | None = None) -> list[Path]
     # earlier target restored while the requested backup is only half applied.
     destinations: list[Path] = []
     for relative in backup_files:
-        destination = no_links(game_root / relative)
         parent = game_root
         for segment in Path(relative).parts[:-1]:
             parent = no_links(parent / segment)
@@ -147,6 +146,10 @@ def restore_backup(gta_path: Path, backup_dir: Path | None = None) -> list[Path]
                     not filesystem_path(parent).is_dir()):
                 raise ValueError(
                     f"Restore destination parent is not a directory: {parent}")
+        # Do this only after the parent walk.  On POSIX, lstat() of a child
+        # beneath a file raises NotADirectoryError rather than FileNotFoundError;
+        # the preflight above turns that into the intended no-write rejection.
+        destination = no_links(game_root / relative)
         if (filesystem_path(destination).exists() and
                 not filesystem_path(destination).is_file()):
             raise ValueError(

@@ -308,10 +308,13 @@ def profile(options, tools: dict[str, str | None], output: Path, execute=run_com
     desktop = ROOT / "desktop"
     if require("python", "python"):
         junit, coverage = output / "python.xml", output / "coverage.json"
-        commands["python"], layers["python"] = layer("python", [python, "-m", "pytest", "tests", "-m", "not (windows_integration or packaged_integration)", "-q", "-p", "no:cacheprovider", "--basetemp", str(scratch / "python"), "--cov=allin1", f"--cov-report=json:{coverage}", "--cov-fail-under=91", f"--junitxml={junit}"], ROOT, output, env, execute,
+        excluded = ["windows_integration", "packaged_integration"]
+        if not getattr(options, "game_fixtures", False):
+            excluded.append("game_fixtures")
+        expression = "not (" + " or ".join(excluded) + ")"
+        commands["python"], layers["python"] = layer("python", [python, "-m", "pytest", "tests", "-m", expression, "-q", "-p", "no:cacheprovider", "--basetemp", str(scratch / "python"), "--cov=allin1", f"--cov-report=json:{coverage}", "--cov-fail-under=91", f"--junitxml={junit}"], ROOT, output, env, execute,
             lambda _c: {**validate_python_hardening(junit), **validate_coverage(coverage)})
-        layers["python"]["selection"] = {"expression": "not (windows_integration or packaged_integration)",
-                                              "excluded": ["windows_integration", "packaged_integration"]}
+        layers["python"]["selection"] = {"expression": expression, "excluded": excluded}
     if require("pnpm", "react"):
         commands["react-build"], build = layer("react-build", [pnpm, "build"], desktop, output, env, execute)
         report = output / "vitest.json"
@@ -442,6 +445,8 @@ def run(options, *, execute=run_command) -> tuple[int, Path, dict]:
                else "INCOMPLETE" if "FAIL" not in statuses and "INCOMPLETE" in statuses
                else "FAIL")
     unrun = {"packaged_release": "NOT RUN", "packaged_integration": "NOT TESTED", "native_installer_lifecycle": "NOT RUN", "live_game": "NOT RUN", "installer": "NOT RUN"}
+    if not getattr(options, "game_fixtures", False):
+        unrun["game_fixtures"] = "NOT TESTED (requires local game captures; opt in with --game-fixtures)"
     if not options.real_tools:
         unrun.update(windows_integration="NOT TESTED", rpf_key_context="NOT TESTED")
     if not IS_WINDOWS:
@@ -460,6 +465,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-id")
     parser.add_argument("--real-tools", action="store_true", help="Opt in to Windows integration and RpfPatcher key-context tests.")
+    parser.add_argument("--game-fixtures", action="store_true", help="Include regressions requiring local game captures; missing fixtures remain incomplete.")
     parser.add_argument("--python", default=sys.executable); parser.add_argument("--pnpm", default="pnpm"); parser.add_argument("--cargo", default="cargo")
     parser.add_argument("--dotnet", default="dotnet"); parser.add_argument("--cmake", default="cmake"); parser.add_argument("--ctest", default="ctest")
     options = parser.parse_args()

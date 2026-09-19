@@ -37,6 +37,7 @@ def test_fresh_short_evidence_directory_and_no_overwrite(tmp_path, monkeypatch):
     assert code == 0 and output == tmp_path / "build" / "hh" / "fresh-run"
     assert (output / "summary.json").is_file()
     assert summary["unrun"]["live_game"] == "NOT RUN"
+    assert "--game-fixtures" in summary["unrun"]["game_fixtures"]
     with pytest.raises(FileExistsError):
         harness.run(options)
 
@@ -77,6 +78,22 @@ def test_command_failure_is_recorded_while_independent_layers_continue(tmp_path,
     assert layers["python"]["status"] == "FAIL"
     assert "documentation" in commands and "retirement" in commands
     assert "rust-native" in commands
+
+
+@pytest.mark.parametrize("include", [False, True])
+def test_game_capture_scope_is_explicit_and_missing_opt_in_fixtures_remain_incomplete(tmp_path, include):
+    def runner(argv, cwd, output, name, env):
+        if name == "python":
+            (output / "python.xml").write_text('<testsuite tests="1"><testcase name="capture"><skipped message="capture absent"/></testcase></testsuite>')
+            (output / "coverage.json").write_text('{"totals":{"percent_covered":92}}')
+        return fake_command(argv, cwd, output, name, env)
+    tools = {name: None for name in ("python", "pnpm", "cargo", "dotnet", "cmake", "ctest")}
+    tools["python"] = "python"
+    commands, layers = harness.profile(SimpleNamespace(real_tools=False, game_fixtures=include), tools, tmp_path, runner)
+    selection = layers["python"]["selection"]
+    assert ("game_fixtures" in selection["excluded"]) is not include
+    assert commands["python"]["argv"][5] == selection["expression"]
+    assert layers["python"]["status"] == "INCOMPLETE"
 
 
 @pytest.mark.parametrize("payload", [b"{}", b'{"totals":{"percent_covered":90}}', b'{"totals":{"percent_covered":true}}'])

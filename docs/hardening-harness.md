@@ -6,12 +6,18 @@ game. Each run writes fresh evidence to `build/hh/<run-id>/summary.json`; an
 existing run id is refused.
 
 The source profile runs the complete Python suite except opt-in
-`windows_integration` and `packaged_integration` markers, with the 91% coverage
+`windows_integration`, `packaged_integration`, and `game_fixtures` markers, with the 91% coverage
 gate, production TypeScript build, mapped React assertions, Rust tests,
 documentation/retirement audits, and—on Windows—C# TRX plus CMake/CTest map-host
 policy. `--real-tools` also opts into Windows integration and RpfPatcher
 key-context tests. Packaged integration is recorded NOT TESTED, never counted as
 source-profile coverage.
+
+`--game-fixtures` includes regressions that require locally captured game data.
+Without that option they are recorded as NOT TESTED in `unrun`; with it, missing
+captures remain skips and make the run incomplete. Source-only CI never claims
+these captures or live-game behavior were tested. Cross-repository SDK tests use
+the installed SDK checkout rather than assuming a sibling directory name.
 
 Missing prerequisites; failed, missing, empty, or malformed evidence; required
 skips; and source-input drift fail the run. Skipped JUnit/TRX tests are listed

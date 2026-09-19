@@ -68,6 +68,27 @@ def test_bootstrap_integrity(tmp_path, monkeypatch, change):
         with pytest.raises(ValueError): bootstrap.verify(tmp_path)
 
 
+def test_bootstrap_supports_python_310_hashing_and_junction_detection(tmp_path, monkeypatch):
+    payload = tmp_path / "payload.py"
+    content = b"original" * 300_000
+    payload.write_bytes(content)
+    manifest = {'schema_version':1, 'files':{'payload.py':hashlib.sha256(content).hexdigest()}}
+    (tmp_path/'runtime-manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+    monkeypatch.delattr(hashlib, "file_digest", raising=False)
+    monkeypatch.setattr(bootstrap, 'sys', SimpleNamespace(flags=SimpleNamespace(isolated=True), dont_write_bytecode=True))
+
+    bootstrap.verify(tmp_path)
+
+    class LegacyPath:
+        def is_symlink(self):
+            return False
+
+        def lstat(self):
+            return SimpleNamespace(st_file_attributes=0x400)
+
+    assert bootstrap._is_link_or_junction(LegacyPath())
+
+
 @pytest.mark.parametrize('name', ['../outside', 'C:/outside', 'x/../../outside', 'x\\outside'])
 def test_upstream_archive_rejects_unsafe_member_before_extract(tmp_path, name):
     archive = tmp_path/'bad.zip'

@@ -17,10 +17,6 @@ from allin1.mods import ModManifest, open_mod_package
 
 
 FIXTURES = Path(__file__).parent / "contract_fixtures" / "mod_packages"
-SDK_FIXTURES = (
-    Path(__file__).resolve().parents[2]
-    / "ALLIN1-SDK" / "tests" / "contract_fixtures" / "mod_packages"
-)
 
 
 @pytest.mark.parametrize(("folder", "schema"), [("schema_v1", 1), ("schema_v2", 2)])
@@ -31,8 +27,10 @@ def test_shared_schema_contract_fixtures(folder: str, schema: int) -> None:
 
 
 def test_contract_fixture_bytes_match_sdk_copy() -> None:
+    sdk_module = pytest.importorskip("allin1_sdk")
+    SDK_FIXTURES = Path(sdk_module.__file__).resolve().parents[2] / "tests/contract_fixtures/mod_packages"
     if not SDK_FIXTURES.is_dir():
-        pytest.skip("Sibling ALLIN1-SDK checkout is not present")
+        pytest.skip("Installed SDK does not include source contract fixtures")
     local = {
         path.relative_to(FIXTURES): path.read_bytes()
         for path in FIXTURES.rglob("*") if path.is_file()

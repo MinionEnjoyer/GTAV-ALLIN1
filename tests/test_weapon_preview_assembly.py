@@ -91,6 +91,7 @@ def test_metadata_controls_render_object_creation():
     row.find('CreateObject').set('value','invalid')
     with pytest.raises(ValueError,match='CreateObject'):component_preview(row)
 
+@pytest.mark.game_fixtures
 def test_real_regression_previews_have_required_parts():
     import json
     path=Path(__file__).resolve().parents[1]/'build/preview-assembly-20260906/discovery.json'

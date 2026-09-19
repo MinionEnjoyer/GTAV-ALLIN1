@@ -1,4 +1,5 @@
 import json
+import hashlib
 from pathlib import PurePosixPath
 from types import SimpleNamespace
 
@@ -112,3 +113,12 @@ def test_lineage_rejects_oversized_envelopes_and_unreviewed_sources(tmp_path):
                                  files=(SimpleNamespace(source=PurePosixPath("not-in-artifact.bin")),), rpf_entries=())
     with pytest.raises(ValueError, match="outside the SDK artifact inventory"):
         provenance.read(unreviewed, "Enhanced")
+
+
+def test_file_hash_streams_when_python_311_file_digest_is_unavailable(tmp_path, monkeypatch):
+    payload = tmp_path / "payload.bin"
+    content = b"ALLIN1" * 300_000
+    payload.write_bytes(content)
+    monkeypatch.delattr(hashlib, "file_digest", raising=False)
+
+    assert provenance.file_hash(payload) == hashlib.sha256(content).hexdigest()

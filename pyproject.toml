@@ -35,6 +35,7 @@ test = [
 addopts = "--strict-markers --strict-config"
 testpaths = ["tests"]
 markers = [
+    "game_fixtures: requires local, non-distributed game capture fixtures",
     "windows_integration: requires Windows and the real preview packaging tools",
     "packaged_integration: requires explicitly supplied packaged release/archive artifacts",
 ]

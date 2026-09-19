@@ -9,6 +9,26 @@ import json
 import sys
 
 
+def _sha256(stream):
+    """Hash a stream without requiring the Python 3.11 file_digest helper."""
+    file_digest = getattr(hashlib, "file_digest", None)
+    if file_digest is not None:
+        return file_digest(stream, "sha256").hexdigest()
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _is_link_or_junction(path):
+    """Detect links on Python 3.10 too, where Path.is_junction is absent."""
+    info = path.lstat()
+    is_junction = getattr(path, "is_junction", None)
+    return (path.is_symlink()
+            or bool(is_junction and is_junction())
+            or bool(getattr(info, "st_file_attributes", 0) & 0x400))
+
+
 def verify(runtime):
     if not sys.flags.isolated or not sys.dont_write_bytecode:
         raise ValueError("Shared runtime requires isolated, read-only Python flags")
@@ -19,7 +39,7 @@ def verify(runtime):
         raise ValueError("Invalid shared runtime manifest")
     files = {}
     for path in runtime.rglob("*"):
-        if path.is_symlink() or path.is_junction():
+        if _is_link_or_junction(path):
             raise ValueError("Links are not allowed in the shared runtime")
         if path.is_file() and path != manifest_path:
             if path.stat().st_nlink > 1:
@@ -29,14 +49,14 @@ def verify(runtime):
         raise ValueError("Shared runtime files do not exactly match this build")
     for name, path in files.items():
         with path.open("rb") as stream:
-            if hashlib.file_digest(stream, "sha256").hexdigest() != manifest["files"][name]:
+            if _sha256(stream) != manifest["files"][name]:
                 raise ValueError("Shared runtime checksum mismatch: " + name)
 
 
 def main():
     runtime = Path(__file__).absolute().parent
     for path in (runtime, *runtime.parents):
-        if path.is_symlink() or path.is_junction():
+        if _is_link_or_junction(path):
             raise ValueError("Shared runtime cannot be loaded through a link")
     verify(runtime)
     if not Path(sys.executable).samefile(runtime / "python.exe"):

@@ -5,10 +5,7 @@ import pytest
 
 @pytest.mark.parametrize('scale',[.25,1.,8.])
 def test_body_and_decal_keep_authored_relative_scale_and_uvs(tmp_path,monkeypatch,scale):
-    sdk=Path(__file__).resolve().parents[2]/'ALLIN1-SDK/src'
-    if not (sdk/'allin1_sdk/compiled_render.py').is_file():
-        pytest.skip('Optional sibling SDK required for real interchange test')
-    monkeypatch.syspath_prepend(str(sdk))
+    pytest.importorskip('allin1_sdk.compiled_render', reason='Installed SDK required for real interchange test')
     from allin1_sdk.native_assets import NativeModelScene,_ModelGeometry
     from allin1_sdk.compiled_render import export_render_interchange
     uv=((.125,.25),(.875,.25),(.125,.75))

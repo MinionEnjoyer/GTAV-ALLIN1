@@ -13,9 +13,20 @@ from allin1.release_paths import contained, no_links, strict_json, tree_files
 ARTIFACT_FILE = "sdk-artifact.json"
 
 
+def _sha256(stream):
+    """Hash a stream without requiring the Python 3.11 file_digest helper."""
+    file_digest = getattr(hashlib, "file_digest", None)
+    if file_digest is not None:
+        return file_digest(stream, "sha256").hexdigest()
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
 def file_hash(file):
     with no_links(file).open("rb") as stream:
-        return hashlib.file_digest(stream,"sha256").hexdigest()
+        return _sha256(stream)
 
 
 def read(manifest, edition):
