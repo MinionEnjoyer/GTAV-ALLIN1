@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using Newtonsoft.Json.Linq;
 using Xunit;
 
@@ -187,6 +188,14 @@ namespace ALLIN1.Tests
                     log.Record("sample", data); data["speed_mps"] = 99;
                     log.Record("session_ended");
                 }
+                // Dispose gives the bounded writer a chance to drain, but it
+                // intentionally does not block indefinitely on a slow disk.
+                // Wait for the two queued rows rather than racing that thread.
+                Assert.True(SpinWait.SpinUntil(() =>
+                {
+                    try { return File.Exists(path) && File.ReadAllLines(path).Length == 2; }
+                    catch (IOException) { return false; }
+                }, TimeSpan.FromSeconds(5)), "Telemetry writer did not drain its queued rows");
                 var rows = File.ReadAllLines(path).Select(JObject.Parse).ToArray();
                 Assert.Equal(2, rows.Length); Assert.Equal(3, (float)rows[0]["speed_mps"]);
                 Assert.Equal("sample", (string)rows[0]["kind"]); Assert.Equal(1, (int)rows[0]["schema"]);

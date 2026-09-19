@@ -14,9 +14,10 @@ into passes.
 - Launcher/service recovery now handles timeouts, disconnects and uncertain
   writes conservatively: retained drafts require a fresh review and are never
   replayed automatically.
-- Reactor V is pinned to 0.2.6, including its current default-gear catalogue
-  index structure. The released dependency installer accepts approved default
-  and generated asset catalogue indexes.
+- Reactor V is pinned to 0.2.6. Its standalone installer has a known catalogue
+  preservation issue with ALLIN1's default/generated `index.json` files; the
+  source fix requires a subsequent Reactor installer build. Existing 0.2.6
+  downloads are not changed by updating ALLIN1 source.
 - Launcher package handling is aligned with the current SDK package contract,
   including schema-2
   exact-member preconditions for managed package validation.
@@ -24,6 +25,18 @@ into passes.
 Reactor and the SDK keep their own release identities. Install/Repair uses the
 exact Reactor dependency pinned by this Launcher. Dependency verification and
 offline artifact checks do not prove that a component loaded in-game.
+
+## Installer fixes after initial publication
+
+- Batch install/uninstall invoke quoted virtual-environment executables
+  directly, including when the installation path contains spaces, `&` or `!`.
+- Manual game paths are passed as data rather than interpolated into Python
+  source; installation errors identify both editions' executable names.
+- Reactor compatibility failures report the expected and detected SHA-256.
+  Enhanced 0.2.6 supports the qualified Steam `1.0.1158.16` executable; matching
+  version text from another storefront does not establish compatibility.
+
+These source changes require rebuilt downloads to reach packaged installations.
 
 ## Mandatory 0.6.6 full-release milestone
 

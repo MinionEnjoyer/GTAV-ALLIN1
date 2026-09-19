@@ -189,12 +189,22 @@ def _assert_game_closed() -> None:
 
 def _verify_game(root: Path, release: ReactorRelease) -> None:
     executable = _path(root, release.game_executable)
-    if not executable.is_file() or _sha(executable) != release.game_sha256:
+    if not executable.is_file():
+        raise ReactorInstallError(
+            f"Missing {release.game_executable} in the selected GTA V folder: {root}. "
+            "Select the folder containing GTA5_Enhanced.exe (Enhanced) or GTA5.exe (Legacy). "
+            "No files were changed."
+        )
+    actual_sha256 = _sha(executable)
+    if actual_sha256 != release.game_sha256:
         raise ReactorInstallError(
             f"Reactor {TAG} is an edition-specific preview for GTA V {release.edition.title()} "
             f"{release.game_version}. This executable does not match its supported build. "
-            "No files were changed. Update the dependency pin for a newer supported release; "
-            "do not disable its native version gates."
+            f"File: {executable}. Expected SHA-256: {release.game_sha256}. "
+            f"Detected SHA-256: {actual_sha256}. "
+            "Executables from different stores can have the same version number but different hashes. "
+            "No files were changed. Include this message and your game store in a support report; "
+            "a Reactor release supporting this executable is required."
         )
 
 

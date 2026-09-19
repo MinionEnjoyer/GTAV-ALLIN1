@@ -90,8 +90,18 @@ def test_sdk_closure_retains_lazy_dependencies_only(tmp_path):
     assert build.sdk_modules(tmp_path) == ['__init__','compiled_render','helper','native_assets','nested','rpf_tools']
 
 
-def test_shared_resources_do_not_include_legacy_preview_executable():
-    result = candidate.resource_inputs(build.ROOT, shared_runtime=True)
+def test_shared_resources_do_not_include_legacy_preview_executable(tmp_path, monkeypatch):
+    from allin1 import release
+    included = [
+        tmp_path / "tools/RpfPatcher/RpfPatcher.exe",
+        tmp_path / "tools/WeaponPreview/WeaponPreview.exe",
+        tmp_path / "README.md",
+    ]
+    for path in included:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"fixture")
+    monkeypatch.setattr(release, "collect_public_files", lambda *_args, **_kwargs: included)
+    result = candidate.resource_inputs(tmp_path, shared_runtime=True)
     assert 'tools/RpfPatcher/RpfPatcher.exe' in result
     assert not any('WeaponPreview' in name for name in result)
 

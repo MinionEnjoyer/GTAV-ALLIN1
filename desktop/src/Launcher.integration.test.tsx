@@ -35,6 +35,9 @@ const idle = () =>
     { timeout: 5000 },
   );
 async function navigate(name: string) {
+  // Navigation may follow an asynchronous reviewed package operation.  Wait
+  // for that operation before finding the next route's button.
+  await idle();
   await user().click(
     within(screen.getByRole("navigation", { name: "Primary" })).getByRole(
       "button",

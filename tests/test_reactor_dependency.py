@@ -240,6 +240,26 @@ def test_invalid_game_version_fails_before_download(setup, monkeypatch):
     assert not (setup.root / "scripts").exists()
 
 
+def test_game_mismatch_reports_exact_identity_without_changing_files(setup):
+    executable = put(setup.root, "GTA5.exe", "different storefront executable")
+    before = snapshot(setup.root)
+    with pytest.raises(dep.ReactorInstallError) as error:
+        dep._verify_game(setup.root, setup.release)
+    message = str(error.value)
+    assert str(executable) in message
+    assert f"Expected SHA-256: {setup.release.game_sha256}" in message
+    assert f"Detected SHA-256: {dep._sha(executable)}" in message
+    assert "game store" in message
+    assert snapshot(setup.root) == before
+
+
+def test_missing_enhanced_executable_reports_folder_selection(tmp_path):
+    with pytest.raises(dep.ReactorInstallError, match="Missing GTA5_Enhanced.exe") as error:
+        dep._verify_game(tmp_path, dep.RELEASES[True])
+    assert "GTA5.exe (Legacy)" in str(error.value)
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_running_game_fails_before_any_writes(setup, monkeypatch):
     guard = Mock(side_effect=dep.ReactorInstallError("Close GTA V"))
     monkeypatch.setattr(dep, "_assert_game_closed", guard)

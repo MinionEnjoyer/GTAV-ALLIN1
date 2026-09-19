@@ -1,17 +1,18 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal DisableDelayedExpansion
 title GTA V ALLIN1 - Installer
 color 0E
 
 :: Change to script directory
 cd /d "%~dp0"
+setlocal EnableDelayedExpansion
 
 :: Initialize log
-set LOGFILE=allin1.log
-echo. >> %LOGFILE%
-echo ================================================================ >> %LOGFILE%
-echo [%date% %time%] install.bat started >> %LOGFILE%
-echo ================================================================ >> %LOGFILE%
+set "LOGFILE=allin1.log"
+echo. >> "%LOGFILE%"
+echo ================================================================ >> "%LOGFILE%"
+echo [%date% %time%] install.bat started >> "%LOGFILE%"
+echo ================================================================ >> "%LOGFILE%"
 
 echo ============================================================
 echo   GTA V ALLIN1 - Unlock All GTA Online Vehicles in SP
@@ -100,13 +101,14 @@ if not exist ".venv" (
     echo [%date% %time%] Using existing virtual environment >> %LOGFILE%
 )
 
-:: Activate venv and install dependencies
+:: Use the venv executables directly. Calling activate.bat re-parses its path and
+:: breaks when the Windows account or install directory contains an ampersand.
+set "VENV_PYTHON=.venv\Scripts\python.exe"
+set "VENV_ALLIN1=.venv\Scripts\allin1.exe"
 echo.
 echo Installing dependencies...
 echo [%date% %time%] Installing dependencies... >> %LOGFILE%
-call .venv\Scripts\activate.bat
-echo [%date% %time%] Activated venv >> %LOGFILE%
-".venv\Scripts\python.exe" -m pip install -e . --quiet
+"!VENV_PYTHON!" -m pip install -e . --quiet
 if errorlevel 1 (
     echo [ERROR] Failed to install dependencies. See output above.
     echo [%date% %time%] ERROR: pip install failed >> %LOGFILE%
@@ -143,7 +145,7 @@ echo   Installing GTA Online vehicles into Single Player...
 echo ============================================================
 echo.
 echo [%date% %time%] Running allin1 install... >> %LOGFILE%
-allin1 install
+"!VENV_ALLIN1!" install
 if errorlevel 3 goto :dependency_failure
 if errorlevel 1 (
     echo.
@@ -167,8 +169,10 @@ if errorlevel 1 (
     :: Write the path into config.toml and cache file
     echo.
     echo Updating config.toml with your GTA V path...
-    "!PYTHON_EXE!" -c "import re; p=open('config.toml').read(); p=re.sub(r'gta_path\s*=\s*\"[^\"]*\"', 'gta_path = \"' + r'!GTA_PATH!'.replace('\\','\\\\') + '\"', p); open('config.toml','w').write(p)"
-    echo !GTA_PATH!> .gta_path
+    set "ALLIN1_GTA_PATH=!GTA_PATH!"
+    "!PYTHON_EXE!" -c "import os,re; path=os.environ['ALLIN1_GTA_PATH']; p=open('config.toml', encoding='utf-8').read(); escaped=path.replace('\\','\\\\').replace(chr(34),'\\'+chr(34)); replacement='gta_path = '+chr(34)+escaped+chr(34); p=re.sub(r'gta_path\s*=\s*[^\r\n]*', lambda _: replacement, p); open('config.toml','w', encoding='utf-8').write(p)"
+    > ".gta_path" echo(!GTA_PATH!
+    set "ALLIN1_GTA_PATH="
     echo [%date% %time%] Wrote path to config.toml and .gta_path >> %LOGFILE%
 
     echo.
@@ -177,13 +181,13 @@ if errorlevel 1 (
     echo ============================================================
     echo.
     echo [%date% %time%] Retrying allin1 install with manual path... >> %LOGFILE%
-    allin1 install
+    "!VENV_ALLIN1!" install
     if errorlevel 3 goto :dependency_failure
 
     if errorlevel 1 (
         echo.
         echo [ERROR] Installation failed. Check the error above.
-        echo Make sure the path you entered contains GTA5.exe.
+        echo Make sure the path you entered contains GTA5.exe or GTA5_Enhanced.exe.
         echo See allin1.log for details.
         echo [%date% %time%] ERROR: Installation failed after manual path entry >> %LOGFILE%
         echo.

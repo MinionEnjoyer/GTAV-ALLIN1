@@ -40,6 +40,33 @@ GENERATED_ARTIFACTS = (
 )
 
 
+def source_dirty(root: Path, git) -> bool:
+    """Return whether a non-generated source path is dirty.
+
+    ``git status`` includes the bridge binaries rebuilt by the Windows
+    hardening run.  Those outputs are deliberately outside the source
+    snapshot, so they must not make the snapshot change merely by appearing
+    in its bookkeeping field.
+    """
+    records = git("status", "--porcelain", "-z").split("\0")
+    index = 0
+    while index < len(records):
+        record = records[index]
+        index += 1
+        if not record:
+            continue
+        status, name = record[:2], record[3:]
+        # With -z, a rename/copy's source name is the following record.
+        names = [name]
+        if "R" in status or "C" in status:
+            if index < len(records):
+                names.append(records[index])
+                index += 1
+        if any(name not in GENERATED_ARTIFACTS for name in names):
+            return True
+    return False
+
+
 def write_new(path: Path, value: object) -> None:
     with no_links(path).open("x", encoding="utf-8") as stream:
         json.dump(value, stream, indent=2, sort_keys=True, allow_nan=False)
@@ -49,7 +76,10 @@ def write_new(path: Path, value: object) -> None:
 def source_snapshot(root: Path) -> dict:
     """Hash tracked/source inputs while intentionally excluding generated DLLs."""
     def git(*args: str) -> str:
-        return subprocess.check_output(["git", "-C", str(root), *args], text=True, timeout=60).strip()
+        output = subprocess.check_output(["git", "-C", str(root), *args], text=True, timeout=60)
+        # Porcelain -z intentionally preserves leading status columns and
+        # terminal NULs; stripping either corrupts its paths.
+        return output if args == ("status", "--porcelain", "-z") else output.strip()
     names = git("ls-files", "--cached", "--others", "--exclude-standard", "-z").split("\0")
     files: dict[str, object] = {}
     for name in sorted(set(names)):
@@ -80,7 +110,7 @@ def source_snapshot(root: Path) -> dict:
         else:
             files[name] = None
     encoded = json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
-    return {"commit": git("rev-parse", "HEAD"), "dirty": bool(git("status", "--porcelain")),
+    return {"commit": git("rev-parse", "HEAD"), "dirty": source_dirty(root, git),
             "files": files, "sha256": hashlib.sha256(encoded).hexdigest()}
 
 

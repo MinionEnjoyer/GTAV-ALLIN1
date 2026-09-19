@@ -23,9 +23,10 @@ def _bones():
 def _trees(*, second_drawable=False, second_shader=False, include_palette=True, shader_extra="", yft_bones=None,
            textures=("patrick_diffuse", "patrick_normal")):
     bones = _bones()
+    palette = '<Item name="TextureSamplerDiffPal" type="Texture"/>' if include_palette else ""
     shader = f'''<Item><Parameters>
       <Item name="DiffuseSampler" type="Texture"><Name>source_diffuse</Name></Item>
-      {"<Item name=\"TextureSamplerDiffPal\" type=\"Texture\"/>" if include_palette else ""}<Item name="VolumeSampler" type="Texture"/>
+      {palette}<Item name="VolumeSampler" type="Texture"/>
       <Item name="BumpSampler" type="Texture"/><Item name="SpecSampler" type="Texture"/>{shader_extra}
       </Parameters></Item>'''
     drawable = f'''<Item><Name>hash_976FBF04</Name><ShaderGroup><Shaders>{shader}{shader if second_shader else ''}</Shaders></ShaderGroup><Skeleton><Bones>{bones}</Bones></Skeleton></Item>'''

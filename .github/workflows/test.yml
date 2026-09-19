@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: MinionEnjoyer/ALLIN1-SDK
-          ref: aaafb7de4f53182c157687dbd51e6ec86da99dca
+          ref: 0422aae56377bd01b38aa0853c4dc4e8977cc465
           path: ALLIN1-SDK
       - uses: actions/setup-python@v5
         id: python
@@ -62,7 +62,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: MinionEnjoyer/ALLIN1-SDK
-          ref: aaafb7de4f53182c157687dbd51e6ec86da99dca
+          ref: 0422aae56377bd01b38aa0853c4dc4e8977cc465
           path: ALLIN1-SDK
       - uses: actions/setup-python@v5
         id: python
@@ -107,7 +107,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: MinionEnjoyer/ALLIN1-SDK
-          ref: aaafb7de4f53182c157687dbd51e6ec86da99dca
+          ref: 0422aae56377bd01b38aa0853c4dc4e8977cc465
           path: ALLIN1-SDK
       - uses: actions/setup-python@v5
         with:
@@ -138,7 +138,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: MinionEnjoyer/ALLIN1-SDK
-          ref: aaafb7de4f53182c157687dbd51e6ec86da99dca
+          ref: 0422aae56377bd01b38aa0853c4dc4e8977cc465
           path: ALLIN1-SDK
       - uses: actions/setup-python@v5
         with:
@@ -148,6 +148,7 @@ jobs:
         with:
           dotnet-version: "8.0.x"
       - run: python -m pip install -e ".[test]" -e "ALLIN1-SDK"
+      - run: python -m pip install pyinstaller
       - name: Restore real toolchain cache
         uses: actions/cache@v4
         with:
@@ -166,19 +167,31 @@ jobs:
         env:
           ALLIN1_RUN_TOOL_INTEGRATION: "1"
         run: python -m pytest tests/test_windows_toolchain_integration.py tests/test_stock_weapon_previews.py -m windows_integration -v
+      - name: Build required weapon preview worker
+        shell: powershell
+        run: |
+          python tools/build_weapon_preview_worker.py --sdk ALLIN1-SDK
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path tools/WeaponPreview/WeaponPreview.exe)) { throw "Weapon preview worker was not produced" }
       - name: Rebuild packaged client binaries
         shell: powershell
         run: |
           dotnet restore script/tests/ALLIN1.Tests.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet test script/tests/ALLIN1.Tests.csproj -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet restore script/reactor-bridge/ALLIN1.ReactorBridge.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build script/reactor-bridge/ALLIN1.ReactorBridge.csproj -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-Item script/dist/ALLIN1.dll, script/dist/ALLIN1.ReactorBridge.plugin, script/dist/ALLIN1.ReactorBridge.contract.json | Out-Null
       - name: Build and verify public release contract
         shell: powershell
         run: |
           python -m allin1.cli build-release --output output/GTAV-ALLIN1-windows.zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m allin1.cli verify-release output/GTAV-ALLIN1-windows.zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload integrity-checked package (not release-qualified)
         # Package integrity is separate from automated and live acceptance.
         # Artifact storage is a convenience and may be quota-limited.

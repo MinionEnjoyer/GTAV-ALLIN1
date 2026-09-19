@@ -174,6 +174,27 @@ def test_source_snapshot_excludes_only_exact_generated_artifacts_and_records_sub
     assert result["files"]["nested"] == {"head": "a" * 40, "dirty": False}
 
 
+def test_source_snapshot_ignores_generated_artifact_status_but_not_source_status(tmp_path, monkeypatch):
+    path = tmp_path / "config.toml"; path.write_text("source")
+    def git(argv, **kwargs):
+        if "ls-files" in argv:
+            return "config.toml\0"
+        if "status" in argv:
+            return " M script/dist/ALLIN1.dll\0"
+        if "rev-parse" in argv:
+            return "a" * 40
+        raise AssertionError(argv)
+    monkeypatch.setattr(harness.subprocess, "check_output", git)
+    assert harness.source_snapshot(tmp_path)["dirty"] is False
+
+    def source_git(argv, **kwargs):
+        if "status" in argv:
+            return " M config.toml\0"
+        return git(argv, **kwargs)
+    monkeypatch.setattr(harness.subprocess, "check_output", source_git)
+    assert harness.source_snapshot(tmp_path)["dirty"] is True
+
+
 def test_trx_reconciles_summary_and_duplicate_test_identity(tmp_path):
     path = tmp_path / "results.trx"
     def document(rows, **counts):

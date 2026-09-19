@@ -208,6 +208,28 @@ def test_windows_installer_bootstraps_a_real_python_runtime():
     assert "where python >nul" not in installer
 
 
+def test_windows_batch_entrypoints_do_not_reparse_user_install_paths():
+    installer = (ROOT / "install.bat").read_text(encoding="utf-8")
+    uninstaller = (ROOT / "uninstall.bat").read_text(encoding="utf-8")
+
+    # activate.bat uses CALL internally, which makes an install location such
+    # as C:\\Users\\Ada & Bob unsafe. Keep commands relative and invoke the
+    # venv executables directly instead.
+    assert "call .venv\\Scripts\\activate.bat" not in installer
+    assert "call .venv\\Scripts\\activate.bat" not in uninstaller
+    assert '"!VENV_PYTHON!" -m pip install -e . --quiet' in installer
+    assert installer.count('"!VENV_ALLIN1!" install') == 2
+    assert '"!VENV_ALLIN1!" uninstall' in uninstaller
+    assert 'setlocal DisableDelayedExpansion\n' in installer
+    assert 'cd /d "%~dp0"\nsetlocal EnableDelayedExpansion' in installer
+
+    # A manually entered path must be data, not interpolated into Python code.
+    assert "os.environ['ALLIN1_GTA_PATH']" in installer
+    assert "r'!GTA_PATH!'" not in installer
+    assert '> ".gta_path" echo(!GTA_PATH!' in installer
+    assert "GTA5.exe or GTA5_Enhanced.exe" in installer
+
+
 def test_garage_transitions_are_guarded_and_recoverable():
     garage = (ROOT / "script/src/GarageManager.cs").read_text()
     shop = (ROOT / "script/src/GbayShop.cs").read_text()
