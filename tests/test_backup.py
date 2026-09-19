@@ -79,6 +79,59 @@ def test_restore_rejects_non_directory(tmp_path):
         restore_backup(tmp_path, invalid)
 
 
+def test_backup_rejects_missing_game_and_directory_source_before_creating_storage(tmp_path):
+    missing_game = tmp_path / "missing-game"
+    with pytest.raises(FileNotFoundError, match="Game directory not found"):
+        create_backup(missing_game, [])
+
+    game = tmp_path / "game"
+    source_directory = game / "mods"
+    source_directory.mkdir(parents=True)
+    with pytest.raises(ValueError, match="not a regular file"):
+        create_backup(game, [source_directory])
+    assert not (game / backup_module.BACKUP_DIR_NAME).exists()
+
+
+def test_restore_accepts_relative_snapshot_and_rejects_snapshot_removed_after_discovery(tmp_path, monkeypatch):
+    game = tmp_path / "game"
+    target = game / "state.txt"
+    game.mkdir()
+    target.write_text("original")
+    backup = create_backup(game, [target])
+    target.write_text("changed")
+
+    restore_backup(game, backup.name)
+    assert target.read_text() == "original"
+
+    shutil.rmtree(backup)
+    monkeypatch.setattr(backup_module, "list_backups", lambda _game: [backup])
+    with pytest.raises(FileNotFoundError, match="Backup directory not found"):
+        restore_backup(game)
+
+
+def test_list_backups_rejects_non_directory_root_and_skips_unsafe_or_file_snapshots(tmp_path, monkeypatch):
+    game = tmp_path / "game"
+    backups_root = game / backup_module.BACKUP_DIR_NAME
+    game.mkdir()
+    backups_root.write_text("not a directory")
+    with pytest.raises(ValueError, match="Backups root is not a directory"):
+        list_backups(game)
+
+    backups_root.unlink()
+    unsafe = backups_root / "20260101_000000"
+    unsafe.mkdir(parents=True)
+    (backups_root / "20260102_000000").write_text("not a directory")
+    original_no_links = backup_module.no_links
+
+    def reject_unsafe(path):
+        if Path(path) == unsafe:
+            raise ValueError("simulated reparse point")
+        return original_no_links(path)
+
+    monkeypatch.setattr(backup_module, "no_links", reject_unsafe)
+    assert list_backups(game) == []
+
+
 def test_list_backups_missing_root_is_empty(tmp_path):
     assert list_backups(tmp_path) == []
 

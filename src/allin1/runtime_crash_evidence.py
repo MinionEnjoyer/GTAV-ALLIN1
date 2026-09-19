@@ -2,6 +2,7 @@
 from datetime import datetime
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 
@@ -52,7 +53,11 @@ try {
 def collect(process):
     if not isinstance(process,dict) or type(process.get("pid")) is not int or not 0<process["pid"]<2**32 or not isinstance(process.get("executable_path"),str):
         raise ValueError("Crash lookup requires an observed process identity")
-    started=datetime.fromisoformat(process["started_at"].replace("Z","+00:00"))
+    # .NET supplies 100ns precision; Python 3.10 only parses up to microseconds.
+    # Normalize only this validation copy. The original timestamp below must
+    # retain all ticks for exact process-creation identity matching in Windows.
+    validation_stamp = re.sub(r"(\.\d{6})\d+(?=Z$|[+-]\d{2}:\d{2}$)", r"\1", process["started_at"])
+    started=datetime.fromisoformat(validation_stamp.replace("Z","+00:00"))
     if started.tzinfo is None: raise ValueError("Process creation time needs a timezone")
     if os.name!="nt": return {"status":"unavailable","reason":"Windows event logging is required","events":[]}
     windows=Path(os.environ.get("SystemRoot",r"C:\Windows"))

@@ -316,6 +316,29 @@ def test_native_preview_limits():
     assert native_preview_limit("huge.bin", 20 * 1024 * 1024) == 8 * 1024 * 1024
 
 
+def test_native_asset_reports_summarize_warnings_and_tolerate_malformed_lightweight_data(tmp_path):
+    report = native_assets.NativeAssetReport(
+        name="broken.gxt2", suffix=".gxt2", format_name="Rockstar GXT2 text table",
+        size=24, sha256="a" * 64, metadata={"label_count": 1}, warnings=("bad offset",),
+    )
+    assert "label_count: 1" in report.summary()
+    assert "Warnings:\n• bad offset" in report.summary()
+    assert native_assets._dds_metadata(b"not a DDS") == {}
+    assert native_assets._gxt2_text(b"broken") == (None, {}, ())
+
+    # The index has a valid table shape but an out-of-file text offset.  It
+    # remains inspectable and reports the malformed entry rather than raising.
+    invalid_offset = b"GXT2" + struct.pack("<I", 1) + struct.pack("<II", 0x1234, 99) + b"\0" * 8
+    text, metadata, warnings = native_assets._gxt2_text(invalid_offset)
+    assert text == ""
+    assert metadata == {"label_count": 1}
+    assert warnings == ("1 label offsets were outside the file.",)
+
+    # A valid offset with an unterminated string is likewise bounded by EOF.
+    unterminated = b"GXT2" + struct.pack("<I", 1) + struct.pack("<II", 0x1234, 16) + b"texttext"
+    assert "texttext" in native_assets._gxt2_text(unterminated)[0]
+
+
 def test_new_rpf_cli_index_extract_and_plan(tmp_path, monkeypatch):
     game = tmp_path / "game"
     game.mkdir()

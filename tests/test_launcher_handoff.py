@@ -1,6 +1,7 @@
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -11,6 +12,7 @@ from allin1.launcher_handoff import (
     LauncherHandoff,
     consume_launcher_handoffs,
     launcher_process_command,
+    launcher_request_root,
     open_launcher_packages,
     publish_launcher_handoff,
 )
@@ -87,6 +89,44 @@ def test_handoff_rejects_boolean_numeric_fields(field, value, message):
         LauncherHandoff.from_dict(payload)
 
 
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ([], "JSON object"),
+        ({"extra": True}, "unsupported fields"),
+        ({"version": 1, "action": "install"}, "action"),
+        ({"version": 1, "action": "show_packages", "request_id": "bad"}, "request id"),
+        ({"version": 1, "action": "show_packages", "request_id": "a" * 32,
+          "package_id": "studio.pagani", "traffic": "yes", "created_at": 1.0}, "traffic"),
+        ({"version": 1, "action": "show_packages", "request_id": "a" * 32,
+          "package_id": None, "traffic": True, "created_at": 1.0}, "requires a package id"),
+    ],
+)
+def test_handoff_rejects_untrusted_request_shapes(payload, message):
+    with pytest.raises(ValueError, match=message):
+        LauncherHandoff.from_dict(payload)
+
+
+def test_consumer_is_empty_without_request_inbox(tmp_path):
+    assert consume_launcher_handoffs(environment=_environment(tmp_path), now=100.0) == ()
+
+
+def test_handoff_inbox_fallback_and_size_limits_keep_invalid_requests_unconsumed(tmp_path):
+    fallback = launcher_request_root({})
+    assert fallback.name == "Requests"
+    assert fallback.parent.name == "Launcher"
+
+    huge = SimpleNamespace(request_id="a" * 32, to_dict=lambda: {"payload": "x" * 5000})
+    with pytest.raises(ValueError, match="size limit"):
+        publish_launcher_handoff(huge, environment=_environment(tmp_path))
+
+    root = launcher_request_root(_environment(tmp_path))
+    root.mkdir(parents=True, exist_ok=True)
+    (root / ("b" * 32 + ".json")).write_text("x" * 5000, encoding="utf-8")
+    assert consume_launcher_handoffs(environment=_environment(tmp_path), now=100.0) == ()
+    assert not list(root.glob("*.json"))
+
+
 def test_consumer_discards_stale_and_unstructured_requests(tmp_path):
     environment = _environment(tmp_path)
     stale = LauncherHandoff.create("studio.pagani", now=10.0)
@@ -112,6 +152,17 @@ def test_launcher_command_is_argv_only_and_carries_non_mutating_intent(tmp_path)
         "--package-id", "studio.pagani",
         "--traffic", "off",
     ]
+
+
+def test_launcher_command_discovers_gui_entry_or_requires_explicit_path(monkeypatch):
+    handoff = LauncherHandoff.create("studio.pagani", now=100.0)
+    monkeypatch.setattr("allin1.launcher_handoff.shutil.which", lambda name: "/tools/" + name)
+    assert launcher_process_command(handoff, environment={})[:1] == ["/tools/allin1-launcher-desktop"]
+
+    monkeypatch.setattr("allin1.launcher_handoff.shutil.which", lambda name: None)
+    monkeypatch.setattr("allin1.launcher_handoff.sys.frozen", False, raising=False)
+    with pytest.raises(ValueError, match="executable was not found"):
+        launcher_process_command(handoff, environment={})
 
 
 def test_open_launcher_packages_uses_validated_process_arguments(monkeypatch, tmp_path):

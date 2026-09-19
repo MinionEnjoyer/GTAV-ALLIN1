@@ -9,6 +9,28 @@ from allin1.runtime_diagnostic_session import RuntimeSession
 from tests.test_runtime_diagnostic_session import setup,observation
 
 
+@pytest.mark.parametrize("suffix", ["Z", "+00:00", "-07:00"])
+def test_submicrosecond_timestamp_validation_preserves_original_identity(monkeypatch, suffix):
+    original_datetime = crash.datetime
+    parsed = []
+    def strict_parse(value):
+        parsed.append(value)
+        assert ".1234567" not in value
+        return original_datetime.fromisoformat(value)
+    monkeypatch.setattr(crash, "datetime", SimpleNamespace(fromisoformat=strict_parse))
+    monkeypatch.setattr(crash, "os", SimpleNamespace(name="nt", environ={}))
+    calls = []
+    def run(command, **kwargs):
+        calls.append(json.loads(kwargs["input"]))
+        return SimpleNamespace(returncode=0, stdout='{"status":"no_matching_event","events":[]}')
+    monkeypatch.setattr(crash, "run_hidden", run)
+    process = {"pid":42, "started_at":"2026-01-01T00:00:00.1234567" + suffix,
+               "executable_path":"C:/Game/GTA5.exe"}
+    assert crash.collect(process)["status"] == "no_matching_event"
+    assert parsed == ["2026-01-01T00:00:00.123456" + suffix.replace("Z", "+00:00")]
+    assert calls == [process]
+
+
 @pytest.mark.skipif(os.name!="nt",reason="Windows PowerShell adapter")
 def test_shell_keeps_path_and_identity_as_json_data_and_query_is_bounded(monkeypatch):
     calls=[]

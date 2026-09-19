@@ -1,6 +1,7 @@
 """Component bundle isolation, independent ownership, and failure-before-write checks."""
 import hashlib
 import json
+from types import SimpleNamespace
 import zipfile
 
 import pytest
@@ -203,3 +204,57 @@ def test_reshade_component_destination_parity(tmp_path, destination):
         if index == 0:
             data["files"][0]["destination"] = destination
     assert ModManifest.load(write_bundle(tmp_path / "bundle", mutate=mutate)).schema_version == 6
+
+
+def test_component_selection_revalidates_bundle_sources_and_legacy_boundaries(tmp_path):
+    from allin1.component_bundles import installation_component, validate_inventory
+
+    selected = SimpleNamespace(manifest_path=tmp_path / "component.toml")
+
+    class Bundle:
+        schema_version = 6
+
+        @classmethod
+        def load(cls, path):
+            assert path == tmp_path / "bundle.toml"
+            return cls()
+
+        def select_component(self, edition, component_id):
+            assert (edition, component_id) == ("legacy", "component")
+            return selected
+
+    child = Bundle()
+    child.bundle_manifest_path = tmp_path / "bundle.toml"
+    child.manifest_path = selected.manifest_path
+    child.mod_id = "component"
+    child.schema_version = 6
+    assert installation_component(child, "legacy") is selected
+
+    class TopLevel(Bundle):
+        @classmethod
+        def load(cls, path):
+            assert path == tmp_path / "top-level.toml"
+            return cls()
+
+    top_level = TopLevel()
+    top_level.bundle_manifest_path = None
+    top_level.manifest_path = tmp_path / "top-level.toml"
+    top_level.schema_version = 6
+    assert installation_component(top_level, "legacy", "component") is selected
+
+    legacy = SimpleNamespace(bundle_manifest_path=None, schema_version=4)
+    with pytest.raises(ValueError, match="schema-6"):
+        installation_component(legacy, "legacy", "component")
+    assert installation_component(legacy, "legacy") is legacy
+
+    first = SimpleNamespace(mod_id="first", conflicts=("second",))
+    second = SimpleNamespace(mod_id="second")
+    with pytest.raises(ValueError, match="conflict"):
+        validate_inventory((first, second))
+
+    first = SimpleNamespace(mod_id="first", conflicts=(), package_requirements=(), files=(),
+                            rpf_entries=(), dlc_packs=("mp_test",))
+    second = SimpleNamespace(mod_id="second", conflicts=(), package_requirements=(), files=(),
+                             rpf_entries=(), dlc_packs=("MP_TEST",))
+    with pytest.raises(ValueError, match="DLC ownership"):
+        validate_inventory((first, second))
