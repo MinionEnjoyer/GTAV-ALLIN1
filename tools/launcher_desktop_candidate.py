@@ -79,8 +79,14 @@ def assert_no_tk(names) -> None:
     for name in names:
         parts = str(name).replace("\\", "/").casefold().split("/")
         module = str(name).replace("/", ".").replace("\\", ".").casefold()
+        pillow_tk_helper = any(
+            part == "pil" and next_part in {"imagetk.py", "_imagingtk.pyi", "_tkinter_finder.py"}
+            or part == "pil" and next_part.startswith("_imagingtk.")
+            for part, next_part in zip(parts, parts[1:])
+        )
         if (any(part in {"tkinter", "_tkinter", "_tcl_data", "_tk_data"}
                 or part.startswith(("_tkinter.", "tcl8", "tcl9", "tk8", "tk9", "pyi_rth__tkinter")) for part in parts)
+                or pillow_tk_helper
                 or any(module == excluded.casefold() or module.startswith(excluded.casefold() + ".") for excluded in EXCLUDED_MODULES)):
             raise ValueError("Tk/legacy GUI leaked into the candidate: " + str(name))
 
