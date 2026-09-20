@@ -18,6 +18,7 @@
     {"name": "RegistryAvailable", "kind": "property", "return_type": "bool"},
     {"name": "IsGbayMenuActive", "kind": "property", "return_type": "bool"},
     {"name": "IsPackageEnabled", "kind": "method", "return_type": "bool", "parameters": [{"name": "packageId", "type": "string"}]},
+    {"name": "DeclaresDlcPack", "kind": "method", "return_type": "bool", "parameters": [{"name": "packageId", "type": "string"}, {"name": "sourcePack", "type": "string"}]},
     {"name": "GetEnabledPackageIds", "kind": "method", "return_type": "IReadOnlyList<string>", "parameters": []},
     {"name": "TryGetSetting", "kind": "method", "capability": "launcher.settings", "return_type": "bool", "parameters": [{"name": "packageId", "type": "string"}, {"name": "key", "type": "string"}, {"name": "value", "type": "out object"}]},
     {"name": "GetBooleanSetting", "kind": "method", "capability": "launcher.settings", "return_type": "bool", "parameters": [{"name": "packageId", "type": "string"}, {"name": "key", "type": "string"}, {"name": "defaultValue", "type": "bool", "optional": true, "default": "false"}]},

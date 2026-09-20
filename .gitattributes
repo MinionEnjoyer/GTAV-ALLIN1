@@ -11,3 +11,7 @@ tests/contract_fixtures/mod_packages/**/*.json text eol=lf
 # The .bin fixtures intentionally contain plain text, not native assets.
 tests/contract_fixtures/mod_packages/schema_v1/payload/ContractV1.bin text eol=lf
 tests/contract_fixtures/mod_packages/schema_v2/payload/ContractV2.bin text eol=lf
+
+# SDK-reserved model snapshots attest the exact source bytes of these catalogs.
+data/vehicles.toml text eol=lf
+data/story_vehicles.json text eol=lf

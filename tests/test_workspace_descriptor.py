@@ -145,6 +145,17 @@ def test_workspace_descriptor_maps_core_components_and_relationships() -> None:
         "return_type": "IReadOnlyList<MapDescriptorDeclaration>",
         "parameters": [{"name": "packageId", "type": "string"}],
     }
+    assert runtime_symbols["DeclaresDlcPack"] == {
+        "name": "DeclaresDlcPack",
+        "kind": "method",
+        "return_type": "bool",
+        "parameters": [
+            {"name": "packageId", "type": "string"},
+            {"name": "sourcePack", "type": "string"},
+        ],
+    }
+    runtime_source = (ROOT / runtime_contract["source"]).read_text(encoding="utf-8")
+    assert "public static bool DeclaresDlcPack(string packageId, string sourcePack)" in runtime_source
 
 
 def test_workspace_descriptor_is_data_only_and_uses_tracked_relative_allowlists() -> None:
