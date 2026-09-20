@@ -156,7 +156,7 @@ def test_frozen_identity_accepts_same_windows_root_but_checks_all_payloads(tmp_p
         runtime.frozen_identity(selected)
 
 
-@pytest.mark.parametrize("name", ["tkinter", "tkinter.ttk", "_tkinter.pyd", "_internal/tcl86t.dll", "_internal/tk86t.dll", "_internal/_tcl_data/init.tcl", "_internal/_tk_data/tk.tcl", "tkinter/__init__.pyc", "PIL.ImageTk", "allin1.gui", "allin1.customization_ui"])
+@pytest.mark.parametrize("name", ["tkinter", "tkinter.ttk", "_tkinter.pyd", "_internal/tcl86t.dll", "_internal/tk86t.dll", "_internal/_tcl_data/init.tcl", "_internal/_tk_data/tk.tcl", "tkinter/__init__.pyc", "PIL.ImageTk", "PIL/_imagingtk.pyi", "PIL/_tkinter_finder.py", "allin1.gui", "allin1.customization_ui"])
 def test_packaging_scan_rejects_tk_and_legacy_gui_even_when_not_imported(name):
     with pytest.raises(ValueError, match="leaked"):
         candidate.assert_no_tk(["allin1.desktop_host", name])

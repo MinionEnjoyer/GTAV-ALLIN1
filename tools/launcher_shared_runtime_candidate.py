@@ -28,6 +28,11 @@ from allin1.runtime_resources import sha256
 from tools import launcher_desktop_candidate as candidate
 from tools.react_release_harness import source_identity, write_new
 
+PILLOW_TK_HELPERS = (
+    "PIL/ImageTk.py", "PIL/_imagingtk.cp313-win_amd64.pyd",
+    "PIL/_imagingtk.pyi", "PIL/_tkinter_finder.py",
+)
+
 
 def fetch(record, cache):
     target = contained(cache, record["filename"])
@@ -95,8 +100,7 @@ def stage_runtime(root, sdk, runtime, cache):
     (runtime / 'python313._pth').write_text('python313.zip\n.\nlib\n', encoding='utf-8')
     library = runtime / 'lib'
     for wheel in lock['wheels']:
-        extract(fetch(wheel, cache), library,
-                skip=('PIL/ImageTk.py', 'PIL/_imagingtk.cp313-win_amd64.pyd'))
+        extract(fetch(wheel, cache), library, skip=PILLOW_TK_HELPERS)
     modules = sdk_modules(sdk / 'src/allin1_sdk')
     for package, source, names in (
         ('allin1', root/'src/allin1', [path.relative_to(root/'src/allin1').with_suffix('').as_posix().replace('/','.')

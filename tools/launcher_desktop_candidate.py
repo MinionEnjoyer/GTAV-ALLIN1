@@ -37,7 +37,8 @@ LEGACY_MODULES = (
     "allin1.asset_viewer", "allin1.rpf_explorer", "allin1.reactor_bootstrap_ui",
     "allin1.help_center", "allin1.sdk_installer_ui", "allin1.ui_theme",
 )
-EXCLUDED_MODULES = ("tkinter", "_tkinter", "PIL.ImageTk", "PIL._imagingtk", *LEGACY_MODULES)
+EXCLUDED_MODULES = ("tkinter", "_tkinter", "PIL.ImageTk", "PIL._imagingtk",
+                    "PIL._tkinter_finder", *LEGACY_MODULES)
 
 
 def resource_inputs(root: Path, *, shared_runtime: bool = False) -> dict[str, Path]:

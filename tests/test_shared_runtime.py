@@ -127,6 +127,22 @@ def test_shared_resources_do_not_include_legacy_preview_executable(tmp_path, mon
     assert not any('WeaponPreview' in name for name in result)
 
 
+def test_shared_runtime_excludes_pillow_tk_helpers_but_keeps_image_apis(tmp_path):
+    wheel = tmp_path / "pillow-fixture.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        for name in (
+            "PIL/Image.py", "PIL/ImageDraw.py", "PIL/ImageTk.py",
+            "PIL/_imagingtk.cp313-win_amd64.pyd", "PIL/_imagingtk.pyi",
+            "PIL/_tkinter_finder.py",
+        ):
+            archive.writestr(name, b"fixture")
+    runtime = tmp_path / "runtime"
+    build.extract(wheel, runtime, skip=build.PILLOW_TK_HELPERS)
+    assert (runtime / "PIL/Image.py").is_file()
+    assert (runtime / "PIL/ImageDraw.py").is_file()
+    assert not any((runtime / name).exists() for name in build.PILLOW_TK_HELPERS)
+
+
 def test_shared_preview_command_does_not_import_sdk_or_numpy(tmp_path, monkeypatch):
     from allin1 import prelaunch_previews as p
     from allin1.preview_policy import STUDIO_BACKDROP, VEHICLE_TEXTURES, THROWABLE_TEXTURES
