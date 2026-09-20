@@ -14,10 +14,11 @@ into passes.
 - Launcher/service recovery now handles timeouts, disconnects and uncertain
   writes conservatively: retained drafts require a fresh review and are never
   replayed automatically.
-- Reactor V is pinned to 0.2.6. Its standalone installer has a known catalogue
-  preservation issue with ALLIN1's default/generated `index.json` files; the
-  source fix requires a subsequent Reactor installer build. Existing 0.2.6
-  downloads are not changed by updating ALLIN1 source.
+- Reactor V remains pinned to the exact verified 0.2.6 native runtime. The
+  separate [Reactor V 0.2.7 installer-only release](https://github.com/MinionEnjoyer/GTAV-REACTOR-V/releases/tag/v0.2.7)
+  fixes preservation of ALLIN1's default/generated `index.json` files while
+  installing that runtime; it does not introduce or qualify a newer native
+  runtime.
 - Launcher package handling is aligned with the current SDK package contract,
   including schema-2
   exact-member preconditions for managed package validation.
@@ -26,7 +27,7 @@ Reactor and the SDK keep their own release identities. Install/Repair uses the
 exact Reactor dependency pinned by this Launcher. Dependency verification and
 offline artifact checks do not prove that a component loaded in-game.
 
-## Installer fixes after initial publication
+## Re-release 2 installer fixes
 
 - Batch install/uninstall invoke quoted virtual-environment executables
   directly, including when the installation path contains spaces, `&` or `!`.
@@ -37,6 +38,10 @@ offline artifact checks do not prove that a component loaded in-game.
   version text from another storefront does not establish compatibility.
 
 These source changes require rebuilt downloads to reach packaged installations.
+The re-release uses distinct `-r2` filenames so users can distinguish them
+from the original v0.6.6 archives. The original SHA-256 values are retained in
+the top-level release notes for identification; use the adjacent `-r2`
+checksum assets for installation verification.
 
 ## Mandatory 0.6.6 full-release milestone
 
