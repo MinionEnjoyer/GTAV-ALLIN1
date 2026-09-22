@@ -36,7 +36,7 @@ export default function Characters({
   };
   const allItems: string[] = [...session.weapons, ...session.gear];
   return (
-    <div>
+    <section aria-label="Character editor">
       <div className="toolbar">
         <label>
           Character
@@ -65,7 +65,9 @@ export default function Characters({
         </nav>
       </div>
       {area === "progress" && (
-        <>
+        <fieldset>
+          <legend>Progress and skills</legend>
+          <p>Update story management, cash, and individual skills for {title(character)}.</p>
           <Field
             name="manage_story_progress"
             value={current.progress.managed}
@@ -95,10 +97,12 @@ export default function Characters({
               })
             }
           />
-        </>
+        </fieldset>
       )}
       {area === "inventory" && (
-        <>
+        <section aria-label="Weapons and gear">
+          <h3>Weapons and gear</h3>
+          <p>Adding an item also marks this character inventory as managed. Removing a weapon clears its saved ammo and customizations.</p>
           <label>
             Search weapons and gear
             <input value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -174,10 +178,12 @@ export default function Characters({
                 );
               })}
           </div>
-        </>
+        </section>
       )}
       {area === "outfit" && (
-        <>
+        <section aria-label="Outfit settings">
+          <h3>Outfit settings</h3>
+          <p>Save presets to reuse this draft's current component and prop selection.</p>
           <Field
             name="manage_outfit"
             value={current.outfit.managed}
@@ -265,10 +271,12 @@ export default function Characters({
               Apply preset {name}
             </button>
           ))}
-        </>
+        </section>
       )}
       {area === "garages" && (
-        <>
+        <section aria-label="Garage vehicles">
+          <h3>Garage vehicles</h3>
+          <p>Each vehicle occupies a slot from 0 through 9. Review is required before garage data is written.</p>
           {session.garage_error && <p role="alert">{session.garage_error}</p>}
           {garages && (
             <>
@@ -352,7 +360,7 @@ export default function Characters({
           <button disabled={busy} onClick={() => review("garages_repair", {})}>
             Review garage repair
           </button>
-        </>
+        </section>
       )}
       {area !== "garages" && (
         <button
@@ -368,6 +376,6 @@ export default function Characters({
           Review character save
         </button>
       )}
-    </div>
+    </section>
   );
 }

@@ -13,8 +13,26 @@ import shutil
 import subprocess
 import tempfile
 
-SOURCE_COMMIT = "0fc810b25eac9ba25ef4366baf58333dff70688a"
-RELEASE = "v0.2.6"
+SOURCE_COMMIT = "ce7187a48d5b1926ae229beee6f4b92950360d40"
+RELEASE = "v0.2.8"
+
+
+def allowed_asset(file: Path, relative: Path) -> bool:
+    """Allow presentation assets and the one pinned noninteractive HUD contract."""
+    if file.stat().st_size > 4 * 1024 * 1024:
+        return False
+    if file.suffix.lower() in {".html", ".js", ".css", ".png", ".ttf", ".txt"}:
+        return True
+    if relative.as_posix() != "reactor-fpv-hud-v1.json":
+        return False
+    try:
+        return json.loads(file.read_text(encoding="utf-8")) == {
+            "schema_version": 1, "component": "reactor-fpv-hud",
+            "transport": "hud.frame", "frame_kind": "speedometer",
+            "fpv_schema": 1, "interactive": False,
+        }
+    except (ValueError, UnicodeError):
+        return False
 
 
 def build(root: Path, output: Path, *, development: bool = False) -> None:
@@ -40,7 +58,7 @@ def build(root: Path, output: Path, *, development: bool = False) -> None:
         for file in (web / "dist-allin1").rglob("*"):
             if not file.is_file():
                 continue
-            if file.suffix.lower() not in {".html", ".js", ".css", ".png", ".ttf", ".txt"} or file.stat().st_size > 4 * 1024 * 1024:
+            if not allowed_asset(file, file.relative_to(web / "dist-allin1")):
                 raise ValueError(f"Unexpected consumer build output: {file.name}")
             dest = stage / file.relative_to(web / "dist-allin1")
             dest.parent.mkdir(parents=True, exist_ok=True)

@@ -6,7 +6,7 @@
 
 A Windows launcher and guarded package manager for **GTA V Story Mode**, supporting Legacy and Enhanced.
 
-**0.6.6** — unsigned portable release. React/Tauri v2 provides the desktop UI;
+**0.6.7** — unsigned portable release. React/Tauri v2 provides the desktop UI;
 shared Python services power it, the CLI and agent API. Start with the
 [Launcher manual](docs/launcher-guide.md) or [release notes](RELEASE_NOTES.md).
 
@@ -41,7 +41,7 @@ generating new Blender previews, not downloaded/cached images. Python source
 Verify official checksums and artifact identity: checksums do not authenticate a
 publisher. Automatic-update trust checks remain enforced. Full installer
 lifecycle and fresh final-build Legacy/Enhanced in-game acceptance remain
-untested; see the [release guide and qualification limits](docs/release-0.6.6.md#remaining-work).
+untested; see the [release guide and qualification limits](docs/release-0.6.7.md#remaining-work).
 
 ## Development
 

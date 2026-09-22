@@ -413,6 +413,42 @@ class LauncherService:
         if action in {"install", "uninstall"}:
             from allin1.installer import _preflight_installation_roots
             _preflight_installation_roots(game)
+        if action == "install":
+            # Setup deliberately has no dependency toggles.  Reactor is a
+            # required GBAY dependency, and the review states whether Apply
+            # will reuse a verified cached archive or download the pinned archive.
+            # The stamped consent cannot cause a download until this exact
+            # review reaches the separate, explicit Apply confirmation.
+            from allin1.installer import _is_enhanced
+            from allin1.reactor_dependency import RELEASES, dependency_recorded, verified_cached_archive
+            enhanced = _is_enhanced(game)
+            recorded = dependency_recorded(game, enhanced)
+            release = RELEASES[enhanced]
+            cached = verified_cached_archive(release)
+            requires_download = not cached
+            evidence["install_dependencies"] = {
+                "reactor": {
+                    "required": True,
+                    "requires_download": requires_download,
+                    "summary": (
+                        "Reactor V is required for GBAY. Apply will reuse and re-verify the existing pinned installation from the verified cached archive."
+                        if recorded and cached else
+                        "Reactor V is required for GBAY. Apply will install from the verified cached archive."
+                        if cached else
+                        f"Reactor V is required for GBAY. Apply will download {release.size / 1024 ** 2:.1f} MiB for {release.edition.title()}, then verify its pinned SHA-256 before installing it."
+                    ),
+                },
+                "rpf_loader": {
+                    "included": False,
+                    "summary": "Content RPF Loader is not included in this repair. GBAY does not need it; content that requires an RPF loader must present its own review.",
+                },
+            }
+            # A receipt is not an archive.  If its verified cache was removed,
+            # Apply must receive the acknowledgement needed to re-download it.
+            # A fresh install also remains explicitly acknowledged even if a
+            # prior verified cache can make it network-free.
+            evidence["request"]["reactor_consent"] = not (recorded and cached)
+            evidence["request"]["rpf_loader_consent"] = False
         if action == "uninstall":
             evidence["preservation"] = "Character and garage saves, customization, GBAY preferences, configuration and legacy ALLIN1 user data remain in place. Runtime payloads are removed; this is not a data purge."
         if action.startswith("assistant_"):
@@ -472,6 +508,19 @@ class LauncherService:
                         raise ValueError(component["install_blocked_reason"])
                 manifest.validate_payload()
                 evidence["request"]["settings"] = settings(manifest, request.get("settings"))
+                if "openrpf" in manifest.dependencies:
+                    from allin1.installer import _check_openrpf
+                    available = _check_openrpf(game, ModIntegrationService(game).edition == "enhanced")
+                    evidence["package_dependencies"] = {"rpf_loader": {
+                        "required": True,
+                        "available": available,
+                        "approved": request.get("rpf_loader_consent") is True,
+                        "summary": (
+                            "This selected content requires the Content RPF Loader, and its verified installation is already available."
+                            if available else
+                            "This selected content requires the Content RPF Loader. Select the option below to download and SHA-256 verify the pinned loader when you apply this package."
+                        ),
+                    }}
             if self.snapshot(request) != evidence["state_sha256"]:
                 raise ValueError("Package changed during review; inspect it again")
         if action in {"content_settings", "content_enable", "content_disable"}:
@@ -649,6 +698,14 @@ class LauncherService:
             service = ModIntegrationService(self.game(config), rpf_progress=self.rpf_progress)
             if action == "package_install":
                 with open_mod_package(self.input_path(request["source"])) as manifest:
+                    selected = manifest.select_component(service.edition, request.get("component_id"))
+                    if request.get("rpf_loader_consent") is True and "openrpf" in selected.dependencies:
+                        from allin1.installer import _check_openrpf
+                        from allin1.rpf_loader import install_recommended_rpf_loader
+                        enhanced = service.edition == "enhanced"
+                        if not _check_openrpf(self.game(config), enhanced):
+                            self.progress(0, "Installing required Content RPF Loader")
+                            install_recommended_rpf_loader(self.game(config), enhanced)
                     return service.install(manifest, initial_settings=request.get("settings"),
                                            component_id=request.get("component_id"))
             if action == "package_uninstall": return service.uninstall(request["id"])

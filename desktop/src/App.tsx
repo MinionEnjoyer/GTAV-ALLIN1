@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { nativeClient, type Client, type RecordData } from "./client";
-import { Fields, Field, title } from "./Fields";
+import { Fields, title } from "./Fields";
 import Characters from "./Characters";
 import ContentSettings from "./ContentSettings";
 import PackageDraft from "./PackageDraft";
@@ -76,9 +76,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
     (session.activity ?? []).map((event: RecordData) =>
       `${new Date(event.time * 1000).toLocaleString()} · ${title(event.action)} ${event.event === "launcher.action.cancelled" ? "cancelled" : "completed"}`
     ).join("\n");
-  const [selected, setSelected] = useState(""),
-    [reactorConsent, setReactorConsent] = useState(false),
-    [rpfConsent, setRpfConsent] = useState(false);
+  const [selected, setSelected] = useState("");
   const [collapsed, setCollapsed] = useState(
     localStorage.getItem("launcher.sidebar") === "collapsed",
   );
@@ -477,9 +475,16 @@ export default function App({ client = nativeClient }: { client?: Client }) {
   };
   const content = (session.content ?? []) as RecordData[],
     packages = (session.packages ?? []) as RecordData[];
-  const topics = (catalog.help_topics ?? []).filter((topic: RecordData) =>
-    `${topic.title} ${topic.body}`.toLowerCase().includes(query.toLowerCase()),
-  );
+  const topics = [...(catalog.help_topics ?? [])]
+    .filter((topic: RecordData) =>
+      `${topic.title} ${topic.body}`.toLowerCase().includes(query.toLowerCase()),
+    )
+    .sort((first: RecordData, second: RecordData) => {
+      const priority = (topic: RecordData) =>
+        typeof topic.onboarding_priority === "number" ? topic.onboarding_priority : 1000;
+      return priority(first) - priority(second) ||
+        String(first.title).localeCompare(String(second.title));
+    });
   const selectedTopic =
     topics.find((topic: RecordData) => topic.key === selected) ?? topics[0];
   const currentInstallation = installationIdentity(config);
@@ -504,7 +509,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
           <div>
             <strong>ALLIN1</strong>
             <small>
-              Story Mode Launcher · {catalog.desktop_version ?? "0.6.6"}
+              Story Mode Launcher · {catalog.desktop_version ?? "0.6.7"}
             </small>
           </div>
         </div>
@@ -623,8 +628,9 @@ export default function App({ client = nativeClient }: { client?: Client }) {
         {startup && <StartupStatus startup={startup} acknowledged={startupAcknowledged} onAcknowledge={acknowledgeStartup} />}
         {review && (
           <ReviewDialog busy={busy} cancel={() => { setReview(null); setConfirmed(false); }}>
-          <section className="review" aria-label="Review changes">
+          <section className={`review${review.action === "launch" ? " launch-review" : ""}`} aria-label="Review changes">
             <h2>Review {title(review.action)}</h2>
+            {review.action === "launch" && <p className="launch-review-intro">Choose how to handle previews before starting GTA V.</p>}
             {operationProgress && <OperationProgress
               heading={operationProgress.action === "launch" ? "Preparing GTA launch" : title(operationProgress.action)}
               message={operationProgress.message}
@@ -638,7 +644,10 @@ export default function App({ client = nativeClient }: { client?: Client }) {
               <p>{cancellingLaunch ? "Stopping preparation safely. Completed previews will be kept."
                 : "Cancel preparation before GTA starts. This does not close a running game."}</p>
             </div>}
-            <p>Target: {review.target}</p>
+            {review.action === "launch" ? <details className="launch-target">
+              <summary>Game installation</summary>
+              <p>{review.target}</p>
+            </details> : <p>Target: {review.target}</p>}
             {busy && operationProgress?.preview_render?.enabled &&
               operationProgress.preview_render.review_id === review.review_id &&
               <RenderWorkerControls status={operationProgress.preview_render}
@@ -656,6 +665,28 @@ export default function App({ client = nativeClient }: { client?: Client }) {
                     (loaded) => { setReview(loaded); setConfirmed(false); });
                 }} />}
             {review.preservation && <p>{review.preservation}</p>}
+            {review.install_dependencies && <div aria-label="Install dependency plan">
+              <h3>Dependencies included with this repair</h3>
+              <p>{review.install_dependencies.reactor.summary}</p>
+              <p>{review.install_dependencies.rpf_loader.summary}</p>
+            </div>}
+            {review.package_dependencies?.rpf_loader && <div aria-label="Package dependency plan">
+              <p>{review.package_dependencies.rpf_loader.summary}</p>
+              {review.package_dependencies.rpf_loader.required && !review.package_dependencies.rpf_loader.available && <label className="check">
+                <input
+                  type="checkbox"
+                  checked={review.package_dependencies.rpf_loader.approved}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setConfirmed(false);
+                    void run("review", { ...review.request, rpf_loader_consent: e.target.checked }, (loaded) => {
+                      setReview(loaded); setConfirmed(false);
+                    });
+                  }}
+                />
+                Download and SHA-256 verify the required Content RPF Loader when applying this package
+              </label>}
+            </div>}
             {review.preview_download && <div aria-label="Default preview download plan">
               <p>{review.preview_download.count} vanilla images · {(review.preview_download.bytes / 1024 ** 2).toFixed(1)} MiB · {review.preview_download.version}</p>
               <ul>{review.preview_download.assets.map((asset: RecordData) => <li key={asset.category}>
@@ -675,14 +706,17 @@ export default function App({ client = nativeClient }: { client?: Client }) {
             </div>}
             {review.assistant_hardware && <ul>{review.assistant_hardware.warnings.map((message: string) => <li key={message}>{message}</li>)}</ul>}
             <p>
-              {review.game_write
+              {review.action === "launch"
+                ? "Your reviewed settings will be applied before GTA starts. Close any running game first."
+                : review.game_write
                 ? "This changes the selected installation. GTA V must be closed."
                 : "This changes Launcher files or the selected export."}
             </p>
             <details>
-              <summary>Requested changes</summary>
+              <summary>{review.action === "launch" ? "Technical details" : "Requested changes"}</summary>
               <pre>{JSON.stringify(review.request, null, 2)}</pre>
             </details>
+            <div className={review.action === "launch" ? "launch-review-footer" : undefined}>
             <label className="check">
               <input
                 type="checkbox"
@@ -690,12 +724,14 @@ export default function App({ client = nativeClient }: { client?: Client }) {
                 disabled={busy}
                 onChange={(e) => setConfirmed(e.target.checked)}
               />
-              I reviewed these changes
+              {review.install_dependencies?.reactor.requires_download
+                ? "I understand Apply will download and SHA-256 verify the required Reactor V files shown above"
+                : "I reviewed these changes"}
             </label>
             <div className="toolbar">
               <button
                 className="primary"
-                disabled={!confirmed || busy}
+                disabled={!confirmed || busy || (review.package_dependencies?.rpf_loader.required && !review.package_dependencies.rpf_loader.available && !review.package_dependencies.rpf_loader.approved)}
                 onClick={() => void apply()}
               >
                 Apply reviewed changes
@@ -709,6 +745,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
               >
                 Back to draft
               </button>
+            </div>
             </div>
           </section>
           </ReviewDialog>
@@ -759,9 +796,20 @@ export default function App({ client = nativeClient }: { client?: Client }) {
               <button
                 disabled={locked}
                 onClick={() =>
-                  void run("health", {}, (result) =>
-                    setNotice(JSON.stringify(result)),
-                  )
+                  void run("health", {}, (result) => {
+                    const issues = Array.isArray(result.issues) ? result.issues : [];
+                    const blocking = issues.filter((issue: RecordData) => issue.severity === "error");
+                    const findings = issues.map((issue: RecordData) =>
+                      `${String(issue.severity ?? "issue").toUpperCase()}: ${issue.message ?? "No message provided"}\nPath: ${issue.path ?? "Not provided"}`,
+                    );
+                    setNotice([
+                      `Health check completed for ${result.edition ?? "the selected"} installation.`,
+                      blocking.length
+                        ? `Found ${blocking.length} blocking issue${blocking.length === 1 ? "" : "s"}.`
+                        : "No blocking issues found.",
+                      ...findings,
+                    ].join("\n"));
+                  })
                 }
               >
                 Check health
@@ -827,38 +875,18 @@ export default function App({ client = nativeClient }: { client?: Client }) {
                 </button>
               </div>
             </fieldset>
-            <fieldset>
-              <legend>Installation options</legend>
+            <section className="installation-guidance" aria-label="Install and repair guidance">
               {inspectionMatchesDraft && session.status?.valid_game === true && session.reactor?.available === false && <p>
                 {session.reactor.reason ? `${session.reactor.reason} ` : ""}GBAY requires Reactor V; use Install / Repair below.
               </p>}
-              <Field
-                name="download_reactor_dependency"
-                value={reactorConsent}
-                disabled={locked}
-                change={setReactorConsent}
-              />
-              <Field
-                name="download_content_rpf_loader"
-                value={rpfConsent}
-                disabled={locked}
-                change={setRpfConsent}
-              />
               <p>
-                Reactor V is required for GBAY on both editions. Allow its
-                verified download to install or repair a missing dependency.
-                Existing verified installations can be reused without downloading.
+                Install / Repair checks required files and shows any download or repair in a review before it runs. The Content RPF Loader is only needed by content that specifically requires it.
               </p>
-            </fieldset>
+            </section>
             <div className="toolbar">
               <button
                 disabled={locked || !session.status?.valid_game}
-                onClick={() =>
-                  beginReview("install", {
-                    reactor_consent: reactorConsent,
-                    rpf_loader_consent: rpfConsent,
-                  })
-                }
+                onClick={() => beginReview("install")}
               >
                 Review Install / Repair
               </button>
@@ -892,7 +920,11 @@ export default function App({ client = nativeClient }: { client?: Client }) {
             {configSection("script", (key) => !inputField(key))}
           </>
         )}
-        {module === "input" && config && configSection("script", inputField)}
+        {module === "input" && config && (
+          <>
+            {configSection("script", inputField)}
+          </>
+        )}
         {module === "content" && (
           <>
             <div className="content-tabs" role="tablist" aria-label="Content sections">
@@ -992,16 +1024,18 @@ export default function App({ client = nativeClient }: { client?: Client }) {
         )}
         {module === "mods" && (
           <>
-            <button
-              disabled={locked || !!draft.package}
-              onClick={() =>
-                void choose("package", (source) =>
-                  void run("inspect", { module: "package", source, config }, (loaded) => setDraft({ package: loaded })),
-                )
-              }
-            >
-              Review package import
-            </button>
+            <section aria-label="Package management">
+              <button
+                disabled={locked || !!draft.package}
+                onClick={() =>
+                  void choose("package", (source) =>
+                    void run("inspect", { module: "package", source, config }, (loaded) => setDraft({ package: loaded })),
+                  )
+                }
+              >
+                Review package import
+              </button>
+            </section>
             {draft.package && <PackageDraft draft={draft.package} locked={locked}
               change={(value) => setDraft({ package: value })}
               review={(component) => beginReview("package_install", {
@@ -1121,16 +1155,10 @@ export default function App({ client = nativeClient }: { client?: Client }) {
         )}
         {module === "sdk" && (
           <section>
-            <details className="automation-panel"><summary>CLI, API &amp; agent workflows</summary>
-              <p>The Launcher exposes the same reviewed operations as this UI. Start with the catalog; inspect an SDK-built package before requesting any installation.</p>
-              <pre>allin1 launcher catalog{"\n"}allin1 launcher inspect --module package --source "path/to/package.zip"{"\n"}allin1 launcher agent-api</pre>
-              <p>Portable build: run <code>sidecar/ALLIN1-Launcher-Sidecar.exe --cli catalog</code> or <code>--agent-api</code>. Agents default to read-only; writes require process authority, a current review, and explicit confirmation.</p>
-            </details>
             <h2>ALLIN1 SDK</h2>
-            <p>
-              {session.sdk?.detail ?? "Refresh to inspect the SDK installation"}
-            </p>
-            <p className="path">{session.sdk?.root}</p>
+            <p>Install and maintain the optional authoring toolkit separately from the game installation. Review supported SDK actions before applying them.</p>
+            <p className={session.sdk && !session.sdk.healthy ? "notice warning" : undefined} role="status">{session.sdk?.detail ?? "Refresh to inspect the SDK installation."}</p>
+            {session.sdk?.root && <details><summary>SDK installation location</summary><p className="path">{session.sdk.root}</p></details>}
             <div className="toolbar">
               <button
                 disabled={locked}
@@ -1196,6 +1224,11 @@ export default function App({ client = nativeClient }: { client?: Client }) {
               setDraft={(value) => setDraft({ ...draft, assistant: value })} locked={locked}
               review={beginReview} choose={choose}
               inspect={(payload, adopt) => { void run("inspect", payload, adopt); }} />
+            <details className="automation-panel"><summary>CLI, API &amp; agent workflows</summary>
+              <p>The Launcher exposes the same reviewed operations as this UI. Start with the catalog, then inspect an SDK-built package before requesting installation.</p>
+              <pre>allin1 launcher catalog{"\n"}allin1 launcher inspect --module package --source "path/to/package.zip"{"\n"}allin1 launcher agent-api</pre>
+              <p>For packaged-runtime and API guidance, see Help Center. Agents default to read-only; supported writes require process authority, a current review, and explicit confirmation.</p>
+            </details>
           </section>
         )}
         {module === "activity" && (
@@ -1231,7 +1264,7 @@ export default function App({ client = nativeClient }: { client?: Client }) {
               <h2>{launcherRelease.update_available ? "Update available" : "No newer Launcher release"}</h2>
               <p>Current {catalog.desktop_version} · Latest {launcherRelease.version}</p>
               <p>{launcherRelease.name}</p>
-              <p>0.6.6 uses unsigned manual downloads. Review the release notes, build identity and checksums before installing. This action opens the official release page; it does not install or roll back anything.</p>
+              <p>0.6.7 uses unsigned manual downloads. Review the release notes, build identity and checksums before installing. This action opens the official release page; it does not install or roll back anything.</p>
               <button disabled={locked} onClick={() => void run("open_launcher_release", {}, () => setNotice("Official Launcher release page opened"))}>Open official release page</button>
             </section>}
             <pre className="activity" aria-label="Activity log">

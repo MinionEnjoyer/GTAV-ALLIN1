@@ -256,7 +256,7 @@ describe("Launcher React workspaces use the real Python boundary", () => {
     await navigate("Activity");
     await user().click(screen.getByRole("button", { name: "Check for updates" }));
     const release = await screen.findByRole("region", { name: "Launcher release information" });
-    expect(release).toHaveTextContent("Current 0.6.6 · Latest 0.6.7");
+    expect(release).toHaveTextContent("Current 0.6.7 · Latest 0.6.8");
     expect(release).toHaveTextContent("unsigned manual downloads");
     expect(within(release).getByRole("button", { name: "Open official release page" })).toBeEnabled();
     await expect(access(path.join(root, "state"))).rejects.toThrow();
@@ -351,7 +351,7 @@ describe("Launcher React workspaces use the real Python boundary", () => {
     expect(screen.queryByText("Component 2 of 2")).not.toBeInTheDocument();
     await user().click(screen.getByRole("button", { name: "Review package installation" }));
     await approve();
-    await screen.findByText("Already installed: 1.3 · Enabled");
+    await screen.findByText((_text, element) => element?.tagName === "P" && element.textContent === "Installed: 1.3 · Enabled");
     expect(screen.getByRole("heading", { name: "Collection · 2026.1" })).toBeInTheDocument();
     const game = path.join(root, "Synthetic game with spaces");
     expect(await readFile(path.join(game, "scripts/part0.ini"), "utf8")).toBe("enhanced-0");

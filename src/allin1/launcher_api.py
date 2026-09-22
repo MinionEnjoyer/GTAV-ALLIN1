@@ -20,14 +20,14 @@ EXTERNAL = {"open_activity_folder", "open_launcher_release"}
 # Explicit action parameters: adding a backend action requires a contract entry.
 ACTION_FIELDS = {
     "download_previews": ["categories"],
-    "save_config": [], "sync_config": [], "install": ["reactor_consent", "rpf_loader_consent"],
+    "save_config": [], "sync_config": [], "install": [],
     "uninstall": [], "launch": ["skip_previews", "skip_preview_categories", "quick_launch", "missing_previews_only"], "prepare_previews": ["skip_previews", "skip_preview_categories", "missing_previews_only"], "save_profile": ["name"], "delete_profile": ["name"],
     "export_profile": ["name", "destination"], "import_preferences": ["source"],
     # Collections require an explicit component selection.  The desktop uses
     # this for schema-v6 package bundles, so agents must be able to review the
     # exact same component instead of being rejected before the shared review
     # boundary sees the request.
-    "package_install": ["source", "settings", "component_id", "expected_state_sha256"],
+    "package_install": ["source", "settings", "component_id", "expected_state_sha256", "rpf_loader_consent"],
     "package_enable": ["id"], "package_disable": ["id"], "package_uninstall": ["id"],
     "content_enable": ["id"], "content_disable": ["id"], "content_settings": ["id", "settings"],
     "save_content_preferences": ["id", "settings"],

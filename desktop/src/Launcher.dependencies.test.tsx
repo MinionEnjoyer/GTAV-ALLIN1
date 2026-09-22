@@ -115,6 +115,43 @@ describe("Setup installation dependency preflight", () => {
     expect(vi.mocked(client.request).mock.calls.map(([operation]) => operation)).toEqual(["catalog", "inspect"]);
   });
 
+  it("moves dependency consent into the Install / Repair review", async () => {
+    const status = {
+      valid_game: true, edition: "enhanced", mod_installed: true,
+      scripthookv_installed: true, shvdn_installed: true, openrpf_installed: false,
+    };
+    const client: Client = {
+      request: vi.fn(async (operation, payload = {}) => {
+        if (operation === "catalog") return { desktop_version: "0.6.6" };
+        if (operation === "inspect") return { config: payload.config ?? config, status, reactor: { available: false } };
+        if (operation === "review") {
+          expect(payload).toMatchObject({ action: "install" });
+          expect(payload).not.toHaveProperty("reactor_consent");
+          expect(payload).not.toHaveProperty("rpf_loader_consent");
+          return {
+            action: "install", target: "D:/Synthetic GTA V Enhanced", game_write: true,
+            review_id: "install-review", review_sha256: "review-hash", request: payload,
+            install_dependencies: {
+              reactor: { requires_download: true, summary: "Reactor V is required. Apply will download and verify its pinned SHA-256." },
+              rpf_loader: { summary: "Content RPF Loader is not included in this repair." },
+            },
+          };
+        }
+        throw new Error(`Unexpected ${operation}`);
+      }),
+      selectPath: vi.fn(async () => null), onClose: vi.fn(async () => () => {}),
+      onHandoff: vi.fn(async () => () => {}), onProgress: vi.fn(async () => () => {}), close: vi.fn(async () => {}),
+    };
+    render(<App client={client} />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Review Install / Repair" }));
+
+    expect(screen.queryByRole("checkbox", { name: /Download Reactor Dependency/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /Download Content RPF Loader/i })).not.toBeInTheDocument();
+    const review = await screen.findByRole("region", { name: "Review changes" });
+    expect(within(review).getByLabelText("Install dependency plan")).toHaveTextContent("pinned SHA-256");
+    expect(within(review).getByRole("checkbox", { name: /I understand Apply will download and SHA-256 verify/i })).toBeInTheDocument();
+  });
+
   it("treats unavailable dependency evidence as not checked rather than missing", async () => {
     const client = setupInspection(
       { valid_game: true, edition: "enhanced", mod_installed: "unknown", openrpf_installed: 1 },

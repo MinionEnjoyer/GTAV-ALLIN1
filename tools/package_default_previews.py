@@ -40,7 +40,7 @@ def package(games, output, version):
                 data = path.read_bytes()
                 if hashlib.sha256(data).hexdigest() != digest: raise ValueError("Source changed during packaging")
                 packed.writestr(path.name, data)
-        asset = {"url": f"https://github.com/MinionEnjoyer/ALLIN1-SDK/releases/download/{version}/{archive.name}",
+        asset = {"url": f"https://github.com/MinionEnjoyer/GTAV-ALLIN1/releases/download/{version}/{archive.name}",
                  "sha256": sha(archive), "bytes": archive.stat().st_size, "count": len(selected)}
         validate_archive(archive, asset)
         manifest["categories"][category] = asset

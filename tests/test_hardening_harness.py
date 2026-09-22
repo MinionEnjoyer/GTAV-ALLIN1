@@ -14,6 +14,15 @@ harness = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(harness)
 
 
+def test_scratch_name_is_bounded_and_isolated(tmp_path):
+    short = harness.scratch_name(tmp_path, "12345678")
+    long = harness.scratch_name(tmp_path, "x" * 32)
+    assert len(short) == len(long) == 16
+    assert short != long
+    assert long == harness.scratch_name(tmp_path, "x" * 32)
+    assert long != harness.scratch_name(tmp_path / "other", "x" * 32)
+
+
 def fake_command(argv, cwd, output, name, env, *, code=0):
     log = output / f"{name}.log"
     log.write_text("synthetic\n", encoding="utf-8")

@@ -20,7 +20,7 @@ import urllib.request
 import zipfile
 
 
-VERSION = "0.2.6"
+VERSION = "0.2.8"
 TAG = f"v{VERSION}"
 RELEASE_PAGE = f"https://github.com/MinionEnjoyer/GTAV-REACTOR-V/releases/tag/{TAG}"
 UI_ROOT = "plugins/ReactorV/ui/"
@@ -59,11 +59,11 @@ class ReactorRelease:
 
 
 RELEASES = {
-    False: ReactorRelease("legacy", 179909955,
-        "f4655cbe1b563eb497d69baa7aec7d3a15cceff09e58e7f4437892316a4e3099",
+    False: ReactorRelease("legacy", 179921554,
+        "1a58063427141414f53608ae98058943cc7bd7efa49678b20b86d1e0c4b858f3",
         "GTA5.exe", "1.0.3889.0", "677e4e355cfbdb13273b1d992407e3c261b3a108dc4dd5c8a0c4c1da651802e5"),
-    True: ReactorRelease("enhanced", 179909635,
-        "23ab2e454775c4333219cc03c8b4050f4420a47a908a63e5331f286265370421",
+    True: ReactorRelease("enhanced", 179921234,
+        "33f2bb6e38b9036e4024ce8ad047e0fb5d6531ce8eb4e9bbf6b16bdfcab0ca0d",
         "GTA5_Enhanced.exe", "1.0.1158.16", "69da07ff67d05e9ded11289e597e8b8dc5855b0a429c085f37d148dc267cb2c5"),
 }
 
@@ -198,7 +198,7 @@ def _verify_game(root: Path, release: ReactorRelease) -> None:
     actual_sha256 = _sha(executable)
     if actual_sha256 != release.game_sha256:
         raise ReactorInstallError(
-            f"Reactor {TAG} is an edition-specific preview for GTA V {release.edition.title()} "
+            f"Reactor {TAG} is an edition-specific runtime for GTA V {release.edition.title()} "
             f"{release.game_version}. This executable does not match its supported build. "
             f"File: {executable}. Expected SHA-256: {release.game_sha256}. "
             f"Detected SHA-256: {actual_sha256}. "
@@ -208,11 +208,25 @@ def _verify_game(root: Path, release: ReactorRelease) -> None:
         )
 
 
+def verified_cached_archive(release: ReactorRelease) -> bool:
+    """Whether the pinned archive is locally available without a network download.
+
+    Keep this check read-only: dependency review uses it before the user has
+    acknowledged a possible download.
+    """
+    cache = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "ALLIN1/downloads/reactor"
+    target = _path(cache, release.sha256 + ".zip")
+    try:
+        return target.is_file() and target.stat().st_size == release.size and _sha(target) == release.sha256
+    except OSError:
+        return False
+
+
 def _download(release: ReactorRelease, progress: Callable[[str], None], *, allow_download: bool = True) -> Path:
     cache = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "ALLIN1/downloads/reactor"
     target = _path(cache, release.sha256 + ".zip")
     target.parent.mkdir(parents=True, exist_ok=True)
-    if target.is_file() and target.stat().st_size == release.size and _sha(target) == release.sha256:
+    if verified_cached_archive(release):
         progress("Using verified cached Reactor V download")
         return target
     if not allow_download:

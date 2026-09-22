@@ -24,9 +24,10 @@ export default function AssistantSettings({ session, draft, setDraft, locked, re
     <div className="split">
       <section>
         <h3>Managed model pack</h3>
-        <label>Download profile<select value={profile} disabled={locked || !!draft} onChange={(event) => { setProfile(event.target.value); setHardware(null); }}>
+        <label>Download profile<select aria-describedby="assistant-profile-help" value={profile} disabled={locked || !!draft} onChange={(event) => { setProfile(event.target.value); setHardware(null); }}>
           {session.sources.map((item: RecordData) => <option key={item.profile} value={item.profile}>{item.profile} · {item.display_name}</option>)}
         </select></label>
+        <small id="assistant-profile-help">Check hardware before downloading; package changes are shown for review first.</small>
         {source && <p>{source.display_name} · {(source.total_download_bytes / 1024 ** 3).toFixed(2)} GiB download · {source.minimum_ram_gb} GB minimum RAM</p>}
         <div className="toolbar">
           <button disabled={locked} onClick={() => inspect({ module: "assistant_hardware", profile }, (value) => setHardware(value.hardware))}>Check assistant hardware</button>
@@ -34,8 +35,8 @@ export default function AssistantSettings({ session, draft, setDraft, locked, re
           <button disabled={locked || !!draft} onClick={() => void choose("package", (source) => review("assistant_install_archive", { source }))}>Import assistant pack</button>
           <button disabled={locked || !!draft || !status.installed} onClick={() => review("assistant_uninstall")}>Remove managed assistant pack</button>
         </div>
-        {hardware && <div aria-label="Assistant hardware assessment">
-          <p>{hardware.compatible ? "Hardware check passed" : "Hardware requirements not met"}</p>
+        {hardware && <div className={hardware.compatible ? "notice" : "notice error"} aria-label="Assistant hardware assessment" role={hardware.compatible ? "status" : "alert"}>
+          <strong>{hardware.compatible ? "Hardware check passed" : "Hardware requirements not met"}</strong>
           {[...hardware.blockers, ...hardware.warnings].map((message: string) => <p key={message}>{message}</p>)}
           <p>Required free space: {(hardware.required_free_disk_bytes / 1024 ** 3).toFixed(2)} GiB</p>
         </div>}
@@ -43,6 +44,7 @@ export default function AssistantSettings({ session, draft, setDraft, locked, re
       </section>
       <section>
         <h3>Assistant configuration</h3>
+        <p>Choose a mode, then complete only the fields shown for that mode. Saving opens a review; it does not start the assistant.</p>
         <div className="fields">
           <Field name="mode" descriptor={{ label: "Assistant mode", choices: ["disabled", "managed_local", "custom_local", "compatible_api"] }} value={values.mode} disabled={locked}
             change={(mode) => setDraft({ ...values, mode,
@@ -72,7 +74,7 @@ export default function AssistantSettings({ session, draft, setDraft, locked, re
             {field("model_sha256", "Model SHA-256 (optional)")}
           </div>
         </>}
-        <button disabled={locked || !draft} onClick={() => review("assistant_save", { assistant_config: values })}>Review assistant settings</button>
+        <div className="toolbar"><button className="primary" disabled={locked || !draft} onClick={() => review("assistant_save", { assistant_config: values })}>Review assistant settings</button></div>
       </section>
     </div>
   </section>;

@@ -19,6 +19,18 @@ sys.path.insert(0, str(ROOT / "src"))
 from allin1.release_paths import contained, strict_json
 
 
+# Retained repository evidence that intentionally contains local fixture and
+# installation provenance. These files remain source-controlled for maintainers
+# but are neither public documentation nor release payloads.
+INTERNAL_DOCUMENTS = frozenset({
+    "docs/audits/vehicle-support-20260906.md",
+    "docs/audits/vehicle-support-matrix-20260906.md",
+    "docs/suppressor-json-profiles.md",
+    "docs/suppressor-sleeve-tracking.md",
+    "docs/vector-suppressor-integration.md",
+})
+
+
 def cell(value):
     return str(value).replace("|", "\\|").replace("\n", " ")
 
@@ -99,7 +111,8 @@ def audit(root, *, expected_references=None):
     discovered = {path.relative_to(root).as_posix()
                   for base in ("docs", "examples", "runtime/VehicleWorkbenchAxles", "sdk/examples")
                   for path in (root / base).rglob("*.md")
-                  if not {"build", "out", "bin", "obj", ".git"}.intersection(path.relative_to(root).parts)}
+                  if not {"build", "out", "bin", "obj", ".git"}.intersection(path.relative_to(root).parts)
+                  and path.relative_to(root).as_posix() not in INTERNAL_DOCUMENTS}
     discovered.update(name for name in ("README.md", "RELEASE_NOTES.md", "CODE_SIGNING_POLICY.md", "RELEASE_SIGNING.md", "desktop/README.md", "tests/IN_GAME_CHECKLIST.md", "mods/README.md", "native/map-host/README.md") if (root / name).is_file())
     errors, history = [], []
     if discovered - set(documents): errors.append("Unclassified documents: " + ", ".join(sorted(discovered - set(documents))))

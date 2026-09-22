@@ -72,6 +72,7 @@ export default function RuntimeInjectors({ client, config, draft, change, review
   }));
 
   return <section className="injector" aria-label="Traffic runtime injector">
+    <h2>Traffic injector</h2>
     <div className="toolbar">
       <button className="primary" disabled={locked || busy || !!draft} onClick={() => void inspect()}>
         {loaded ? "Refresh authorized catalog" : "Load authorized catalog"}
@@ -81,7 +82,7 @@ export default function RuntimeInjectors({ client, config, draft, change, review
     <p className="injector-boundary">Policies apply only after review and a closed-game confirmation. Catalog entries must come from installed, receipt-authorized packages.</p>
     {error && <p className="notice error" role="alert">{error}</p>}
     {invalid && <p className="notice error" role="alert">Enter a finite value within the displayed range before review.</p>}
-    {!loaded && !busy && <p>Load the authorized catalog to configure traffic.</p>}
+    {!loaded && !busy && <div className="empty-state"><strong>Load the traffic catalog to begin</strong><p>Only vehicles from installed, receipt-authorized packages can be included.</p></div>}
     {document && population && <>
       <fieldset>
         <legend>Traffic policy</legend>
@@ -107,7 +108,7 @@ export default function RuntimeInjectors({ client, config, draft, change, review
         {entries.map((entry: RecordData, index: number) => {
           const model = models.find((item: RecordData) => item.package_id === entry.package_id && item.model === entry.model);
           const name = model?.name ?? entry.model;
-          return <div className="injector-entry" key={`${entry.package_id}:${entry.model}`}>
+          return <div className="injector-entry" key={`${entry.package_id}:${entry.model}`} aria-label={`${name} traffic entry`}>
             <strong>{name}</strong><small>{model?.category ?? entry.package_id}</small>
             <label className="check"><input type="checkbox" checked={!!entry.enabled} disabled={locked || busy || !document.enabled} onChange={event => updateEntry(index, row => ({ ...row, enabled: event.target.checked }))} />Include</label>
             <label>Weight
@@ -117,7 +118,7 @@ export default function RuntimeInjectors({ client, config, draft, change, review
         })}
       </fieldset>
       {population.warnings?.length > 0 && <section className="notice warning"><strong>Catalog warnings</strong>{population.warnings.map((warning: string) => <p key={warning}>{warning}</p>)}</section>}
-      <div className="toolbar"><button className="primary" disabled={locked || busy || !draft || invalid} onClick={() => review("traffic_population_save", { document, expected_document_sha256: population.document_sha256 })}>Review Traffic policy</button></div>
+      <div className="toolbar"><button className="primary" disabled={locked || busy || !draft || invalid} onClick={() => review("traffic_population_save", { document, expected_document_sha256: population.document_sha256 })}>Review Traffic policy</button><small>Review shows the policy and catalog entries before it is saved.</small></div>
     </>}
   </section>;
 }

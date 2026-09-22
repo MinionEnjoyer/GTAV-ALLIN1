@@ -33,6 +33,13 @@ def test_owned_documentation_and_generated_references_match_source():
     assert public_docs <= set(PUBLIC_ROOT_FILES)
 
 
+def test_internal_provenance_is_retained_but_not_publicly_cataloged():
+    catalog = json.loads((ROOT / "docs/catalog.json").read_text())
+    for name in docs.INTERNAL_DOCUMENTS:
+        assert (ROOT / name).is_file()
+        assert name not in catalog["documents"]
+
+
 def test_live_checklist_covers_the_current_acceptance_schema():
     from allin1.release_acceptance import CHECKS
     text = (ROOT / "tests/IN_GAME_CHECKLIST.md").read_text()
@@ -50,13 +57,11 @@ def test_release_notes_are_current_only_and_disclose_unsigned_distribution():
     assert "release_qualified" in text and "incomplete" in text
     assert [line for line in text.splitlines() if line.startswith("## ")] == [
         "## What's new", "## Download and trust", "## Release status",
-        "## Re-release 2 — installer fixes",
     ]
-    assert "ALLIN1-Launcher-0.6.6-r2-portable.zip" in text
-    assert "GTAV-ALLIN1-0.6.6-r2-windows.zip" in text
-    assert "GTAV-REACTOR-V/releases/tag/v0.2.7" in text
-    assert "efa9202dc425a0d67398d5d9969edc0f6b7f2b14842922db48375995b76a2fcb" in text
-    assert "9d68ffd879c05c62be0fa00f76d6e751d2122b2541dec3192f812a7e4dced521" in text
+    assert f"ALLIN1-Launcher-{__version__}-portable.zip" in text
+    assert f"GTAV-ALLIN1-{__version__}-windows.zip" in text
+    assert "GTAV-REACTOR-V/releases/tag/v0.2.8" in text
+    assert "docs/release-0.6.6.md" in text
     assert "**Unsigned manual download.**" in text
     assert "SHA-256" in text and "signature verification" in text
     assert len(text.split()) < 450

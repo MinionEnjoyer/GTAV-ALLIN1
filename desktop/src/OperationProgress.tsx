@@ -9,10 +9,11 @@ export default function OperationProgress({ heading, message, percentage, rpfWor
   heading: string; message: string; percentage?: number; active?: boolean;
   rpfWork?: RpfWork;
 }) {
+  const progress = Number.isFinite(percentage) ? Math.max(0, Math.min(100, percentage as number)) : undefined;
   return <section className="operation-progress" aria-label={heading}>
     <div className="operation-progress-title"><strong>{heading}</strong>
-      {percentage !== undefined && <span>{percentage}%</span>}</div>
-    <p role="status">{message}</p>
+      {progress !== undefined && <span aria-label={`${progress}% complete`}>{progress}%</span>}</div>
+    <p role="status" aria-live="polite">{message}</p>
     {rpfWork && <section aria-label="RPF workload">
       <p>{rpfWork.completed_actions} of approximately {rpfWork.estimated_actions} RPF actions finished
         {rpfWork.entries > 0 ? ` across ${rpfWork.entries} entries` : ""}.</p>
@@ -23,10 +24,10 @@ export default function OperationProgress({ heading, message, percentage, rpfWor
       {rpfWork.budget_exceeded && <p role="status">This operation is taking longer than its workload budget.
         It has not been stopped or retried. Waiting for a definitive result.</p>}
     </section>}
-    {percentage !== undefined && <div className="operation-progress-track"
+    {progress !== undefined && <div className="operation-progress-track"
       role="progressbar" aria-label={heading} aria-valuemin={0} aria-valuemax={100}
-      aria-valuenow={percentage} aria-valuetext={message}>
-      <div style={{ width: `${percentage}%` }} />
+      aria-valuenow={progress} aria-valuetext={`${progress}% — ${message}`}>
+      <div style={{ width: `${progress}%` }} />
     </div>}
   </section>;
 }

@@ -19,6 +19,7 @@ export function RenderWorkerControls({ status, disabled, controlError, request }
   }
   return <details open className="render-worker-controls">
     <summary>Render performance</summary>
+    <p>Set the concurrency limit for this review run. Changes affect new render slots; work already running finishes normally.</p>
     <label>Render workers
       <select aria-label="Render workers" value={status.workers ?? 1}
         disabled={disabled || sending} onChange={e => void change(Number(e.target.value))}>
@@ -27,7 +28,7 @@ export function RenderWorkerControls({ status, disabled, controlError, request }
             : n > (status.recommended_workers ?? maximum) ? ' — RAM caution' : ''}</option>)}
       </select>
     </label>
-    <p>{status.active ?? 0} active · limit {status.workers ?? 1} · maximum {maximum} for this run</p>
+    <p aria-label={`Render capacity: ${status.active ?? 0} active, limit ${status.workers ?? 1}, maximum ${maximum} for this run`}><strong>Capacity:</strong> {status.active ?? 0} active · limit {status.workers ?? 1} · maximum {maximum} for this run</p>
     <p>Each run starts at one. Increasing may improve throughput, but workers share CPU, RAM and GPU.</p>
     <p>{typeof status.median_seconds === 'number'
       ? `Recent median: ${status.median_seconds.toFixed(1)} seconds per render (${status.samples} samples at this setting).`
@@ -36,7 +37,7 @@ export function RenderWorkerControls({ status, disabled, controlError, request }
       {' '}Different models take different amounts of time.</p>
     {Array.isArray(status.warnings) && status.warnings.length > 0 &&
       <ul aria-label="Render performance warnings">{status.warnings.map((warning: string) => <li key={warning}>{warning}</li>)}</ul>}
-    {notice && <p role="status">{notice}</p>}
+    {notice && <p role="status" aria-live="polite">{notice}</p>}
     {(error || controlError) && <p role="alert">{error || controlError}</p>}
   </details>;
 }

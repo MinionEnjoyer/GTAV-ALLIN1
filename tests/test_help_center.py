@@ -7,6 +7,14 @@ def test_help_center_has_unique_keys_and_core_workflows():
     assert {"getting-started", "packages", "asset-viewer", "rpf-explorer", "recovery"} <= set(keys)
 
 
+def test_help_center_starts_with_the_first_run_workflow():
+    assert [topic.key for topic in HELP_TOPICS[:3]] == [
+        "getting-started", "editions", "install-repair",
+    ]
+    priorities = [topic.onboarding_priority for topic in HELP_TOPICS]
+    assert priorities == sorted(priorities)
+
+
 def test_help_search_matches_keywords_and_ranks_title_matches():
     matches = search_help_topics("RPF")
     assert matches

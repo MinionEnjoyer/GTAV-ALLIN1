@@ -26,7 +26,7 @@ def pack(tmp_path):
     with zipfile.ZipFile(archive, "w") as z:
         z.writestr("index.json", json.dumps(index))
         z.writestr(filename, data)
-    asset = dict(url="https://github.com/MinionEnjoyer/ALLIN1-SDK/releases/download/gbay-previews-2026-09-07/gbay-weapons.zip",
+    asset = dict(url="https://github.com/MinionEnjoyer/GTAV-ALLIN1/releases/download/gbay-previews-2026-09-07/gbay-weapons.zip",
                  sha256=p.sha(archive), bytes=archive.stat().st_size, count=1)
     manifest = dict(schema_version=1, version="gbay-previews-2026-09-07", categories={"weapons": asset})
     (project / "data/default_previews.json").write_text(json.dumps(manifest))
@@ -134,6 +134,14 @@ def test_bundled_manifest_is_packaged_resource():
     public = {path.relative_to(root).as_posix() for path in collect_public_files(root, require_toolchain=False)}
     assert "data/default_previews.json" in public
     assert p.plan(root)["count"] == 1056
+
+
+def test_bundled_manifest_pins_public_launcher_releases():
+    root = Path(__file__).resolve().parents[1]
+    plan = p.plan(root)
+    prefix = "https://github.com/MinionEnjoyer/GTAV-ALLIN1/releases/download/"
+    assert all(asset["url"].startswith(prefix + plan["version"] + "/gbay-")
+               for asset in plan["assets"])
 
 
 def test_download_exposed_by_public_agent_and_cli_contract():

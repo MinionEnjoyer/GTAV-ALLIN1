@@ -1,4 +1,4 @@
-# allin1 command reference — 0.6.6
+# allin1 command reference — 0.6.7
 
 Generated from the Click command tree by `documentation_audit.py`; do not edit individual rows.
 
@@ -22,6 +22,9 @@ Listing a command here does not authorize execution, imply React UI parity, or q
 | `allin1 assistant verify` | Fully verify every managed runtime and model file against its recorded hash. | --root |
 | `allin1 audit-previews` | Inspect captured previews for blank, transparent, or poor framing. | directory |
 | `allin1 build-release` | Build and verify the minimal public Windows release archive. | --output / -o |
+| `allin1 capacity` | Inspect gameconfig and build unqualified, export-only pool profiles. |  |
+| `allin1 capacity build` | Export a candidate, original source, and audit receipt. | source, --edition, --game-build, --source-sha256, --preset, --pool, --output |
+| `allin1 capacity inspect` | Inspect an extracted stock gameconfig.xml without changing it. | source |
 | `allin1 content` | Validate and manage versioned ALLIN1 content extensions. |  |
 | `allin1 content disable` | Disable an installed content package. | extension_id, --yes, --gta-path |
 | `allin1 content enable` | Enable an installed content package. | extension_id, --yes, --gta-path |

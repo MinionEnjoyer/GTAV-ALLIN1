@@ -35,7 +35,7 @@ def plan(project, categories=None):
     assets = []
     for category in categories:
         asset = manifest["categories"][category]
-        expected = f'https://github.com/MinionEnjoyer/ALLIN1-SDK/releases/download/{manifest["version"]}/gbay-{category}.zip'
+        expected = f'https://github.com/MinionEnjoyer/GTAV-ALLIN1/releases/download/{manifest["version"]}/gbay-{category}.zip'
         if asset.get("url") != expected or not re.fullmatch(r"[0-9a-f]{64}", asset.get("sha256", "")):
             raise ValueError("Invalid pinned preview download")
         if type(asset.get("bytes")) is not int or not 0 < asset["bytes"] <= MAX_ARCHIVE:

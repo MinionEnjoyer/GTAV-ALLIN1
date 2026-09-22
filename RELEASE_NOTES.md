@@ -1,70 +1,24 @@
-# GTA V ALLIN1 0.6.6 — unsigned portable release
+# GTA V ALLIN1 0.6.7 — unsigned portable release
 
 ## What's new
 
-- The Content → Traffic editor remains the supported configurable population
-  feature. Ped and weapon ambient-spawner work has moved to the separate
-  experimental branch and is not part of this release.
-- Hardened Launcher/service recovery around disconnects, timeouts, interrupted
-  writes and explicit reconnection. A retained draft is not replayed after an
-  uncertain service operation.
-- Pins the Reactor V dependency to 0.2.6 and ships the matching composed UI.
-  The separate [Reactor V 0.2.7 installer-only release](https://github.com/MinionEnjoyer/GTAV-REACTOR-V/releases/tag/v0.2.7)
-  preserves ALLIN1 default/generated `index.json` files when installing 0.2.6.
-  It does not change this release's
-  exact 0.2.6 native-runtime dependency or asset pins.
-- Aligns the Launcher with the current SDK package contract, including schema-2 exact
-  member preconditions used by managed package validation.
+- GBAY default previews now live in the public ALLIN1 repository: 935 vehicles, 111 weapons and 10 gear images. Existing generated/custom artwork is preserved; older launchers can still use the SDK-hosted downloads.
+- Refined desktop spacing, headings, warnings and review controls. Getting Started and essential setup guidance lead the Help Center.
+- Dependency review explains required downloads and renews authorization when a verified Reactor cache is missing.
+- More robust Python discovery in the Windows installer.
+- An export-only gameconfig capacity profile builder validates source hashes, edition/scopes and explicit pool changes. Profiles are experimental, not automatic crash fixes.
+- Coordinates with SDK 0.6.7 and the separately versioned [Reactor V 0.2.8 runtime](https://github.com/MinionEnjoyer/GTAV-REACTOR-V/releases/tag/v0.2.8).
 
 ## Download and trust
 
-**Unsigned manual download.** Publisher code signing is not planned for 0.6.6.
-Windows may show an unknown-publisher or reputation warning; do not disable
-security protections.
+**Unsigned manual download.** Verify the adjacent SHA-256 files and build identity. Checksums detect changed bytes, not publisher identity. Automatic-update signature verification remains enforced. Do not disable Windows security protections.
 
-Use official release assets after publication. Verify SHA-256 checksums, build
-identity and companion versions before installation. Checksums detect changed
-bytes; they do not authenticate a publisher or prove safety. Automatic-update
-signature verification remains enforced; unsigned manual distribution does not
-enable automatic-update installation.
+Download `ALLIN1-Launcher-0.6.7-portable.zip` for the complete launcher, or `GTAV-ALLIN1-0.6.7-windows.zip` for the public source installer distribution. Extract into a fresh folder; do not overlay an old installation. Keep the launcher's runtime and resources together.
 
 ## Release status
 
-**Release `v0.6.6`.** This owner-approved portable release supersedes v0.6.5.
-Extract the complete ZIP into a new folder and run
-`allin1-launcher-desktop.exe`; keep its `runtime` and `resources` folders
-together. Use a fresh extraction rather than overlaying an older build.
+**Release `v0.6.7`.** Supersedes the 0.6.6 installer refresh and v0.6.5. Experimental third-party content packs and their unresolved compatibility issues are not included.
 
-Automated and packaged checks are recorded separately from live-game
-acceptance. This is not a pristine-Windows dependency test, an NSIS installer
-release, or fresh final-build Legacy/Enhanced in-game acceptance. Unperformed
-or skipped checks remain untested. Build reports intentionally keep
-`release_qualified` false where broader qualification gates are incomplete;
-publication approval does not turn those checks into passes.
+Automated checks, package integrity and live acceptance are separate evidence. Build reports retain `release_qualified` false where broader lifecycle, pristine-Windows or both-edition final-build acceptance remains incomplete. Skipped checks are not passes. This is not a signed updater or qualified NSIS setup release.
 
-## Re-release 2 — installer fixes
-
-This re-release publishes new, uniquely named `-r2` archives built from the
-repaired 0.6.6 source. It fixes batch entrypoints in installation paths with
-spaces, `&`, or `!`, passes a manually entered game path as data rather than
-interpolated Python source, and improves missing-executable and Reactor
-compatibility diagnostics. It does not change the product version, add a
-Reactor runtime, or qualify native installer lifecycle or live-game behavior.
-Reactor 0.2.7 is installer-only and retains the verified 0.2.6 runtime.
-
-Do not mistake the original archives for these repaired downloads. Their
-recorded SHA-256 values are retained for identification only:
-
-- `ALLIN1-Launcher-0.6.6-portable.zip`:
-  `efa9202dc425a0d67398d5d9969edc0f6b7f2b14842922db48375995b76a2fcb`
-- `GTAV-ALLIN1-0.6.6-windows.zip`:
-  `9d68ffd879c05c62be0fa00f76d6e751d2122b2541dec3192f812a7e4dced521`
-
-Download only the `ALLIN1-Launcher-0.6.6-r2-portable.zip` and
-`GTAV-ALLIN1-0.6.6-r2-windows.zip` assets for this re-release, and verify each
-against its adjacent `.sha256` asset. The new checksums are intentionally
-different because the repaired archives have different bytes.
-
-See the [Launcher manual](docs/launcher-guide.md),
-[release checklist](docs/release-0.6.6.md) and
-[earlier release history](docs/archive/release-notes-before-0.6.4.md).
+See the [0.6.7 release guide](docs/release-0.6.7.md), [historical 0.6.6 guide](docs/release-0.6.6.md), and [earlier history](docs/archive/release-notes-before-0.6.4.md).

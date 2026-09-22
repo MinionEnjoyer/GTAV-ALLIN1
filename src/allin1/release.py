@@ -33,8 +33,6 @@ PUBLIC_SMOKE_EXAMPLE_SOURCES = (
 )
 
 PUBLIC_DOCUMENTATION_FILES = (
-    "docs/audits/vehicle-support-20260906.md",
-    "docs/audits/vehicle-support-matrix-20260906.md",
     "docs/complete-vehicle-catalog.md",
     "docs/driving-telemetry.md",
     "docs/trailer-hitches.md",
@@ -44,6 +42,7 @@ PUBLIC_DOCUMENTATION_FILES = (
     "docs/archive/release-notes-before-0.6.4.md",
     "docs/cli-reference.md",
     "docs/configuration-reference.md",
+    "docs/content-capacity-profiles.md",
     "docs/content-extension-api.md",
     "docs/content-injectors.md",
     "docs/development.md",
@@ -58,13 +57,11 @@ PUBLIC_DOCUMENTATION_FILES = (
     "docs/release-0.6.4.md",
     "docs/release-0.6.5.md",
     "docs/release-0.6.6.md",
+    "docs/release-0.6.7.md",
     "docs/gbay-default-previews.md",
     "docs/hardening-harness.md",
     "docs/rpf-authoring-safety.md",
-    "docs/suppressor-json-profiles.md",
-    "docs/suppressor-sleeve-tracking.md",
     "docs/test-tools-capability-review.md",
-    "docs/vector-suppressor-integration.md",
     "docs/ymt-limit-expansion-research-and-architecture.md",
     "docs/catalog.json",
 )

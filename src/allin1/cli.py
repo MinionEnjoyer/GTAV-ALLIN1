@@ -59,6 +59,8 @@ def main(ctx: click.Context, config: str | None, verbose: bool) -> None:
 
 from allin1.launcher_cli import launcher
 main.add_command(launcher)
+from allin1.capacity_cli import capacity
+main.add_command(capacity)
 
 
 @main.command("open-launcher")
@@ -160,7 +162,7 @@ def install_cmd(ctx: click.Context, rpf_loader: str, reactor: str) -> None:
         if dependency_recorded(gta_path, enhanced):
             return True
         edition = "Enhanced" if enhanced else "Legacy"
-        click.echo(f"Reactor V for {edition} is a shared, unsigned preview dependency (~175 MB download).")
+        click.echo(f"Reactor V for {edition} is a shared, unsigned runtime dependency (~175 MB download).")
         click.echo("ALLIN1 verifies its pinned SHA-256 and supported game build; other mods and runtime settings are preserved.")
         return click.confirm("Download and install Reactor V with ALLIN1's GBAY interface?", default=True)
 

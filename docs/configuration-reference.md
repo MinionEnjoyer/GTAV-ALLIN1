@@ -1,4 +1,4 @@
-# Launcher configuration reference — 0.6.6
+# Launcher configuration reference — 0.6.7
 
 Generated from `Config.default()` by `documentation_audit.py`; these are source defaults, not your saved settings.
 

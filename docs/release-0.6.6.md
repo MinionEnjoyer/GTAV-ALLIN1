@@ -1,5 +1,7 @@
 # ALLIN1 0.6.6 release guide
 
+> Historical release record — superseded by [0.6.7](release-0.6.7.md).
+
 0.6.6 is an owner-approved **unsigned manual-download portable release**. It
 supersedes v0.6.5. The SDK remains independently distributed and is not bundled
 in this archive. Exact artifact checksums and build reports accompany

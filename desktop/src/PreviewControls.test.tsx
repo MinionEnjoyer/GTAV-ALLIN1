@@ -5,6 +5,20 @@ import userEvent from "@testing-library/user-event";
 import PreviewControls from "./PreviewControls";
 
 describe("compact preview controls", () => {
+  it("keeps launch modes accessible and shows update choices only in update mode", () => {
+    const view = render(<PreviewControls busy={false} skipped={[]} quick onChange={vi.fn()} />);
+    expect(screen.getByRole("radio", { name: "Quick Launch" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Update Previews" })).not.toBeChecked();
+    expect(screen.queryByRole("checkbox", { name: "Missing previews only" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Weapons" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Coverage Existing \/ total/ })).toBeVisible();
+
+    view.rerender(<PreviewControls busy={false} skipped={[]} quick={false} onChange={vi.fn()} />);
+    expect(screen.getByRole("radio", { name: "Update Previews" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Missing previews only" })).toBeVisible();
+    expect(screen.getByRole("group", { name: "Preview categories" })).toBeVisible();
+    expect(screen.getByRole("checkbox", { name: "Weapons" })).toBeChecked();
+  });
   it("offers missing-only and preserves it when categories or launch mode change", async () => {
     const change = vi.fn(), user = userEvent.setup();
     const view = render(<PreviewControls busy={false} skipped={[]} quick={false} onChange={change} />);

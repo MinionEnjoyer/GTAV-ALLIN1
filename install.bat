@@ -49,6 +49,12 @@ if not defined PYTHON_EXE (
         exit /b 1
     )
 
+    echo Install 64-bit Python 3.12 for this Windows account using winget?
+    choice /c YN /n /m "Continue [Y/N]: "
+    if errorlevel 2 (
+        echo Cancelled. No prerequisites were installed.
+        exit /b 1
+    )
     echo Installing 64-bit Python 3.12 for this Windows account...
     echo This may take a few minutes.
     echo.
@@ -229,27 +235,41 @@ exit /b 3
 :: Python itself avoids treating the Microsoft Store alias as an installation.
 :find_python
 set "PYTHON_EXE="
-call :try_python ".venv\Scripts\python.exe"
+set "PYTHON_CANDIDATE=.venv\Scripts\python.exe"
+call :try_python
 if defined PYTHON_EXE exit /b 0
-call :try_python "python.exe"
+set "PYTHON_CANDIDATE=python.exe"
+call :try_python
 if defined PYTHON_EXE exit /b 0
-call :try_python "python3.exe"
+set "PYTHON_CANDIDATE=python3.exe"
+call :try_python
 if defined PYTHON_EXE exit /b 0
 
 where py.exe >nul 2>&1
 if errorlevel 1 goto :try_python_default
 set "PYTHON_FROM_LAUNCHER="
 for /f "delims=" %%p in ('py.exe -3 -c "import sys; print(sys.executable)" 2^>nul') do set "PYTHON_FROM_LAUNCHER=%%p"
-if defined PYTHON_FROM_LAUNCHER call :try_python "!PYTHON_FROM_LAUNCHER!"
+if defined PYTHON_FROM_LAUNCHER (
+    set "PYTHON_CANDIDATE=!PYTHON_FROM_LAUNCHER!"
+    call :try_python
+)
 if defined PYTHON_EXE exit /b 0
 
 :try_python_default
-call :try_python "%LocalAppData%\Programs\Python\Python312\python.exe"
+:: Pass paths as environment data, never as CALL arguments (CALL expands them
+:: a second time). Discover other supported versions and all-users installs too.
+for /d %%d in ("!LocalAppData!\Programs\Python\Python*" "!ProgramFiles!\Python*") do (
+    set "PYTHON_CANDIDATE=%%d\python.exe"
+    call :try_python
+    if defined PYTHON_EXE exit /b 0
+)
 exit /b 0
 
 :try_python
-set "PYTHON_CANDIDATE=%~1"
+echo [%date% %time%] Checking Python candidate: !PYTHON_CANDIDATE! >> "%LOGFILE%"
 "!PYTHON_CANDIDATE!" -c "import sys; ok = (sys.version_info.major == 3 and sys.version_info.minor in range(10, 100)) or sys.version_info.major in range(4, 100); raise SystemExit(0 if ok else 1)" >nul 2>&1
-if not errorlevel 1 set "PYTHON_EXE=!PYTHON_CANDIDATE!"
+set "PYTHON_EXIT=!errorlevel!"
+echo [%date% %time%] Python candidate exit code: !PYTHON_EXIT! >> "%LOGFILE%"
+if "!PYTHON_EXIT!"=="0" set "PYTHON_EXE=!PYTHON_CANDIDATE!"
 set "PYTHON_CANDIDATE="
 exit /b 0

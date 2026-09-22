@@ -4,9 +4,12 @@ export default function StartupStatus({ startup, acknowledged, onAcknowledge }: 
   startup: RecordData; acknowledged: boolean; onAcknowledge: () => void;
 }) {
   const details = <>
-    <p>{startup.failure || (startup.active ? "Waiting for fresh startup evidence…" : "Startup monitoring finished")}</p>
-    <ol>{(startup.milestones ?? []).map(([key, label]: [string, string]) =>
-      <li key={key}>{startup.ready?.includes(key) ? "✓" : startup.active ? "…" : "—"} {label}</li>)}</ol>
+    <p role="status">{startup.failure || (startup.active ? "Waiting for fresh startup evidence…" : "Startup monitoring finished")}</p>
+    <ol aria-label="Startup milestones">{(startup.milestones ?? []).map(([key, label]: [string, string]) => {
+      const state = startup.ready?.includes(key) ? "Complete" : startup.active ? "Checking" : "Not confirmed";
+      const marker = startup.ready?.includes(key) ? "✓" : startup.active ? "…" : "—";
+      return <li key={key} aria-label={`${state}: ${label}`}>{marker} {label}</li>;
+    })}</ol>
   </>;
   return <section aria-label="Reactor startup" className="startup-status">
     {acknowledged ? <details>

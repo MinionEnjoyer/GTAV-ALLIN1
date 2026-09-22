@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import shutil
 import sys
+from unittest.mock import Mock
 import pytest
 from allin1.config import Config
 from allin1.desktop_service import LauncherService, NAVIGATION, serializable
@@ -85,6 +86,56 @@ def test_setup_exposes_required_reactor_without_retired_backend_fields(service):
     assert 'not installed' in result['reactor']['reason']
     assert 'gbay_ui_backend' not in result['config']['script']
     assert 'gbay_menu_enabled' not in result['config']['script']
+
+
+def test_install_review_includes_required_reactor_without_setup_toggles(service, monkeypatch):
+    monkeypatch.setattr("allin1.reactor_dependency.dependency_recorded", lambda *_: False)
+    monkeypatch.setattr("allin1.reactor_dependency.verified_cached_archive", lambda *_: False)
+    review = service.review({"action": "install"})
+
+    plan = review["install_dependencies"]
+    assert plan["reactor"]["required"] is True
+    assert plan["reactor"]["requires_download"] is True
+    assert "pinned SHA-256" in plan["reactor"]["summary"]
+    assert plan["rpf_loader"]["included"] is False
+    # These values are created only after the read-only review, and are bound
+    # into its single-use hash for the later explicit Apply confirmation.
+    assert review["request"]["reactor_consent"] is True
+    assert review["request"]["rpf_loader_consent"] is False
+
+
+def test_recorded_reactor_without_verified_cache_reviews_and_allows_redownload(service, monkeypatch):
+    monkeypatch.setattr("allin1.reactor_dependency.dependency_recorded", lambda *_: True)
+    monkeypatch.setattr("allin1.reactor_dependency.verified_cached_archive", lambda *_: False)
+    install = Mock(return_value={"kind": "install"})
+    monkeypatch.setattr(service.manager, "install", install)
+
+    review = service.review({"action": "install"})
+
+    reactor = review["install_dependencies"]["reactor"]
+    assert reactor["requires_download"] is True
+    assert "download" in reactor["summary"]
+    assert review["request"]["reactor_consent"] is True
+    service.apply({"review_id": review["review_id"], "review_sha256": review["review_sha256"], "confirmed": True})
+    assert install.call_args.kwargs["reactor_consent"](None, False) is True
+
+
+def test_package_review_requires_explicit_rpf_loader_choice_when_content_needs_it(service, tmp_path):
+    source = tmp_path / "rpf-package"; source.mkdir()
+    (source / "payload.ini").write_text("content")
+    manifest = source / "mod.toml"
+    manifest.write_text(
+        'schema_version = 1\nid = "needs-rpf"\nname = "Needs RPF"\nversion = "1.0"\n'
+        'type = "script"\neditions = ["enhanced"]\ndependencies = ["openrpf"]\n'
+        '[[files]]\nsource = "payload.ini"\ndestination = "scripts/needs-rpf.ini"\n'
+    )
+    review = service.review({"action": "package_install", "source": str(manifest)})
+    loader = review["package_dependencies"]["rpf_loader"]
+    assert loader["required"] is True and loader["available"] is False
+    assert loader["approved"] is False
+
+    approved = service.review({"action": "package_install", "source": str(manifest), "rpf_loader_consent": True})
+    assert approved["package_dependencies"]["rpf_loader"]["approved"] is True
 
 
 def test_local_settings_profiles_and_export_do_not_touch_game(service, tmp_path):

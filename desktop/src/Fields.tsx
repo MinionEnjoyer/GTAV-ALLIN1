@@ -19,21 +19,24 @@ const hints: Record<string, string> = {
 function NumberField({ label, value, change, disabled, descriptor, name }: { label: string; value: number; change: (value: number) => void; disabled: boolean; descriptor?: RecordData; name: string }) {
   const [text, setText] = useState(String(value));
   const id = useId();
+  const hintId = useId();
   useEffect(() => setText(String(value)), [value]);
   const limits = bounded[name];
   return <div className="number-field"><label htmlFor={id}>{label}</label>
     <div className={limits ? "range-input" : ""}>
       {limits && <input type="range" aria-label={`${label} slider`} min={limits[0]} max={limits[1]} step={limits[2]} value={value} disabled={disabled} onChange={(e) => change(Number(e.target.value))} />}
-      <input id={id} type="number" value={text} disabled={disabled} min={descriptor?.minimum ?? limits?.[0]} max={descriptor?.maximum ?? limits?.[1]} step={descriptor?.step ?? limits?.[2] ?? "any"}
+      <input id={id} aria-describedby={hints[name] ? hintId : undefined} type="number" value={text} disabled={disabled} min={descriptor?.minimum ?? limits?.[0]} max={descriptor?.maximum ?? limits?.[1]} step={descriptor?.step ?? limits?.[2] ?? "any"}
         onChange={(e) => { setText(e.target.value); if (e.target.value.trim() && Number.isFinite(Number(e.target.value))) change(Number(e.target.value)); }}
         onBlur={() => { if (!text.trim() || !Number.isFinite(Number(text))) setText(String(value)); }} />
-    </div>{hints[name] && <small>{hints[name]}</small>}
+    </div>{hints[name] && <small id={hintId}>{hints[name]}</small>}
   </div>;
 }
 export const title = (key: string) =>
   key
+    .replace(/_ms$/, " (ms)")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .replace(/Fps/g, "FPS")
     .replace(/Gbay/g, "GBAY")
     .replace(/Gta/g, "GTA")
     .replace(/Rpf/g, "RPF");
@@ -60,11 +63,12 @@ export function Field({
         <input
           type="checkbox"
           checked={value}
+          aria-describedby={hints[name] ? hintId : undefined}
           onChange={(e) => change(e.target.checked)}
           disabled={disabled}
         />
         {label}
-        {hints[name] && <small>{hints[name]}</small>}
+        {hints[name] && <small id={hintId}>{hints[name]}</small>}
       </label>
     );
   if (Array.isArray(value))
@@ -72,6 +76,7 @@ export function Field({
       <label>
         {label}
         <input
+          aria-describedby={hintId}
           value={value.join(", ")}
           onChange={(e) =>
             change(
@@ -83,7 +88,7 @@ export function Field({
           }
           disabled={disabled}
         />
-        <small>Separate values with commas</small>
+        <small id={hintId}>Separate values with commas</small>
       </label>
     );
   const options: Record<string, string[]> = {

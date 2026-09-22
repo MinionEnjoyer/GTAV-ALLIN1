@@ -1,6 +1,6 @@
 """Display-independent Launcher help catalog shared by Tkinter and React."""
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from allin1 import __version__
 
 @dataclass(frozen=True)
@@ -13,9 +13,10 @@ class HelpTopic:
     summary: str
     body: str
     keywords: tuple[str, ...] = ()
+    onboarding_priority: int = 1000
 
 
-HELP_TOPICS: tuple[HelpTopic, ...] = (
+_HELP_TOPICS: tuple[HelpTopic, ...] = (
     HelpTopic(
         "content-injectors", "Configuration", "Traffic population editor",
         "Choose authorized custom vehicles for ambient Story Mode traffic.",
@@ -166,6 +167,35 @@ Created and maintained by MinionEnjoyer. Use the Check for updates action in Set
 )
 
 
+# Help is a first-run aid before it is a reference library. Keep this ordering
+# explicit so a newly added article does not accidentally displace the safe
+# setup and launch workflow from the top of the Help Center.
+ONBOARDING_PRIORITIES = {
+    "getting-started": 10,
+    "editions": 20,
+    "install-repair": 30,
+    "gameplay": 40,
+    "content": 50,
+    "input": 60,
+    "characters": 70,
+    "packages": 80,
+    "troubleshooting": 90,
+    "recovery": 100,
+    "content-injectors": 110,
+    "asset-viewer": 120,
+    "rpf-explorer": 130,
+    "sdk": 140,
+    "about": 150,
+}
+
+
+HELP_TOPICS = tuple(sorted(
+    (replace(topic, onboarding_priority=ONBOARDING_PRIORITIES.get(topic.key, 1000))
+     for topic in _HELP_TOPICS),
+    key=lambda topic: (topic.onboarding_priority, topic.title),
+))
+
+
 def search_help_topics(query: str) -> tuple[HelpTopic, ...]:
     """Return help topics ranked by a simple, predictable text match."""
     words = tuple(part.casefold() for part in query.split() if part.strip())
@@ -188,5 +218,6 @@ def search_help_topics(query: str) -> tuple[HelpTopic, ...]:
         )
         scored.append((score, topic))
     return tuple(topic for _score, topic in sorted(
-        scored, key=lambda item: (-item[0], item[1].category, item[1].title),
+        scored,
+        key=lambda item: (-item[0], item[1].onboarding_priority, item[1].title),
     ))

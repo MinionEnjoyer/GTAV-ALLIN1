@@ -367,6 +367,11 @@ def profile(options, tools: dict[str, str | None], output: Path, execute=run_com
     return commands, layers
 
 
+def scratch_name(root: Path, run_id: str) -> str:
+    """Bound temporary path length independently of the human-readable run label."""
+    return hashlib.sha256(f"{root.resolve()}\0{run_id}".encode("utf-8")).hexdigest()[:16]
+
+
 def run(options, *, execute=run_command) -> tuple[int, Path, dict]:
     started_at = datetime.now(timezone.utc).isoformat()
     run_id = options.run_id or uuid.uuid4().hex[:8]
@@ -378,8 +383,7 @@ def run(options, *, execute=run_command) -> tuple[int, Path, dict]:
     # Keep the pytest base path genuinely short on Windows. Deep checkout names
     # plus receipt-owned backup paths can otherwise exceed the legacy Win32
     # path limit and turn a valid filesystem test into a harness-only failure.
-    checkout_id = hashlib.sha256(str(ROOT.resolve()).encode("utf-8")).hexdigest()[:8]
-    scratch = no_links(Path(tempfile.gettempdir()) / "a1hp" / f"{checkout_id}-{run_id}")
+    scratch = no_links(Path(tempfile.gettempdir()) / "a1hp" / scratch_name(ROOT, run_id))
     try:
         scratch.mkdir(parents=True, exist_ok=False)
         scratch_error = None

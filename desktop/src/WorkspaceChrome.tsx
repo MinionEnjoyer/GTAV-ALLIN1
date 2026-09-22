@@ -1,15 +1,15 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
 export const descriptions: Record<string, string> = {
-  setup: "Connect your GTA installation, check dependencies, and review installation changes.",
-  gameplay: "Tune traffic, vehicles, and Story Mode features. Changes stay in your draft until saved.",
-  input: "Set keyboard shortcuts, controller bindings, and accessibility preferences.",
-  content: "Configure included content and installed integrations in one place.",
-  mods: "Inspect SDK-built packages, review their settings, and manage installed content.",
-  characters: "Manage character progress, loadouts, outfits, and saved garage vehicles.",
-  sdk: "Connect the SDK, manage optional assistant tools, and automate reviewed workflows.",
-  activity: "Inspect recent operations, export diagnostics, and check release information.",
-  help: "Find setup guidance, workflow instructions, and safe automation examples.",
+  setup: "Choose a GTA V installation, verify its prerequisites, and review any repair before it runs.",
+  gameplay: "Adjust Story Mode traffic, vehicles, and gameplay preferences. Changes remain a local draft until you review them.",
+  input: "Set keyboard, controller, and accessibility preferences for the selected installation.",
+  content: "Manage included content, integrations, and traffic population settings from one workspace.",
+  mods: "Inspect packages before installation, manage installed packages, and find included content and SDK examples.",
+  characters: "Manage character progress, loadouts, outfits, and saved garage vehicles with reviewed writes.",
+  sdk: "Manage the ALLIN1 SDK and optional assistant tools, with clear review steps for supported changes.",
+  activity: "Review this session’s operations, export diagnostics, and check Launcher release information.",
+  help: "Find setup guidance, safe workflows, and practical automation examples.",
 };
 const paths: Record<string, string> = {
   setup: "M3 10 12 3l9 7M5 9v12h5v-7h4v7h5V9",

@@ -8,7 +8,7 @@ export default function PreviewControls({ busy, skipped, quick, missingOnly = fa
   onChange: (skipped: string[], quick: boolean, missingOnly: boolean) => void;
 }) {
   const selected = previewCategories.filter(category => !skipped.includes(category));
-  return <fieldset disabled={busy} className="preview-controls">
+  return <fieldset disabled={busy} className="preview-controls launch-preview-controls">
     <legend>Launch mode</legend>
     <div className="preview-modes">
       <label className={`preview-mode${quick ? " selected" : ""}`}>
@@ -22,12 +22,16 @@ export default function PreviewControls({ busy, skipped, quick, missingOnly = fa
         <span><strong>Update Previews</strong><small>Generate missing or outdated images</small></span>
       </label>
     </div>
-    {!quick && <label className="preview-category">
-      <input type="checkbox" checked={missingOnly} onChange={event => onChange(skipped, false, event.target.checked)} />
-      Missing previews only
-    </label>}
-    {!quick && missingOnly && <p className="preview-hint">Keep intact generated and downloaded default images, even after renderer or model updates. Generate only missing images in the selected categories. Package validation still runs.</p>}
-    <div className="preview-categories" role="group" aria-label="Preview categories">
+    {!quick && <div className="preview-update-options">
+      <label className="preview-category preview-missing-only">
+        <input type="checkbox" checked={missingOnly} onChange={event => onChange(skipped, false, event.target.checked)} />
+        Missing previews only
+      </label>
+      {missingOnly && <p className="preview-hint preview-missing-hint">Keep existing images and generate only missing selected previews.</p>}
+    </div>}
+    <section className="preview-coverage" aria-labelledby="preview-coverage-heading">
+      <h3 id="preview-coverage-heading" className="preview-coverage-heading">Coverage <span>Existing / total</span></h3>
+      <div className="preview-categories" role="group" aria-label="Preview categories">
         {previewCategories.map(category => <label key={category} className="preview-category">
           {!quick && <input type="checkbox" aria-label={category[0].toUpperCase() + category.slice(1)} checked={!skipped.includes(category)}
             disabled={selected.length === 1 && selected[0] === category}
@@ -40,8 +44,8 @@ export default function PreviewControls({ busy, skipped, quick, missingOnly = fa
             {counts?.[category]?.status === "available" ? `${counts[category]!.existing}/${counts[category]!.total}` : "Unavailable"}
           </span>
         </label>)}
-    </div>
-    <p className="preview-hint">Counts show existing / total previews, including throwables and supported gear. Launch safety checks always run.</p>
-    <p className="preview-hint">Missing images use an installed default preview pack or a placeholder. Default images are not bundled.</p>
+      </div>
+    </section>
+    <p className="preview-hint preview-coverage-hint">Counts include throwables and supported gear. Safety checks always run; missing images use a default pack or placeholder.</p>
   </fieldset>;
 }
